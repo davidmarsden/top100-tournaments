@@ -1,10 +1,27 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
-export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
+function looksLikeSupabaseUrl(value) {
+  return value.startsWith('https://') && value.includes('.supabase.co');
+}
 
-export const supabase = hasSupabaseConfig
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export const hasSupabaseConfig = Boolean(
+  looksLikeSupabaseUrl(supabaseUrl) && supabaseAnonKey.length > 20
+);
+
+let client = null;
+let configError = '';
+
+try {
+  if (hasSupabaseConfig) {
+    client = createClient(supabaseUrl, supabaseAnonKey);
+  }
+} catch (error) {
+  configError = error.message;
+  client = null;
+}
+
+export const supabase = client;
+export const supabaseConfigError = configError;
