@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import EntrantsManager from './components/EntrantsManager.jsx';
 import FixturesManager from './components/FixturesManager.jsx';
 import GroupsApproval from './components/GroupsApproval.jsx';
+import KnockoutManager from './components/KnockoutManager.jsx';
 import ProgressBar, { isStepDone } from './components/ProgressBar.jsx';
 import TablesManager from './components/TablesManager.jsx';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
@@ -36,41 +37,29 @@ function generateGroups(entries, groupCount) {
 function roundRobinRounds(entries) {
   const teams = [...entries];
   if (teams.length % 2 === 1) teams.push({ bye: true });
-
   const rounds = [];
   const roundCount = teams.length - 1;
   const half = teams.length / 2;
   let rotation = [...teams];
-
   for (let roundIndex = 0; roundIndex < roundCount; roundIndex += 1) {
     const pairings = [];
-
     for (let index = 0; index < half; index += 1) {
       const first = rotation[index];
       const second = rotation[rotation.length - 1 - index];
-      if (!first.bye && !second.bye) {
-        pairings.push(roundIndex % 2 === 0 ? [first, second] : [second, first]);
-      }
+      if (!first.bye && !second.bye) pairings.push(roundIndex % 2 === 0 ? [first, second] : [second, first]);
     }
-
     rounds.push(pairings);
     rotation = [rotation[0], rotation[rotation.length - 1], ...rotation.slice(1, -1)];
   }
-
   return rounds;
 }
 
 function generateFixtures(groups) {
   const fixtures = [];
   let matchOrder = 1;
-
   groups.forEach((group) => {
     const firstLegRounds = roundRobinRounds(group.entries);
-    const allRounds = [
-      ...firstLegRounds,
-      ...firstLegRounds.map((round) => round.map(([home, away]) => [away, home])),
-    ];
-
+    const allRounds = [...firstLegRounds, ...firstLegRounds.map((round) => round.map(([home, away]) => [away, home]))];
     allRounds.forEach((roundPairings, roundIndex) => {
       roundPairings.forEach(([home, away]) => {
         fixtures.push({
@@ -86,7 +75,6 @@ function generateFixtures(groups) {
       });
     });
   });
-
   return fixtures;
 }
 
@@ -198,7 +186,8 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
   if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} />;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
-  const placeholders = { Results: 'Next: tap a fixture, enter score, save result, update winner and loser.', Knockout: 'Next: automatic Cup and Shield bracket generation from final group standings.', 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
+  if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} />;
+  const placeholders = { Results: 'Next: tap a fixture, enter score, save result, update winner and loser.', 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
   return <p className="muted">{placeholders[activeModule] || 'Module coming next.'}</p>;
 }
 
