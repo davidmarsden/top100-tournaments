@@ -184,10 +184,11 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   if (activeModule === 'Overview') return <Overview tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} />;
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={onPreviewGenerated} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
-  if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} />;
+  if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" />;
+  if (activeModule === 'Results') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding />;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} />;
-  const placeholders = { Results: 'Next: tap a fixture, enter score, save result, update winner and loser.', 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
+  const placeholders = { 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
   return <p className="muted">{placeholders[activeModule] || 'Module coming next.'}</p>;
 }
 
