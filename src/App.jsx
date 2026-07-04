@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
-import { generateGroupFixtures, generateSeededGroups } from './lib/tournamentEngine';
 
 const steps = [
   'Competition setup',
@@ -25,6 +24,8 @@ const initialForm = {
   secondaryBracketName: 'Shield',
 };
 
+const groupCodes = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
 const demoEntrants = [
   'Genoa', 'Espanyol', 'Bayern Munich', 'Barcelona', 'CSKA', 'Hertha Berlin', 'Independiente', 'River Plate',
   'Montpellier', 'West Brom', 'Club Brugge', 'Juventus', 'Leicester Youth', 'Levante', 'Dortmund', 'Hamburg',
@@ -37,10 +38,77 @@ const demoEntrants = [
 ].map((teamName, index) => ({
   id: index + 1,
   team_name: teamName,
-  manager_name: `Manager ${index + 1}`,
+  manager_name: 'Manager ' + (index + 1),
   seed: index + 1,
   rating: 100 - Math.floor(index / 4),
 }));
+
+function generatePreviewGroups(entries, groupCount) {
+  const groups = groupCodes.slice(0, groupCount).map((code, index) => ({
+    code,
+    group_order: index + 1,
+    entries: [],
+  }));
+
+  for (let start = 0; start < entries.length; start += groupCount) {
+    const potNumber = Math.floor(start / groupCount) + 1;
+    const pot = entries.slice(start, start + groupCount);
+    const orderedPot = potNumber % 2 === 1 ? pot : [...pot].reverse();
+
+    orderedPot.forEach((entry, index) => {
+      const group = groups[index % groupCount];
+      group.entries.push({
+        ...entry,
+        group_code: group.code,
+        pot: potNumber,
+      });
+    });
+  }
+
+  return groups;
+}
+
+function generatePreviewFixtures(groups) {
+  const fixtures = [];
+  let matchOrder = 1;
+
+  groups.forEach((group) => {
+    const entries = group.entries;
+
+    for (let i = 0; i < entries.length; i += 1) {
+      for (let j = i + 1; j < entries.length; j += 1) {
+        const home = entries[i];
+        const away = entries[j];
+
+        fixtures.push({
+          group_code: group.code,
+          round: 'MD' + j + 'L1',
+          leg: 1,
+          match_order: matchOrder,
+          home_placeholder: home.team_name,
+          away_placeholder: away.team_name,
+          home_entry_id: home.id,
+          away_entry_id: away.id,
+        });
+        matchOrder += 1;
+
+        fixtures.push({
+          group_code: group.code,
+          round: 'MD' + j + 'L2',
+          leg: 2,
+          match_order: matchOrder,
+          home_placeholder: away.team_name,
+          away_placeholder: home.team_name,
+          home_entry_id: away.id,
+          away_entry_id: home.id,
+        });
+        matchOrder += 1;
+      }
+    }
+  });
+
+  return fixtures;
+}
 
 export default function App() {
   const [form, setForm] = useState(initialForm);
@@ -65,17 +133,17 @@ export default function App() {
   }
 
   function previewGroupsAndFixtures() {
-    const entryCount = Number(form.maxEntries || 64);
-    const sampleEntries = demoEntrants.slice(0, entryCount);
-    const groups = generateSeededGroups(sampleEntries, {
-      groupCount: Number(form.groupCount || 16),
-    });
-    const fixtures = generateGroupFixtures(groups, {
-      legs: 2,
-    });
+    try {
+      const entryCount = Number(form.maxEntries || 64);
+      const sampleEntries = demoEntrants.slice(0, entryCount);
+      const groups = generatePreviewGroups(sampleEntries, Number(form.groupCount || 16));
+      const fixtures = generatePreviewFixtures(groups);
 
-    setPreview({ groups, fixtures });
-    setStatus(`Preview generated: ${groups.length} groups and ${fixtures.length} group fixtures.`);
+      setPreview({ groups, fixtures });
+      setStatus('Preview generated: ' + groups.length + ' groups and ' + fixtures.length + ' group fixtures.');
+    } catch (error) {
+      setStatus('Preview failed: ' + error.message);
+    }
   }
 
   async function loadTournaments() {
@@ -88,7 +156,7 @@ export default function App() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      setStatus(`Could not load tournaments: ${error.message}`);
+      setStatus('Could not load tournaments: ' + error.message);
       setLoading(false);
       return;
     }
@@ -172,10 +240,10 @@ export default function App() {
 
       if (error) throw error;
 
-      setStatus(`${form.tournamentName} created successfully.`);
+      setStatus(form.tournamentName + ' created successfully.');
       await loadTournaments();
     } catch (error) {
-      setStatus(`Create failed: ${error.message}`);
+      setStatus('Create failed: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -311,7 +379,7 @@ export default function App() {
                 </thead>
                 <tbody>
                   {preview.fixtures.slice(0, 24).map((fixture) => (
-                    <tr key={`${fixture.group_code}-${fixture.match_order}`}>
+                    <tr key={fixture.group_code + '-' + fixture.match_order}>
                       <td>{fixture.match_order}</td>
                       <td>{fixture.group_code}</td>
                       <td>{fixture.round}</td>
