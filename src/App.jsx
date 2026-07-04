@@ -3,6 +3,7 @@ import EntrantsManager from './components/EntrantsManager.jsx';
 import FixturesManager from './components/FixturesManager.jsx';
 import GroupsApproval from './components/GroupsApproval.jsx';
 import ProgressBar, { isStepDone } from './components/ProgressBar.jsx';
+import TablesManager from './components/TablesManager.jsx';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
 
 const modules = ['Overview', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Public Page'];
@@ -155,7 +156,8 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={onPreviewGenerated} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
   if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} />;
-  const placeholders = { Results: 'Next: tap a fixture, enter score, save result, update winner and loser.', Tables: 'Next: live calculated group tables from match results.', Knockout: 'Next: automatic Cup and Shield bracket generation from final group standings.', 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
+  if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
+  const placeholders = { Results: 'Next: tap a fixture, enter score, save result, update winner and loser.', Knockout: 'Next: automatic Cup and Shield bracket generation from final group standings.', 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
   return <p className="muted">{placeholders[activeModule] || 'Module coming next.'}</p>;
 }
 
