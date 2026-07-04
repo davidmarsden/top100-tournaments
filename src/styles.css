@@ -121,6 +121,13 @@ button.secondary {
   gap: 16px;
 }
 
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 label {
   display: grid;
   gap: 0.45rem;
@@ -180,6 +187,59 @@ input:focus {
   background: #1d4ed8;
   color: white;
   font-size: 0.84rem;
+}
+
+.preview-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.group-card {
+  border: 1px solid #e4ebf7;
+  border-radius: 18px;
+  padding: 14px;
+  background: #fbfdff;
+}
+
+.group-card h3 {
+  margin: 0 0 10px;
+}
+
+.group-card ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.group-card li {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf2fb;
+}
+
+.group-card li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.group-card span {
+  display: block;
+  margin-top: 2px;
+  color: #5f6f8e;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.fixture-preview {
+  margin-top: 18px;
+}
+
+.fixture-preview summary {
+  cursor: pointer;
+  font-weight: 900;
+  color: #1d4ed8;
+  margin-bottom: 12px;
 }
 
 .table-wrap {
