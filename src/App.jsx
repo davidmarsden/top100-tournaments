@@ -33,19 +33,60 @@ function generateGroups(entries, groupCount) {
   return groups;
 }
 
+function roundRobinRounds(entries) {
+  const teams = [...entries];
+  if (teams.length % 2 === 1) teams.push({ bye: true });
+
+  const rounds = [];
+  const roundCount = teams.length - 1;
+  const half = teams.length / 2;
+  let rotation = [...teams];
+
+  for (let roundIndex = 0; roundIndex < roundCount; roundIndex += 1) {
+    const pairings = [];
+
+    for (let index = 0; index < half; index += 1) {
+      const first = rotation[index];
+      const second = rotation[rotation.length - 1 - index];
+      if (!first.bye && !second.bye) {
+        pairings.push(roundIndex % 2 === 0 ? [first, second] : [second, first]);
+      }
+    }
+
+    rounds.push(pairings);
+    rotation = [rotation[0], rotation[rotation.length - 1], ...rotation.slice(1, -1)];
+  }
+
+  return rounds;
+}
+
 function generateFixtures(groups) {
   const fixtures = [];
   let matchOrder = 1;
+
   groups.forEach((group) => {
-    for (let i = 0; i < group.entries.length; i += 1) {
-      for (let j = i + 1; j < group.entries.length; j += 1) {
-        const home = group.entries[i];
-        const away = group.entries[j];
-        fixtures.push({ group_code: group.code, round: 'MD' + j + 'L1', leg: 1, match_order: matchOrder++, home_entry_id: home.id, away_entry_id: away.id, home_placeholder: home.team_name, away_placeholder: away.team_name });
-        fixtures.push({ group_code: group.code, round: 'MD' + j + 'L2', leg: 2, match_order: matchOrder++, home_entry_id: away.id, away_entry_id: home.id, home_placeholder: away.team_name, away_placeholder: home.team_name });
-      }
-    }
+    const firstLegRounds = roundRobinRounds(group.entries);
+    const allRounds = [
+      ...firstLegRounds,
+      ...firstLegRounds.map((round) => round.map(([home, away]) => [away, home])),
+    ];
+
+    allRounds.forEach((roundPairings, roundIndex) => {
+      roundPairings.forEach(([home, away]) => {
+        fixtures.push({
+          group_code: group.code,
+          round: 'MD' + (roundIndex + 1),
+          leg: roundIndex < firstLegRounds.length ? 1 : 2,
+          match_order: matchOrder++,
+          home_entry_id: home.id,
+          away_entry_id: away.id,
+          home_placeholder: home.team_name,
+          away_placeholder: away.team_name,
+        });
+      });
+    });
   });
+
   return fixtures;
 }
 
