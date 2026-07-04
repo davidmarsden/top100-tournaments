@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
+import { generateGroupFixtures, generateSeededGroups } from './lib/tournamentEngine';
 
 const steps = [
   'Competition setup',
@@ -24,11 +25,29 @@ const initialForm = {
   secondaryBracketName: 'Shield',
 };
 
+const demoEntrants = [
+  'Genoa', 'Espanyol', 'Bayern Munich', 'Barcelona', 'CSKA', 'Hertha Berlin', 'Independiente', 'River Plate',
+  'Montpellier', 'West Brom', 'Club Brugge', 'Juventus', 'Leicester Youth', 'Levante', 'Dortmund', 'Hamburg',
+  'Stoke City', 'Sao Paulo', 'FC Porto', 'Sampdoria', 'Sporting', 'SC Internacional', 'Chelsea', 'Anderlecht',
+  'Celtic Factory', 'Dynamo Moskva', 'Besiktas', 'PSV', 'AC Milan', 'Crystal Palace', 'Fenerbahce', 'Monaco',
+  'Benfica', 'Cruzeiro', 'Liverpool', 'Athletic Club', 'Tottenham', 'Werder Bremen', 'Villarreal', 'Real Madrid',
+  'Udinese', 'Valencia', 'Wolfsburg', 'CR Flamengo', 'Leverkusen', 'Swansea', 'Newcastle United', 'Saint Etienne',
+  'Ajax', 'Roma', 'Lazio', 'Marseille', 'Fiorentina', 'Lyon', 'Sevilla', 'Porto B',
+  'Everton', 'Napoli', 'Atalanta', 'Boca Juniors', 'Palmeiras', 'Flamengo Youth', 'Galatasaray', 'Rangers',
+].map((teamName, index) => ({
+  id: index + 1,
+  team_name: teamName,
+  manager_name: `Manager ${index + 1}`,
+  seed: index + 1,
+  rating: 100 - Math.floor(index / 4),
+}));
+
 export default function App() {
   const [form, setForm] = useState(initialForm);
   const [tournaments, setTournaments] = useState([]);
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState(null);
 
   const canUseDatabase = hasSupabaseConfig && supabase;
 
@@ -43,6 +62,20 @@ export default function App() {
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function previewGroupsAndFixtures() {
+    const entryCount = Number(form.maxEntries || 64);
+    const sampleEntries = demoEntrants.slice(0, entryCount);
+    const groups = generateSeededGroups(sampleEntries, {
+      groupCount: Number(form.groupCount || 16),
+    });
+    const fixtures = generateGroupFixtures(groups, {
+      legs: 2,
+    });
+
+    setPreview({ groups, fixtures });
+    setStatus(`Preview generated: ${groups.length} groups and ${fixtures.length} group fixtures.`);
   }
 
   async function loadTournaments() {
@@ -214,7 +247,10 @@ export default function App() {
             <input value={form.secondaryBracketName} onChange={(event) => updateField('secondaryBracketName', event.target.value)} />
           </label>
 
-          <button type="submit" disabled={loading}>{loading ? 'Working...' : 'Create S28 Youth Cup'}</button>
+          <div className="button-row">
+            <button type="submit" disabled={loading}>{loading ? 'Working...' : 'Create S28 Youth Cup'}</button>
+            <button type="button" className="secondary" onClick={previewGroupsAndFixtures}>Preview groups & fixtures</button>
+          </div>
           <p className="status">{status}</p>
         </form>
 
@@ -233,6 +269,62 @@ export default function App() {
           </ol>
         </section>
       </section>
+
+      {preview && (
+        <section className="card">
+          <div className="card-header row">
+            <div>
+              <p className="eyebrow">Engine test</p>
+              <h2>Preview: {preview.groups.length} groups, {preview.fixtures.length} fixtures</h2>
+            </div>
+            <button type="button" className="secondary" onClick={() => setPreview(null)}>Clear preview</button>
+          </div>
+
+          <div className="preview-groups">
+            {preview.groups.map((group) => (
+              <article className="group-card" key={group.code}>
+                <h3>Group {group.code}</h3>
+                <ol>
+                  {group.entries.map((entry) => (
+                    <li key={entry.id}>
+                      <strong>{entry.seed}.</strong> {entry.team_name}
+                      <span>Pot {entry.pot}</span>
+                    </li>
+                  ))}
+                </ol>
+              </article>
+            ))}
+          </div>
+
+          <details className="fixture-preview">
+            <summary>Show first 24 generated fixtures</summary>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Group</th>
+                    <th>Round</th>
+                    <th>Home</th>
+                    <th>Away</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.fixtures.slice(0, 24).map((fixture) => (
+                    <tr key={`${fixture.group_code}-${fixture.match_order}`}>
+                      <td>{fixture.match_order}</td>
+                      <td>{fixture.group_code}</td>
+                      <td>{fixture.round}</td>
+                      <td>{fixture.home_placeholder}</td>
+                      <td>{fixture.away_placeholder}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+      )}
 
       <section className="card">
         <div className="card-header row">
