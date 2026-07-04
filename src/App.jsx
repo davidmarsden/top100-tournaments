@@ -1,16 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
 
-const steps = [
-  'Competition setup',
-  'Add entrants',
-  'Generate groups',
-  'Generate fixtures',
-  'Enter results',
-  'Auto-update tables',
-  'Generate knockout draw',
-  'Publish public page',
-  'Archive automatically',
+const workflowSteps = [
+  'Tournament created',
+  'Entrants selected',
+  'Groups generated',
+  'Fixtures generated',
+  'Results entered',
+  'Tables updated',
+  'Knockout ready',
+  'Published',
+  'Archived',
+];
+
+const modules = [
+  'Overview',
+  'Entrants',
+  'Groups',
+  'Fixtures',
+  'Results',
+  'Tables',
+  'Knockout',
+  'Public Page',
 ];
 
 const initialForm = {
@@ -57,11 +68,7 @@ function generatePreviewGroups(entries, groupCount) {
 
     orderedPot.forEach((entry, index) => {
       const group = groups[index % groupCount];
-      group.entries.push({
-        ...entry,
-        group_code: group.code,
-        pot: potNumber,
-      });
+      group.entries.push({ ...entry, group_code: group.code, pot: potNumber });
     });
   }
 
@@ -74,12 +81,10 @@ function generatePreviewFixtures(groups) {
 
   groups.forEach((group) => {
     const entries = group.entries;
-
     for (let i = 0; i < entries.length; i += 1) {
       for (let j = i + 1; j < entries.length; j += 1) {
         const home = entries[i];
         const away = entries[j];
-
         fixtures.push({
           group_code: group.code,
           round: 'MD' + j + 'L1',
@@ -87,11 +92,8 @@ function generatePreviewFixtures(groups) {
           match_order: matchOrder,
           home_placeholder: home.team_name,
           away_placeholder: away.team_name,
-          home_entry_id: home.id,
-          away_entry_id: away.id,
         });
         matchOrder += 1;
-
         fixtures.push({
           group_code: group.code,
           round: 'MD' + j + 'L2',
@@ -99,8 +101,6 @@ function generatePreviewFixtures(groups) {
           match_order: matchOrder,
           home_placeholder: away.team_name,
           away_placeholder: home.team_name,
-          home_entry_id: away.id,
-          away_entry_id: home.id,
         });
         matchOrder += 1;
       }
@@ -113,6 +113,8 @@ function generatePreviewFixtures(groups) {
 export default function App() {
   const [form, setForm] = useState(initialForm);
   const [tournaments, setTournaments] = useState([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState(null);
+  const [activeModule, setActiveModule] = useState('Overview');
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
@@ -123,10 +125,14 @@ export default function App() {
     if (canUseDatabase) loadTournaments();
   }, [canUseDatabase]);
 
-  const completionText = useMemo(() => {
-    const created = tournaments.some((item) => item.name === form.tournamentName);
-    return created ? 'Tournament created' : 'First milestone: create the tournament shell';
-  }, [form.tournamentName, tournaments]);
+  const selectedTournament = useMemo(
+    () => tournaments.find((item) => item.id === selectedTournamentId) || tournaments[0] || null,
+    [selectedTournamentId, tournaments]
+  );
+
+  const dashboardTitle = selectedTournament
+    ? selectedTournament.name + ' control centre'
+    : 'Create your first tournament shell';
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -134,12 +140,13 @@ export default function App() {
 
   function previewGroupsAndFixtures() {
     try {
-      const entryCount = Number(form.maxEntries || 64);
+      const entryCount = Number(form.maxEntries || selectedTournament?.max_entries || 64);
+      const groupCount = Number(form.groupCount || selectedTournament?.group_count || 16);
       const sampleEntries = demoEntrants.slice(0, entryCount);
-      const groups = generatePreviewGroups(sampleEntries, Number(form.groupCount || 16));
+      const groups = generatePreviewGroups(sampleEntries, groupCount);
       const fixtures = generatePreviewFixtures(groups);
-
       setPreview({ groups, fixtures });
+      setActiveModule('Groups');
       setStatus('Preview generated: ' + groups.length + ' groups and ' + fixtures.length + ' group fixtures.');
     } catch (error) {
       setStatus('Preview failed: ' + error.message);
@@ -162,6 +169,7 @@ export default function App() {
     }
 
     setTournaments(data || []);
+    if (!selectedTournamentId && data?.[0]) setSelectedTournamentId(data[0].id);
     setStatus('Tournaments loaded');
     setLoading(false);
   }
@@ -222,24 +230,30 @@ export default function App() {
       const seasonId = await findOrCreateSeason();
       const competitionId = await findOrCreateCompetition();
 
-      const { error } = await supabase.from('tournaments').insert({
-        season_id: seasonId,
-        competition_id: competitionId,
-        name: form.tournamentName,
-        status: 'draft',
-        format: 'groups_then_knockout',
-        source: 'app',
-        max_entries: Number(form.maxEntries),
-        actual_entries: 0,
-        group_count: Number(form.groupCount),
-        teams_per_group: Number(form.teamsPerGroup),
-        knockout_teams: Number(form.knockoutTeams),
-        secondary_bracket_name: form.secondaryBracketName || null,
-        rules_notes: 'Created from Top 100 tournament app MVP',
-      });
+      const { data, error } = await supabase
+        .from('tournaments')
+        .insert({
+          season_id: seasonId,
+          competition_id: competitionId,
+          name: form.tournamentName,
+          status: 'draft',
+          format: 'groups_then_knockout',
+          source: 'app',
+          max_entries: Number(form.maxEntries),
+          actual_entries: 0,
+          group_count: Number(form.groupCount),
+          teams_per_group: Number(form.teamsPerGroup),
+          knockout_teams: Number(form.knockoutTeams),
+          secondary_bracket_name: form.secondaryBracketName || null,
+          rules_notes: 'Created from Top 100 tournament app dashboard',
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
 
+      setSelectedTournamentId(data.id);
+      setActiveModule('Overview');
       setStatus(form.tournamentName + ' created successfully.');
       await loadTournaments();
     } catch (error) {
@@ -252,190 +266,199 @@ export default function App() {
   return (
     <main className="app-shell">
       <section className="hero">
-        <p className="eyebrow">Top 100 Tournament Admin</p>
-        <h1>Build the tournament organiser around the real workflow.</h1>
+        <p className="eyebrow">Top 100 Tournament Manager</p>
+        <h1>{dashboardTitle}</h1>
         <p>
-          Start with a tournament shell, then add entrants, generate groups, create fixtures,
-          enter results and publish the archive page.
+          Create tournaments, choose entrants, generate groups and fixtures, enter results,
+          build knockouts and publish the archive page from one control centre.
         </p>
       </section>
 
       {!canUseDatabase && (
         <section className="warning-card">
           <strong>Supabase is not connected yet.</strong>
-          <span>
-            Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify environment variables.
-          </span>
+          <span>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify environment variables.</span>
         </section>
       )}
 
-      <section className="grid two-columns">
-        <form className="card" onSubmit={createTournament}>
-          <div className="card-header">
-            <p className="eyebrow">Step 1</p>
-            <h2>Create tournament</h2>
-          </div>
+      <section className="dashboard-layout">
+        <aside className="sidebar card">
+          <p className="eyebrow">Modules</p>
+          {modules.map((module) => (
+            <button
+              key={module}
+              type="button"
+              className={activeModule === module ? 'nav-pill active' : 'nav-pill'}
+              onClick={() => setActiveModule(module)}
+            >
+              {module}
+            </button>
+          ))}
+        </aside>
 
-          <label>
-            Season
-            <input value={form.seasonCode} onChange={(event) => updateField('seasonCode', event.target.value)} />
-          </label>
+        <section className="workspace">
+          <section className="grid two-columns compact">
+            <form className="card" onSubmit={createTournament}>
+              <div className="card-header">
+                <p className="eyebrow">Tournament setup</p>
+                <h2>Create or configure tournament</h2>
+              </div>
 
-          <label>
-            Competition
-            <input value={form.competitionName} onChange={(event) => updateField('competitionName', event.target.value)} />
-          </label>
+              <div className="mini-grid">
+                <label>Season<input value={form.seasonCode} onChange={(event) => updateField('seasonCode', event.target.value)} /></label>
+                <label>Competition<input value={form.competitionName} onChange={(event) => updateField('competitionName', event.target.value)} /></label>
+              </div>
 
-          <label>
-            Tournament name
-            <input value={form.tournamentName} onChange={(event) => updateField('tournamentName', event.target.value)} />
-          </label>
+              <label>Tournament name<input value={form.tournamentName} onChange={(event) => updateField('tournamentName', event.target.value)} /></label>
 
-          <div className="mini-grid">
-            <label>
-              Max entries
-              <input type="number" value={form.maxEntries} onChange={(event) => updateField('maxEntries', event.target.value)} />
-            </label>
-            <label>
-              Groups
-              <input type="number" value={form.groupCount} onChange={(event) => updateField('groupCount', event.target.value)} />
-            </label>
-            <label>
-              Teams/group
-              <input type="number" value={form.teamsPerGroup} onChange={(event) => updateField('teamsPerGroup', event.target.value)} />
-            </label>
-            <label>
-              Knockout teams
-              <input type="number" value={form.knockoutTeams} onChange={(event) => updateField('knockoutTeams', event.target.value)} />
-            </label>
-          </div>
+              <div className="mini-grid">
+                <label>Max entries<input type="number" value={form.maxEntries} onChange={(event) => updateField('maxEntries', event.target.value)} /></label>
+                <label>Groups<input type="number" value={form.groupCount} onChange={(event) => updateField('groupCount', event.target.value)} /></label>
+                <label>Teams/group<input type="number" value={form.teamsPerGroup} onChange={(event) => updateField('teamsPerGroup', event.target.value)} /></label>
+                <label>Knockout teams<input type="number" value={form.knockoutTeams} onChange={(event) => updateField('knockoutTeams', event.target.value)} /></label>
+              </div>
 
-          <label>
-            Secondary bracket
-            <input value={form.secondaryBracketName} onChange={(event) => updateField('secondaryBracketName', event.target.value)} />
-          </label>
+              <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => updateField('secondaryBracketName', event.target.value)} /></label>
 
-          <div className="button-row">
-            <button type="submit" disabled={loading}>{loading ? 'Working...' : 'Create S28 Youth Cup'}</button>
-            <button type="button" className="secondary" onClick={previewGroupsAndFixtures}>Preview groups & fixtures</button>
-          </div>
-          <p className="status">{status}</p>
-        </form>
+              <div className="button-row">
+                <button type="submit" disabled={loading}>{loading ? 'Working...' : 'Create tournament'}</button>
+                <button type="button" className="secondary" onClick={previewGroupsAndFixtures}>Preview groups & fixtures</button>
+              </div>
+              <p className="status">{status}</p>
+            </form>
 
-        <section className="card">
-          <div className="card-header">
-            <p className="eyebrow">Workflow</p>
-            <h2>{completionText}</h2>
-          </div>
-          <ol className="steps">
-            {steps.map((step, index) => (
-              <li key={step}>
-                <span>{index + 1}</span>
-                {step}
-              </li>
-            ))}
-          </ol>
-        </section>
-      </section>
-
-      {preview && (
-        <section className="card">
-          <div className="card-header row">
-            <div>
-              <p className="eyebrow">Engine test</p>
-              <h2>Preview: {preview.groups.length} groups, {preview.fixtures.length} fixtures</h2>
-            </div>
-            <button type="button" className="secondary" onClick={() => setPreview(null)}>Clear preview</button>
-          </div>
-
-          <div className="preview-groups">
-            {preview.groups.map((group) => (
-              <article className="group-card" key={group.code}>
-                <h3>Group {group.code}</h3>
-                <ol>
-                  {group.entries.map((entry) => (
-                    <li key={entry.id}>
-                      <strong>{entry.seed}.</strong> {entry.team_name}
-                      <span>Pot {entry.pot}</span>
+            <section className="card">
+              <div className="card-header">
+                <p className="eyebrow">Workflow status</p>
+                <h2>{selectedTournament ? selectedTournament.name : 'No tournament selected'}</h2>
+              </div>
+              <ol className="steps">
+                {workflowSteps.map((step, index) => {
+                  const done = index === 0 && selectedTournament;
+                  const previewDone = preview && (step === 'Groups generated' || step === 'Fixtures generated');
+                  return (
+                    <li key={step} className={done || previewDone ? 'done' : ''}>
+                      <span>{done || previewDone ? '✓' : index + 1}</span>
+                      {step}
                     </li>
-                  ))}
-                </ol>
-              </article>
-            ))}
-          </div>
+                  );
+                })}
+              </ol>
+            </section>
+          </section>
 
-          <details className="fixture-preview">
-            <summary>Show first 24 generated fixtures</summary>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Group</th>
-                    <th>Round</th>
-                    <th>Home</th>
-                    <th>Away</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.fixtures.slice(0, 24).map((fixture) => (
-                    <tr key={fixture.group_code + '-' + fixture.match_order}>
-                      <td>{fixture.match_order}</td>
-                      <td>{fixture.group_code}</td>
-                      <td>{fixture.round}</td>
-                      <td>{fixture.home_placeholder}</td>
-                      <td>{fixture.away_placeholder}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <section className="card module-card">
+            <div className="card-header row">
+              <div>
+                <p className="eyebrow">{activeModule}</p>
+                <h2>{moduleHeading(activeModule)}</h2>
+              </div>
+              <button type="button" className="secondary" onClick={loadTournaments} disabled={loading || !canUseDatabase}>Refresh</button>
             </div>
-          </details>
+            <ModuleContent
+              activeModule={activeModule}
+              tournaments={tournaments}
+              selectedTournament={selectedTournament}
+              setSelectedTournamentId={setSelectedTournamentId}
+              preview={preview}
+              setPreview={setPreview}
+            />
+          </section>
         </section>
-      )}
-
-      <section className="card">
-        <div className="card-header row">
-          <div>
-            <p className="eyebrow">Archive</p>
-            <h2>Existing tournaments</h2>
-          </div>
-          <button type="button" className="secondary" onClick={loadTournaments} disabled={loading || !canUseDatabase}>
-            Refresh
-          </button>
-        </div>
-
-        {tournaments.length === 0 ? (
-          <p className="muted">No tournaments loaded yet.</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th>Entries</th>
-                  <th>Groups</th>
-                  <th>Knockout</th>
-                  <th>Secondary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tournaments.map((tournament) => (
-                  <tr key={tournament.id}>
-                    <td>{tournament.name}</td>
-                    <td>{tournament.status}</td>
-                    <td>{tournament.actual_entries || 0}/{tournament.max_entries || '-'}</td>
-                    <td>{tournament.group_count || '-'} × {tournament.teams_per_group || '-'}</td>
-                    <td>{tournament.knockout_teams || '-'}</td>
-                    <td>{tournament.secondary_bracket_name || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
     </main>
   );
+}
+
+function moduleHeading(activeModule) {
+  const headings = {
+    Overview: 'Tournament dashboard',
+    Entrants: 'Select teams and managers',
+    Groups: 'Approve generated groups',
+    Fixtures: 'Generate and manage fixtures',
+    Results: 'Enter results',
+    Tables: 'Live group tables',
+    Knockout: 'Cup and Shield draw',
+    'Public Page': 'Publish and archive',
+  };
+  return headings[activeModule] || activeModule;
+}
+
+function ModuleContent({ activeModule, tournaments, selectedTournament, setSelectedTournamentId, preview, setPreview }) {
+  if (activeModule === 'Overview') {
+    return (
+      <>
+        {tournaments.length === 0 ? (
+          <p className="muted">No tournaments loaded yet.</p>
+        ) : (
+          <div className="tournament-grid">
+            {tournaments.map((tournament) => (
+              <button
+                type="button"
+                className={selectedTournament?.id === tournament.id ? 'tournament-card selected' : 'tournament-card'}
+                key={tournament.id}
+                onClick={() => setSelectedTournamentId(tournament.id)}
+              >
+                <strong>{tournament.name}</strong>
+                <span>{tournament.status} · {tournament.actual_entries || 0}/{tournament.max_entries || '-'} entries</span>
+                <span>{tournament.group_count || '-'} groups · {tournament.knockout_teams || '-'} knockout teams · {tournament.secondary_bracket_name || 'No secondary bracket'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (activeModule === 'Groups') {
+    if (!preview) return <p className="muted">Generate a groups preview first. Later this tab will load saved groups from Supabase.</p>;
+    return (
+      <>
+        <div className="row preview-actions">
+          <p className="muted">Preview: {preview.groups.length} groups, {preview.fixtures.length} fixtures.</p>
+          <button type="button" className="secondary" onClick={() => setPreview(null)}>Clear preview</button>
+        </div>
+        <div className="preview-groups">
+          {preview.groups.map((group) => (
+            <article className="group-card" key={group.code}>
+              <h3>Group {group.code}</h3>
+              <ol>
+                {group.entries.map((entry) => (
+                  <li key={entry.id}><strong>{entry.seed}.</strong> {entry.team_name}<span>Pot {entry.pot}</span></li>
+                ))}
+              </ol>
+            </article>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (activeModule === 'Fixtures') {
+    if (!preview) return <p className="muted">Generate a fixtures preview first. Later this tab will save match records into Supabase.</p>;
+    return (
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Group</th><th>Round</th><th>Home</th><th>Away</th></tr></thead>
+          <tbody>
+            {preview.fixtures.slice(0, 48).map((fixture) => (
+              <tr key={fixture.group_code + '-' + fixture.match_order}>
+                <td>{fixture.match_order}</td><td>{fixture.group_code}</td><td>{fixture.round}</td><td>{fixture.home_placeholder}</td><td>{fixture.away_placeholder}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  const placeholders = {
+    Entrants: 'Next: searchable tick-box entrant selector using teams, managers and tournament_entries.',
+    Results: 'Next: tap a fixture, enter score, save result, update winner and loser.',
+    Tables: 'Next: live calculated group tables from match results.',
+    Knockout: 'Next: automatic Cup and Shield bracket generation from final group standings.',
+    'Public Page': 'Next: read-only public tournament page and archived tournament view.',
+  };
+
+  return <p className="muted">{placeholders[activeModule] || 'Module coming next.'}</p>;
 }
