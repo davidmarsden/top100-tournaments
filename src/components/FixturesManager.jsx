@@ -5,6 +5,10 @@ function teamNameFromEntry(entry, fallback) {
   return entry?.teams?.name || entry?.team?.name || fallback || 'TBC';
 }
 
+function isCompleted(fixture) {
+  return fixture.status === 'played' || fixture.status === 'forfeit';
+}
+
 function fixtureGroupLabel(fixture) {
   if (fixture.stage === 'knockout') return fixture.bracket || 'Knockout';
   return fixture.groups?.code || fixture.group_code || 'Ungrouped';
@@ -36,6 +40,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
   const [editingId, setEditingId] = useState(null);
   const [scores, setScores] = useState({ home_score: '', away_score: '' });
   const [groupFilter, setGroupFilter] = useState('all');
+  const [roundDate, setRoundDate] = useState('');
 
   const tournamentId = selectedTournament?.id;
 
@@ -45,12 +50,12 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
 
   const filteredFixtures = useMemo(() => {
     return fixtures
-      .filter((fixture) => !onlyOutstanding || fixture.status !== 'played')
+      .filter((fixture) => !onlyOutstanding || !isCompleted(fixture))
       .filter((fixture) => groupFilter === 'all' || fixtureGroupLabel(fixture) === groupFilter);
   }, [fixtures, onlyOutstanding, groupFilter]);
 
   const sections = useMemo(() => Object.values(groupFixtures(filteredFixtures)), [filteredFixtures]);
-  const playedCount = fixtures.filter((fixture) => fixture.status === 'played').length;
+  const playedCount = fixtures.filter(isCompleted).length;
   const groupOptions = useMemo(() => [...new Set(fixtures.map(fixtureGroupLabel))].sort(), [fixtures]);
 
   async function loadFixtures() {
@@ -60,7 +65,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
 
     let query = supabase
       .from('matches')
-      .select('id, tournament_id, group_id, stage, round, leg, match_order, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, played_at, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
+      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, played_at, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
       .eq('tournament_id', tournamentId)
       .order('match_order', { ascending: true });
 
@@ -89,7 +94,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     setScores({ home_score: '', away_score: '' });
   }
 
-  async function updateResult(fixture, homeScore, awayScore) {
+  async function updateResult(fixture, homeScore, awayScore, resultStatus = 'played') {
     let winnerEntryId = null;
     let loserEntryId = null;
 
@@ -108,7 +113,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
         away_score: awayScore,
         winner_entry_id: winnerEntryId,
         loser_entry_id: loserEntryId,
-        status: 'played',
+        status: resultStatus,
         played_at: new Date().toISOString(),
       })
       .eq('id', fixture.id);
@@ -118,14 +123,10 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     const homeScore = Number(scores.home_score);
     const awayScore = Number(scores.away_score);
 
-    if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore)) {
-      setStatus('Enter both scores before saving.');
-      return;
-    }
+    if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore)) return setStatus('Enter both scores before saving.');
 
     setLoading(true);
     setStatus('Saving result...');
-
     const { error } = await updateResult(fixture, homeScore, awayScore);
 
     if (error) setStatus('Save failed: ' + error.message);
@@ -135,12 +136,25 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       setScores({ home_score: '', away_score: '' });
       await loadFixtures();
     }
+    setLoading(false);
+  }
 
+  async function saveForfeit(fixture, forfeitingSide) {
+    const homeScore = forfeitingSide === 'home' ? 0 : 3;
+    const awayScore = forfeitingSide === 'away' ? 0 : 3;
+    setLoading(true);
+    setStatus('Saving forfeit...');
+    const { error } = await updateResult(fixture, homeScore, awayScore, 'forfeit');
+    if (error) setStatus('Forfeit failed: ' + error.message);
+    else {
+      setStatus('Forfeit saved as a 3-0 result.');
+      await loadFixtures();
+    }
     setLoading(false);
   }
 
   async function autoPopulateVisible() {
-    const targets = filteredFixtures.filter((fixture) => fixture.status !== 'played');
+    const targets = filteredFixtures.filter((fixture) => !isCompleted(fixture));
     if (!targets.length) return setStatus('No outstanding fixtures visible.');
     setLoading(true);
     setStatus('Auto-populating visible results...');
@@ -157,6 +171,21 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
 
     setStatus(targets.length + ' test results saved.');
     await loadFixtures();
+    setLoading(false);
+  }
+
+  async function setVisibleRoundDate() {
+    if (!roundDate) return setStatus('Choose a date first.');
+    const targets = filteredFixtures.map((fixture) => fixture.id);
+    if (!targets.length) return setStatus('No fixtures visible to date.');
+    setLoading(true);
+    setStatus('Saving fixture dates...');
+    const { error } = await supabase.from('matches').update({ fixture_date: roundDate }).in('id', targets);
+    if (error) setStatus('Date save failed: ' + error.message);
+    else {
+      setStatus('Date applied to ' + targets.length + ' visible fixtures.');
+      await loadFixtures();
+    }
     setLoading(false);
   }
 
@@ -185,9 +214,9 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     <div className="fixtures-manager">
       <div className="fixtures-toolbar">
         <div>
-          <p className="eyebrow">{onlyOutstanding ? 'Results desk' : 'Fixture secretary'}</p>
+          <p className="eyebrow">{onlyOutstanding ? 'Results desk' : stage === 'knockout' ? 'Knockout results' : 'Fixture secretary'}</p>
           <h3>{playedCount} / {fixtures.length} {stage === 'knockout' ? 'knockout' : 'group'} fixtures played</h3>
-          <p className="muted">{onlyOutstanding ? 'Only outstanding fixtures are shown here.' : 'Load saved fixtures, enter results, and keep the tournament moving.'}</p>
+          <p className="muted">{onlyOutstanding ? 'Only outstanding fixtures are shown here.' : 'Load saved fixtures, enter results, mark forfeits and keep the tournament moving.'}</p>
         </div>
         <div className="button-row">
           <button type="button" className="secondary" onClick={loadFixtures} disabled={loading}>Reload fixtures</button>
@@ -195,7 +224,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
         </div>
       </div>
 
-      <div className="filter-row">
+      <div className="filter-row multi">
         <label>
           {stage === 'knockout' ? 'Bracket' : 'Group'}
           <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
@@ -203,6 +232,11 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
             {groupOptions.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>
+        <label>
+          Apply date to visible fixtures
+          <input type="date" value={roundDate} onChange={(event) => setRoundDate(event.target.value)} />
+        </label>
+        <button type="button" className="secondary" onClick={setVisibleRoundDate} disabled={loading}>Set date</button>
       </div>
 
       <p className="status">{status}</p>
@@ -227,14 +261,15 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
                   const homeName = teamNameFromEntry(fixture.home_entry, fixture.home_placeholder);
                   const awayName = teamNameFromEntry(fixture.away_entry, fixture.away_placeholder);
                   const isEditing = editingId === fixture.id;
-                  const isPlayed = fixture.status === 'played';
+                  const completed = isCompleted(fixture);
                   return (
-                    <article className={isPlayed ? 'fixture-card played' : 'fixture-card'} key={fixture.id}>
+                    <article className={completed ? 'fixture-card played' : 'fixture-card'} key={fixture.id}>
                       <div className="fixture-teams">
                         <strong>{homeName}</strong>
-                        <span className="fixture-score">{isPlayed ? `${fixture.home_score} - ${fixture.away_score}` : 'v'}</span>
+                        <span className="fixture-score">{completed ? `${fixture.home_score} - ${fixture.away_score}` : 'v'}</span>
                         <strong>{awayName}</strong>
                       </div>
+                      {fixture.fixture_date && <p className="fixture-date">{fixture.fixture_date}</p>}
                       {isEditing ? (
                         <div className="result-editor">
                           <label>Home<input type="number" value={scores.home_score} onChange={(event) => setScores((current) => ({ ...current, home_score: event.target.value }))} /></label>
@@ -245,8 +280,10 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
                       ) : (
                         <div className="fixture-actions">
                           <span>{fixture.status || 'scheduled'}</span>
-                          <button type="button" className="secondary" onClick={() => startEdit(fixture)}>{isPlayed ? 'Edit result' : 'Enter result'}</button>
-                          {isPlayed && <button type="button" className="danger" onClick={() => resetResult(fixture)} disabled={loading}>Reset</button>}
+                          <button type="button" className="secondary" onClick={() => startEdit(fixture)}>{completed ? 'Edit result' : 'Enter result'}</button>
+                          {!completed && <button type="button" className="danger" onClick={() => saveForfeit(fixture, 'home')} disabled={loading}>Home forfeit</button>}
+                          {!completed && <button type="button" className="danger" onClick={() => saveForfeit(fixture, 'away')} disabled={loading}>Away forfeit</button>}
+                          {completed && <button type="button" className="danger" onClick={() => resetResult(fixture)} disabled={loading}>Reset</button>}
                         </div>
                       )}
                     </article>
