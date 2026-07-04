@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import EntrantsManager from './components/EntrantsManager.jsx';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
 
 const workflowSteps = [
@@ -13,16 +14,7 @@ const workflowSteps = [
   'Archived',
 ];
 
-const modules = [
-  'Overview',
-  'Entrants',
-  'Groups',
-  'Fixtures',
-  'Results',
-  'Tables',
-  'Knockout',
-  'Public Page',
-];
+const modules = ['Overview', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Public Page'];
 
 const initialForm = {
   seasonCode: 'S28',
@@ -68,6 +60,7 @@ function generatePreviewGroups(entries, groupCount) {
 
     orderedPot.forEach((entry, index) => {
       const group = groups[index % groupCount];
+      if (!group) return;
       group.entries.push({ ...entry, group_code: group.code, pot: potNumber });
     });
   }
@@ -136,6 +129,20 @@ export default function App() {
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function createPreviewFromEntries(entries) {
+    try {
+      const groupCount = Number(selectedTournament?.group_count || form.groupCount || 16);
+      const sortedEntries = [...entries].sort((a, b) => Number(a.seed || 999) - Number(b.seed || 999));
+      const groups = generatePreviewGroups(sortedEntries, groupCount);
+      const fixtures = generatePreviewFixtures(groups);
+      setPreview({ groups, fixtures });
+      setActiveModule('Groups');
+      setStatus('Groups generated from selected entrants: ' + groups.length + ' groups and ' + fixtures.length + ' fixtures.');
+    } catch (error) {
+      setStatus('Group generation failed: ' + error.message);
+    }
   }
 
   function previewGroupsAndFixtures() {
@@ -300,7 +307,7 @@ export default function App() {
           <section className="grid two-columns compact">
             <form className="card" onSubmit={createTournament}>
               <div className="card-header">
-                <p className="eyebrow">Tournament setup</p>
+                <p className="eyebrow">Tournament settings</p>
                 <h2>Create or configure tournament</h2>
               </div>
 
@@ -322,7 +329,7 @@ export default function App() {
 
               <div className="button-row">
                 <button type="submit" disabled={loading}>{loading ? 'Working...' : 'Create tournament'}</button>
-                <button type="button" className="secondary" onClick={previewGroupsAndFixtures}>Preview groups & fixtures</button>
+                <button type="button" className="secondary" onClick={previewGroupsAndFixtures}>Demo preview</button>
               </div>
               <p className="status">{status}</p>
             </form>
@@ -335,10 +342,11 @@ export default function App() {
               <ol className="steps">
                 {workflowSteps.map((step, index) => {
                   const done = index === 0 && selectedTournament;
+                  const entrantsDone = index === 1 && selectedTournament && Number(selectedTournament.actual_entries || 0) > 0;
                   const previewDone = preview && (step === 'Groups generated' || step === 'Fixtures generated');
                   return (
-                    <li key={step} className={done || previewDone ? 'done' : ''}>
-                      <span>{done || previewDone ? '✓' : index + 1}</span>
+                    <li key={step} className={done || entrantsDone || previewDone ? 'done' : ''}>
+                      <span>{done || entrantsDone || previewDone ? '✓' : index + 1}</span>
                       {step}
                     </li>
                   );
@@ -362,6 +370,7 @@ export default function App() {
               setSelectedTournamentId={setSelectedTournamentId}
               preview={preview}
               setPreview={setPreview}
+              onPreviewGenerated={createPreviewFromEntries}
             />
           </section>
         </section>
@@ -384,7 +393,7 @@ function moduleHeading(activeModule) {
   return headings[activeModule] || activeModule;
 }
 
-function ModuleContent({ activeModule, tournaments, selectedTournament, setSelectedTournamentId, preview, setPreview }) {
+function ModuleContent({ activeModule, tournaments, selectedTournament, setSelectedTournamentId, preview, setPreview, onPreviewGenerated }) {
   if (activeModule === 'Overview') {
     return (
       <>
@@ -410,8 +419,12 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
     );
   }
 
+  if (activeModule === 'Entrants') {
+    return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={onPreviewGenerated} />;
+  }
+
   if (activeModule === 'Groups') {
-    if (!preview) return <p className="muted">Generate a groups preview first. Later this tab will load saved groups from Supabase.</p>;
+    if (!preview) return <p className="muted">Generate groups from the Entrants tab. This tab will then show the proposed groups for approval.</p>;
     return (
       <>
         <div className="row preview-actions">
@@ -424,7 +437,7 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
               <h3>Group {group.code}</h3>
               <ol>
                 {group.entries.map((entry) => (
-                  <li key={entry.id}><strong>{entry.seed}.</strong> {entry.team_name}<span>Pot {entry.pot}</span></li>
+                  <li key={entry.id}><strong>{entry.seed}.</strong> {entry.team_name}<span>{entry.manager_name || 'TBC'} · Pot {entry.pot}</span></li>
                 ))}
               </ol>
             </article>
@@ -435,7 +448,7 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   }
 
   if (activeModule === 'Fixtures') {
-    if (!preview) return <p className="muted">Generate a fixtures preview first. Later this tab will save match records into Supabase.</p>;
+    if (!preview) return <p className="muted">Generate groups first. Fixtures will appear here automatically.</p>;
     return (
       <div className="table-wrap">
         <table>
@@ -453,7 +466,6 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   }
 
   const placeholders = {
-    Entrants: 'Next: searchable tick-box entrant selector using teams, managers and tournament_entries.',
     Results: 'Next: tap a fixture, enter score, save result, update winner and loser.',
     Tables: 'Next: live calculated group tables from match results.',
     Knockout: 'Next: automatic Cup and Shield bracket generation from final group standings.',
