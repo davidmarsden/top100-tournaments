@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import EntrantsManager from './components/EntrantsManager.jsx';
+import FixturesManager from './components/FixturesManager.jsx';
 import GroupsApproval from './components/GroupsApproval.jsx';
 import ProgressBar, { isStepDone } from './components/ProgressBar.jsx';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
@@ -153,7 +154,7 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   if (activeModule === 'Overview') return <Overview tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} />;
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={onPreviewGenerated} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
-  if (activeModule === 'Fixtures') return <FixturesView preview={preview} />;
+  if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} />;
   const placeholders = { Results: 'Next: tap a fixture, enter score, save result, update winner and loser.', Tables: 'Next: live calculated group tables from match results.', Knockout: 'Next: automatic Cup and Shield bracket generation from final group standings.', 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
   return <p className="muted">{placeholders[activeModule] || 'Module coming next.'}</p>;
 }
@@ -161,9 +162,4 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
 function Overview({ tournaments, selectedTournament, setSelectedTournamentId, preview }) {
   const entries = Number(selectedTournament?.actual_entries || 0), maxEntries = Number(selectedTournament?.max_entries || 0), groups = Number(preview?.groups?.length || selectedTournament?.group_count || 0), fixtures = Number(preview?.fixtures?.length || 0);
   return <>{selectedTournament && <div className="overview-metrics"><article><span>Status</span><strong>{selectedTournament.status}</strong></article><article><span>Entries</span><strong>{entries}/{maxEntries || '-'}</strong></article><article><span>Groups</span><strong>{groups || '-'}</strong></article><article><span>Fixtures</span><strong>{fixtures || 'Not generated'}</strong></article></div>}{tournaments.length === 0 ? <p className="muted">No tournaments loaded yet.</p> : <div className="tournament-grid">{tournaments.map((tournament) => <button type="button" className={selectedTournament?.id === tournament.id ? 'tournament-card selected' : 'tournament-card'} key={tournament.id} onClick={() => setSelectedTournamentId(tournament.id)}><strong>{tournament.name}</strong><span>{tournament.status} - {tournament.actual_entries || 0}/{tournament.max_entries || '-'} entries</span><span>{tournament.group_count || '-'} groups - {tournament.knockout_teams || '-'} knockout teams - {tournament.secondary_bracket_name || 'No secondary bracket'}</span></button>)}</div>}</>;
-}
-
-function FixturesView({ preview }) {
-  if (!preview) return <p className="muted">Generate groups first. Fixtures will appear here automatically.</p>;
-  return <div className="table-wrap"><table><thead><tr><th>#</th><th>Group</th><th>Round</th><th>Home</th><th>Away</th></tr></thead><tbody>{preview.fixtures.slice(0, 48).map((fixture) => <tr key={fixture.group_code + '-' + fixture.match_order}><td>{fixture.match_order}</td><td>{fixture.group_code}</td><td>{fixture.round}</td><td>{fixture.home_placeholder}</td><td>{fixture.away_placeholder}</td></tr>)}</tbody></table></div>;
 }
