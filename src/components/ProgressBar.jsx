@@ -10,20 +10,45 @@ const workflowSteps = [
   'Archive',
 ];
 
-export function isStepDone(step, selectedTournament, preview) {
+function isCompletedStatus(status) {
+  return status === 'played' || status === 'forfeit';
+}
+
+export function isStepDone(step, selectedTournament, preview, progressStats = {}) {
   const actualEntries = Number(selectedTournament?.actual_entries || 0);
+  const status = selectedTournament?.status || '';
+  const groupTotal = Number(progressStats.groupTotal || 0);
+  const groupPlayed = Number(progressStats.groupPlayed || 0);
+  const knockoutTotal = Number(progressStats.knockoutTotal || 0);
+  const knockoutPlayed = Number(progressStats.knockoutPlayed || 0);
+
   if (step === 'Tournament') return Boolean(selectedTournament);
   if (step === 'Entrants') return actualEntries > 0;
-  if (step === 'Groups') return Boolean(preview?.groups?.length);
-  if (step === 'Fixtures') return Boolean(preview?.fixtures?.length);
+  if (step === 'Groups') return Boolean(preview?.groups?.length) || actualEntries > 0;
+  if (step === 'Fixtures') return Boolean(preview?.fixtures?.length) || groupTotal > 0;
+  if (step === 'Results') return groupTotal > 0 && groupPlayed === groupTotal;
+  if (step === 'Tables') return groupTotal > 0 && groupPlayed === groupTotal;
+  if (step === 'Knockout') return knockoutTotal > 0 && knockoutPlayed === knockoutTotal;
+  if (step === 'Publish') return ['published', 'archived', 'completed'].includes(status);
+  if (step === 'Archive') return ['archived', 'completed'].includes(status);
   return false;
 }
 
-function currentStageLabel(selectedTournament, preview) {
+function currentStageLabel(selectedTournament, preview, progressStats = {}) {
   if (!selectedTournament) return 'Tournament setup';
-  if (!preview?.groups?.length) return 'Entrants and group draw';
-  if (!preview?.fixtures?.length) return 'Approve groups';
-  return 'Fixtures ready';
+  const groupTotal = Number(progressStats.groupTotal || 0);
+  const groupPlayed = Number(progressStats.groupPlayed || 0);
+  const knockoutTotal = Number(progressStats.knockoutTotal || 0);
+  const knockoutPlayed = Number(progressStats.knockoutPlayed || 0);
+  const status = selectedTournament.status || '';
+
+  if (['published', 'archived', 'completed'].includes(status)) return status.charAt(0).toUpperCase() + status.slice(1);
+  if (knockoutTotal > 0 && knockoutPlayed === knockoutTotal) return 'Tournament complete';
+  if (knockoutTotal > 0) return 'Knockouts live';
+  if (groupTotal > 0 && groupPlayed === groupTotal) return 'Group results complete';
+  if (groupTotal > 0 || preview?.fixtures?.length) return 'Fixtures ready';
+  if (preview?.groups?.length) return 'Approve groups';
+  return 'Entrants and group draw';
 }
 
 function jumpToStep(step, onJump) {
@@ -41,8 +66,8 @@ function jumpToStep(step, onJump) {
   onJump(mapping[step] || 'Overview');
 }
 
-export default function ProgressBar({ selectedTournament, preview, onJump }) {
-  const doneCount = workflowSteps.filter((step) => isStepDone(step, selectedTournament, preview)).length;
+export default function ProgressBar({ selectedTournament, preview, progressStats, onJump }) {
+  const doneCount = workflowSteps.filter((step) => isStepDone(step, selectedTournament, preview, progressStats)).length;
   const progress = Math.round((doneCount / workflowSteps.length) * 100);
 
   return (
@@ -52,14 +77,14 @@ export default function ProgressBar({ selectedTournament, preview, onJump }) {
           <p className="eyebrow">Tournament progress</p>
           <h2>{progress}% complete</h2>
         </div>
-        <span className="stage-pill">{currentStageLabel(selectedTournament, preview)}</span>
+        <span className="stage-pill">{currentStageLabel(selectedTournament, preview, progressStats)}</span>
       </div>
       <div className="progress-track">
         <div className="progress-fill" style={{ width: progress + '%' }} />
       </div>
       <div className="progress-steps">
         {workflowSteps.map((step) => {
-          const done = isStepDone(step, selectedTournament, preview);
+          const done = isStepDone(step, selectedTournament, preview, progressStats);
           return (
             <button
               key={step}
