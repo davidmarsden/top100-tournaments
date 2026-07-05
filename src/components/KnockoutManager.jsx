@@ -19,8 +19,10 @@ const FALLBACK_ROUNDS = [
 const FALLBACK_RULES = [
   { bracket: 'Cup', source_stage: 'group', group_position: 1, rank_order: 1, destination_round: 'R32' },
   { bracket: 'Cup', source_stage: 'group', group_position: 2, rank_order: 2, destination_round: 'R32' },
+  { bracket: 'Cup', source_stage: 'group', group_position: 3, rank_order: 3, destination_round: 'R32' },
   { bracket: 'Shield', source_stage: 'group', group_position: 3, rank_order: 1, destination_round: 'R32' },
-  { bracket: 'Shield', source_stage: 'drop', drop_from_bracket: 'Cup', rank_order: 2, destination_round: 'R32' },
+  { bracket: 'Shield', source_stage: 'group', group_position: 4, rank_order: 2, destination_round: 'R32' },
+  { bracket: 'Shield', source_stage: 'drop', drop_from_bracket: 'Cup', rank_order: 3, destination_round: 'R32' },
 ];
 
 function isCompleted(match) {
@@ -117,17 +119,35 @@ function buildTables(entries, matches) {
   });
 }
 
-function qualifiersForRules(tables, rules, bracket, destinationRound) {
-  return rules
+function qualifiersForRules(tables, rules, bracket, destinationRound, options = {}) {
+  const targetSlots = Number(options.targetSlots || 0);
+  const excluded = options.excludeEntryIds || new Set();
+  const picked = [];
+  const seen = new Set(excluded);
+
+  const groupRules = rules
     .filter((rule) => rule.bracket === bracket && rule.destination_round === destinationRound && rule.source_stage === 'group')
-    .sort((a, b) => Number(a.rank_order || 0) - Number(b.rank_order || 0))
-    .flatMap((rule) => tables
+    .sort((a, b) => Number(a.rank_order || 0) - Number(b.rank_order || 0));
+
+  for (const rule of groupRules) {
+    const remaining = targetSlots ? targetSlots - picked.length : Infinity;
+    if (remaining <= 0) break;
+
+    const limit = rule.slots ? Math.min(Number(rule.slots), remaining) : remaining;
+    const candidates = tables
       .flatMap((table) => table.rows.filter((row) => row.group_position === Number(rule.group_position)))
       .sort(compareRows)
-      .slice(0, rule.slots || undefined)
-      .map((row, index) => ({ ...row, knockout_seed: index + 1, rule_rank: rule.rank_order }))
-    )
-    .map((row, index) => ({ ...row, knockout_seed: index + 1 }));
+      .filter((row) => !seen.has(row.entry_id))
+      .slice(0, limit)
+      .map((row) => ({ ...row, rule_rank: rule.rank_order }));
+
+    candidates.forEach((row) => {
+      picked.push(row);
+      seen.add(row.entry_id);
+    });
+  }
+
+  return picked.map((row, index) => ({ ...row, knockout_seed: index + 1 }));
 }
 
 function entryName(entries, entryId, fallback) {
@@ -172,6 +192,7 @@ function testKnockoutScore(match) {
 }
 
 function winnerLoserFor(match, homeScore, awayScore) {
+  if (!match.away_entry_id) return { winner_entry_id: match.home_entry_id, loser_entry_id: null };
   if (homeScore > awayScore) return { winner_entry_id: match.home_entry_id, loser_entry_id: match.away_entry_id };
   if (awayScore > homeScore) return { winner_entry_id: match.away_entry_id, loser_entry_id: match.home_entry_id };
   return { winner_entry_id: null, loser_entry_id: null };
@@ -181,6 +202,7 @@ function resolveTie(legs) {
   const ordered = [...legs].sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
   if (ordered.some((leg) => !isCompleted(leg))) return { reason: 'incomplete' };
   const first = ordered[0];
+  if (!first.away_entry_id) return { winnerId: first.home_entry_id, loserId: null, reason: 'bye' };
   const firstId = first.home_entry_id;
   const secondId = first.away_entry_id;
   let firstAgg = 0;
@@ -225,6 +247,16 @@ function tieWinners(source) {
   });
 
   return { winners, unresolved };
+}
+
+function entryIdsFromMatches(matches) {
+  return new Set(matches.flatMap((match) => [match.home_entry_id, match.away_entry_id]).filter(Boolean));
+}
+
+function openingRoundTarget(selectedTournament, bracket, sourceMatches = []) {
+  if (bracket === 'Cup') return Number(selectedTournament?.knockout_teams || 32);
+  if (sourceMatches.length) return sourceMatches.length;
+  return 16;
 }
 
 export default function KnockoutManager({ selectedTournament, onDataChanged }) {
@@ -314,11 +346,18 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
 
     if (bracket === 'Shield') return generateShieldOpeningRound(firstRoundName);
 
-    const qualifiers = qualifiersForRules(tables, qualificationRules, bracket, firstRoundName);
+    const targetSlots = openingRoundTarget(selectedTournament, bracket);
+    const qualifiers = qualifiersForRules(tables, qualificationRules, bracket, firstRoundName, { targetSlots });
+    if (!qualifiers.length) return setStatus(`No ${bracket} qualifiers found for ${firstRoundName}.`);
+
+    const slots = [...qualifiers];
+    while (slots.length < targetSlots) slots.push({ bye: true, team_name: 'BYE', knockout_seed: slots.length + 1 });
+
     const rows = [];
-    qualifiers.forEach((home, index) => {
-      if (index >= Math.floor(qualifiers.length / 2)) return;
-      const away = qualifiers[qualifiers.length - 1 - index];
+    for (let index = 0; index < Math.floor(slots.length / 2); index += 1) {
+      const home = slots[index];
+      const away = slots[slots.length - 1 - index];
+      const bye = away?.bye;
       rows.push({
         tournament_id: tournamentId,
         stage: 'knockout',
@@ -326,18 +365,23 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
         leg: 1,
         match_order: index + 1,
         home_entry_id: home.entry_id,
-        away_entry_id: away.entry_id,
+        away_entry_id: bye ? null : away.entry_id,
         home_placeholder: home.team_name,
-        away_placeholder: away.team_name,
+        away_placeholder: bye ? 'BYE' : away.team_name,
         home_seed: home.knockout_seed,
-        away_seed: away.knockout_seed,
+        away_seed: bye ? null : away.knockout_seed,
         bracket,
         fixture_date: dateFor(presets, bracket, firstRoundName, 1),
-        status: 'scheduled',
+        home_score: bye ? 3 : null,
+        away_score: bye ? 0 : null,
+        winner_entry_id: bye ? home.entry_id : null,
+        loser_entry_id: null,
+        decided_by: bye ? 'bye' : null,
+        status: bye ? 'played' : 'scheduled',
       });
-    });
+    }
 
-    await insertMatches(rows, `${bracket} ${firstRoundName} saved from qualification rules.`);
+    await insertMatches(rows, `${bracket} ${firstRoundName} saved with ${qualifiers.length} qualifier(s) for ${targetSlots} slots.`);
   }
 
   async function generateShieldOpeningRound(firstRoundName) {
@@ -347,12 +391,19 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
     const sourceRoundName = roundKey(sourceRound || {});
     const sourceMatches = bracketRound(knockoutMatches, roundTemplates, sourceBracket, sourceRoundName);
     if (!sourceMatches.length) return setStatus(`Generate ${sourceBracket} ${sourceRoundName} first.`);
-    if (sourceMatches.some((match) => !isCompleted(match) || !match.loser_entry_id)) return setStatus(`Finish ${sourceBracket} ${sourceRoundName} first.`);
+    const realSourceMatches = sourceMatches.filter((match) => match.away_entry_id);
+    if (realSourceMatches.some((match) => !isCompleted(match) || !match.loser_entry_id)) return setStatus(`Finish ${sourceBracket} ${sourceRoundName} first.`);
 
-    const homeTeams = qualifiersForRules(tables, qualificationRules, 'Shield', firstRoundName).filter((row) => row.rule_rank === 1 || true);
-    const cupLosers = sourceMatches.map((match, index) => ({ entry_id: match.loser_entry_id, team_name: entryName(entries, match.loser_entry_id, `${sourceBracket} loser ${index + 1}`) }));
+    const cupParticipantIds = entryIdsFromMatches(sourceMatches);
+    const targetHomeSlots = openingRoundTarget(selectedTournament, 'Shield', sourceMatches);
+    const homeTeams = qualifiersForRules(tables, qualificationRules, 'Shield', firstRoundName, { targetSlots: targetHomeSlots, excludeEntryIds: cupParticipantIds });
+    const cupLosers = realSourceMatches.map((match, index) => ({ entry_id: match.loser_entry_id, team_name: entryName(entries, match.loser_entry_id, `${sourceBracket} loser ${index + 1}`) }));
+    const awaySlots = [...cupLosers];
+    while (awaySlots.length < homeTeams.length) awaySlots.push({ bye: true, team_name: 'BYE' });
+
     const rows = homeTeams.map((home, index) => {
-      const away = cupLosers[cupLosers.length - 1 - index];
+      const away = awaySlots[awaySlots.length - 1 - index];
+      const bye = away?.bye;
       return {
         tournament_id: tournamentId,
         stage: 'knockout',
@@ -360,17 +411,22 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
         leg: 1,
         match_order: index + 1,
         home_entry_id: home.entry_id,
-        away_entry_id: away.entry_id,
+        away_entry_id: bye ? null : away.entry_id,
         home_placeholder: home.team_name,
-        away_placeholder: away.team_name,
+        away_placeholder: bye ? 'BYE' : away.team_name,
         home_seed: home.knockout_seed,
         bracket: 'Shield',
         fixture_date: dateFor(presets, 'Shield', firstRoundName, 1),
-        status: 'scheduled',
+        home_score: bye ? 3 : null,
+        away_score: bye ? 0 : null,
+        winner_entry_id: bye ? home.entry_id : null,
+        loser_entry_id: null,
+        decided_by: bye ? 'bye' : null,
+        status: bye ? 'played' : 'scheduled',
       };
     });
 
-    await insertMatches(rows, `Shield ${firstRoundName} saved from qualification/drop rules.`);
+    await insertMatches(rows, `Shield ${firstRoundName} saved with ${homeTeams.length} group qualifier(s) and ${cupLosers.length} drop-in loser(s).`);
   }
 
   async function autoFillKnockout() {
@@ -456,7 +512,7 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
         <div>
           <p className="eyebrow">Knockout generator</p>
           <h3>{playedGroupMatches.length} / {groupMatches.length} group fixtures played</h3>
-          <p className="muted">Knockout rounds, legs and qualification sources now come from database templates and rules.</p>
+          <p className="muted">Knockout rounds, legs, byes and qualification sources now come from database templates and rules.</p>
         </div>
         <div className="button-row">
           <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload knockout data</button>
@@ -476,7 +532,7 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
 
       <div className={groupComplete ? 'ready-banner ready' : 'ready-banner'}>
         <strong>{groupComplete ? 'Group stage complete.' : 'Group stage not complete yet.'}</strong>
-        <span>{groupComplete ? 'Opening knockout rounds can be generated from qualification rules.' : 'Finish all group fixtures before saving the knockout draw.'}</span>
+        <span>{groupComplete ? 'Opening knockout rounds can be generated from qualification rules. Cup opening rounds are filled to the target slot count with best next-placed teams, then byes if needed.' : 'Finish all group fixtures before saving the knockout draw.'}</span>
       </div>
 
       <KnockoutScheduleManager selectedTournament={selectedTournament} roundTemplates={roundTemplates} onDataChanged={async () => { await loadData(); await onDataChanged?.(); }} />
