@@ -53,7 +53,6 @@ create index if not exists fixture_templates_round_idx
 create index if not exists qualification_rules_format_idx
   on qualification_rules (format_id, bracket, rank_order);
 
--- Seed / update the Youth Cup format.
 insert into tournament_formats (
   name,
   description,
@@ -74,7 +73,7 @@ select
   4,
   2,
   2,
-  'Seeded from average rating; knockout qualifiers seeded from group table performance.'
+  'Seeded from average rating; knockout qualifiers seeded from group table performance. Opening brackets fill to target sizes with best next-placed teams, then byes if needed.'
 where not exists (
   select 1 from tournament_formats where name = 'Youth Cup Template'
 );
@@ -88,7 +87,7 @@ with fmt as (
     ('Cup'::text,    'QF'::text,    3::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
     ('Cup'::text,    'SF'::text,    4::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
     ('Cup'::text,    'Final'::text, 5::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
-    ('Shield'::text, 'R32'::text,   1::integer, 'knockout'::text, 1::integer, true::boolean, true::boolean, false::boolean, null::text,     'Third-placed group teams host Cup R32 losers'::text),
+    ('Shield'::text, 'R32'::text,   1::integer, 'knockout'::text, 1::integer, true::boolean, true::boolean, false::boolean, null::text,     'Best remaining group-stage teams host Cup R32 losers'::text),
     ('Shield'::text, 'R16'::text,   2::integer, 'knockout'::text, 1::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
     ('Shield'::text, 'QF'::text,    3::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
     ('Shield'::text, 'SF'::text,    4::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
@@ -154,10 +153,12 @@ with fmt as (
   select id from tournament_formats where name = 'Youth Cup Template' order by id limit 1
 ), rule_seed as (
   select * from (values
-    ('Cup'::text,    'group'::text, 1::integer,    1::integer, null::integer, 'R32'::text, null::text, 'All group winners qualify first and are ranked by table performance'::text),
-    ('Cup'::text,    'group'::text, 2::integer,    2::integer, null::integer, 'R32'::text, null::text, 'All runners-up qualify after group winners and are ranked by table performance'::text),
-    ('Shield'::text, 'group'::text, 3::integer,    1::integer, null::integer, 'R32'::text, null::text, 'Third-placed teams enter Shield R32 as home teams'::text),
-    ('Shield'::text, 'drop'::text,  null::integer, 2::integer, null::integer, 'R32'::text, 'Cup'::text, 'Cup R32 losers enter Shield R32 as away teams'::text)
+    ('Cup'::text,    'group'::text, 1::integer,    1::integer, null::integer, 'R32'::text, null::text, 'Group winners qualify first and are ranked by table performance'::text),
+    ('Cup'::text,    'group'::text, 2::integer,    2::integer, null::integer, 'R32'::text, null::text, 'Runners-up qualify after group winners and are ranked by table performance'::text),
+    ('Cup'::text,    'group'::text, 3::integer,    3::integer, null::integer, 'R32'::text, null::text, 'Best third-placed teams fill the Cup opening round to its target size'::text),
+    ('Shield'::text, 'group'::text, 3::integer,    1::integer, null::integer, 'R32'::text, null::text, 'Remaining third-placed teams qualify first for Shield'::text),
+    ('Shield'::text, 'group'::text, 4::integer,    2::integer, null::integer, 'R32'::text, null::text, 'Best fourth-placed teams fill remaining Shield group-qualifier slots'::text),
+    ('Shield'::text, 'drop'::text,  null::integer, 3::integer, null::integer, 'R32'::text, 'Cup'::text, 'Cup R32 losers enter Shield R32 as away teams'::text)
   ) as q(bracket, source_stage, group_position, rank_order, slots, destination_round, drop_from_bracket, notes)
 )
 insert into qualification_rules (
