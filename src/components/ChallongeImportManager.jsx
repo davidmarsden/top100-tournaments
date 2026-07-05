@@ -2,6 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 
 const IMPORT_ENDPOINT = '/.netlify/functions/challonge-import';
 
+async function readJsonResponse(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    const preview = text.replace(/\s+/g, ' ').slice(0, 240);
+    throw new Error(`Server returned non-JSON (${response.status}). ${preview}`);
+  }
+}
+
 function inferSeason(name) {
   const match = String(name || '').match(/S\s*(\d+)|Season\s*(\d+)/i);
   const number = match?.[1] || match?.[2];
@@ -57,8 +67,8 @@ export default function ChallongeImportManager({ onTournamentUpdated }) {
     setStatus('Loading Challonge tournaments...');
     setImportResult(null);
     try {
-      const response = await fetch(IMPORT_ENDPOINT);
-      const payload = await response.json();
+      const response = await fetch(IMPORT_ENDPOINT, { headers: { Accept: 'application/json' } });
+      const payload = await readJsonResponse(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'Could not load Challonge tournaments');
       setTournaments(payload.tournaments || []);
       if (payload.tournaments?.[0]) setSelectedId(String(payload.tournaments[0].id));
@@ -78,7 +88,7 @@ export default function ChallongeImportManager({ onTournamentUpdated }) {
     try {
       const response = await fetch(IMPORT_ENDPOINT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
           challongeTournamentId: selectedId,
           seasonCode,
@@ -88,7 +98,7 @@ export default function ChallongeImportManager({ onTournamentUpdated }) {
           status: statusValue,
         }),
       });
-      const payload = await response.json();
+      const payload = await readJsonResponse(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'Import failed');
       setImportResult(payload);
       setStatus(`Imported ${payload.importedTournamentName}: ${payload.importedParticipants} participants, ${payload.importedMatches} new matches, ${payload.updatedMatches} updated.`);
