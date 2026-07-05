@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
+const ROUND_ORDER = ['R32', 'R16', 'QF', 'SF', 'Final'];
+
 function teamNameFromEntry(entry, fallback) {
   return entry?.teams?.name || entry?.team?.name || fallback || 'TBC';
 }
@@ -18,8 +20,25 @@ function roundLabel(fixture) {
   return fixture.round || 'Unscheduled';
 }
 
+function roundSortValue(round) {
+  const index = ROUND_ORDER.indexOf(round);
+  return index === -1 ? 99 : index;
+}
+
+function sortFixtures(a, b) {
+  const bracketSort = fixtureGroupLabel(a).localeCompare(fixtureGroupLabel(b));
+  if (bracketSort) return bracketSort;
+  const roundSort = roundSortValue(roundLabel(a)) - roundSortValue(roundLabel(b));
+  if (roundSort) return roundSort;
+  const roundNameSort = roundLabel(a).localeCompare(roundLabel(b), undefined, { numeric: true });
+  if (roundNameSort) return roundNameSort;
+  const matchSort = Number(a.match_order || 0) - Number(b.match_order || 0);
+  if (matchSort) return matchSort;
+  return Number(a.leg || 1) - Number(b.leg || 1);
+}
+
 function groupFixtures(fixtures) {
-  return fixtures.reduce((sections, fixture) => {
+  return [...fixtures].sort(sortFixtures).reduce((sections, fixture) => {
     const groupCode = fixtureGroupLabel(fixture);
     const round = roundLabel(fixture);
     const key = groupCode + '|' + round;
@@ -41,6 +60,18 @@ function knockoutTieKey(fixture) {
   return [fixture.bracket || 'Knockout', fixture.round || 'Round', fixture.match_order || 0].join('|');
 }
 
+function legLabel(leg) {
+  if (Number(leg) === 1) return '1st leg';
+  if (Number(leg) === 2) return '2nd leg';
+  return 'Leg ' + leg;
+}
+
+function addDays(dateString, days) {
+  const date = new Date(dateString + 'T00:00:00');
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function buildTieSummaries(fixtures) {
   const ties = new Map();
   fixtures.filter((fixture) => fixture.stage === 'knockout').forEach((fixture) => {
@@ -51,10 +82,12 @@ function buildTieSummaries(fixtures) {
 
   const summaries = new Map();
   ties.forEach((legs, key) => {
-    const completedLegs = legs.filter(isCompleted);
-    if (!completedLegs.length) return;
-
     const orderedLegs = [...legs].sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
+    const completedLegs = orderedLegs.filter(isCompleted);
+
+    // Only show aggregate once every leg in a multi-leg tie has a saved result.
+    if (orderedLegs.length < 2 || completedLegs.length !== orderedLegs.length) return;
+
     const first = orderedLegs[0];
     const firstTeamId = first.home_entry_id;
     const secondTeamId = first.away_entry_id;
@@ -81,20 +114,14 @@ function buildTieSummaries(fixtures) {
     });
 
     let detail = `Aggregate: ${firstName} ${firstAggregate}-${secondAggregate} ${secondName}`;
-    if (orderedLegs.length > 1 && completedLegs.length === orderedLegs.length) {
-      if (firstAggregate === secondAggregate) {
-        if (firstAwayGoals !== secondAwayGoals) {
-          detail += firstAwayGoals > secondAwayGoals
-            ? ` · ${firstName} lead on away goals (${firstAwayGoals}-${secondAwayGoals})`
-            : ` · ${secondName} lead on away goals (${secondAwayGoals}-${firstAwayGoals})`;
-        } else {
-          detail += ' · Away goals level — Fictional Extra Time needed';
-        }
+    if (firstAggregate === secondAggregate) {
+      if (firstAwayGoals !== secondAwayGoals) {
+        detail += firstAwayGoals > secondAwayGoals
+          ? ` · ${firstName} lead on away goals (${firstAwayGoals}-${secondAwayGoals})`
+          : ` · ${secondName} lead on away goals (${secondAwayGoals}-${firstAwayGoals})`;
+      } else {
+        detail += ' · Away goals level — Fictional Extra Time needed';
       }
-    } else if (orderedLegs.length > 1) {
-      detail += ' · tie in progress';
-    } else if (firstAggregate === secondAggregate && completedLegs.length === 1) {
-      detail += ' · Fictional Extra Time needed';
     }
 
     summaries.set(key, detail);
@@ -103,7 +130,7 @@ function buildTieSummaries(fixtures) {
   return summaries;
 }
 
-export default function FixturesManager({ selectedTournament, preview, stage = 'group', onlyOutstanding = false, onlyCompleted = false }) {
+export default function FixturesManager({ selectedTournament, preview, stage = 'group', onlyOutstanding = false, onlyCompleted = false, onDataChanged }) {
   const [fixtures, setFixtures] = useState([]);
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
@@ -124,7 +151,8 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       .filter((fixture) => !onlyOutstanding || !isCompleted(fixture))
       .filter((fixture) => !onlyCompleted || isCompleted(fixture))
       .filter((fixture) => groupFilter === 'all' || fixtureGroupLabel(fixture) === groupFilter)
-      .filter((fixture) => roundFilter === 'all' || roundLabel(fixture) === roundFilter);
+      .filter((fixture) => roundFilter === 'all' || roundLabel(fixture) === roundFilter)
+      .sort(sortFixtures);
   }, [fixtures, onlyOutstanding, onlyCompleted, groupFilter, roundFilter]);
 
   const sections = useMemo(() => Object.values(groupFixtures(filteredFixtures)), [filteredFixtures]);
@@ -132,10 +160,8 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
   const playedCount = fixtures.filter(isCompleted).length;
   const groupOptions = useMemo(() => [...new Set(fixtures.map(fixtureGroupLabel))].sort(), [fixtures]);
   const roundOptions = useMemo(() => [...new Set(fixtures.map(roundLabel))].sort((a, b) => {
-    const order = ['R32', 'R16', 'QF', 'SF', 'Final'];
-    const ai = order.indexOf(a);
-    const bi = order.indexOf(b);
-    if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    const roundSort = roundSortValue(a) - roundSortValue(b);
+    if (roundSort) return roundSort;
     return a.localeCompare(b, undefined, { numeric: true });
   }), [fixtures]);
 
@@ -148,7 +174,10 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       .from('matches')
       .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, played_at, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
       .eq('tournament_id', tournamentId)
-      .order('match_order', { ascending: true });
+      .order('bracket', { ascending: true })
+      .order('round', { ascending: true })
+      .order('match_order', { ascending: true })
+      .order('leg', { ascending: true });
 
     if (stage) query = query.eq('stage', stage);
 
@@ -158,7 +187,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       setStatus('Could not load fixtures: ' + error.message);
       setFixtures([]);
     } else {
-      setFixtures(data || []);
+      setFixtures((data || []).sort(sortFixtures));
       setStatus((data || []).length + ' fixtures loaded from database.');
     }
 
@@ -203,6 +232,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       setEditingId(null);
       setScores({ home_score: '', away_score: '' });
       await loadFixtures();
+      await onDataChanged?.();
     }
     setLoading(false);
   }
@@ -217,6 +247,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     else {
       setStatus('Forfeit saved as a 3-0 result and view refreshed.');
       await loadFixtures();
+      await onDataChanged?.();
     }
     setLoading(false);
   }
@@ -238,22 +269,39 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     }
 
     await loadFixtures();
+    await onDataChanged?.();
     setStatus(targets.length + ' test results saved and view refreshed.');
     setLoading(false);
   }
 
   async function setVisibleRoundDate() {
     if (!roundDate) return setStatus('Choose a date first.');
-    const targets = filteredFixtures.map((fixture) => fixture.id);
+    const targets = filteredFixtures;
     if (!targets.length) return setStatus('No fixtures visible to date.');
     setLoading(true);
     setStatus('Saving fixture dates...');
-    const { error } = await supabase.from('matches').update({ fixture_date: roundDate }).in('id', targets);
-    if (error) setStatus('Date save failed: ' + error.message);
-    else {
-      setStatus('Date applied to ' + targets.length + ' visible fixtures and view refreshed.');
-      await loadFixtures();
+
+    if (stage === 'knockout') {
+      const updates = targets.map((fixture) => {
+        const fixtureDate = Number(fixture.leg || 1) === 2 ? addDays(roundDate, 7) : roundDate;
+        return supabase.from('matches').update({ fixture_date: fixtureDate }).eq('id', fixture.id);
+      });
+      const results = await Promise.all(updates);
+      const error = results.find((result) => result.error)?.error;
+      if (error) setStatus('Date save failed: ' + error.message);
+      else {
+        setStatus('Date applied: 1st legs on ' + roundDate + ', 2nd legs on ' + addDays(roundDate, 7) + '.');
+        await loadFixtures();
+      }
+    } else {
+      const { error } = await supabase.from('matches').update({ fixture_date: roundDate }).in('id', targets.map((fixture) => fixture.id));
+      if (error) setStatus('Date save failed: ' + error.message);
+      else {
+        setStatus('Date applied to ' + targets.length + ' visible fixtures and view refreshed.');
+        await loadFixtures();
+      }
     }
+
     setLoading(false);
   }
 
@@ -265,6 +313,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     else {
       setStatus('Result reset and view refreshed.');
       await loadFixtures();
+      await onDataChanged?.();
     }
     setLoading(false);
   }
@@ -276,7 +325,9 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
   const explainer = onlyCompleted
     ? 'Only played results are shown here. Use this page to review, edit or reset saved results.'
     : onlyOutstanding
-      ? 'Only unplayed fixtures are shown here. Results move to the Results page once saved.'
+      ? stage === 'knockout'
+        ? 'Only unplayed knockout fixtures are shown here. Setting a date uses the chosen date for 1st legs and seven days later for 2nd legs.'
+        : 'Only unplayed fixtures are shown here. Results move to the Results page once saved.'
       : 'Load saved fixtures, enter results, mark forfeits and keep the tournament moving.';
 
   return (
@@ -311,7 +362,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
         {!onlyCompleted && (
           <>
             <label>
-              Apply date to visible fixtures
+              {stage === 'knockout' ? 'Apply 1st-leg date to visible ties' : 'Apply date to visible fixtures'}
               <input type="date" value={roundDate} onChange={(event) => setRoundDate(event.target.value)} />
             </label>
             <button type="button" className="secondary" onClick={setVisibleRoundDate} disabled={loading}>Set date</button>
@@ -351,7 +402,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
                         </div>
                       ) : (
                         <div className="fixture-actions">
-                          <span>{fixture.status || 'scheduled'}{fixture.leg ? ' · Leg ' + fixture.leg : ''}</span>
+                          <span>{fixture.status || 'scheduled'}{fixture.leg ? ' · ' + legLabel(fixture.leg) : ''}</span>
                           <button type="button" className="secondary" onClick={() => startEdit(fixture)}>{completed ? 'Edit result' : 'Enter result'}</button>
                           {!completed && <button type="button" className="danger" onClick={() => saveForfeit(fixture, 'home')} disabled={loading}>Home forfeit</button>}
                           {!completed && <button type="button" className="danger" onClick={() => saveForfeit(fixture, 'away')} disabled={loading}>Away forfeit</button>}
