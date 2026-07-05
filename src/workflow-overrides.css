@@ -1,0 +1,15 @@
+.knockout-manager .bracket-grid { align-items: start; }
+.bracket-section.bracket-cup { border-color: #bfdbfe; background: #f8fbff; }
+.bracket-section.bracket-shield { border-color: #fde68a; background: #fffdf2; }
+.bracket-section.bracket-cup > h3::before { content: 'Cup'; display: inline-grid; place-items: center; margin-right: 0.55rem; border-radius: 999px; background: #1d4ed8; color: white; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.28rem 0.55rem; }
+.bracket-section.bracket-shield > h3::before { content: 'Shield'; display: inline-grid; place-items: center; margin-right: 0.55rem; border-radius: 999px; background: #b45309; color: white; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.28rem 0.55rem; }
+.knockout-desk-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.knockout-desk-card { border: 1px solid #e4ebf7; border-radius: 20px; background: #fbfdff; padding: 16px; }
+.knockout-desk-card.fixtures-card { border-color: #bfdbfe; }
+.knockout-desk-card.results-card { border-color: #bbf7d0; }
+.knockout-desk-card > h3 { margin-top: 0; }
+.public-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-bottom: 18px; }
+.public-card { border: 1px solid #e4ebf7; border-radius: 20px; background: #fbfdff; padding: 18px; }
+.public-card code { display: block; border-radius: 14px; background: #eef3fb; color: #172033; padding: 0.9rem 1rem; overflow-x: auto; font-weight: 900; }
+.compact-metrics { margin-bottom: 12px; }
+@media (max-width: 980px) { .knockout-desk-grid, .public-grid { grid-template-columns: 1fr; } }
