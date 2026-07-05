@@ -143,7 +143,8 @@ export default function App() {
 
   async function refreshTournamentData() {
     await loadTournaments();
-    if (selectedTournament?.id) await loadProgressStats(selectedTournament.id);
+    const tournamentId = selectedTournament?.id || selectedTournamentId;
+    if (tournamentId) await loadProgressStats(tournamentId);
   }
 
   async function findOrCreate(table, match, row) {
@@ -211,10 +212,10 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   if (activeModule === 'Overview') return <Overview tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} />;
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={onPreviewGenerated} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
-  if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding />;
-  if (activeModule === 'Results') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted />;
+  if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding onDataChanged={onTournamentUpdated} />;
+  if (activeModule === 'Results') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted onDataChanged={onTournamentUpdated} />;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
-  if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} />;
+  if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} onDataChanged={onTournamentUpdated} />;
   if (activeModule === 'Public Page') return <PublicPageManager selectedTournament={selectedTournament} onTournamentUpdated={onTournamentUpdated} />;
   return <p className="muted">Module coming next.</p>;
 }
