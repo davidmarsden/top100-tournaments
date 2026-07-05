@@ -172,6 +172,19 @@ function nextRoundLabel(matches, bracket) {
   return nextRound ? `Generate ${bracket} ${nextRound}` : `Next ${bracket} round`;
 }
 
+function testKnockoutScore(match) {
+  const base = Number(match.match_order || 1) + Number(match.leg || 1) + (match.bracket === 'Shield' ? 2 : 0);
+  const home = (base % 4) + 1;
+  const away = base % 3;
+  return home === away ? { home_score: home + 1, away_score: away } : { home_score: home, away_score: away };
+}
+
+function winnerLoserFor(match, homeScore, awayScore) {
+  if (homeScore > awayScore) return { winner_entry_id: match.home_entry_id, loser_entry_id: match.away_entry_id };
+  if (awayScore > homeScore) return { winner_entry_id: match.away_entry_id, loser_entry_id: match.home_entry_id };
+  return { winner_entry_id: null, loser_entry_id: null };
+}
+
 export default function KnockoutManager({ selectedTournament }) {
   const [entries, setEntries] = useState([]);
   const [matches, setMatches] = useState([]);
@@ -247,6 +260,28 @@ export default function KnockoutManager({ selectedTournament }) {
     await insertMatches(rows, 'Shield R32 saved with Cup R32 losers away.');
   }
 
+  async function autoFillKnockout() {
+    const targets = knockoutMatches.filter((match) => !isCompleted(match));
+    if (!targets.length) return setStatus('No outstanding knockout fixtures to auto-fill.');
+    setLoading(true);
+    setStatus('Auto-filling outstanding knockout fixtures...');
+
+    for (const match of targets) {
+      const score = testKnockoutScore(match);
+      const result = winnerLoserFor(match, score.home_score, score.away_score);
+      const { error } = await supabase.from('matches').update({ ...score, ...result, status: 'played', played_at: new Date().toISOString() }).eq('id', match.id);
+      if (error) {
+        setStatus('Auto-fill failed: ' + error.message);
+        setLoading(false);
+        return;
+      }
+    }
+
+    await loadData();
+    setStatus(targets.length + ' knockout test result(s) saved and view refreshed.');
+    setLoading(false);
+  }
+
   async function generateNextRound(bracket) {
     const existingRounds = ROUND_ORDER.filter((round) => bracketRound(knockoutMatches, bracket, round).length > 0);
     const latestRound = existingRounds[existingRounds.length - 1];
@@ -289,6 +324,7 @@ export default function KnockoutManager({ selectedTournament }) {
         <div className="button-row">
           <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload knockout data</button>
           <button type="button" onClick={saveCupR32} disabled={loading || !groupComplete}>Generate Cup R32</button>
+          <button type="button" className="secondary" onClick={autoFillKnockout} disabled={loading || knockoutMatches.every(isCompleted)}>Auto-fill knockout test scores</button>
           <button type="button" className="secondary" onClick={saveShieldR32} disabled={loading}>Generate Shield R32</button>
           <button type="button" className="secondary" onClick={() => generateNextRound('Cup')} disabled={loading}>{nextRoundLabel(knockoutMatches, 'Cup')}</button>
           <button type="button" className="secondary" onClick={() => generateNextRound('Shield')} disabled={loading}>{nextRoundLabel(knockoutMatches, 'Shield')}</button>
