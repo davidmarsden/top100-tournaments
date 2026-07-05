@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
 const CHALLONGE_BASE_URL = 'https://api.challonge.com/v2.1';
-const JSON_API_HEADERS = {
-  Accept: 'application/vnd.api+json',
+const CHALLONGE_HEADERS = {
+  Accept: 'application/json',
   'Content-Type': 'application/vnd.api+json',
+  'Authorization-Type': 'v1',
 };
 
 function json(statusCode, body) {
@@ -32,6 +33,10 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+function getChallongeHeaders() {
+  return { ...CHALLONGE_HEADERS, Authorization: requiredEnv('CHALLONGE_API_KEY') };
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -44,38 +49,19 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
-async function getChallongeToken() {
-  const clientId = requiredEnv('CHALLONGE_CLIENT_ID');
-  const clientSecret = requiredEnv('CHALLONGE_CLIENT_SECRET');
-  const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret });
-  const endpoints = [
-    'https://api.challonge.com/oauth/token',
-    'https://api.challonge.com/oauth2/token',
-    `${CHALLONGE_BASE_URL}/oauth/token`,
-  ];
-  let lastError = null;
-  for (const endpoint of endpoints) {
-    try {
-      const token = await fetchJson(endpoint, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-        body,
-      });
-      if (token?.access_token) return token.access_token;
-      if (token?.data?.attributes?.access_token) return token.data.attributes.access_token;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError || new Error('Could not obtain Challonge OAuth token.');
+function ensureJsonPath(path) {
+  if (path.includes('?')) return path;
+  if (path.endsWith('.json')) return path;
+  return `${path}.json`;
 }
 
-async function challongeGet(path, token, query = {}) {
-  const url = new URL(path.startsWith('http') ? path : `${CHALLONGE_BASE_URL}${path}`);
+async function challongeGet(path, query = {}) {
+  const apiPath = path.startsWith('http') ? path : `${CHALLONGE_BASE_URL}${ensureJsonPath(path)}`;
+  const url = new URL(apiPath);
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
   });
-  return fetchJson(url.toString(), { headers: { ...JSON_API_HEADERS, Authorization: `Bearer ${token}` } });
+  return fetchJson(url.toString(), { headers: getChallongeHeaders() });
 }
 
 function asArray(payload) {
@@ -87,11 +73,11 @@ function asArray(payload) {
   return payload?.data ? [payload.data] : [];
 }
 
-function attrs(item) { return item?.attributes || item || {}; }
+function attrs(item) { return item?.attributes || item?.tournament || item?.participant || item?.match || item || {}; }
 
 function relationId(item, ...keys) {
   for (const key of keys) {
-    const direct = item?.[key] ?? item?.attributes?.[key];
+    const direct = item?.[key] ?? item?.attributes?.[key] ?? item?.match?.[key] ?? item?.participant?.[key];
     if (direct !== undefined && direct !== null) return String(direct);
     const rel = item?.relationships?.[key]?.data;
     if (rel?.id !== undefined && rel?.id !== null) return String(rel.id);
@@ -152,7 +138,7 @@ function matchOrder(match, index) {
 
 function matchStatus(match, score) {
   const state = String(attrs(match).state || attrs(match).status || '').toLowerCase();
-  if (state.includes('complete') || state.includes('played') || state === 'closed') return 'played';
+  if (state.includes('complete') || state.includes('played') || state === 'closed' || state === 'complete') return 'played';
   if (Number.isFinite(score.home_score) && Number.isFinite(score.away_score)) return 'played';
   return 'scheduled';
 }
@@ -172,13 +158,13 @@ async function updateActualEntries(supabase, tournamentId) {
 }
 
 async function listTournaments(event) {
-  const token = await getChallongeToken();
   const page = event.queryStringParameters?.page || '1';
   const perPage = event.queryStringParameters?.perPage || '25';
-  const payload = await challongeGet('/tournaments', token, { 'page[number]': page, 'page[size]': perPage });
+  const payload = await challongeGet('/tournaments', { 'page[number]': page, 'page[size]': perPage });
   return json(200, {
     ok: true,
-    tournaments: asArray(payload).map((item) => ({ id: String(item.id), name: tournamentName(item), attributes: attrs(item) })),
+    authMode: 'v1_api_key',
+    tournaments: asArray(payload).map((item) => ({ id: String(item.id || attrs(item).id), name: tournamentName(item), attributes: attrs(item) })),
   });
 }
 
@@ -188,14 +174,13 @@ async function importTournament(event) {
   if (!challongeTournamentId) return json(400, { ok: false, error: 'Missing challongeTournamentId' });
 
   const supabase = getSupabase();
-  const token = await getChallongeToken();
   const [tournamentPayload, participantsPayload, matchesPayload] = await Promise.all([
-    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}`, token),
-    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}/participants`, token, { 'page[size]': 250 }),
-    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}/matches`, token, { 'page[size]': 250 }),
+    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}`),
+    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}/participants`, { 'page[size]': 250 }),
+    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}/matches`, { 'page[size]': 250 }),
   ]);
 
-  const tournamentItem = asArray(tournamentPayload)[0] || tournamentPayload.data || tournamentPayload;
+  const tournamentItem = asArray(tournamentPayload)[0] || tournamentPayload.data || tournamentPayload.tournament || tournamentPayload;
   const participants = asArray(participantsPayload);
   const challongeMatches = asArray(matchesPayload);
   const importedTournamentName = body.tournamentName || tournamentName(tournamentItem);
@@ -225,7 +210,7 @@ async function importTournament(event) {
       teams_per_group: body.teamsPerGroup || null,
       knockout_teams: body.knockoutTeams || null,
       secondary_bracket_name: body.secondaryBracketName || null,
-      rules_notes: 'Imported from Challonge API',
+      rules_notes: 'Imported from Challonge API v1-key auth',
     }).select('id').single();
     if (created.error) throw created.error;
     tournamentId = created.data.id;
@@ -237,9 +222,10 @@ async function importTournament(event) {
   const participantToEntry = new Map();
   let importedParticipants = 0;
   for (const participant of participants) {
-    const challongeParticipantId = String(participant.id);
+    const participantAttrs = attrs(participant);
+    const challongeParticipantId = String(participant.id || participantAttrs.id);
     const { teamName, managerName } = parseTeamAndManager(participantName(participant));
-    const seed = Number(attrs(participant).seed || attrs(participant).rank || importedParticipants + 1) || importedParticipants + 1;
+    const seed = Number(participantAttrs.seed || participantAttrs.rank || importedParticipants + 1) || importedParticipants + 1;
     const teamId = await findOrCreate(supabase, 'teams', { name: teamName }, { name: teamName, active: true });
     const managerId = await findOrCreate(supabase, 'managers', { name: managerName }, { name: managerName, display_name: managerName, canonical_name: managerName.toLowerCase(), active: true });
 
@@ -312,7 +298,7 @@ async function importTournament(event) {
   }
 
   await updateActualEntries(supabase, tournamentId);
-  return json(200, { ok: true, tournamentId, importedTournamentName, importedParticipants, importedMatches, updatedMatches, challongeTournamentId });
+  return json(200, { ok: true, authMode: 'v1_api_key', tournamentId, importedTournamentName, importedParticipants, importedMatches, updatedMatches, challongeTournamentId });
 }
 
 export async function handler(event) {
