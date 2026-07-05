@@ -4,6 +4,7 @@ import FixturesManager from './components/FixturesManager.jsx';
 import GroupsApproval from './components/GroupsApproval.jsx';
 import KnockoutManager from './components/KnockoutManager.jsx';
 import ProgressBar, { isStepDone } from './components/ProgressBar.jsx';
+import PublicPageManager from './components/PublicPageManager.jsx';
 import TablesManager from './components/TablesManager.jsx';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
 
@@ -78,6 +79,10 @@ function generateFixtures(groups) {
   return fixtures;
 }
 
+function completed(match) {
+  return match.status === 'played' || match.status === 'forfeit';
+}
+
 export default function App() {
   const [form, setForm] = useState(initialForm);
   const [tournaments, setTournaments] = useState([]);
@@ -86,11 +91,14 @@ export default function App() {
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [progressStats, setProgressStats] = useState({ groupTotal: 0, groupPlayed: 0, knockoutTotal: 0, knockoutPlayed: 0 });
   const canUseDatabase = hasSupabaseConfig && supabase;
 
   useEffect(() => { if (canUseDatabase) loadTournaments(); }, [canUseDatabase]);
 
   const selectedTournament = useMemo(() => tournaments.find((item) => item.id === selectedTournamentId) || tournaments[0] || null, [selectedTournamentId, tournaments]);
+
+  useEffect(() => { if (canUseDatabase && selectedTournament?.id) loadProgressStats(selectedTournament.id); }, [canUseDatabase, selectedTournament?.id]);
 
   function updateField(field, value) { setForm((current) => ({ ...current, [field]: value })); }
 
@@ -117,6 +125,25 @@ export default function App() {
       setStatus('Tournaments loaded');
     }
     setLoading(false);
+  }
+
+  async function loadProgressStats(tournamentId) {
+    const { data, error } = await supabase.from('matches').select('id, stage, status').eq('tournament_id', tournamentId);
+    if (error) return setProgressStats({ groupTotal: 0, groupPlayed: 0, knockoutTotal: 0, knockoutPlayed: 0 });
+    const matches = data || [];
+    const groupMatches = matches.filter((match) => match.stage === 'group');
+    const knockoutMatches = matches.filter((match) => match.stage === 'knockout');
+    setProgressStats({
+      groupTotal: groupMatches.length,
+      groupPlayed: groupMatches.filter(completed).length,
+      knockoutTotal: knockoutMatches.length,
+      knockoutPlayed: knockoutMatches.filter(completed).length,
+    });
+  }
+
+  async function refreshTournamentData() {
+    await loadTournaments();
+    if (selectedTournament?.id) await loadProgressStats(selectedTournament.id);
   }
 
   async function findOrCreate(table, match, row) {
@@ -152,7 +179,7 @@ export default function App() {
   return (
     <main className="app-shell">
       <section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>{title}</h1><p>Create tournaments, choose entrants, generate groups and fixtures, enter results, build knockouts and publish the archive page from one control centre.</p></section>
-      <ProgressBar selectedTournament={selectedTournament} preview={preview} onJump={setActiveModule} />
+      <ProgressBar selectedTournament={selectedTournament} preview={preview} progressStats={progressStats} onJump={setActiveModule} />
       {!canUseDatabase && <section className="warning-card"><strong>Supabase is not connected yet.</strong><span>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify environment variables.</span></section>}
       <section className="dashboard-layout">
         <aside className="sidebar card"><p className="eyebrow">Modules</p>{modules.map((module) => <button key={module} type="button" className={activeModule === module ? 'nav-pill active' : 'nav-pill'} onClick={() => setActiveModule(module)}>{module}</button>)}</aside>
@@ -166,9 +193,9 @@ export default function App() {
               <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => updateField('secondaryBracketName', event.target.value)} /></label>
               <div className="button-row"><button type="submit" disabled={loading}>{loading ? 'Working...' : 'Create tournament'}</button><button type="button" className="secondary" onClick={demoPreview}>Demo preview</button></div><p className="status">{status}</p>
             </form>
-            <section className="card"><div className="card-header"><p className="eyebrow">Workflow status</p><h2>{selectedTournament ? selectedTournament.name : 'No tournament selected'}</h2></div><ol className="steps">{workflowSteps.map((step, index) => { const done = isStepDone(step, selectedTournament, preview); return <li key={step} className={done ? 'done' : ''}><span>{done ? 'Done' : index + 1}</span>{step}</li>; })}</ol></section>
+            <section className="card"><div className="card-header"><p className="eyebrow">Workflow status</p><h2>{selectedTournament ? selectedTournament.name : 'No tournament selected'}</h2></div><ol className="steps">{workflowSteps.map((step, index) => { const done = isStepDone(step, selectedTournament, preview, progressStats); return <li key={step} className={done ? 'done' : ''}><span>{done ? 'Done' : index + 1}</span>{step}</li>; })}</ol></section>
           </section>
-          <section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div><button type="button" className="secondary" onClick={loadTournaments} disabled={loading || !canUseDatabase}>Refresh tournament list</button></div><ModuleContent activeModule={activeModule} tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} setPreview={setPreview} onPreviewGenerated={buildPreview} /></section>
+          <section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div><button type="button" className="secondary" onClick={refreshTournamentData} disabled={loading || !canUseDatabase}>Refresh tournament data</button></div><ModuleContent activeModule={activeModule} tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} setPreview={setPreview} onPreviewGenerated={buildPreview} onTournamentUpdated={refreshTournamentData} /></section>
         </section>
       </section>
     </main>
@@ -180,7 +207,7 @@ function moduleHeading(activeModule) {
   return headings[activeModule] || activeModule;
 }
 
-function ModuleContent({ activeModule, tournaments, selectedTournament, setSelectedTournamentId, preview, setPreview, onPreviewGenerated }) {
+function ModuleContent({ activeModule, tournaments, selectedTournament, setSelectedTournamentId, preview, setPreview, onPreviewGenerated, onTournamentUpdated }) {
   if (activeModule === 'Overview') return <Overview tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} />;
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={onPreviewGenerated} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
@@ -188,11 +215,11 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   if (activeModule === 'Results') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted />;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} />;
-  const placeholders = { 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
-  return <p className="muted">{placeholders[activeModule] || 'Module coming next.'}</p>;
+  if (activeModule === 'Public Page') return <PublicPageManager selectedTournament={selectedTournament} onTournamentUpdated={onTournamentUpdated} />;
+  return <p className="muted">Module coming next.</p>;
 }
 
 function Overview({ tournaments, selectedTournament, setSelectedTournamentId, preview }) {
   const entries = Number(selectedTournament?.actual_entries || 0), maxEntries = Number(selectedTournament?.max_entries || 0), groups = Number(preview?.groups?.length || selectedTournament?.group_count || 0), fixtures = Number(preview?.fixtures?.length || 0);
-  return <>{selectedTournament && <div className="overview-metrics"><article><span>Status</span><strong>{selectedTournament.status}</strong></article><article><span>Entries</span><strong>{entries}/{maxEntries || '-'}</strong></article><article><span>Groups</span><strong>{groups || '-'}</strong></article><article><span>Fixtures</span><strong>{fixtures || 'Not generated'}</strong></article></div>}{tournaments.length === 0 ? <p className="muted">No tournaments loaded yet.</p> : <div className="tournament-grid">{tournaments.map((tournament) => <button type="button" className={selectedTournament?.id === tournament.id ? 'tournament-card selected' : 'tournament-card'} key={tournament.id} onClick={() => setSelectedTournamentId(tournament.id)}><strong>{tournament.name}</strong><span>{tournament.status} - {tournament.actual_entries || 0}/{tournament.max_entries || '-'} entries</span><span>{tournament.group_count || '-'} groups - {tournament.knockout_teams || '-'} knockout teams - {tournament.secondary_bracket_name || 'No secondary bracket'}</span></button>)}</div>}</>;
+  return <>{selectedTournament && <div className="overview-metrics"><article><span>Status</span><strong>{selectedTournament.status}</strong></article><article><span>Entries</span><strong>{entries}/{maxEntries || '-'}</strong></article><article><span>Groups</span><strong>{groups || '-'}</strong></article><article><span>Fixtures</span><strong>{fixtures || 'Saved in database'}</strong></article></div>}{tournaments.length === 0 ? <p className="muted">No tournaments loaded yet.</p> : <div className="tournament-grid">{tournaments.map((tournament) => <button type="button" className={selectedTournament?.id === tournament.id ? 'tournament-card selected' : 'tournament-card'} key={tournament.id} onClick={() => setSelectedTournamentId(tournament.id)}><strong>{tournament.name}</strong><span>{tournament.status} - {tournament.actual_entries || 0}/{tournament.max_entries || '-'} entries</span><span>{tournament.group_count || '-'} groups - {tournament.knockout_teams || '-'} knockout teams - {tournament.secondary_bracket_name || 'No secondary bracket'}</span></button>)}</div>}</>;
 }
