@@ -37,6 +37,12 @@ function formSymbol(result) {
   return '×';
 }
 
+function qualificationForIndex(index) {
+  if (index < 2) return { rowClass: 'cup-zone', label: 'Cup' };
+  if (index === 2) return { rowClass: 'shield-zone', label: 'Shield' };
+  return { rowClass: 'out-zone', label: 'Out' };
+}
+
 export default function TablesManager({ selectedTournament }) {
   const [entries, setEntries] = useState([]);
   const [matches, setMatches] = useState([]);
@@ -116,14 +122,17 @@ export default function TablesManager({ selectedTournament }) {
                 <table className="standings-table">
                   <thead><tr><th>Pos</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th><th>Form</th></tr></thead>
                   <tbody>
-                    {table.rows.map((row, index) => (
-                      <tr key={row.entry_id} className={index < 2 ? 'cup-zone' : index === 2 ? 'shield-zone' : ''}>
-                        <td>{index + 1}</td>
-                        <td><strong>{row.team_name}</strong><span>{row.manager_name}</span></td>
-                        <td>{row.played}</td><td>{row.wins}</td><td>{row.draws}</td><td>{row.losses}</td><td>{row.goals_for}</td><td>{row.goals_against}</td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td><strong>{row.points}</strong></td>
-                        <td className="form-cell">{row.form.slice(-5).map((item, itemIndex) => <span key={itemIndex} className={'form-badge ' + item}>{formSymbol(item)}</span>)}</td>
-                      </tr>
-                    ))}
+                    {table.rows.map((row, index) => {
+                      const qualification = qualificationForIndex(index);
+                      return (
+                        <tr key={row.entry_id} className={qualification.rowClass}>
+                          <td><span className="position-cell"><strong>{index + 1}</strong><em className={'qual-pill ' + qualification.rowClass}>{qualification.label}</em></span></td>
+                          <td><strong>{row.team_name}</strong><span>{row.manager_name}</span></td>
+                          <td>{row.played}</td><td>{row.wins}</td><td>{row.draws}</td><td>{row.losses}</td><td>{row.goals_for}</td><td>{row.goals_against}</td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td><strong>{row.points}</strong></td>
+                          <td className="form-cell">{row.form.slice(-5).map((item, itemIndex) => <span key={itemIndex} className={'form-badge ' + item}>{formSymbol(item)}</span>)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
