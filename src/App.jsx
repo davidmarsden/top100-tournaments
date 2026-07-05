@@ -168,7 +168,7 @@ export default function App() {
             </form>
             <section className="card"><div className="card-header"><p className="eyebrow">Workflow status</p><h2>{selectedTournament ? selectedTournament.name : 'No tournament selected'}</h2></div><ol className="steps">{workflowSteps.map((step, index) => { const done = isStepDone(step, selectedTournament, preview); return <li key={step} className={done ? 'done' : ''}><span>{done ? 'Done' : index + 1}</span>{step}</li>; })}</ol></section>
           </section>
-          <section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div><button type="button" className="secondary" onClick={loadTournaments} disabled={loading || !canUseDatabase}>Refresh</button></div><ModuleContent activeModule={activeModule} tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} setPreview={setPreview} onPreviewGenerated={buildPreview} /></section>
+          <section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div><button type="button" className="secondary" onClick={loadTournaments} disabled={loading || !canUseDatabase}>Refresh tournament list</button></div><ModuleContent activeModule={activeModule} tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} setPreview={setPreview} onPreviewGenerated={buildPreview} /></section>
         </section>
       </section>
     </main>
@@ -176,7 +176,7 @@ export default function App() {
 }
 
 function moduleHeading(activeModule) {
-  const headings = { Overview: 'Tournament dashboard', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', Results: 'Enter results', Tables: 'Live group tables', Knockout: 'Cup and Shield draw', 'Public Page': 'Publish and archive' };
+  const headings = { Overview: 'Tournament dashboard', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', Results: 'Results archive and editing', Tables: 'Live group tables', Knockout: 'Cup and Shield draw', 'Public Page': 'Publish and archive' };
   return headings[activeModule] || activeModule;
 }
 
@@ -184,8 +184,8 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, setSelec
   if (activeModule === 'Overview') return <Overview tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} />;
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={onPreviewGenerated} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
-  if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" />;
-  if (activeModule === 'Results') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding />;
+  if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding />;
+  if (activeModule === 'Results') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted />;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} />;
   const placeholders = { 'Public Page': 'Next: read-only public tournament page and archived tournament view.' };
