@@ -185,7 +185,7 @@ function winnerLoserFor(match, homeScore, awayScore) {
   return { winner_entry_id: null, loser_entry_id: null };
 }
 
-export default function KnockoutManager({ selectedTournament }) {
+export default function KnockoutManager({ selectedTournament, onDataChanged }) {
   const [entries, setEntries] = useState([]);
   const [matches, setMatches] = useState([]);
   const [status, setStatus] = useState('Ready');
@@ -213,14 +213,14 @@ export default function KnockoutManager({ selectedTournament }) {
 
     const [entriesResult, matchesResult] = await Promise.all([
       supabase.from('tournament_entries').select('id, tournament_id, team_id, manager_id, seed, rating, group_code, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
-      supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, bracket, home_placeholder, away_placeholder, groups(id, code, name)').eq('tournament_id', tournamentId).order('stage', { ascending: true }).order('bracket', { ascending: true }).order('round', { ascending: true }).order('match_order', { ascending: true }),
+      supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, bracket, home_placeholder, away_placeholder, groups(id, code, name)').eq('tournament_id', tournamentId).order('stage', { ascending: true }).order('bracket', { ascending: true }).order('round', { ascending: true }).order('match_order', { ascending: true }).order('leg', { ascending: true }),
     ]);
 
     if (entriesResult.error) setStatus('Could not load entrants: ' + entriesResult.error.message);
     else if (matchesResult.error) setStatus('Could not load matches: ' + matchesResult.error.message);
     else {
       setEntries(entriesResult.data || []);
-      setMatches(matchesResult.data || []);
+      setMatches(dataSort(matchesResult.data || []));
       setStatus('Knockout data loaded from database.');
     }
 
@@ -234,6 +234,7 @@ export default function KnockoutManager({ selectedTournament }) {
     else {
       setStatus(successMessage);
       await loadData();
+      await onDataChanged?.();
     }
     setLoading(false);
   }
@@ -278,6 +279,7 @@ export default function KnockoutManager({ selectedTournament }) {
     }
 
     await loadData();
+    await onDataChanged?.();
     setStatus(targets.length + ' knockout test result(s) saved and view refreshed.');
     setLoading(false);
   }
@@ -354,24 +356,38 @@ export default function KnockoutManager({ selectedTournament }) {
         <article className="knockout-desk-card fixtures-card">
           <h3>Knockout fixtures</h3>
           <p className="muted">Unplayed Cup and Shield matches. Use this panel to set dates and enter new results.</p>
-          <FixturesManager selectedTournament={selectedTournament} stage="knockout" onlyOutstanding />
+          <FixturesManager selectedTournament={selectedTournament} stage="knockout" onlyOutstanding onDataChanged={onDataChanged} />
         </article>
         <article className="knockout-desk-card results-card">
           <h3>Knockout results</h3>
           <p className="muted">Played Cup and Shield matches, with aggregate and away-goals notes where relevant.</p>
-          <FixturesManager selectedTournament={selectedTournament} stage="knockout" onlyCompleted />
+          <FixturesManager selectedTournament={selectedTournament} stage="knockout" onlyCompleted onDataChanged={onDataChanged} />
         </article>
       </section>
     </div>
   );
 }
 
+function dataSort(matches) {
+  return [...matches].sort((a, b) => {
+    const bracket = String(a.bracket || '').localeCompare(String(b.bracket || ''));
+    if (bracket) return bracket;
+    const ai = ROUND_ORDER.indexOf(a.round);
+    const bi = ROUND_ORDER.indexOf(b.round);
+    const round = (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    if (round) return round;
+    const order = Number(a.match_order || 0) - Number(b.match_order || 0);
+    if (order) return order;
+    return Number(a.leg || 1) - Number(b.leg || 1);
+  });
+}
+
 function BracketColumn({ title, type, matches }) {
   const rounds = ROUND_ORDER.filter((round) => matches.some((match) => match.round === round));
-  return <article className={'bracket-section bracket-' + type}><h3>{title}</h3>{rounds.length === 0 ? <p className="muted">No saved matches yet.</p> : rounds.map((round) => <div key={round} className="round-block"><h4>{round}</h4><KnockoutList matches={matches.filter((match) => match.round === round).sort((a, b) => Number(a.match_order || 0) - Number(b.match_order || 0) || Number(a.leg || 1) - Number(b.leg || 1))} /></div>)}</article>;
+  return <article className={'bracket-section bracket-' + type}><h3>{title}</h3>{rounds.length === 0 ? <p className="muted">No saved matches yet.</p> : rounds.map((round) => <div key={round} className="round-block"><h4>{round}</h4><KnockoutList matches={dataSort(matches.filter((match) => match.round === round))} /></div>)}</article>;
 }
 
 function KnockoutList({ matches }) {
   if (!matches.length) return <p className="muted">No matches yet.</p>;
-  return <div className="knockout-list">{matches.map((match) => <article className={isCompleted(match) ? 'knockout-card played' : 'knockout-card'} key={(match.bracket || 'draw') + '-' + match.round + '-' + match.match_order + '-' + (match.leg || 1) + '-' + match.home_entry_id}><span>{match.bracket || 'Knockout'} · {match.round || 'Round'}{match.leg ? ' · Leg ' + match.leg : ''}</span><strong>{match.home_placeholder}</strong><em>{isCompleted(match) ? `${match.home_score} - ${match.away_score}` : 'v'}</em><strong>{match.away_placeholder}</strong></article>)}</div>;
+  return <div className="knockout-list">{matches.map((match) => <article className={isCompleted(match) ? 'knockout-card played' : 'knockout-card'} key={(match.bracket || 'draw') + '-' + match.round + '-' + match.match_order + '-' + (match.leg || 1) + '-' + match.home_entry_id}><span>{match.bracket || 'Knockout'} · {match.round || 'Round'}{match.leg ? ' · ' + (Number(match.leg) === 1 ? '1st leg' : '2nd leg') : ''}</span><strong>{match.home_placeholder}</strong><em>{isCompleted(match) ? `${match.home_score} - ${match.away_score}` : 'v'}</em><strong>{match.away_placeholder}</strong></article>)}</div>;
 }
