@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const CHALLONGE_BASE_URL = 'https://api.challonge.com/v2.1';
+const CHALLONGE_V2_BASE_URL = 'https://api.challonge.com/v2.1';
+const CHALLONGE_V1_BASE_URL = 'https://api.challonge.com/v1';
 const CHALLONGE_HEADERS = {
   Accept: 'application/json',
   'Content-Type': 'application/vnd.api+json',
@@ -33,8 +34,12 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+function getApiKey() {
+  return requiredEnv('CHALLONGE_API_KEY');
+}
+
 function getChallongeHeaders() {
-  return { ...CHALLONGE_HEADERS, Authorization: requiredEnv('CHALLONGE_API_KEY') };
+  return { ...CHALLONGE_HEADERS, Authorization: getApiKey() };
 }
 
 async function fetchJson(url, options = {}) {
@@ -44,7 +49,11 @@ async function fetchJson(url, options = {}) {
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
   if (!response.ok) {
     const message = data?.errors?.detail || data?.errors?.[0]?.detail || data?.message || data?.error || text || `${response.status} ${response.statusText}`;
-    throw new Error(`Challonge request failed: ${message}`);
+    const error = new Error(`Challonge request failed: ${message}`);
+    error.statusCode = response.status;
+    error.url = url;
+    error.body = data;
+    throw error;
   }
   return data;
 }
@@ -55,13 +64,38 @@ function ensureJsonPath(path) {
   return `${path}.json`;
 }
 
-async function challongeGet(path, query = {}) {
-  const apiPath = path.startsWith('http') ? path : `${CHALLONGE_BASE_URL}${ensureJsonPath(path)}`;
+async function challongeGetV2(path, query = {}) {
+  const apiPath = path.startsWith('http') ? path : `${CHALLONGE_V2_BASE_URL}${ensureJsonPath(path)}`;
   const url = new URL(apiPath);
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
   });
   return fetchJson(url.toString(), { headers: getChallongeHeaders() });
+}
+
+async function challongeGetV1(path, query = {}) {
+  const apiPath = path.startsWith('http') ? path : `${CHALLONGE_V1_BASE_URL}${ensureJsonPath(path)}`;
+  const url = new URL(apiPath);
+  url.searchParams.set('api_key', getApiKey());
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
+  });
+  return fetchJson(url.toString(), { headers: { Accept: 'application/json' } });
+}
+
+async function firstSuccessful(requests) {
+  const errors = [];
+  for (const request of requests) {
+    try {
+      const data = await request.run();
+      return { data, source: request.source };
+    } catch (error) {
+      errors.push({ source: request.source, message: error.message, statusCode: error.statusCode, url: error.url });
+    }
+  }
+  const error = new Error(errors.map((item) => `${item.source}: ${item.message}`).join(' | '));
+  error.attempts = errors;
+  throw error;
 }
 
 function asArray(payload) {
@@ -75,6 +109,11 @@ function asArray(payload) {
 
 function attrs(item) { return item?.attributes || item?.tournament || item?.participant || item?.match || item || {}; }
 
+function itemId(item) {
+  const a = attrs(item);
+  return String(item?.id || a.id || item?.tournament?.id || item?.participant?.id || item?.match?.id || '').trim();
+}
+
 function relationId(item, ...keys) {
   for (const key of keys) {
     const direct = item?.[key] ?? item?.attributes?.[key] ?? item?.match?.[key] ?? item?.participant?.[key];
@@ -87,12 +126,12 @@ function relationId(item, ...keys) {
 
 function tournamentName(tournament) {
   const a = attrs(tournament);
-  return String(a.name || a.full_name || a.fullName || tournament.name || `Challonge ${tournament.id}`).trim();
+  return String(a.name || a.full_name || a.fullName || tournament.name || `Challonge ${itemId(tournament)}`).trim();
 }
 
 function participantName(participant) {
   const a = attrs(participant);
-  return String(a.name || a.display_name || a.displayName || a.username || participant.name || `Participant ${participant.id}`).trim();
+  return String(a.name || a.display_name || a.displayName || a.username || participant.name || `Participant ${itemId(participant)}`).trim();
 }
 
 function parseTeamAndManager(name) {
@@ -160,12 +199,43 @@ async function updateActualEntries(supabase, tournamentId) {
 async function listTournaments(event) {
   const page = event.queryStringParameters?.page || '1';
   const perPage = event.queryStringParameters?.perPage || '25';
-  const payload = await challongeGet('/tournaments', { 'page[number]': page, 'page[size]': perPage });
+  const result = await firstSuccessful([
+    { source: 'v2.1 headers, no pagination', run: () => challongeGetV2('/tournaments') },
+    { source: 'v2.1 headers, simple pagination', run: () => challongeGetV2('/tournaments', { page, per_page: perPage }) },
+    { source: 'legacy v1 query api_key', run: () => challongeGetV1('/tournaments', { page, per_page: perPage }) },
+  ]);
   return json(200, {
     ok: true,
-    authMode: 'v1_api_key',
-    tournaments: asArray(payload).map((item) => ({ id: String(item.id || attrs(item).id), name: tournamentName(item), attributes: attrs(item) })),
+    authMode: result.source,
+    tournaments: asArray(result.data).map((item) => ({ id: itemId(item), name: tournamentName(item), attributes: attrs(item) })),
   });
+}
+
+async function loadChallongeTournamentBundle(challongeTournamentId) {
+  return firstSuccessful([
+    {
+      source: 'v2.1 headers',
+      run: async () => {
+        const [tournament, participants, matches] = await Promise.all([
+          challongeGetV2(`/tournaments/${encodeURIComponent(challongeTournamentId)}`),
+          challongeGetV2(`/tournaments/${encodeURIComponent(challongeTournamentId)}/participants`, { 'page[size]': 250 }),
+          challongeGetV2(`/tournaments/${encodeURIComponent(challongeTournamentId)}/matches`, { 'page[size]': 250 }),
+        ]);
+        return { tournament, participants, matches };
+      },
+    },
+    {
+      source: 'legacy v1 query api_key',
+      run: async () => {
+        const [tournament, participants, matches] = await Promise.all([
+          challongeGetV1(`/tournaments/${encodeURIComponent(challongeTournamentId)}`),
+          challongeGetV1(`/tournaments/${encodeURIComponent(challongeTournamentId)}/participants`),
+          challongeGetV1(`/tournaments/${encodeURIComponent(challongeTournamentId)}/matches`),
+        ]);
+        return { tournament, participants, matches };
+      },
+    },
+  ]);
 }
 
 async function importTournament(event) {
@@ -174,15 +244,10 @@ async function importTournament(event) {
   if (!challongeTournamentId) return json(400, { ok: false, error: 'Missing challongeTournamentId' });
 
   const supabase = getSupabase();
-  const [tournamentPayload, participantsPayload, matchesPayload] = await Promise.all([
-    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}`),
-    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}/participants`, { 'page[size]': 250 }),
-    challongeGet(`/tournaments/${encodeURIComponent(challongeTournamentId)}/matches`, { 'page[size]': 250 }),
-  ]);
-
-  const tournamentItem = asArray(tournamentPayload)[0] || tournamentPayload.data || tournamentPayload.tournament || tournamentPayload;
-  const participants = asArray(participantsPayload);
-  const challongeMatches = asArray(matchesPayload);
+  const bundle = await loadChallongeTournamentBundle(challongeTournamentId);
+  const tournamentItem = asArray(bundle.data.tournament)[0] || bundle.data.tournament?.tournament || bundle.data.tournament?.data || bundle.data.tournament;
+  const participants = asArray(bundle.data.participants);
+  const challongeMatches = asArray(bundle.data.matches);
   const importedTournamentName = body.tournamentName || tournamentName(tournamentItem);
   const seasonCode = body.seasonCode || 'Imported';
   const competitionName = body.competitionName || 'Challonge Import';
@@ -210,7 +275,7 @@ async function importTournament(event) {
       teams_per_group: body.teamsPerGroup || null,
       knockout_teams: body.knockoutTeams || null,
       secondary_bracket_name: body.secondaryBracketName || null,
-      rules_notes: 'Imported from Challonge API v1-key auth',
+      rules_notes: `Imported from Challonge API using ${bundle.source}`,
     }).select('id').single();
     if (created.error) throw created.error;
     tournamentId = created.data.id;
@@ -223,7 +288,7 @@ async function importTournament(event) {
   let importedParticipants = 0;
   for (const participant of participants) {
     const participantAttrs = attrs(participant);
-    const challongeParticipantId = String(participant.id || participantAttrs.id);
+    const challongeParticipantId = itemId(participant);
     const { teamName, managerName } = parseTeamAndManager(participantName(participant));
     const seed = Number(participantAttrs.seed || participantAttrs.rank || importedParticipants + 1) || importedParticipants + 1;
     const teamId = await findOrCreate(supabase, 'teams', { name: teamName }, { name: teamName, active: true });
@@ -250,7 +315,7 @@ async function importTournament(event) {
   for (let index = 0; index < challongeMatches.length; index += 1) {
     const match = challongeMatches[index];
     const a = attrs(match);
-    const challongeMatchId = String(match.id || a.id || a.match_id || a.matchId || index + 1);
+    const challongeMatchId = itemId(match) || String(index + 1);
     const player1 = relationId(match, 'player1', 'player1_id', 'player1Id', 'participant1', 'participant1_id', 'participant1Id');
     const player2 = relationId(match, 'player2', 'player2_id', 'player2Id', 'participant2', 'participant2_id', 'participant2Id');
     const homeEntryId = player1 ? participantToEntry.get(String(player1)) : null;
@@ -298,7 +363,7 @@ async function importTournament(event) {
   }
 
   await updateActualEntries(supabase, tournamentId);
-  return json(200, { ok: true, authMode: 'v1_api_key', tournamentId, importedTournamentName, importedParticipants, importedMatches, updatedMatches, challongeTournamentId });
+  return json(200, { ok: true, authMode: bundle.source, tournamentId, importedTournamentName, importedParticipants, importedMatches, updatedMatches, challongeTournamentId });
 }
 
 export async function handler(event) {
@@ -309,6 +374,6 @@ export async function handler(event) {
     return json(405, { ok: false, error: 'Method not allowed' });
   } catch (error) {
     console.error(error);
-    return json(500, { ok: false, error: error.message });
+    return json(500, { ok: false, error: error.message, attempts: error.attempts || undefined });
   }
 }
