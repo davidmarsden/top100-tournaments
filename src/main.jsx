@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
 import './workflow-overrides.css';
+import './bracket.css';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
