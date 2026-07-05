@@ -109,6 +109,43 @@ function legCount(bracket, round) {
   return 1;
 }
 
+function resolveTie(legs) {
+  const orderedLegs = [...legs].sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
+  if (orderedLegs.some((leg) => !isCompleted(leg))) return { winnerId: null, reason: 'incomplete' };
+
+  const first = orderedLegs[0];
+  const firstTeamId = first.home_entry_id;
+  const secondTeamId = first.away_entry_id;
+  let firstAggregate = 0;
+  let secondAggregate = 0;
+  let firstAwayGoals = 0;
+  let secondAwayGoals = 0;
+
+  orderedLegs.forEach((leg) => {
+    const homeScore = Number(leg.home_score || 0);
+    const awayScore = Number(leg.away_score || 0);
+    if (leg.home_entry_id === firstTeamId) {
+      firstAggregate += homeScore;
+      secondAggregate += awayScore;
+      secondAwayGoals += awayScore;
+    } else {
+      firstAggregate += awayScore;
+      secondAggregate += homeScore;
+      firstAwayGoals += awayScore;
+    }
+  });
+
+  if (firstAggregate > secondAggregate) return { winnerId: firstTeamId, loserId: secondTeamId, reason: 'aggregate' };
+  if (secondAggregate > firstAggregate) return { winnerId: secondTeamId, loserId: firstTeamId, reason: 'aggregate' };
+
+  if (orderedLegs.length > 1) {
+    if (firstAwayGoals > secondAwayGoals) return { winnerId: firstTeamId, loserId: secondTeamId, reason: 'away_goals' };
+    if (secondAwayGoals > firstAwayGoals) return { winnerId: secondTeamId, loserId: firstTeamId, reason: 'away_goals' };
+  }
+
+  return { winnerId: null, loserId: null, reason: 'fet_required' };
+}
+
 function tieWinners(source) {
   const ties = new Map();
   source.forEach((match) => {
@@ -117,24 +154,22 @@ function tieWinners(source) {
   });
 
   const winners = [];
+  const unresolved = [];
+
   for (const [matchOrder, legs] of [...ties.entries()].sort(([a], [b]) => Number(a) - Number(b))) {
-    if (legs.some((leg) => !isCompleted(leg))) return null;
-    const first = legs[0];
-    let homeAggregate = 0;
-    let awayAggregate = 0;
-    legs.forEach((leg) => {
-      if (leg.home_entry_id === first.home_entry_id) {
-        homeAggregate += Number(leg.home_score || 0);
-        awayAggregate += Number(leg.away_score || 0);
-      } else {
-        homeAggregate += Number(leg.away_score || 0);
-        awayAggregate += Number(leg.home_score || 0);
-      }
-    });
-    if (homeAggregate === awayAggregate) return null;
-    winners.push(homeAggregate > awayAggregate ? first.home_entry_id : first.away_entry_id);
+    const result = resolveTie(legs);
+    if (!result.winnerId) unresolved.push({ matchOrder, reason: result.reason });
+    else winners.push(result.winnerId);
   }
-  return winners;
+
+  return { winners, unresolved };
+}
+
+function nextRoundLabel(matches, bracket) {
+  const existingRounds = ROUND_ORDER.filter((round) => bracketRound(matches, bracket, round).length > 0);
+  const latestRound = existingRounds[existingRounds.length - 1];
+  const nextRound = NEXT_ROUND[latestRound];
+  return nextRound ? `Generate ${bracket} ${nextRound}` : `Next ${bracket} round`;
 }
 
 export default function KnockoutManager({ selectedTournament }) {
@@ -173,7 +208,7 @@ export default function KnockoutManager({ selectedTournament }) {
     else {
       setEntries(entriesResult.data || []);
       setMatches(matchesResult.data || []);
-      setStatus('Knockout data loaded.');
+      setStatus('Knockout data loaded from database.');
     }
 
     setLoading(false);
@@ -201,7 +236,7 @@ export default function KnockoutManager({ selectedTournament }) {
   async function saveShieldR32() {
     const cupR32 = bracketRound(knockoutMatches, 'Cup', 'R32');
     if (!cupR32.length) return setStatus('Generate Cup R32 first.');
-    if (cupR32.some((match) => !isCompleted(match) || !match.loser_entry_id)) return setStatus('Finish Cup R32 before generating Shield R32.');
+    if (cupR32.some((match) => !isCompleted(match) || !match.loser_entry_id)) return setStatus('Finish Cup R32 before generating Shield R32. One-leg draws require Fictional Extra Time/manual resolution first.');
     if (bracketRound(knockoutMatches, 'Shield', 'R32').length > 0) return setStatus('Shield R32 already exists.');
 
     const cupLosers = cupR32.map((match, index) => ({ entry_id: match.loser_entry_id, team_name: entryName(entries, match.loser_entry_id, 'Cup loser ' + (index + 1)) }));
@@ -219,8 +254,13 @@ export default function KnockoutManager({ selectedTournament }) {
     if (!latestRound || !nextRound) return setStatus('No next round is available for ' + bracket + '.');
     if (bracketRound(knockoutMatches, bracket, nextRound).length > 0) return setStatus(nextRound + ' already exists for ' + bracket + '.');
 
-    const winners = tieWinners(bracketRound(knockoutMatches, bracket, latestRound));
-    if (!winners) return setStatus('Finish all ' + bracket + ' ' + latestRound + ' ties before generating ' + nextRound + '. Aggregate draws need manual resolution first.');
+    const { winners, unresolved } = tieWinners(bracketRound(knockoutMatches, bracket, latestRound));
+    if (unresolved.length) {
+      const fetCount = unresolved.filter((tie) => tie.reason === 'fet_required').length;
+      const incompleteCount = unresolved.filter((tie) => tie.reason === 'incomplete').length;
+      const details = [incompleteCount ? incompleteCount + ' incomplete tie(s)' : null, fetCount ? fetCount + ' tie(s) need Fictional Extra Time/manual resolution after away goals' : null].filter(Boolean).join('; ');
+      return setStatus('Cannot generate ' + bracket + ' ' + nextRound + ': ' + details + '.');
+    }
 
     const rows = [];
     const legs = legCount(bracket, nextRound);
@@ -232,7 +272,7 @@ export default function KnockoutManager({ selectedTournament }) {
       rows.push({ tournament_id: tournamentId, stage: 'knockout', round: nextRound, leg: 1, match_order: tieOrder, home_entry_id: homeId, away_entry_id: awayId, home_placeholder: entryName(entries, homeId, 'Winner ' + (index + 1)), away_placeholder: entryName(entries, awayId, 'Winner ' + (index + 2)), bracket, status: 'scheduled' });
       if (legs === 2) rows.push({ tournament_id: tournamentId, stage: 'knockout', round: nextRound, leg: 2, match_order: tieOrder, home_entry_id: awayId, away_entry_id: homeId, home_placeholder: entryName(entries, awayId, 'Winner ' + (index + 2)), away_placeholder: entryName(entries, homeId, 'Winner ' + (index + 1)), bracket, status: 'scheduled' });
     }
-    await insertMatches(rows, bracket + ' ' + nextRound + ' generated' + (legs === 2 ? ' over two legs.' : '.'));
+    await insertMatches(rows, bracket + ' ' + nextRound + ' generated' + (legs === 2 ? ' over two legs.' : '.') + ' Away goals were applied where needed.');
   }
 
   if (!selectedTournament) return <p className="muted">Create or select a tournament first.</p>;
@@ -244,14 +284,14 @@ export default function KnockoutManager({ selectedTournament }) {
         <div>
           <p className="eyebrow">Knockout generator</p>
           <h3>{playedGroupMatches.length} / {groupMatches.length} group fixtures played</h3>
-          <p className="muted">Youth Cup rules: Cup R32 first; Cup R32 losers drop into Shield R32 away to third-placed group teams. Cup R16 onwards is two-legged. Shield R16 is one leg; Shield QF onwards is two-legged.</p>
+          <p className="muted">Youth Cup rules: Cup R32 first; Cup R32 losers drop into Shield R32 away to third-placed group teams. Cup R16 onwards is two-legged. Shield R16 is one leg; Shield QF onwards is two-legged. Two-legged ties use aggregate score, then away goals, then Fictional Extra Time if still level.</p>
         </div>
         <div className="button-row">
-          <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload</button>
+          <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload knockout data</button>
           <button type="button" onClick={saveCupR32} disabled={loading || !groupComplete}>Generate Cup R32</button>
           <button type="button" className="secondary" onClick={saveShieldR32} disabled={loading}>Generate Shield R32</button>
-          <button type="button" className="secondary" onClick={() => generateNextRound('Cup')} disabled={loading}>Next Cup round</button>
-          <button type="button" className="secondary" onClick={() => generateNextRound('Shield')} disabled={loading}>Next Shield round</button>
+          <button type="button" className="secondary" onClick={() => generateNextRound('Cup')} disabled={loading}>{nextRoundLabel(knockoutMatches, 'Cup')}</button>
+          <button type="button" className="secondary" onClick={() => generateNextRound('Shield')} disabled={loading}>{nextRoundLabel(knockoutMatches, 'Shield')}</button>
         </div>
       </div>
 
