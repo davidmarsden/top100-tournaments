@@ -152,27 +152,24 @@ async function selectByNames(db, table, names) { if (!names.length) return []; c
 async function insertRows(db, table, rows) { if (!rows.length) return []; const { data, error } = await db.from(table).insert(rows).select('id, name'); if (error) throw error; return data || []; }
 async function findOrCreateOne(db, table, match, row) { const existing = await db.from(table).select('id').match(match).maybeSingle(); if (existing.error) throw existing.error; if (existing.data) return existing.data.id; const created = await db.from(table).insert(row).select('id').single(); if (created.error) throw created.error; return created.data.id; }
 
-async function loadV2TournamentPages(path, perPage = 25, maxPages = 10) {
-  const first = await getV2(path);
-  const firstRows = asArray(first);
-  if (firstRows.length < perPage) return firstRows;
-  const all = [...firstRows];
-  for (let page = 2; page <= maxPages; page += 1) {
-    const data = await getV2(path, { page, per_page: perPage });
+async function loadV2TournamentPages(path, maxPages = 10) {
+  const all = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const data = page === 1 ? await getV2(path) : await getV2(path, { page });
     const rows = asArray(data);
+    if (!rows.length) break;
     all.push(...rows);
-    if (rows.length < perPage) break;
   }
   return all;
 }
 
-async function loadV1TournamentPages(path, perPage = 25, maxPages = 10) {
+async function loadV1TournamentPages(path, maxPages = 10) {
   const all = [];
   for (let page = 1; page <= maxPages; page += 1) {
-    const data = await getV1(path, { page, per_page: perPage });
+    const data = await getV1(path, { page });
     const rows = asArray(data);
+    if (!rows.length) break;
     all.push(...rows);
-    if (rows.length < perPage) break;
   }
   return all;
 }
@@ -201,11 +198,10 @@ function isGroupImport(body, tournament) {
 }
 
 async function listTournaments(event) {
-  const perPage = Number(event.queryStringParameters?.perPage || 25);
   const maxPages = Number(event.queryStringParameters?.maxPages || 10);
   const result = await firstSuccessful([
-    { source: 'v2.1 first page plus simple pagination', run: () => loadV2TournamentPages('/tournaments', perPage, maxPages) },
-    { source: 'legacy v1 simple pagination', run: () => loadV1TournamentPages('/tournaments', perPage, maxPages) },
+    { source: 'v2.1 page-by-page', run: () => loadV2TournamentPages('/tournaments', maxPages) },
+    { source: 'legacy v1 page-by-page', run: () => loadV1TournamentPages('/tournaments', maxPages) },
   ]);
   return json(200, { ok: true, authMode: result.source, tournaments: asArray(result.data).map((item) => ({ id: itemId(item), name: tournamentName(item), attributes: attrs(item) })) });
 }
