@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 const CHALLONGE_BASE_URL = 'https://api.challonge.com/v2.1';
-const JSON_HEADERS = {
-  Accept: 'application/vnd.api+json, application/json',
+const JSON_API_HEADERS = {
+  Accept: 'application/vnd.api+json',
   'Content-Type': 'application/vnd.api+json',
 };
 
@@ -38,7 +38,7 @@ async function fetchJson(url, options = {}) {
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
   if (!response.ok) {
-    const message = data?.errors?.[0]?.detail || data?.message || data?.error || text || `${response.status} ${response.statusText}`;
+    const message = data?.errors?.detail || data?.errors?.[0]?.detail || data?.message || data?.error || text || `${response.status} ${response.statusText}`;
     throw new Error(`Challonge request failed: ${message}`);
   }
   return data;
@@ -48,17 +48,15 @@ async function getChallongeToken() {
   const clientId = requiredEnv('CHALLONGE_CLIENT_ID');
   const clientSecret = requiredEnv('CHALLONGE_CLIENT_SECRET');
   const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret });
-
-  const candidates = [
+  const endpoints = [
     'https://api.challonge.com/oauth/token',
     'https://api.challonge.com/oauth2/token',
     `${CHALLONGE_BASE_URL}/oauth/token`,
   ];
-
   let lastError = null;
-  for (const url of candidates) {
+  for (const endpoint of endpoints) {
     try {
-      const token = await fetchJson(url, {
+      const token = await fetchJson(endpoint, {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
@@ -69,7 +67,6 @@ async function getChallongeToken() {
       lastError = error;
     }
   }
-
   throw lastError || new Error('Could not obtain Challonge OAuth token.');
 }
 
@@ -78,7 +75,7 @@ async function challongeGet(path, token, query = {}) {
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
   });
-  return fetchJson(url.toString(), { headers: { ...JSON_HEADERS, Authorization: `Bearer ${token}` } });
+  return fetchJson(url.toString(), { headers: { ...JSON_API_HEADERS, Authorization: `Bearer ${token}` } });
 }
 
 function asArray(payload) {
@@ -90,9 +87,7 @@ function asArray(payload) {
   return payload?.data ? [payload.data] : [];
 }
 
-function attrs(item) {
-  return item?.attributes || item || {};
-}
+function attrs(item) { return item?.attributes || item || {}; }
 
 function relationId(item, ...keys) {
   for (const key of keys) {
@@ -104,20 +99,20 @@ function relationId(item, ...keys) {
   return null;
 }
 
-function participantName(participant) {
-  const a = attrs(participant);
-  return String(a.name || a.display_name || a.displayName || a.username || participant.name || `Participant ${participant.id}`).trim();
-}
-
 function tournamentName(tournament) {
   const a = attrs(tournament);
   return String(a.name || a.full_name || a.fullName || tournament.name || `Challonge ${tournament.id}`).trim();
 }
 
+function participantName(participant) {
+  const a = attrs(participant);
+  return String(a.name || a.display_name || a.displayName || a.username || participant.name || `Participant ${participant.id}`).trim();
+}
+
 function parseTeamAndManager(name) {
   const clean = String(name || '').trim();
-  const match = clean.match(/^(.*?)\s*[–—-]?\s*\((.*?)\)\s*$/);
-  if (match) return { teamName: match[1].trim() || clean, managerName: match[2].trim() || 'TBC Manager' };
+  const bracketed = clean.match(/^(.*?)\s*[–—-]?\s*\((.*?)\)\s*$/);
+  if (bracketed) return { teamName: bracketed[1].trim() || clean, managerName: bracketed[2].trim() || 'TBC Manager' };
   return { teamName: clean, managerName: 'TBC Manager' };
 }
 
@@ -126,8 +121,8 @@ function parseScores(match) {
   const scores = a.scores_csv || a.scoresCsv || a.score_csv || a.scoreCsv || a.scores || a.score;
   if (typeof scores === 'string') {
     const first = scores.split(',')[0].trim();
-    const scoreMatch = first.match(/(-?\d+)\s*[-:]\s*(-?\d+)/);
-    if (scoreMatch) return { home_score: Number(scoreMatch[1]), away_score: Number(scoreMatch[2]) };
+    const found = first.match(/(-?\d+)\s*[-:]\s*(-?\d+)/);
+    if (found) return { home_score: Number(found[1]), away_score: Number(found[2]) };
   }
   const home = a.player1_score ?? a.player1Score ?? a.home_score ?? a.homeScore ?? a.team1_score ?? a.team1Score;
   const away = a.player2_score ?? a.player2Score ?? a.away_score ?? a.awayScore ?? a.team2_score ?? a.team2Score;
@@ -156,8 +151,7 @@ function matchOrder(match, index) {
 }
 
 function matchStatus(match, score) {
-  const a = attrs(match);
-  const state = String(a.state || a.status || '').toLowerCase();
+  const state = String(attrs(match).state || attrs(match).status || '').toLowerCase();
   if (state.includes('complete') || state.includes('played') || state === 'closed') return 'played';
   if (Number.isFinite(score.home_score) && Number.isFinite(score.away_score)) return 'played';
   return 'scheduled';
@@ -182,7 +176,10 @@ async function listTournaments(event) {
   const page = event.queryStringParameters?.page || '1';
   const perPage = event.queryStringParameters?.perPage || '25';
   const payload = await challongeGet('/tournaments', token, { 'page[number]': page, 'page[size]': perPage });
-  return json(200, { ok: true, tournaments: asArray(payload).map((item) => ({ id: String(item.id), name: tournamentName(item), attributes: attrs(item) })) });
+  return json(200, {
+    ok: true,
+    tournaments: asArray(payload).map((item) => ({ id: String(item.id), name: tournamentName(item), attributes: attrs(item) })),
+  });
 }
 
 async function importTournament(event) {
@@ -245,6 +242,7 @@ async function importTournament(event) {
     const seed = Number(attrs(participant).seed || attrs(participant).rank || importedParticipants + 1) || importedParticipants + 1;
     const teamId = await findOrCreate(supabase, 'teams', { name: teamName }, { name: teamName, active: true });
     const managerId = await findOrCreate(supabase, 'managers', { name: managerName }, { name: managerName, display_name: managerName, canonical_name: managerName.toLowerCase(), active: true });
+
     const existingEntry = await supabase.from('tournament_entries').select('id').eq('tournament_id', tournamentId).eq('team_id', teamId).maybeSingle();
     if (existingEntry.error) throw existingEntry.error;
     let entryId = existingEntry.data?.id;
@@ -275,6 +273,7 @@ async function importTournament(event) {
     const status = matchStatus(match, score);
     const winnerParticipantId = relationId(match, 'winner', 'winner_id', 'winnerId');
     const loserParticipantId = relationId(match, 'loser', 'loser_id', 'loserId');
+
     const row = {
       tournament_id: tournamentId,
       stage: body.stage || 'knockout',
