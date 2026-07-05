@@ -83,16 +83,16 @@ with fmt as (
   select id from tournament_formats where name = 'Youth Cup Template' order by id limit 1
 ), round_seed as (
   select * from (values
-    ('Cup',    'R32',   1, 'knockout', 1, true, true, false, 'Shield', 'Cup R32 losers drop into Shield R32'),
-    ('Cup',    'R16',   2, 'knockout', 2, true, true, false, null,     null),
-    ('Cup',    'QF',    3, 'knockout', 2, true, true, false, null,     null),
-    ('Cup',    'SF',    4, 'knockout', 2, true, true, false, null,     null),
-    ('Cup',    'Final', 5, 'knockout', 2, true, true, false, null,     null),
-    ('Shield', 'R32',   1, 'knockout', 1, true, true, false, null,     'Third-placed group teams host Cup R32 losers'),
-    ('Shield', 'R16',   2, 'knockout', 1, true, true, false, null,     null),
-    ('Shield', 'QF',    3, 'knockout', 2, true, true, false, null,     null),
-    ('Shield', 'SF',    4, 'knockout', 2, true, true, false, null,     null),
-    ('Shield', 'Final', 5, 'knockout', 2, true, true, false, null,     null)
+    ('Cup'::text,    'R32'::text,   1::integer, 'knockout'::text, 1::integer, true::boolean, true::boolean, false::boolean, 'Shield'::text, 'Cup R32 losers drop into Shield R32'::text),
+    ('Cup'::text,    'R16'::text,   2::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
+    ('Cup'::text,    'QF'::text,    3::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
+    ('Cup'::text,    'SF'::text,    4::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
+    ('Cup'::text,    'Final'::text, 5::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
+    ('Shield'::text, 'R32'::text,   1::integer, 'knockout'::text, 1::integer, true::boolean, true::boolean, false::boolean, null::text,     'Third-placed group teams host Cup R32 losers'::text),
+    ('Shield'::text, 'R16'::text,   2::integer, 'knockout'::text, 1::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
+    ('Shield'::text, 'QF'::text,    3::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
+    ('Shield'::text, 'SF'::text,    4::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text),
+    ('Shield'::text, 'Final'::text, 5::integer, 'knockout'::text, 2::integer, true::boolean, true::boolean, false::boolean, null::text,     null::text)
   ) as r(bracket, round_name, round_order, round_type, legs, away_goals, fictional_extra_time, penalties, loser_to_bracket, notes)
 )
 insert into tournament_round_templates (
@@ -154,10 +154,10 @@ with fmt as (
   select id from tournament_formats where name = 'Youth Cup Template' order by id limit 1
 ), rule_seed as (
   select * from (values
-    ('Cup',    'group', 1, 1, null, 'R32', null, 'All group winners qualify first and are ranked by table performance'),
-    ('Cup',    'group', 2, 2, null, 'R32', null, 'All runners-up qualify after group winners and are ranked by table performance'),
-    ('Shield', 'group', 3, 1, null, 'R32', null, 'Third-placed teams enter Shield R32 as home teams'),
-    ('Shield', 'drop',  null, 2, null, 'R32', 'Cup', 'Cup R32 losers enter Shield R32 as away teams')
+    ('Cup'::text,    'group'::text, 1::integer,    1::integer, null::integer, 'R32'::text, null::text, 'All group winners qualify first and are ranked by table performance'::text),
+    ('Cup'::text,    'group'::text, 2::integer,    2::integer, null::integer, 'R32'::text, null::text, 'All runners-up qualify after group winners and are ranked by table performance'::text),
+    ('Shield'::text, 'group'::text, 3::integer,    1::integer, null::integer, 'R32'::text, null::text, 'Third-placed teams enter Shield R32 as home teams'::text),
+    ('Shield'::text, 'drop'::text,  null::integer, 2::integer, null::integer, 'R32'::text, 'Cup'::text, 'Cup R32 losers enter Shield R32 as away teams'::text)
   ) as q(bracket, source_stage, group_position, rank_order, slots, destination_round, drop_from_bracket, notes)
 )
 insert into qualification_rules (
