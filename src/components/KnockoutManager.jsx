@@ -338,29 +338,37 @@ export default function KnockoutManager({ selectedTournament }) {
         <span>{groupComplete ? 'Cup R32 can be generated if it does not already exist.' : 'Finish all group fixtures before saving the knockout draw.'}</span>
       </div>
 
-      <section className="bracket-grid">
-        <BracketColumn title="Saved Cup" matches={knockoutMatches.filter((match) => match.bracket === 'Cup')} />
-        <BracketColumn title="Saved Shield" matches={knockoutMatches.filter((match) => match.bracket === 'Shield')} />
+      <section className="bracket-grid knockout-bracket-grid">
+        <BracketColumn title="Saved Cup" type="cup" matches={knockoutMatches.filter((match) => match.bracket === 'Cup')} />
+        <BracketColumn title="Saved Shield" type="shield" matches={knockoutMatches.filter((match) => match.bracket === 'Shield')} />
       </section>
 
       {knockoutMatches.length === 0 && (
         <section className="bracket-grid">
-          <article className="bracket-section"><h3>Cup R32 preview</h3><p className="muted">{cupQualifiers.length} qualifiers</p><KnockoutList matches={proposedCup} /></article>
-          <article className="bracket-section"><h3>Shield homes preview</h3><p className="muted">{shieldHomeTeams.length} third-placed teams. Away teams are Cup R32 losers after Cup R32 is played.</p></article>
+          <article className="bracket-section bracket-cup"><h3>Cup R32 preview</h3><p className="muted">{cupQualifiers.length} qualifiers</p><KnockoutList matches={proposedCup} /></article>
+          <article className="bracket-section bracket-shield"><h3>Shield homes preview</h3><p className="muted">{shieldHomeTeams.length} third-placed teams. Away teams are Cup R32 losers after Cup R32 is played.</p></article>
         </section>
       )}
 
-      <section className="bracket-section">
-        <h3>Knockout result entry</h3>
-        <FixturesManager selectedTournament={selectedTournament} stage="knockout" />
+      <section className="knockout-desk-grid">
+        <article className="knockout-desk-card fixtures-card">
+          <h3>Knockout fixtures</h3>
+          <p className="muted">Unplayed Cup and Shield matches. Use this panel to set dates and enter new results.</p>
+          <FixturesManager selectedTournament={selectedTournament} stage="knockout" onlyOutstanding />
+        </article>
+        <article className="knockout-desk-card results-card">
+          <h3>Knockout results</h3>
+          <p className="muted">Played Cup and Shield matches, with aggregate and away-goals notes where relevant.</p>
+          <FixturesManager selectedTournament={selectedTournament} stage="knockout" onlyCompleted />
+        </article>
       </section>
     </div>
   );
 }
 
-function BracketColumn({ title, matches }) {
+function BracketColumn({ title, type, matches }) {
   const rounds = ROUND_ORDER.filter((round) => matches.some((match) => match.round === round));
-  return <article className="bracket-section"><h3>{title}</h3>{rounds.length === 0 ? <p className="muted">No saved matches yet.</p> : rounds.map((round) => <div key={round} className="round-block"><h4>{round}</h4><KnockoutList matches={matches.filter((match) => match.round === round).sort((a, b) => Number(a.match_order || 0) - Number(b.match_order || 0) || Number(a.leg || 1) - Number(b.leg || 1))} /></div>)}</article>;
+  return <article className={'bracket-section bracket-' + type}><h3>{title}</h3>{rounds.length === 0 ? <p className="muted">No saved matches yet.</p> : rounds.map((round) => <div key={round} className="round-block"><h4>{round}</h4><KnockoutList matches={matches.filter((match) => match.round === round).sort((a, b) => Number(a.match_order || 0) - Number(b.match_order || 0) || Number(a.leg || 1) - Number(b.leg || 1))} /></div>)}</article>;
 }
 
 function KnockoutList({ matches }) {
