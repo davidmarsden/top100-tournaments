@@ -36,6 +36,8 @@
 .result-side.winner::after { content: ' ✓'; font-weight: 950; }
 .result-side.loser { background: #fee2e2; color: #b91c1c; }
 .result-side.draw { background: #eef3fb; color: #44546f; }
+.public-link-button { display: inline-flex; align-items: center; justify-content: center; width: fit-content; border-radius: 999px; padding: 0.85rem 1.1rem; margin-top: 0.8rem; background: #1d4ed8; color: white; text-decoration: none; font-weight: 900; }
+.public-link-button:hover { filter: brightness(0.96); }
 @media (max-width: 820px) {
   .visual-bracket-header { align-items: flex-start; flex-direction: column; }
   .visual-bracket { min-width: 760px; }
