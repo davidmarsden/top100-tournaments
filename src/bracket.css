@@ -40,6 +40,7 @@
 .public-link-button:hover { filter: brightness(0.96); }
 .public-section-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .public-section-toolbar h2 { margin: 0.2rem 0 0; }
+.public-filter-pair { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
 .public-group-filter { display: grid; gap: 6px; min-width: 220px; color: #44546f; font-weight: 900; }
 .public-group-filter select { border: 1px solid #dce5f5; border-radius: 14px; padding: 0.85rem 1rem; background: white; color: #172033; font-weight: 900; }
 .bulk-toolbar { display: grid; gap: 12px; margin-bottom: 16px; }
@@ -64,5 +65,6 @@ button.danger:disabled, .danger:disabled { opacity: 0.5; cursor: not-allowed; }
   .visual-bracket { min-width: 760px; }
   .bracket-legend { font-size: 0.85rem; }
   .public-section-toolbar { align-items: stretch; flex-direction: column; }
+  .public-filter-pair { flex-direction: column; align-items: stretch; }
   .public-group-filter { min-width: 100%; }
 }
