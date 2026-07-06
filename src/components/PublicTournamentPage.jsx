@@ -3,6 +3,7 @@ import KnockoutBracket from './KnockoutBracket.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const ROUND_ORDER = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
+const RULES_URL = 'https://smtop100.blog/youth-cup-format-rules/';
 
 function isCompleted(match) { return match.status === 'played' || match.status === 'forfeit'; }
 function teamName(entry, fallback) { return entry?.teams?.name || fallback || 'TBC'; }
@@ -12,6 +13,17 @@ function groupSort(a, b) { return String(a.groups?.code || '').localeCompare(Str
 function tableSort(a, b) { if (b.points !== a.points) return b.points - a.points; if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference; if (b.goals_for !== a.goals_for) return b.goals_for - a.goals_for; if (a.seed && b.seed && a.seed !== b.seed) return a.seed - b.seed; return a.team_name.localeCompare(b.team_name); }
 function formatDate(dateString) { if (!dateString) return ''; const [year, month, day] = String(dateString).slice(0, 10).split('-').map(Number); const date = new Date(Date.UTC(year, month - 1, day)); if (Number.isNaN(date.getTime())) return dateString; return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }); }
 function sectionDateLabel(matches) { const dates = [...new Set(matches.map((match) => match.fixture_date).filter(Boolean))].sort(); if (!dates.length) return ''; if (dates.length === 1) return formatDate(dates[0]); return `${formatDate(dates[0])} / ${formatDate(dates[dates.length - 1])}`; }
+function dateKey(bracket, round) { return `${bracket || 'Cup'}|${round || 'Round'}`; }
+function applyRoundDates(matches, roundDates) {
+  const dateMap = new Map((roundDates || []).map((row) => [dateKey(row.bracket, row.round), row]));
+  return matches.map((match) => {
+    if (match.fixture_date || match.stage !== 'knockout') return match;
+    const row = dateMap.get(dateKey(match.bracket || 'Cup', match.round));
+    if (!row) return match;
+    const fixtureDate = Number(match.leg || 1) === 2 ? (row.leg2_date || row.leg1_date) : row.leg1_date;
+    return fixtureDate ? { ...match, fixture_date: fixtureDate } : match;
+  });
+}
 function latestWinner(ordered) { return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null; }
 function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
   if (firstAway !== secondAway) return `away goals ${firstAway}-${secondAway}`;
@@ -80,11 +92,15 @@ function allTableRows(tables) { return tables.flatMap((table) => table.rows.map(
 function rowsByFinish(tables, position) { return allTableRows(tables).filter((row) => row.group_position === position).sort(tableSort); }
 function seedRows(entries) { return [...entries].sort((a, b) => Number(a.seed || 9999) - Number(b.seed || 9999) || Number(b.rating || 0) - Number(a.rating || 0) || String(a.teams?.name || '').localeCompare(String(b.teams?.name || ''))); }
 function ordinal(position) { return position === 1 ? '1st' : position === 2 ? '2nd' : position === 3 ? '3rd' : `${position}th`; }
+function roundDateSummary(rows) {
+  return [...rows].sort((a, b) => String(a.bracket || '').localeCompare(String(b.bracket || '')) || roundIndex(a.round) - roundIndex(b.round)).filter((row) => row.leg1_date || row.leg2_date);
+}
 
 export default function PublicTournamentPage({ tournamentId }) {
   const [tournament, setTournament] = useState(null);
   const [matches, setMatches] = useState([]);
   const [entries, setEntries] = useState([]);
+  const [roundDates, setRoundDates] = useState([]);
   const [status, setStatus] = useState('Loading tournament...');
   const [selectedGroup, setSelectedGroup] = useState('all');
   const [selectedBracket, setSelectedBracket] = useState('all');
@@ -92,34 +108,38 @@ export default function PublicTournamentPage({ tournamentId }) {
 
   useEffect(() => { if (hasSupabaseConfig && supabase && tournamentId) loadTournament(); }, [tournamentId]);
 
-  const winners = useMemo(() => bracketsFrom(matches).map((bracket) => finalSummary(matches, bracket)).filter(Boolean), [matches]);
-  const groupOptions = useMemo(() => groupCodesFrom(matches), [matches]);
-  const knockoutBracketOptions = useMemo(() => bracketsFrom(matches), [matches]);
-  const knockoutRoundOptions = useMemo(() => roundsFrom(matches.filter((match) => selectedBracket === 'all' || (match.bracket || 'Cup') === selectedBracket)), [matches, selectedBracket]);
-  const filteredGroupMatches = useMemo(() => matches.filter((match) => match.stage === 'group' && (selectedGroup === 'all' || (match.groups?.code || 'Ungrouped') === selectedGroup)).sort(groupSort), [matches, selectedGroup]);
-  const filteredKnockoutMatches = useMemo(() => matches.filter((match) => match.stage === 'knockout' && (selectedBracket === 'all' || (match.bracket || 'Cup') === selectedBracket) && (selectedRound === 'all' || (match.round || 'Round') === selectedRound)).sort(roundSort), [matches, selectedBracket, selectedRound]);
+  const datedMatches = useMemo(() => applyRoundDates(matches, roundDates), [matches, roundDates]);
+  const winners = useMemo(() => bracketsFrom(datedMatches).map((bracket) => finalSummary(datedMatches, bracket)).filter(Boolean), [datedMatches]);
+  const groupOptions = useMemo(() => groupCodesFrom(datedMatches), [datedMatches]);
+  const knockoutBracketOptions = useMemo(() => bracketsFrom(datedMatches), [datedMatches]);
+  const knockoutRoundOptions = useMemo(() => roundsFrom(datedMatches.filter((match) => selectedBracket === 'all' || (match.bracket || 'Cup') === selectedBracket)), [datedMatches, selectedBracket]);
+  const filteredGroupMatches = useMemo(() => datedMatches.filter((match) => match.stage === 'group' && (selectedGroup === 'all' || (match.groups?.code || 'Ungrouped') === selectedGroup)).sort(groupSort), [datedMatches, selectedGroup]);
+  const filteredKnockoutMatches = useMemo(() => datedMatches.filter((match) => match.stage === 'knockout' && (selectedBracket === 'all' || (match.bracket || 'Cup') === selectedBracket) && (selectedRound === 'all' || (match.round || 'Round') === selectedRound)).sort(roundSort), [datedMatches, selectedBracket, selectedRound]);
   const groupResults = useMemo(() => groupMatches(filteredGroupMatches), [filteredGroupMatches]);
   const knockoutResults = useMemo(() => groupMatches(filteredKnockoutMatches), [filteredKnockoutMatches]);
-  const knockoutBrackets = useMemo(() => bracketsFrom(matches), [matches]);
-  const tables = useMemo(() => buildTables(entries, matches), [entries, matches]);
+  const knockoutBrackets = useMemo(() => bracketsFrom(datedMatches), [datedMatches]);
+  const tables = useMemo(() => buildTables(entries, datedMatches), [entries, datedMatches]);
   const orderedSeeds = useMemo(() => seedRows(entries), [entries]);
   const finishTables = useMemo(() => [1, 2, 3, 4].map((position) => ({ position, rows: rowsByFinish(tables, position) })), [tables]);
-  const fixtureCount = matches.filter((match) => !isCompleted(match)).length;
-  const resultCount = matches.filter(isCompleted).length;
+  const scheduleRows = useMemo(() => roundDateSummary(roundDates), [roundDates]);
+  const fixtureCount = datedMatches.filter((match) => !isCompleted(match)).length;
+  const resultCount = datedMatches.filter(isCompleted).length;
 
   async function loadTournament() {
     setStatus('Loading tournament page...');
-    const tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name').eq('id', tournamentId).maybeSingle();
+    const tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams').eq('id', tournamentId).maybeSingle();
     if (tournamentResult.error || !tournamentResult.data) { setStatus('Tournament not found.'); return; }
-    const [matchesResult, entriesResult] = await Promise.all([
+    const [matchesResult, entriesResult, roundDatesResult] = await Promise.all([
       supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
       supabase.from('tournament_entries').select('id, seed, rating, pot, group_code, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
+      supabase.from('tournament_round_dates').select('id, bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
     ]);
     if (matchesResult.error) { setStatus('Could not load results: ' + matchesResult.error.message); return; }
     if (entriesResult.error) { setStatus('Could not load seedings: ' + entriesResult.error.message); return; }
     setTournament(tournamentResult.data);
     setMatches(matchesResult.data || []);
     setEntries(entriesResult.data || []);
+    setRoundDates(roundDatesResult.error ? [] : (roundDatesResult.data || []));
     setSelectedGroup('all'); setSelectedBracket('all'); setSelectedRound('all');
     setStatus('Tournament page loaded.');
   }
@@ -129,10 +149,11 @@ export default function PublicTournamentPage({ tournamentId }) {
 
   return <main className="app-shell public-archive">
     <section className="hero"><p className="eyebrow">Top 100 Tournament</p><h1>{tournament.name}</h1><p>Status: {tournament.status || 'draft'} · {resultCount} results · {fixtureCount} fixtures remaining</p></section>
+    <section className="card format-summary-card"><div className="public-section-toolbar"><div><p className="eyebrow">Tournament format</p><h2>Youth Cup format and rules</h2></div><a className="public-link-button" href={RULES_URL} target="_blank" rel="noreferrer">Read full rules</a></div><div className="format-summary-grid"><article><span>Entrants</span><strong>{tournament.actual_entries || entries.length || tournament.max_entries || '—'}</strong><small>{tournament.max_entries ? `Maximum ${tournament.max_entries}` : 'Registered teams'}</small></article><article><span>Groups</span><strong>{tournament.group_count || '—'}</strong><small>{tournament.teams_per_group ? `${tournament.teams_per_group} teams per group` : 'Group stage'}</small></article><article><span>Knockout</span><strong>{tournament.knockout_teams || '32'}</strong><small>Seeded by group finishing record</small></article><article><span>Secondary bracket</span><strong>{tournament.secondary_bracket_name || 'Shield'}</strong><small>For qualifying non-Cup teams</small></article></div><p className="muted">Teams are seeded by average rating into pots for the group draw. Group tables are ranked by points, goal difference and goals scored, then seeds are used for transparency when comparing teams across groups. Knockout ties show aggregate, away goals and fictional extra time decisions where needed.</p>{scheduleRows.length > 0 && <div className="schedule-summary"><h3>Knockout schedule</h3><div className="schedule-pill-row">{scheduleRows.map((row) => <span className="schedule-pill" key={`${row.bracket}-${row.round}`}>{row.bracket} {row.round}: {formatDate(row.leg1_date)}{row.leg2_date ? ` / ${formatDate(row.leg2_date)}` : ''}</span>)}</div></div>}</section>
     <section className="card winners-card"><p className="eyebrow">Winners</p><div className="overview-metrics compact-metrics">{winners.length ? winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>🏆 {winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}{winner.decision ? ` · ${winner.decision}` : ''}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamName(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamName(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>) : <p className="muted">No completed finals yet.</p>}</div></section>
     {orderedSeeds.length > 0 && <section className="card"><p className="eyebrow">Draw transparency</p><h2>Rating seedings and pots</h2><div className="standings-wrap"><table className="standings-table seed-table"><thead><tr><th>Seed</th><th>Team</th><th>Manager</th><th>Rating</th><th>Pot</th><th>Group</th></tr></thead><tbody>{orderedSeeds.map((entry) => <tr key={entry.id}><td><strong>{entry.seed || '—'}</strong></td><td><strong>{entry.teams?.name || 'Unknown team'}</strong></td><td>{entry.managers?.display_name || entry.managers?.name || 'TBC'}</td><td>{entry.rating ?? '—'}</td><td>{entry.pot ?? '—'}</td><td>{entry.group_code || '—'}</td></tr>)}</tbody></table></div></section>}
     {tables.length > 0 && <section className="card"><p className="eyebrow">Qualification transparency</p><h2>Cross-group finishing rankings</h2><p className="muted">These tables compare every 1st, 2nd, 3rd and 4th placed team using points, goal difference, goals scored, then seed. They explain knockout qualification and seeding.</p><div className="finish-grid">{finishTables.map((table) => <section className="finish-card" key={table.position}><h3>{ordinal(table.position)} placed teams</h3><div className="standings-wrap"><table className="standings-table mini-standings"><thead><tr><th>Rank</th><th>Team</th><th>Grp</th><th>Pts</th><th>GD</th><th>GF</th><th>Seed</th></tr></thead><tbody>{table.rows.map((row, index) => <tr key={row.entry_id}><td>{index + 1}</td><td><strong>{row.team_name}</strong></td><td>{row.group_code}</td><td><strong>{row.points}</strong></td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td>{row.goals_for}</td><td>{row.seed || '—'}</td></tr>)}</tbody></table></div></section>)}</div></section>}
-    {knockoutBrackets.length > 0 && <section className="card"><p className="eyebrow">Bracket</p><div className="public-bracket-stack">{knockoutBrackets.map((bracket) => <KnockoutBracket key={bracket} title={`${bracket} bracket`} matches={matches.filter((match) => (match.bracket || 'Cup') === bracket)} />)}</div></section>}
+    {knockoutBrackets.length > 0 && <section className="card"><p className="eyebrow">Bracket</p><div className="public-bracket-stack">{knockoutBrackets.map((bracket) => <KnockoutBracket key={bracket} title={`${bracket} bracket`} matches={datedMatches.filter((match) => (match.bracket || 'Cup') === bracket)} />)}</div></section>}
     <section className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Knockout fixtures and results</p><h2>{selectedBracket === 'all' ? 'All competitions' : selectedBracket}{selectedRound !== 'all' ? ` · ${selectedRound}` : ''}</h2></div><div className="public-filter-pair">{knockoutBracketOptions.length > 1 && <label className="public-group-filter">Competition<select value={selectedBracket} onChange={(event) => { setSelectedBracket(event.target.value); setSelectedRound('all'); }}><option value="all">All competitions</option>{knockoutBracketOptions.map((bracket) => <option key={bracket} value={bracket}>{bracket}</option>)}</select></label>}{knockoutRoundOptions.length > 1 && <label className="public-group-filter">Round<select value={selectedRound} onChange={(event) => setSelectedRound(event.target.value)}><option value="all">All rounds</option>{knockoutRoundOptions.map((round) => <option key={round} value={round}>{round}</option>)}</select></label>}</div></div><ResultSections sections={knockoutResults} /></section>
     <section className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Group fixtures and results</p><h2>{selectedGroup === 'all' ? 'All groups' : `Group ${selectedGroup}`}</h2></div>{groupOptions.length > 1 && <label className="public-group-filter">Group<select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)}><option value="all">All groups</option>{groupOptions.map((code) => <option key={code} value={code}>Group {code}</option>)}</select></label>}</div><ResultSections sections={groupResults} /></section>
   </main>;
