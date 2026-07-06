@@ -59,32 +59,34 @@ export default function PublicTournamentPage({ tournamentId }) {
   const groupResults = useMemo(() => groupMatches(matches.filter((match) => match.stage === 'group').sort(groupSort)), [matches]);
   const knockoutResults = useMemo(() => groupMatches(matches.filter((match) => match.stage === 'knockout').sort(roundSort)), [matches]);
   const knockoutBrackets = useMemo(() => bracketsFrom(matches), [matches]);
+  const fixtureCount = matches.filter((match) => !isCompleted(match)).length;
+  const resultCount = matches.filter(isCompleted).length;
 
   async function loadTournament() {
-    setStatus('Loading tournament archive...');
+    setStatus('Loading tournament page...');
     const tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name').eq('id', tournamentId).maybeSingle();
     if (tournamentResult.error || !tournamentResult.data) { setStatus('Tournament not found.'); return; }
     const matchesResult = await supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId);
     if (matchesResult.error) { setStatus('Could not load results: ' + matchesResult.error.message); return; }
     setTournament(tournamentResult.data);
     setMatches(matchesResult.data || []);
-    setStatus('Archive loaded.');
+    setStatus('Tournament page loaded.');
   }
 
   if (!hasSupabaseConfig || !supabase) return <main className="app-shell"><section className="warning-card"><strong>Supabase is not connected.</strong></section></main>;
-  if (!tournament) return <main className="app-shell"><section className="card"><h1>Tournament archive</h1><p className="status">{status}</p></section></main>;
+  if (!tournament) return <main className="app-shell"><section className="card"><h1>Tournament page</h1><p className="status">{status}</p></section></main>;
 
   return <main className="app-shell public-archive">
-    <section className="hero"><p className="eyebrow">Top 100 Tournament Archive</p><h1>{tournament.name}</h1><p>Status: {tournament.status || 'draft'}</p></section>
+    <section className="hero"><p className="eyebrow">Top 100 Tournament</p><h1>{tournament.name}</h1><p>Status: {tournament.status || 'draft'} · {resultCount} results · {fixtureCount} fixtures remaining</p></section>
     <section className="card winners-card"><p className="eyebrow">Winners</p><div className="overview-metrics compact-metrics">{winners.length ? winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>🏆 {winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamName(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamName(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>) : <p className="muted">No completed finals yet.</p>}</div></section>
     {knockoutBrackets.length > 0 && <section className="card"><p className="eyebrow">Bracket</p><div className="public-bracket-stack">{knockoutBrackets.map((bracket) => <KnockoutBracket key={bracket} title={`${bracket} bracket`} matches={matches.filter((match) => (match.bracket || 'Cup') === bracket)} />)}</div></section>}
-    <section className="card"><p className="eyebrow">Knockout results</p><ResultSections sections={knockoutResults} /></section>
-    <section className="card"><p className="eyebrow">Group results</p><ResultSections sections={groupResults} /></section>
+    <section className="card"><p className="eyebrow">Knockout fixtures and results</p><ResultSections sections={knockoutResults} /></section>
+    <section className="card"><p className="eyebrow">Group fixtures and results</p><ResultSections sections={groupResults} /></section>
   </main>;
 }
 
 function ResultSections({ sections }) {
   const entries = Object.entries(sections);
-  if (!entries.length) return <p className="muted">No results yet.</p>;
+  if (!entries.length) return <p className="muted">No fixtures or results yet.</p>;
   return <div className="fixture-sections">{entries.map(([title, matches]) => <section className="fixture-section" key={title}><div className="fixture-section-header"><h3>{title}</h3><span>{matches.length} fixtures</span></div><div className="fixture-card-list">{matches.map((match) => <article className={isCompleted(match) ? 'fixture-card played result-highlight-card' : 'fixture-card'} key={match.id}><div className="fixture-teams result-teams"><strong className={matchSideClass(match, 'home')}>{teamName(match.home_entry, match.home_placeholder)}</strong><span className="fixture-score">{isCompleted(match) ? `${match.home_score} - ${match.away_score}` : 'v'}</span><strong className={matchSideClass(match, 'away')}>{teamName(match.away_entry, match.away_placeholder)}</strong></div><div className="fixture-actions"><span>{match.round}{match.leg ? ` · ${Number(match.leg) === 1 ? '1st leg' : '2nd leg'}` : ''}</span></div></article>)}</div></section>)}</div>;
 }
