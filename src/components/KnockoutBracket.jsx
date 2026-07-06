@@ -32,42 +32,76 @@ function scoreText(match) {
   return completed(match) ? `${match.home_score ?? 0} - ${match.away_score ?? 0}` : 'v';
 }
 
+function sideId(match, side) {
+  return side === 'home'
+    ? match.home_entry_id || match.home_placeholder || 'home'
+    : match.away_entry_id || match.away_placeholder || 'away';
+}
+
+function latestExplicitWinner(ordered) {
+  return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null;
+}
+
+function decisionLabel(tie) {
+  if (!tie.allPlayed) return null;
+  if (tie.firstAgg !== tie.secondAgg) return null;
+  if (tie.firstAway !== tie.secondAway) {
+    const leader = tie.firstAway > tie.secondAway ? tie.firstName : tie.secondName;
+    return `${leader} lead on away goals (${tie.firstAway}-${tie.secondAway})`;
+  }
+  const decidingLeg = [...tie.ordered].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
+  if (!decidingLeg) return tie.winnerName ? `${tie.winnerName} advance after tie-break` : 'Tie-break decision needed';
+  const decidedBy = String(decidingLeg.decided_by || '').replace(/_/g, ' ');
+  if (decidingLeg.home_extra_time_score !== null || decidingLeg.away_extra_time_score !== null) {
+    return `${tie.winnerName || 'Winner'} after FET (${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0})`;
+  }
+  if (decidingLeg.home_penalty_score !== null || decidingLeg.away_penalty_score !== null) {
+    return `${tie.winnerName || 'Winner'} on penalties (${decidingLeg.home_penalty_score ?? 0}-${decidingLeg.away_penalty_score ?? 0})`;
+  }
+  return decidedBy ? `${tie.winnerName || 'Winner'} after ${decidedBy}` : null;
+}
+
 function aggregateTie(legs) {
   const ordered = [...legs].sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
   const first = ordered[0];
-  const firstId = first.home_entry_id || first.home_placeholder || 'home';
-  const secondId = first.away_entry_id || first.away_placeholder || 'away';
+  const firstId = sideId(first, 'home');
+  const secondId = sideId(first, 'away');
   const firstName = teamName(first, 'home');
   const secondName = teamName(first, 'away');
   let firstAgg = 0;
   let secondAgg = 0;
+  let firstAway = 0;
+  let secondAway = 0;
   let allPlayed = true;
 
   ordered.forEach((leg) => {
     if (!completed(leg)) allPlayed = false;
     const home = Number(leg.home_score || 0);
     const away = Number(leg.away_score || 0);
-    const homeId = leg.home_entry_id || leg.home_placeholder || 'home';
+    const homeId = sideId(leg, 'home');
     if (homeId === firstId) {
       firstAgg += home;
       secondAgg += away;
+      secondAway += away;
     } else {
       firstAgg += away;
       secondAgg += home;
+      firstAway += away;
     }
   });
 
   let winnerId = null;
   if (allPlayed) {
-    const explicitWinner = ordered.find((leg) => leg.winner_entry_id)?.winner_entry_id;
-    if (explicitWinner) winnerId = explicitWinner;
-    else if (firstAgg > secondAgg) winnerId = firstId;
+    if (firstAgg > secondAgg) winnerId = firstId;
     else if (secondAgg > firstAgg) winnerId = secondId;
+    else if (firstAway > secondAway) winnerId = firstId;
+    else if (secondAway > firstAway) winnerId = secondId;
+    else winnerId = latestExplicitWinner(ordered);
   }
 
   const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : null;
-
-  return { first, ordered, firstId, secondId, firstName, secondName, firstAgg, secondAgg, allPlayed, winnerId, winnerName };
+  const tie = { first, ordered, firstId, secondId, firstName, secondName, firstAgg, secondAgg, firstAway, secondAway, allPlayed, winnerId, winnerName };
+  return { ...tie, decision: decisionLabel(tie) };
 }
 
 function buildTies(matches) {
@@ -128,7 +162,7 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
                 <div className="champion-trophy">🏆</div>
                 <span>{finalTie?.winnerName ? 'Champion' : 'Awaiting winner'}</span>
                 <strong>{finalTie?.winnerName || 'TBC'}</strong>
-                {finalTie && <em>{finalTie.firstName} {finalTie.firstAgg}-{finalTie.secondAgg} {finalTie.secondName}</em>}
+                {finalTie && <em>{finalTie.firstName} {finalTie.firstAgg}-{finalTie.secondAgg} {finalTie.secondName}{finalTie.decision ? ` · ${finalTie.decision}` : ''}</em>}
               </div>
             </div>
           )}
@@ -155,7 +189,7 @@ function BracketTie({ tie }) {
         <span>{hasAggregate ? tie.secondAgg : scoreText(tie.ordered[0])?.split(' - ')[1] || ''}</span>
         {secondWon && <b>✓</b>}
       </div>
-      <small>{hasAggregate ? `Aggregate ${tie.firstAgg}-${tie.secondAgg}` : `${tie.ordered[0]?.round || 'Round'} · ${Number(tie.ordered[0]?.leg || 1) === 1 ? '1st leg' : '2nd leg'}`}</small>
+      <small>{hasAggregate ? `Aggregate ${tie.firstAgg}-${tie.secondAgg}${tie.decision ? ` · ${tie.decision}` : ''}` : `${tie.ordered[0]?.round || 'Round'} · ${Number(tie.ordered[0]?.leg || 1) === 1 ? '1st leg' : '2nd leg'}`}</small>
     </article>
   );
 }
