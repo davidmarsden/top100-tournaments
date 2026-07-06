@@ -43,6 +43,12 @@
 .public-filter-pair { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
 .public-group-filter { display: grid; gap: 6px; min-width: 220px; color: #44546f; font-weight: 900; }
 .public-group-filter select { border: 1px solid #dce5f5; border-radius: 14px; padding: 0.85rem 1rem; background: white; color: #172033; font-weight: 900; }
+.transparency-card { border: 1px solid #e4ebf7; border-radius: 22px; background: #fff; padding: 16px; margin: 18px 0; box-shadow: 0 10px 24px rgba(21, 39, 75, 0.04); }
+.finish-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 14px; }
+.finish-card { border: 1px solid #e4ebf7; border-radius: 18px; background: linear-gradient(180deg, #fbfdff, #ffffff); overflow: hidden; }
+.finish-card h3, .finish-card h4 { margin: 0; padding: 0.85rem 1rem; background: #f4f7fb; border-bottom: 1px solid #e4ebf7; }
+.seed-table th, .seed-table td, .mini-standings th, .mini-standings td { white-space: nowrap; }
+.mini-standings td:nth-child(2), .seed-table td:nth-child(2) { min-width: 150px; }
 .bulk-toolbar { display: grid; gap: 12px; margin-bottom: 16px; }
 .status-filter-row, .bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .status-filter { border: 1px solid #dce5f5; background: #f4f7fb; color: #44546f; border-radius: 999px; padding: 0.65rem 0.9rem; font-weight: 900; text-transform: capitalize; }
