@@ -9,6 +9,7 @@ function teamName(entry, fallback) { return entry?.teams?.name || fallback || 'T
 function roundIndex(round) { const index = ROUND_ORDER.indexOf(round); return index >= 0 ? index : 99; }
 function roundSort(a, b) { return String(a.bracket || '').localeCompare(String(b.bracket || '')) || roundIndex(a.round) - roundIndex(b.round) || Number(a.match_order || 0) - Number(b.match_order || 0) || Number(a.leg || 1) - Number(b.leg || 1); }
 function groupSort(a, b) { return String(a.groups?.code || '').localeCompare(String(b.groups?.code || '')) || String(a.round || '').localeCompare(String(b.round || ''), undefined, { numeric: true }) || Number(a.match_order || 0) - Number(b.match_order || 0); }
+function tableSort(a, b) { if (b.points !== a.points) return b.points - a.points; if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference; if (b.goals_for !== a.goals_for) return b.goals_for - a.goals_for; if (a.seed && b.seed && a.seed !== b.seed) return a.seed - b.seed; return a.team_name.localeCompare(b.team_name); }
 function latestWinner(ordered) { return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null; }
 function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
   if (firstAway !== secondAway) return `away goals ${firstAway}-${secondAway}`;
@@ -42,14 +43,7 @@ function finalSummary(matches, bracket) {
   const decision = firstAgg === secondAgg ? decisionText(winnerName, firstAway, secondAway, decidingLeg) : null;
   return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, legs: finals };
 }
-function groupMatches(matches) {
-  return matches.reduce((groups, match) => {
-    const key = match.stage === 'group' ? `Group ${match.groups?.code || 'Ungrouped'}` : `${match.bracket || 'Knockout'} · ${match.round || 'Round'}`;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(match);
-    return groups;
-  }, {});
-}
+function groupMatches(matches) { return matches.reduce((groups, match) => { const key = match.stage === 'group' ? `Group ${match.groups?.code || 'Ungrouped'}` : `${match.bracket || 'Knockout'} · ${match.round || 'Round'}`; if (!groups[key]) groups[key] = []; groups[key].push(match); return groups; }, {}); }
 function bracketsFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'knockout').map((match) => match.bracket || 'Cup'))].sort((a, b) => String(a).localeCompare(String(b))); }
 function roundsFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'knockout').map((match) => match.round || 'Round'))].sort((a, b) => roundIndex(a) - roundIndex(b) || String(a).localeCompare(String(b))); }
 function groupCodesFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'group').map((match) => match.groups?.code || 'Ungrouped'))].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })); }
@@ -62,10 +56,33 @@ function matchSideClass(match, side) {
   if ((side === 'home' && awayWon) || (side === 'away' && homeWon)) return 'result-side loser';
   return 'result-side draw';
 }
+function blankTableRow(entry) { return { entry_id: entry.id, team_name: entry.teams?.name || 'Unknown team', manager_name: entry.managers?.display_name || entry.managers?.name || 'TBC', seed: entry.seed, rating: entry.rating, pot: entry.pot, group_code: entry.group_code, played: 0, wins: 0, draws: 0, losses: 0, goals_for: 0, goals_against: 0, goal_difference: 0, points: 0, group_position: null }; }
+function buildTables(entries, matches) {
+  const byGroup = entries.reduce((groups, entry) => { const code = entry.group_code || 'Ungrouped'; if (!groups[code]) groups[code] = []; groups[code].push(entry); return groups; }, {});
+  return Object.entries(byGroup).sort(([a], [b]) => a.localeCompare(b)).map(([groupCode, groupEntries]) => {
+    const rowsById = new Map(groupEntries.map((entry) => [entry.id, blankTableRow(entry)]));
+    matches.filter((match) => match.stage === 'group' && (match.groups?.code || groupCode) === groupCode).filter(isCompleted).forEach((match) => {
+      const home = rowsById.get(match.home_entry_id), away = rowsById.get(match.away_entry_id);
+      if (!home || !away) return;
+      const hs = Number(match.home_score || 0), as = Number(match.away_score || 0);
+      home.played += 1; away.played += 1; home.goals_for += hs; home.goals_against += as; away.goals_for += as; away.goals_against += hs;
+      if (hs > as) { home.wins += 1; home.points += 3; away.losses += 1; }
+      else if (as > hs) { away.wins += 1; away.points += 3; home.losses += 1; }
+      else { home.draws += 1; away.draws += 1; home.points += 1; away.points += 1; }
+    });
+    const rows = [...rowsById.values()].map((row) => ({ ...row, goal_difference: row.goals_for - row.goals_against })).sort(tableSort).map((row, index) => ({ ...row, group_position: index + 1 }));
+    return { groupCode, rows };
+  });
+}
+function allTableRows(tables) { return tables.flatMap((table) => table.rows.map((row) => ({ ...row, group_code: table.groupCode }))); }
+function rowsByFinish(tables, position) { return allTableRows(tables).filter((row) => row.group_position === position).sort(tableSort); }
+function seedRows(entries) { return [...entries].sort((a, b) => Number(a.seed || 9999) - Number(b.seed || 9999) || Number(b.rating || 0) - Number(a.rating || 0) || String(a.teams?.name || '').localeCompare(String(b.teams?.name || ''))); }
+function ordinal(position) { return position === 1 ? '1st' : position === 2 ? '2nd' : position === 3 ? '3rd' : `${position}th`; }
 
 export default function PublicTournamentPage({ tournamentId }) {
   const [tournament, setTournament] = useState(null);
   const [matches, setMatches] = useState([]);
+  const [entries, setEntries] = useState([]);
   const [status, setStatus] = useState('Loading tournament...');
   const [selectedGroup, setSelectedGroup] = useState('all');
   const [selectedBracket, setSelectedBracket] = useState('all');
@@ -82,6 +99,9 @@ export default function PublicTournamentPage({ tournamentId }) {
   const groupResults = useMemo(() => groupMatches(filteredGroupMatches), [filteredGroupMatches]);
   const knockoutResults = useMemo(() => groupMatches(filteredKnockoutMatches), [filteredKnockoutMatches]);
   const knockoutBrackets = useMemo(() => bracketsFrom(matches), [matches]);
+  const tables = useMemo(() => buildTables(entries, matches), [entries, matches]);
+  const orderedSeeds = useMemo(() => seedRows(entries), [entries]);
+  const finishTables = useMemo(() => [1, 2, 3, 4].map((position) => ({ position, rows: rowsByFinish(tables, position) })), [tables]);
   const fixtureCount = matches.filter((match) => !isCompleted(match)).length;
   const resultCount = matches.filter(isCompleted).length;
 
@@ -89,13 +109,16 @@ export default function PublicTournamentPage({ tournamentId }) {
     setStatus('Loading tournament page...');
     const tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name').eq('id', tournamentId).maybeSingle();
     if (tournamentResult.error || !tournamentResult.data) { setStatus('Tournament not found.'); return; }
-    const matchesResult = await supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId);
+    const [matchesResult, entriesResult] = await Promise.all([
+      supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
+      supabase.from('tournament_entries').select('id, seed, rating, pot, group_code, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
+    ]);
     if (matchesResult.error) { setStatus('Could not load results: ' + matchesResult.error.message); return; }
+    if (entriesResult.error) { setStatus('Could not load seedings: ' + entriesResult.error.message); return; }
     setTournament(tournamentResult.data);
     setMatches(matchesResult.data || []);
-    setSelectedGroup('all');
-    setSelectedBracket('all');
-    setSelectedRound('all');
+    setEntries(entriesResult.data || []);
+    setSelectedGroup('all'); setSelectedBracket('all'); setSelectedRound('all');
     setStatus('Tournament page loaded.');
   }
 
@@ -105,6 +128,8 @@ export default function PublicTournamentPage({ tournamentId }) {
   return <main className="app-shell public-archive">
     <section className="hero"><p className="eyebrow">Top 100 Tournament</p><h1>{tournament.name}</h1><p>Status: {tournament.status || 'draft'} · {resultCount} results · {fixtureCount} fixtures remaining</p></section>
     <section className="card winners-card"><p className="eyebrow">Winners</p><div className="overview-metrics compact-metrics">{winners.length ? winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>🏆 {winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}{winner.decision ? ` · ${winner.decision}` : ''}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamName(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamName(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>) : <p className="muted">No completed finals yet.</p>}</div></section>
+    {orderedSeeds.length > 0 && <section className="card"><p className="eyebrow">Draw transparency</p><h2>Rating seedings and pots</h2><div className="standings-wrap"><table className="standings-table seed-table"><thead><tr><th>Seed</th><th>Team</th><th>Manager</th><th>Rating</th><th>Pot</th><th>Group</th></tr></thead><tbody>{orderedSeeds.map((entry) => <tr key={entry.id}><td><strong>{entry.seed || '—'}</strong></td><td><strong>{entry.teams?.name || 'Unknown team'}</strong></td><td>{entry.managers?.display_name || entry.managers?.name || 'TBC'}</td><td>{entry.rating ?? '—'}</td><td>{entry.pot ?? '—'}</td><td>{entry.group_code || '—'}</td></tr>)}</tbody></table></div></section>}
+    {tables.length > 0 && <section className="card"><p className="eyebrow">Qualification transparency</p><h2>Cross-group finishing rankings</h2><p className="muted">These tables compare every 1st, 2nd, 3rd and 4th placed team using points, goal difference, goals scored, then seed. They explain knockout qualification and seeding.</p><div className="finish-grid">{finishTables.map((table) => <section className="finish-card" key={table.position}><h3>{ordinal(table.position)} placed teams</h3><div className="standings-wrap"><table className="standings-table mini-standings"><thead><tr><th>Rank</th><th>Team</th><th>Grp</th><th>Pts</th><th>GD</th><th>GF</th><th>Seed</th></tr></thead><tbody>{table.rows.map((row, index) => <tr key={row.entry_id}><td>{index + 1}</td><td><strong>{row.team_name}</strong></td><td>{row.group_code}</td><td><strong>{row.points}</strong></td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td>{row.goals_for}</td><td>{row.seed || '—'}</td></tr>)}</tbody></table></div></section>)}</div></section>}
     {knockoutBrackets.length > 0 && <section className="card"><p className="eyebrow">Bracket</p><div className="public-bracket-stack">{knockoutBrackets.map((bracket) => <KnockoutBracket key={bracket} title={`${bracket} bracket`} matches={matches.filter((match) => (match.bracket || 'Cup') === bracket)} />)}</div></section>}
     <section className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Knockout fixtures and results</p><h2>{selectedBracket === 'all' ? 'All competitions' : selectedBracket}{selectedRound !== 'all' ? ` · ${selectedRound}` : ''}</h2></div><div className="public-filter-pair">{knockoutBracketOptions.length > 1 && <label className="public-group-filter">Competition<select value={selectedBracket} onChange={(event) => { setSelectedBracket(event.target.value); setSelectedRound('all'); }}><option value="all">All competitions</option>{knockoutBracketOptions.map((bracket) => <option key={bracket} value={bracket}>{bracket}</option>)}</select></label>}{knockoutRoundOptions.length > 1 && <label className="public-group-filter">Round<select value={selectedRound} onChange={(event) => setSelectedRound(event.target.value)}><option value="all">All rounds</option>{knockoutRoundOptions.map((round) => <option key={round} value={round}>{round}</option>)}</select></label>}</div></div><ResultSections sections={knockoutResults} /></section>
     <section className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Group fixtures and results</p><h2>{selectedGroup === 'all' ? 'All groups' : `Group ${selectedGroup}`}</h2></div>{groupOptions.length > 1 && <label className="public-group-filter">Group<select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)}><option value="all">All groups</option>{groupOptions.map((code) => <option key={code} value={code}>Group {code}</option>)}</select></label>}</div><ResultSections sections={groupResults} /></section>
