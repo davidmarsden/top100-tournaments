@@ -43,6 +43,16 @@
 .public-filter-pair { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
 .public-group-filter { display: grid; gap: 6px; min-width: 220px; color: #44546f; font-weight: 900; }
 .public-group-filter select { border: 1px solid #dce5f5; border-radius: 14px; padding: 0.85rem 1rem; background: white; color: #172033; font-weight: 900; }
+.format-summary-card { background: linear-gradient(180deg, #ffffff, #fbfdff); }
+.format-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 14px 0; }
+.format-summary-grid article { border: 1px solid #e4ebf7; border-radius: 18px; padding: 14px; background: white; }
+.format-summary-grid span { display: block; color: #5f6f8e; font-size: 0.75rem; font-weight: 950; text-transform: uppercase; letter-spacing: 0.08em; }
+.format-summary-grid strong { display: block; margin-top: 4px; font-size: 1.45rem; color: #172033; }
+.format-summary-grid small { display: block; margin-top: 4px; color: #5f6f8e; font-weight: 800; }
+.schedule-summary { margin-top: 16px; }
+.schedule-summary h3 { margin: 0 0 10px; }
+.schedule-pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.schedule-pill { display: inline-flex; align-items: center; border-radius: 999px; background: #e8eefc; color: #1d4ed8; padding: 0.55rem 0.75rem; font-weight: 900; }
 .transparency-card { border: 1px solid #e4ebf7; border-radius: 22px; background: #fff; padding: 16px; margin: 18px 0; box-shadow: 0 10px 24px rgba(21, 39, 75, 0.04); }
 .finish-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 14px; }
 .finish-card { border: 1px solid #e4ebf7; border-radius: 18px; background: linear-gradient(180deg, #fbfdff, #ffffff); overflow: hidden; }
