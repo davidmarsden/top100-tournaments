@@ -6,7 +6,8 @@ const ROUND_ORDER = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
 
 function isCompleted(match) { return match.status === 'played' || match.status === 'forfeit'; }
 function teamName(entry, fallback) { return entry?.teams?.name || fallback || 'TBC'; }
-function roundSort(a, b) { return String(a.bracket || '').localeCompare(String(b.bracket || '')) || ROUND_ORDER.indexOf(a.round) - ROUND_ORDER.indexOf(b.round) || Number(a.match_order || 0) - Number(b.match_order || 0) || Number(a.leg || 1) - Number(b.leg || 1); }
+function roundIndex(round) { const index = ROUND_ORDER.indexOf(round); return index >= 0 ? index : 99; }
+function roundSort(a, b) { return String(a.bracket || '').localeCompare(String(b.bracket || '')) || roundIndex(a.round) - roundIndex(b.round) || Number(a.match_order || 0) - Number(b.match_order || 0) || Number(a.leg || 1) - Number(b.leg || 1); }
 function groupSort(a, b) { return String(a.groups?.code || '').localeCompare(String(b.groups?.code || '')) || String(a.round || '').localeCompare(String(b.round || ''), undefined, { numeric: true }) || Number(a.match_order || 0) - Number(b.match_order || 0); }
 function latestWinner(ordered) { return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null; }
 function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
@@ -49,7 +50,8 @@ function groupMatches(matches) {
     return groups;
   }, {});
 }
-function bracketsFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'knockout').map((match) => match.bracket || 'Cup'))]; }
+function bracketsFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'knockout').map((match) => match.bracket || 'Cup'))].sort((a, b) => String(a).localeCompare(String(b))); }
+function roundsFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'knockout').map((match) => match.round || 'Round'))].sort((a, b) => roundIndex(a) - roundIndex(b) || String(a).localeCompare(String(b))); }
 function groupCodesFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'group').map((match) => match.groups?.code || 'Ungrouped'))].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })); }
 function matchSideClass(match, side) {
   if (!isCompleted(match) || match.home_score === null || match.away_score === null) return 'result-side';
@@ -66,14 +68,19 @@ export default function PublicTournamentPage({ tournamentId }) {
   const [matches, setMatches] = useState([]);
   const [status, setStatus] = useState('Loading tournament...');
   const [selectedGroup, setSelectedGroup] = useState('all');
+  const [selectedBracket, setSelectedBracket] = useState('all');
+  const [selectedRound, setSelectedRound] = useState('all');
 
   useEffect(() => { if (hasSupabaseConfig && supabase && tournamentId) loadTournament(); }, [tournamentId]);
 
   const winners = useMemo(() => bracketsFrom(matches).map((bracket) => finalSummary(matches, bracket)).filter(Boolean), [matches]);
   const groupOptions = useMemo(() => groupCodesFrom(matches), [matches]);
+  const knockoutBracketOptions = useMemo(() => bracketsFrom(matches), [matches]);
+  const knockoutRoundOptions = useMemo(() => roundsFrom(matches.filter((match) => selectedBracket === 'all' || (match.bracket || 'Cup') === selectedBracket)), [matches, selectedBracket]);
   const filteredGroupMatches = useMemo(() => matches.filter((match) => match.stage === 'group' && (selectedGroup === 'all' || (match.groups?.code || 'Ungrouped') === selectedGroup)).sort(groupSort), [matches, selectedGroup]);
+  const filteredKnockoutMatches = useMemo(() => matches.filter((match) => match.stage === 'knockout' && (selectedBracket === 'all' || (match.bracket || 'Cup') === selectedBracket) && (selectedRound === 'all' || (match.round || 'Round') === selectedRound)).sort(roundSort), [matches, selectedBracket, selectedRound]);
   const groupResults = useMemo(() => groupMatches(filteredGroupMatches), [filteredGroupMatches]);
-  const knockoutResults = useMemo(() => groupMatches(matches.filter((match) => match.stage === 'knockout').sort(roundSort)), [matches]);
+  const knockoutResults = useMemo(() => groupMatches(filteredKnockoutMatches), [filteredKnockoutMatches]);
   const knockoutBrackets = useMemo(() => bracketsFrom(matches), [matches]);
   const fixtureCount = matches.filter((match) => !isCompleted(match)).length;
   const resultCount = matches.filter(isCompleted).length;
@@ -87,6 +94,8 @@ export default function PublicTournamentPage({ tournamentId }) {
     setTournament(tournamentResult.data);
     setMatches(matchesResult.data || []);
     setSelectedGroup('all');
+    setSelectedBracket('all');
+    setSelectedRound('all');
     setStatus('Tournament page loaded.');
   }
 
@@ -97,7 +106,7 @@ export default function PublicTournamentPage({ tournamentId }) {
     <section className="hero"><p className="eyebrow">Top 100 Tournament</p><h1>{tournament.name}</h1><p>Status: {tournament.status || 'draft'} · {resultCount} results · {fixtureCount} fixtures remaining</p></section>
     <section className="card winners-card"><p className="eyebrow">Winners</p><div className="overview-metrics compact-metrics">{winners.length ? winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>🏆 {winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}{winner.decision ? ` · ${winner.decision}` : ''}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamName(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamName(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>) : <p className="muted">No completed finals yet.</p>}</div></section>
     {knockoutBrackets.length > 0 && <section className="card"><p className="eyebrow">Bracket</p><div className="public-bracket-stack">{knockoutBrackets.map((bracket) => <KnockoutBracket key={bracket} title={`${bracket} bracket`} matches={matches.filter((match) => (match.bracket || 'Cup') === bracket)} />)}</div></section>}
-    <section className="card"><p className="eyebrow">Knockout fixtures and results</p><ResultSections sections={knockoutResults} /></section>
+    <section className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Knockout fixtures and results</p><h2>{selectedBracket === 'all' ? 'All competitions' : selectedBracket}{selectedRound !== 'all' ? ` · ${selectedRound}` : ''}</h2></div><div className="public-filter-pair">{knockoutBracketOptions.length > 1 && <label className="public-group-filter">Competition<select value={selectedBracket} onChange={(event) => { setSelectedBracket(event.target.value); setSelectedRound('all'); }}><option value="all">All competitions</option>{knockoutBracketOptions.map((bracket) => <option key={bracket} value={bracket}>{bracket}</option>)}</select></label>}{knockoutRoundOptions.length > 1 && <label className="public-group-filter">Round<select value={selectedRound} onChange={(event) => setSelectedRound(event.target.value)}><option value="all">All rounds</option>{knockoutRoundOptions.map((round) => <option key={round} value={round}>{round}</option>)}</select></label>}</div></div><ResultSections sections={knockoutResults} /></section>
     <section className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Group fixtures and results</p><h2>{selectedGroup === 'all' ? 'All groups' : `Group ${selectedGroup}`}</h2></div>{groupOptions.length > 1 && <label className="public-group-filter">Group<select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)}><option value="all">All groups</option>{groupOptions.map((code) => <option key={code} value={code}>Group {code}</option>)}</select></label>}</div><ResultSections sections={groupResults} /></section>
   </main>;
 }
