@@ -8,6 +8,7 @@
 .public-section-nav a { flex: 0 0 auto; color: #1d4ed8; text-decoration: none; font-weight: 900; border-radius: 999px; padding: 0.62rem 0.9rem; background: #eef3fb; }
 .public-section-toolbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 16px; }
 .public-section-toolbar h2, .tournament-hub h2 { margin: 0; }
+.format-summary-card .public-section-toolbar h2 { display: none; }
 .public-link-button { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; padding: 0.8rem 1rem; background: #e8eefc; color: #1d4ed8; font-weight: 900; text-decoration: none; white-space: nowrap; }
 .hub-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 16px 0; }
 .hub-stat-card { display: grid; gap: 6px; border: 1px solid #e4ebf7; border-radius: 20px; background: #fbfdff; padding: 16px; }
