@@ -4,6 +4,7 @@ import App from './App.jsx';
 import './styles.css';
 import './workflow-overrides.css';
 import './bracket.css';
+import './schedule.css';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
