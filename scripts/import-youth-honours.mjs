@@ -4,7 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const DEFAULT_FILE = 'data/youth-honours.csv';
+const DEFAULT_CLUBS_FILE = 'data/honours-clubs.csv';
+const DEFAULT_MANAGERS_FILE = 'data/honours-managers.csv';
 const CLUB_COLUMNS = ['Youth Cup', 'Youth Shield'];
 const HONOUR_BY_COLUMN = {
   'Youth Cup': 'Youth Cup Winner',
@@ -16,7 +17,9 @@ function argValue(name, fallback = '') {
   return index >= 0 ? process.argv[index + 1] || fallback : fallback;
 }
 
-const inputFile = argValue('--file', DEFAULT_FILE);
+const legacySingleFile = argValue('--file', '');
+const clubsFile = argValue('--clubs', legacySingleFile || DEFAULT_CLUBS_FILE);
+const managersFile = argValue('--managers', legacySingleFile ? '' : DEFAULT_MANAGERS_FILE);
 const dryRun = process.argv.includes('--dry-run');
 const verbose = process.argv.includes('--verbose');
 
@@ -86,35 +89,69 @@ function rowsFromCsv(text) {
   });
 }
 
+async function loadRows(file, optional = false) {
+  if (!file) return [];
+  const absolute = path.resolve(process.cwd(), file);
+  try {
+    const text = await readFile(absolute, 'utf8');
+    return file.endsWith('.json') ? JSON.parse(text) : rowsFromCsv(text);
+  } catch (error) {
+    if (optional && error.code === 'ENOENT') return [];
+    throw new Error(`Could not read ${file}: ${error.message}`);
+  }
+}
+
 function readSeason(row) {
   return String(row.Season || row.season || row.SEASON || row.S || row.s || '').trim();
 }
 
-function toHonourRows(sourceRows) {
-  const output = [];
+function seasonCode(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return /^s\d+$/i.test(raw) ? raw.toUpperCase() : `S${raw.replace(/^s/i, '')}`;
+}
 
-  sourceRows.forEach((row) => {
-    const season = readSeason(row);
+function bySeason(rows = []) {
+  const lookup = new Map();
+  rows.forEach((row) => {
+    const season = seasonCode(readSeason(row));
+    if (season) lookup.set(season, row);
+  });
+  return lookup;
+}
+
+function managerFromRow(row, competition) {
+  if (!row) return '';
+  return String(row[competition] || row.manager || row.Manager || '').trim();
+}
+
+function toHonourRows(clubRows, managerRows = []) {
+  const output = [];
+  const managerLookup = bySeason(managerRows);
+
+  clubRows.forEach((clubRow) => {
+    const season = seasonCode(readSeason(clubRow));
     if (!season) return;
 
-    if (row.competition || row.Competition || row.honour || row.Honour) {
-      const competition = String(row.competition || row.Competition || '').trim();
-      const team = String(row.team || row.Team || row.club || row.Club || '').trim();
-      const manager = String(row.manager || row.Manager || '').trim();
-      const honour = String(row.honour || row.Honour || `${competition} Winner`).trim();
-      const position = Number(row.position || row.Position || 1) || 1;
+    if (clubRow.competition || clubRow.Competition || clubRow.honour || clubRow.Honour) {
+      const competition = String(clubRow.competition || clubRow.Competition || '').trim();
+      const team = String(clubRow.team || clubRow.Team || clubRow.club || clubRow.Club || '').trim();
+      const manager = String(clubRow.manager || clubRow.Manager || '').trim();
+      const honour = String(clubRow.honour || clubRow.Honour || `${competition} Winner`).trim();
+      const position = Number(clubRow.position || clubRow.Position || 1) || 1;
       if (competition && team) output.push({ season, competition, team, manager, honour, position });
       return;
     }
 
+    const managerRow = managerLookup.get(season);
     CLUB_COLUMNS.forEach((competition) => {
-      const team = String(row[competition] || '').trim();
+      const team = String(clubRow[competition] || '').trim();
       if (!team) return;
       output.push({
         season,
         competition,
         team,
-        manager: '',
+        manager: managerFromRow(managerRow, competition),
         honour: HONOUR_BY_COLUMN[competition] || `${competition} Winner`,
         position: 1,
       });
@@ -187,10 +224,19 @@ async function findOrCreateTournament({ season, competition }) {
   });
 }
 
+async function updateEntryManager(entryId, managerId) {
+  if (!managerId || dryRun) return;
+  const { error } = await supabase.from('tournament_entries').update({ manager_id: managerId }).eq('id', entryId).is('manager_id', null);
+  if (error) throw new Error(`tournament_entries manager update failed: ${error.message}`);
+}
+
 async function findOrCreateEntry({ tournamentId, teamId, managerId }) {
   const filters = [['tournament_id', tournamentId], ['team_id', teamId]];
-  let existing = await maybeSingle('tournament_entries', 'id', filters);
-  if (existing) return existing;
+  const existing = await maybeSingle('tournament_entries', 'id, manager_id', filters);
+  if (existing) {
+    await updateEntryManager(existing.id, managerId);
+    return existing;
+  }
 
   const values = {
     tournament_id: tournamentId,
@@ -229,14 +275,17 @@ async function importHonour(row) {
 }
 
 async function main() {
-  const absolute = path.resolve(process.cwd(), inputFile);
-  const text = await readFile(absolute, 'utf8');
-  const sourceRows = inputFile.endsWith('.json') ? JSON.parse(text) : rowsFromCsv(text);
-  const honourRows = toHonourRows(sourceRows);
+  const clubRows = await loadRows(clubsFile);
+  const managerRows = await loadRows(managersFile, true);
+  const honourRows = toHonourRows(clubRows, managerRows);
 
   if (!honourRows.length) {
-    console.error(`No Youth Cup honours found in ${inputFile}.`);
+    console.error(`No Youth Cup honours found in ${clubsFile}.`);
     process.exit(1);
+  }
+
+  if (!managerRows.length && !legacySingleFile) {
+    console.warn(`No manager file found at ${managersFile}. Importing club winners without managers.`);
   }
 
   const counts = { imported: 0, skipped: 0, 'would-import': 0 };
@@ -244,11 +293,11 @@ async function main() {
   for (const row of honourRows) {
     const result = await importHonour(row);
     counts[result.action] = (counts[result.action] || 0) + 1;
-    if (verbose) console.log(`${result.action}: ${row.season} ${row.competition} — ${row.team}`);
+    if (verbose) console.log(`${result.action}: ${row.season} ${row.competition} — ${row.team}${row.manager ? ` (${row.manager})` : ''}`);
   }
 
-  console.log(`Youth honours import complete from ${inputFile}.`);
-  console.log(counts);
+  console.log('Youth honours import complete.');
+  console.log({ clubsFile, managersFile: managerRows.length ? managersFile : null, ...counts });
 }
 
 main().catch((error) => {
