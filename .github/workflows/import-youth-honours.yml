@@ -1,0 +1,61 @@
+name: Import Youth Honours
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only — do not write to Supabase"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      clubs_file:
+        description: "CSV path for winning clubs"
+        required: true
+        default: "data/honours-clubs.csv"
+      managers_file:
+        description: "CSV path for winning managers"
+        required: true
+        default: "data/honours-managers.csv"
+      verbose:
+        description: "Print each imported/skipped row"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  import-youth-honours:
+    name: Import Youth honours
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run importer
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          FLAGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then FLAGS="$FLAGS --dry-run"; fi
+          if [ "${{ inputs.verbose }}" = "true" ]; then FLAGS="$FLAGS --verbose"; fi
+          node scripts/import-youth-honours.mjs \
+            --clubs "${{ inputs.clubs_file }}" \
+            --managers "${{ inputs.managers_file }}" \
+            $FLAGS
