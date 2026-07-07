@@ -16,32 +16,20 @@ const groupCodes = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const initialForm = { seasonCode: 'S28', competitionName: 'Youth Cup', tournamentName: 'S28 Youth Cup', maxEntries: 64, teamsPerGroup: 4, groupCount: 16, knockoutTeams: 32, secondaryBracketName: 'Shield' };
 const demoEntrants = ['Genoa', 'Espanyol', 'Bayern Munich', 'Barcelona', 'CSKA', 'Hertha Berlin', 'Independiente', 'River Plate', 'Montpellier', 'West Brom', 'Club Brugge', 'Juventus', 'Leicester Youth', 'Levante', 'Dortmund', 'Hamburg', 'Stoke City', 'Sao Paulo', 'FC Porto', 'Sampdoria', 'Sporting', 'SC Internacional', 'Chelsea', 'Anderlecht', 'Celtic Factory', 'Dynamo Moskva', 'Besiktas', 'PSV', 'AC Milan', 'Crystal Palace', 'Fenerbahce', 'Monaco', 'Benfica', 'Cruzeiro', 'Liverpool', 'Athletic Club', 'Tottenham', 'Werder Bremen', 'Villarreal', 'Real Madrid', 'Udinese', 'Valencia', 'Wolfsburg', 'CR Flamengo', 'Leverkusen', 'Swansea', 'Newcastle United', 'Saint Etienne', 'Ajax', 'Roma', 'Lazio', 'Marseille', 'Fiorentina', 'Lyon', 'Sevilla', 'Porto B', 'Everton', 'Napoli', 'Atalanta', 'Boca Juniors', 'Palmeiras', 'Flamengo Youth', 'Galatasaray', 'Rangers'].map((teamName, index) => ({ id: index + 1, team_name: teamName, manager_name: 'Manager ' + (index + 1), seed: index + 1, rating: 100 - Math.floor(index / 4) }));
 
-function publicTournamentIdFromPath() {
-  const match = window.location.pathname.match(/^\/(?:tournaments|public)\/(\d+)\/?$/);
-  return match ? Number(match[1]) : null;
-}
-function defaultPublicTournamentId() {
-  const raw = import.meta.env.VITE_PUBLIC_TOURNAMENT_ID || '13';
-  const id = Number(raw);
-  return Number.isFinite(id) && id > 0 ? id : 13;
-}
+function publicTournamentIdFromPath() { const match = window.location.pathname.match(/^\/(?:tournaments|public)\/(\d+)\/?$/); return match ? Number(match[1]) : null; }
+function defaultPublicTournamentId() { const id = Number(import.meta.env.VITE_PUBLIC_TOURNAMENT_ID || '13'); return Number.isFinite(id) && id > 0 ? id : 13; }
 function isAdminPath() { return window.location.pathname.match(/^\/admin\/?$/); }
 function normalStatus(tournament) { return String(tournament?.status || 'draft').toLowerCase(); }
 function isArchived(tournament) { return normalStatus(tournament) === 'archived'; }
-function sortTournaments(items) {
-  const rank = { published: 0, groups_approved: 1, draft: 2, completed: 3, archived: 4 };
-  return [...items].sort((a, b) => (rank[normalStatus(a)] ?? 2) - (rank[normalStatus(b)] ?? 2) || new Date(b.created_at || 0) - new Date(a.created_at || 0));
-}
+function sortTournaments(items) { const rank = { published: 0, groups_approved: 1, draft: 2, completed: 3, archived: 4 }; return [...items].sort((a, b) => (rank[normalStatus(a)] ?? 2) - (rank[normalStatus(b)] ?? 2) || new Date(b.created_at || 0) - new Date(a.created_at || 0)); }
+function completed(match) { return match.status === 'played' || match.status === 'forfeit'; }
 function generateGroups(entries, groupCount) {
   const groups = groupCodes.slice(0, groupCount).map((code, index) => ({ code, group_order: index + 1, entries: [] }));
   for (let start = 0; start < entries.length; start += groupCount) {
     const potNumber = Math.floor(start / groupCount) + 1;
     const pot = entries.slice(start, start + groupCount);
     const orderedPot = potNumber % 2 === 1 ? pot : [...pot].reverse();
-    orderedPot.forEach((entry, index) => {
-      const group = groups[index % groupCount];
-      if (group) group.entries.push({ ...entry, group_code: group.code, pot: potNumber });
-    });
+    orderedPot.forEach((entry, index) => { const group = groups[index % groupCount]; if (group) group.entries.push({ ...entry, group_code: group.code, pot: potNumber }); });
   }
   return groups;
 }
@@ -49,12 +37,10 @@ function roundRobinRounds(entries) {
   const teams = [...entries];
   if (teams.length % 2 === 1) teams.push({ bye: true });
   const rounds = [];
-  const roundCount = teams.length - 1;
-  const half = teams.length / 2;
   let rotation = [...teams];
-  for (let roundIndex = 0; roundIndex < roundCount; roundIndex += 1) {
+  for (let roundIndex = 0; roundIndex < teams.length - 1; roundIndex += 1) {
     const pairings = [];
-    for (let index = 0; index < half; index += 1) {
+    for (let index = 0; index < teams.length / 2; index += 1) {
       const first = rotation[index];
       const second = rotation[rotation.length - 1 - index];
       if (!first.bye && !second.bye) pairings.push(roundIndex % 2 === 0 ? [first, second] : [second, first]);
@@ -70,13 +56,10 @@ function generateFixtures(groups) {
   groups.forEach((group) => {
     const firstLegRounds = roundRobinRounds(group.entries);
     const allRounds = [...firstLegRounds, ...firstLegRounds.map((round) => round.map(([home, away]) => [away, home]))];
-    allRounds.forEach((roundPairings, roundIndex) => {
-      roundPairings.forEach(([home, away]) => fixtures.push({ group_code: group.code, round: 'MD' + (roundIndex + 1), leg: roundIndex < firstLegRounds.length ? 1 : 2, match_order: matchOrder++, home_entry_id: home.id, away_entry_id: away.id, home_placeholder: home.team_name, away_placeholder: away.team_name }));
-    });
+    allRounds.forEach((roundPairings, roundIndex) => roundPairings.forEach(([home, away]) => fixtures.push({ group_code: group.code, round: 'MD' + (roundIndex + 1), leg: roundIndex < firstLegRounds.length ? 1 : 2, match_order: matchOrder++, home_entry_id: home.id, away_entry_id: away.id, home_placeholder: home.team_name, away_placeholder: away.team_name })));
   });
   return fixtures;
 }
-function completed(match) { return match.status === 'played' || match.status === 'forfeit'; }
 
 export default function App() {
   const explicitPublicTournamentId = publicTournamentIdFromPath();
@@ -86,30 +69,56 @@ export default function App() {
 }
 
 function AdminGate({ children }) {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [checking, setChecking] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
   const [error, setError] = useState('');
-  const [isAuthed, setIsAuthed] = useState(() => window.localStorage.getItem('top100_admin_auth') === 'ok');
 
-  function login(event) {
-    event.preventDefault();
-    const configured = import.meta.env.VITE_ADMIN_PASSWORD || '';
-    if (!configured) {
-      setError('Admin password is not configured. Add VITE_ADMIN_PASSWORD in Netlify environment variables.');
-      return;
+  useEffect(() => {
+    if (!hasSupabaseConfig || !supabase) { setChecking(false); return undefined; }
+    let mounted = true;
+    async function checkSession() {
+      const { data } = await supabase.auth.getSession();
+      if (mounted) await checkAdmin(data.session?.user || null);
     }
-    if (password === configured) {
-      window.localStorage.setItem('top100_admin_auth', 'ok');
-      setIsAuthed(true);
-      setPassword('');
-      setError('');
-    } else {
-      setError('Wrong password.');
-    }
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { checkAdmin(session?.user || null); });
+    checkSession();
+    return () => { mounted = false; listener.subscription.unsubscribe(); };
+  }, []);
+
+  async function checkAdmin(user) {
+    if (!user) { setIsAdmin(false); setUserEmail(''); setChecking(false); return; }
+    const { data, error: rpcError } = await supabase.rpc('is_admin');
+    setUserEmail(user.email || 'admin user');
+    setIsAdmin(Boolean(data) && !rpcError);
+    setError(rpcError ? 'Could not verify admin permissions: ' + rpcError.message : '');
+    setChecking(false);
   }
 
-  if (isAuthed) return <>{children}</>;
-  return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Admin login</h1><p>Public visitors see the live Youth Cup page. Admin tools are available here only after login.</p></section><section className="card admin-login-card"><form onSubmit={login}><label>Admin password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /></label><button type="submit">Log in</button>{error && <p className="status error-text">{error}</p>}</form><p className="muted">Admin URL: /admin</p></section></main>;
+  async function login(event) {
+    event.preventDefault();
+    setError('');
+    setChecking(true);
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (signInError) { setError(signInError.message); setChecking(false); return; }
+    setPassword('');
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+    setIsAdmin(false);
+    setUserEmail('');
+  }
+
+  if (!hasSupabaseConfig || !supabase) return <main className="app-shell"><section className="warning-card"><strong>Supabase is not connected.</strong><span>Admin login needs VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.</span></section></main>;
+  if (checking) return <main className="app-shell"><section className="card"><h1>Checking admin access...</h1></section></main>;
+  if (isAdmin) return <AdminAuthContext.Provider value={{ logout, userEmail }}>{children}</AdminAuthContext.Provider>;
+  return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Admin login</h1><p>Public visitors see the live Youth Cup page. Admin tools require a Supabase admin account.</p></section><section className="card admin-login-card"><form onSubmit={login}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" autoFocus /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label><button type="submit" disabled={checking}>Log in</button>{error && <p className="status error-text">{error}</p>}</form>{userEmail && <p className="muted">Signed in as {userEmail}, but this account is not in admin_users.</p>}<p className="muted">Admin URL: /admin</p></section></main>;
 }
+
+const AdminAuthContext = { Provider: ({ children }) => children };
 
 function AdminDashboard() {
   const [form, setForm] = useState(initialForm);
@@ -127,7 +136,7 @@ function AdminDashboard() {
   const selectedTournament = useMemo(() => tournaments.find((item) => item.id === selectedTournamentId) || tournaments.find((item) => !isArchived(item)) || tournaments[0] || null, [selectedTournamentId, tournaments]);
   useEffect(() => { if (canUseDatabase && selectedTournament?.id) loadProgressStats(selectedTournament.id); }, [canUseDatabase, selectedTournament?.id]);
 
-  function logout() { window.localStorage.removeItem('top100_admin_auth'); window.location.href = '/'; }
+  async function logout() { await supabase.auth.signOut(); window.location.href = '/'; }
   function updateField(field, value) { setForm((current) => ({ ...current, [field]: value })); }
   function buildPreview(entries) {
     const groupCount = Number(selectedTournament?.group_count || form.groupCount || Math.ceil(entries.length / Number(form.teamsPerGroup || 4)) || 16);
@@ -144,13 +153,7 @@ function AdminDashboard() {
     setStatus('Loading tournaments...');
     const { data, error } = await supabase.from('tournaments').select('id, name, status, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, created_at').order('created_at', { ascending: false });
     if (error) setStatus('Could not load tournaments: ' + error.message);
-    else {
-      const ordered = sortTournaments(data || []);
-      setTournaments(ordered);
-      if (!selectedTournamentId && ordered[0]) setSelectedTournamentId(ordered[0].id);
-      setBulkSelectedIds((ids) => ids.filter((id) => ordered.some((item) => item.id === id)));
-      setStatus('Tournaments loaded');
-    }
+    else { const ordered = sortTournaments(data || []); setTournaments(ordered); if (!selectedTournamentId && ordered[0]) setSelectedTournamentId(ordered[0].id); setBulkSelectedIds((ids) => ids.filter((id) => ordered.some((item) => item.id === id))); setStatus('Tournaments loaded'); }
     setLoading(false);
   }
   async function loadProgressStats(tournamentId) {
@@ -161,54 +164,30 @@ function AdminDashboard() {
     const knockoutMatches = matches.filter((match) => match.stage === 'knockout');
     setProgressStats({ groupTotal: groupMatches.length, groupPlayed: groupMatches.filter(completed).length, knockoutTotal: knockoutMatches.length, knockoutPlayed: knockoutMatches.filter(completed).length });
   }
-  async function refreshTournamentData() {
-    await loadTournaments();
-    const tournamentId = selectedTournament?.id || selectedTournamentId;
-    if (tournamentId) await loadProgressStats(tournamentId);
-  }
-  async function deleteRows(table, tournamentIds) {
-    if (!tournamentIds.length) return;
-    const { error } = await supabase.from(table).delete().in('tournament_id', tournamentIds);
-    if (error) throw error;
-  }
+  async function refreshTournamentData() { await loadTournaments(); const tournamentId = selectedTournament?.id || selectedTournamentId; if (tournamentId) await loadProgressStats(tournamentId); }
+  async function deleteRows(table, tournamentIds) { if (!tournamentIds.length) return; const { error } = await supabase.from(table).delete().in('tournament_id', tournamentIds); if (error) throw error; }
   async function deleteTournamentIds(ids, label = 'selected') {
     if (!canUseDatabase || !ids.length) return;
     if (!window.confirm(`Delete ${ids.length} ${label} tournament(s) and their fixtures, groups, entries and honours? This cannot be undone.`)) return;
-    setLoading(true);
-    setStatus(`Deleting ${label} tournaments...`);
+    setLoading(true); setStatus(`Deleting ${label} tournaments...`);
     try {
-      await deleteRows('achievements', ids);
-      await deleteRows('honours', ids);
-      await deleteRows('tournament_round_dates', ids);
+      await deleteRows('achievements', ids); await deleteRows('honours', ids); await deleteRows('tournament_round_dates', ids);
       const { data: matchRows, error: matchFindError } = await supabase.from('matches').select('id').in('tournament_id', ids);
       if (matchFindError) throw matchFindError;
       const matchIds = (matchRows || []).map((match) => match.id);
-      if (matchIds.length) {
-        const { error: forfeitError } = await supabase.from('forfeits').delete().in('match_id', matchIds);
-        if (forfeitError) throw forfeitError;
-      }
-      await deleteRows('matches', ids);
-      await deleteRows('groups', ids);
-      await deleteRows('tournament_entries', ids);
-      await deleteRows('tournament_rounds', ids);
-      await deleteRows('tournament_stages', ids);
+      if (matchIds.length) { const { error: forfeitError } = await supabase.from('forfeits').delete().in('match_id', matchIds); if (forfeitError) throw forfeitError; }
+      await deleteRows('matches', ids); await deleteRows('groups', ids); await deleteRows('tournament_entries', ids); await deleteRows('tournament_rounds', ids); await deleteRows('tournament_stages', ids);
       const { error: tournamentError } = await supabase.from('tournaments').delete().in('id', ids);
       if (tournamentError) throw tournamentError;
-      setSelectedTournamentId((current) => ids.includes(current) ? null : current);
-      setBulkSelectedIds([]);
-      setPreview(null);
-      await loadTournaments();
-      setStatus(`Deleted ${ids.length} tournament(s).`);
+      setSelectedTournamentId((current) => ids.includes(current) ? null : current); setBulkSelectedIds([]); setPreview(null); await loadTournaments(); setStatus(`Deleted ${ids.length} tournament(s).`);
     } catch (error) { setStatus('Delete failed: ' + error.message); }
     setLoading(false);
   }
   async function updateTournamentIds(ids, nextStatus) {
     if (!canUseDatabase || !ids.length) return;
-    setLoading(true);
-    setStatus(`Marking ${ids.length} tournament(s) as ${nextStatus}...`);
+    setLoading(true); setStatus(`Marking ${ids.length} tournament(s) as ${nextStatus}...`);
     const { error } = await supabase.from('tournaments').update({ status: nextStatus }).in('id', ids);
-    if (error) setStatus('Status update failed: ' + error.message);
-    else { await loadTournaments(); setStatus(`Marked ${ids.length} tournament(s) as ${nextStatus}.`); }
+    if (error) setStatus('Status update failed: ' + error.message); else { await loadTournaments(); setStatus(`Marked ${ids.length} tournament(s) as ${nextStatus}.`); }
     setLoading(false);
   }
   async function findOrCreate(table, match, row) {
@@ -222,18 +201,14 @@ function AdminDashboard() {
   async function createTournament(event) {
     event.preventDefault();
     if (!canUseDatabase) return setStatus('Add your Supabase environment variables in Netlify before saving.');
-    setLoading(true);
-    setStatus('Creating tournament...');
+    setLoading(true); setStatus('Creating tournament...');
     try {
       const seasonNumber = Number(String(form.seasonCode).replace(/[^0-9]/g, '')) || null;
       const seasonId = await findOrCreate('seasons', { code: form.seasonCode }, { code: form.seasonCode, number: seasonNumber });
       const competitionId = await findOrCreate('competitions', { name: form.competitionName }, { name: form.competitionName, competition_type: 'youth' });
       const { data, error } = await supabase.from('tournaments').insert({ season_id: seasonId, competition_id: competitionId, name: form.tournamentName, status: 'draft', format: 'groups_then_knockout', source: 'app', max_entries: Number(form.maxEntries), actual_entries: 0, group_count: Number(form.groupCount), teams_per_group: Number(form.teamsPerGroup), knockout_teams: Number(form.knockoutTeams), secondary_bracket_name: form.secondaryBracketName || null, rules_notes: 'Created from Top 100 tournament app dashboard' }).select('id').single();
       if (error) throw error;
-      setSelectedTournamentId(data.id);
-      setActiveModule('Overview');
-      setStatus(form.tournamentName + ' created successfully.');
-      await loadTournaments();
+      setSelectedTournamentId(data.id); setActiveModule('Overview'); setStatus(form.tournamentName + ' created successfully.'); await loadTournaments();
     } catch (error) { setStatus('Create failed: ' + error.message); }
     setLoading(false);
   }
