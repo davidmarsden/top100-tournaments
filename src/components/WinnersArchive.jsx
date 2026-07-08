@@ -142,6 +142,6 @@ function WinnerCard({ row, featured = false }) {
 function HonoursTable({ title, rows }) {
   return <section className="honours-leaderboard-card">
     <h4>{title}</h4>
-    {rows.length ? <table className="honours-leaderboard-table"><tbody>{rows.map((row) => <tr key={row.name}><td><strong>{row.name}</strong></td><td><span className="wins-pill">{row.wins} win{row.wins === 1 ? '' : 's'}</span></td></tr>)}</tbody></table> : <p className="muted">No winners yet.</p>}
+    {rows.length ? <div className="honours-leaderboard-list">{rows.map((row) => <div className="honours-leaderboard-row" key={row.name}><strong>{row.name}</strong><span>{row.wins}</span></div>)}</div> : <p className="muted">No winners yet.</p>}
   </section>;
 }
