@@ -3,6 +3,7 @@ import KnockoutBracket from './KnockoutBracket.jsx';
 import MatchComments from './MatchComments.jsx';
 import WinnersArchive from './WinnersArchive.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { fixtureSpotlights as buildFixtureSpotlights } from '../lib/spotlights';
 
 const ROUND_ORDER = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
 const RULES_URL = 'https://smtop100.blog/youth-cup-format-rules/';
@@ -224,10 +225,10 @@ function decorateSpotlight(match, pressure, prestige, entriesMap) {
   const pedigreeReasons = [...home.reasons, ...away.reasons].filter((reason) => !reason.includes('seed')).slice(0, 2);
   if (pressure.score >= 25) return { type: 'stakes', tag: pressure.tag, story: pressure.story };
   if (holderEntry) return { type: 'holder', tag: 'Holder watch', story: `${describeEntry(holderEntry)} begin their defence under the spotlight.` };
-  if (seedGap >= 20 && Math.min(home.topSeed || 9999, away.topSeed || 9999) <= 8) return { type: 'underdog', tag: 'Upset watch', story: `${describeEntry(underdogEntry)} get a shot at a major scalp against ${describeEntry(favouriteEntry)}.` };
+  if (seedGap >= 20 && Math.min(home.topSeed || 9999, away.topSeed || 9999) <= 8) return { type: 'underdog', tag: 'Upset watch', story: `${describeEntry(underdogEntry)} get a shot at a statement result against ${describeEntry(favouriteEntry)}.` };
   if (homeEntry?.managers || awayEntry?.managers) {
     const managerEntry = (home.score >= away.score ? homeEntry : awayEntry) || homeEntry || awayEntry;
-    if (managerEntry?.managers) return { type: 'manager', tag: 'Manager spotlight', story: `${managerName(managerEntry)} has ${managerEntry.teams?.name || 'his side'} in one of the round's sharper storylines.` };
+    if (managerEntry?.managers) return { type: 'manager', tag: 'Manager spotlight', story: `${managerName(managerEntry)} and ${managerEntry.teams?.name || 'his side'} are worth watching here.` };
   }
   if (pedigreeReasons.length) return { type: 'pedigree', tag: 'Honours pedigree', story: `A fixture with history: ${pedigreeReasons.join(' and ')} involved.` };
   if (Math.min(home.topSeed || 9999, away.topSeed || 9999) <= 8) return { type: 'seed', tag: 'Seed under pressure', story: `A top seed has an early chance to justify the billing — or give the group a twist.` };
@@ -301,7 +302,7 @@ export default function PublicTournamentPage({ tournamentId }) {
   const scheduleRows = useMemo(() => roundDateSummary(roundDates), [roundDates]);
   const groupScheduleRows = useMemo(() => groupFixtureSchedule(datedMatches), [datedMatches]);
   const nextFixtures = useMemo(() => upcomingMatches(datedMatches), [datedMatches]);
-  const featured = useMemo(() => fixtureSpotlights(datedMatches, entries, honours, tables, tournamentId), [datedMatches, entries, honours, tables, tournamentId]);
+  const featured = useMemo(() => buildFixtureSpotlights(datedMatches, entries, honours, tables, tournamentId), [datedMatches, entries, honours, tables, tournamentId]);
   const stats = useMemo(() => competitionStats(datedMatches, entries, tables, forfeits), [datedMatches, entries, tables, forfeits]);
 
   async function loadTournament() {
