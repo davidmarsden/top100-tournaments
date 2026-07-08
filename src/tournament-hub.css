@@ -44,17 +44,29 @@
 .winners-archive-header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 14px; }
 .winners-archive-header p { margin: 6px 0 0; }
 .latest-winner-list { margin-bottom: 14px; }
-.latest-winner-card { border-color: #fde68a !important; background: #fffdf4 !important; box-shadow: inset 6px 0 0 #f59e0b; }
+.honour-card-cup { border-color: #fde68a !important; box-shadow: inset 6px 0 0 #f59e0b; }
+.honour-card-shield { border-color: #bfdbfe !important; box-shadow: inset 6px 0 0 #2563eb; }
+.latest-winner-card.honour-card-cup { background: #fffdf4 !important; }
+.latest-winner-card.honour-card-shield { background: #f8fbff !important; }
+.honour-card-cup span { color: #92400e; }
+.honour-card-shield span { color: #1d4ed8; }
 .winners-filter-row { margin: 16px 0 12px; }
 .compact-winner-list { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .archive-volume-note { margin-top: 10px; }
 .honours-leaderboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 18px; }
-.honours-leaderboard-card { border: 1px solid #e4ebf7; border-radius: 20px; background: #fbfdff; padding: 14px; }
-.honours-leaderboard-card h4 { margin: 0 0 10px; }
+.honours-leaderboard-card { border: 1px solid #e4ebf7; border-radius: 20px; background: #fbfdff; padding: 14px; overflow: hidden; }
+.honours-leaderboard-card h4 { margin: -14px -14px 10px; padding: 14px; border-bottom: 1px solid #edf2fb; }
+.honours-leaderboard-cup { border-color: #fde68a; }
+.honours-leaderboard-cup h4 { background: #fff8e6; color: #92400e; }
+.honours-leaderboard-shield { border-color: #bfdbfe; }
+.honours-leaderboard-shield h4 { background: #eff6ff; color: #1d4ed8; }
 .honours-leaderboard-list { display: grid; }
 .honours-leaderboard-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 4px; border-top: 1px solid #edf2fb; }
+.honours-leaderboard-row:first-child { border-top: 0; }
 .honours-leaderboard-row strong { min-width: 0; }
-.honours-leaderboard-row span { flex: 0 0 auto; min-width: 2.35rem; height: 2.35rem; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: #eef3fb; color: #1d4ed8; font-size: 1.1rem; font-weight: 950; }
+.honours-leaderboard-row span { flex: 0 0 auto; min-width: 2.35rem; height: 2.35rem; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 950; }
+.honours-leaderboard-cup .honours-leaderboard-row span { background: #fff8e6; color: #92400e; }
+.honours-leaderboard-shield .honours-leaderboard-row span { background: #eff6ff; color: #1d4ed8; }
 @media (max-width: 820px) {
   .public-section-nav { border-radius: 18px; }
   .public-section-toolbar, .winners-archive-header { flex-direction: column; }
