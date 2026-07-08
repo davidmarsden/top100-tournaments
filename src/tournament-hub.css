@@ -18,6 +18,9 @@
 .featured-match-grid, .previous-winner-list, .fair-play-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 14px; }
 .featured-match-card, .previous-winner-list article, .fair-play-card, .holder-strip article { display: grid; gap: 6px; border: 1px solid #e4ebf7; border-radius: 20px; background: #fbfdff; padding: 16px; }
 .featured-match-card strong, .previous-winner-list strong, .fair-play-card strong, .holder-strip strong { font-size: 1.08rem; }
+.spotlight-match-card { border-color: #bfdbfe; box-shadow: inset 6px 0 0 #2563eb; }
+.spotlight-match-card span { color: #1d4ed8; }
+.spotlight-match-card p { margin: 6px 0 0; color: var(--hub-muted); font-weight: 750; line-height: 1.35; }
 .holder-strip, .schedule-summary, .previous-winners { margin-top: 18px; }
 .holder-strip h3, .schedule-summary h3, .previous-winners h3 { margin: 0 0 10px; }
 .holder-strip > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
