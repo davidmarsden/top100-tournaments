@@ -12,7 +12,7 @@ if (start === -1 || end === -1) {
 const replacement = `function describeManager(entry) {
   const manager = managerName(entry);
   const club = entry?.teams?.name || 'their side';
-  return manager && manager !== 'TBC' ? \`${'${manager}'}\u2019s ${'${club}'}\` : club;
+  return manager && manager !== 'TBC' ? \`${'${manager}'}’s ${'${club}'}\` : club;
 }
 function pickHomeUnderdog(match, homePrestige, awayPrestige, homeEntry, awayEntry) {
   const homeSeed = homePrestige.topSeed || 9999;
@@ -40,15 +40,15 @@ function decorateSpotlight(match, pressure, prestige, entriesMap) {
 
   if (holderEntry) {
     const label = holderType?.shieldWins > holderType?.cupWins ? 'Shield holders' : 'Youth Cup holders';
-    return { type: 'holder', tag: 'Holder watch', story: `${'${describeManager(holderEntry) }'} arrive as ${'${label}'}. The first job is simple enough: avoid becoming someone else\u2019s headline.` };
+    return { type: 'holder', tag: 'Holder watch', story: `${'${describeManager(holderEntry)}'} arrive as ${'${label}'}. The first job is simple enough: avoid becoming someone else’s headline.` };
   }
 
   if (homeUnderdog) {
-    return { type: 'underdog', tag: 'Home underdog watch', story: `${'${describeManager(homeUnderdog.underdog) }'} have home advantage against ${'${describeManager(homeUnderdog.favourite) }'}. This is exactly the sort of tie where the favourite has to stay switched on.` };
+    return { type: 'underdog', tag: 'Home underdog watch', story: `${'${describeManager(homeUnderdog.underdog)}'} have home advantage against ${'${describeManager(homeUnderdog.favourite)}'}. This is exactly the sort of tie where the favourite has to stay switched on.` };
   }
 
   if (match.stage === 'group' && topSeed <= 8) {
-    return { type: 'seed', tag: 'Seed under pressure', story: `${'${describeManager(topSeedEntry) }'} are seeded to set the pace in Group ${'${group}'}. These are the fixtures favourites are expected to win cleanly.` };
+    return { type: 'seed', tag: 'Seed under pressure', story: `${'${describeManager(topSeedEntry)}'} are seeded to set the pace in Group ${'${group}'}. These are the fixtures favourites are expected to win cleanly.` };
   }
 
   if (homeEntry?.managers && awayEntry?.managers && managerName(homeEntry) !== 'TBC' && managerName(awayEntry) !== 'TBC') {
@@ -69,5 +69,6 @@ function decorateSpotlight(match, pressure, prestige, entriesMap) {
 
 text = text.slice(0, start) + replacement + text.slice(end);
 text = text.replace("const wantedTypes = ['holder', 'stakes', 'underdog', 'manager', 'pedigree', 'seed'];", "const wantedTypes = ['holder', 'stakes', 'underdog', 'seed', 'manager', 'pedigree', 'knockout', 'spotlight'];");
+text = text.replace('major scalp', 'statement result');
 
 fs.writeFileSync(path, text);
