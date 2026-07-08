@@ -18,6 +18,19 @@ function commentTypeLabel(type) {
   if (type === 'admin_report') return 'Match report';
   return 'Pre-match quote';
 }
+function normaliseComment(item) {
+  return {
+    comment_type: 'pre_match',
+    prediction_score: null,
+    player_to_watch: null,
+    first_goalscorer: null,
+    badge_label: null,
+    is_pinned: false,
+    editor_pick: false,
+    reactions: {},
+    ...item,
+  };
+}
 
 export default function CommentsModeration({ selectedTournament }) {
   const [comments, setComments] = useState([]);
@@ -29,23 +42,31 @@ export default function CommentsModeration({ selectedTournament }) {
     if (selectedTournament?.id) loadComments();
   }, [selectedTournament?.id, statusFilter]);
 
+  async function runCommentsQuery(full = true) {
+    let query = supabase
+      .from('match_comments')
+      .select(full
+        ? 'id, manager_name, club_name, comment, comment_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))'
+        : 'id, manager_name, club_name, comment, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
+      .eq('tournament_id', selectedTournament.id)
+      .order('created_at', { ascending: false });
+    if (full) {
+      query = query.order('is_pinned', { ascending: false }).order('editor_pick', { ascending: false });
+    }
+    if (statusFilter !== 'all') query = query.eq('status', statusFilter);
+    return query;
+  }
+
   async function loadComments() {
     if (!hasSupabaseConfig || !supabase || !selectedTournament?.id) return;
     setLoading(true);
     setStatus('Loading comments...');
-    let query = supabase
-      .from('match_comments')
-      .select('id, manager_name, club_name, comment, comment_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
-      .eq('tournament_id', selectedTournament.id)
-      .order('is_pinned', { ascending: false })
-      .order('editor_pick', { ascending: false })
-      .order('created_at', { ascending: false });
-    if (statusFilter !== 'all') query = query.eq('status', statusFilter);
-    const { data, error } = await query;
+    let result = await runCommentsQuery(true);
+    if (result.error) result = await runCommentsQuery(false);
     setLoading(false);
-    if (error) return setStatus('Could not load comments: ' + error.message);
-    setComments(data || []);
-    setStatus(`${data?.length || 0} comments loaded.`);
+    if (result.error) return setStatus('Could not load comments: ' + result.error.message);
+    setComments((result.data || []).map(normaliseComment));
+    setStatus(`${result.data?.length || 0} comments loaded.`);
   }
 
   async function updateComment(id, patch, message) {
@@ -54,7 +75,7 @@ export default function CommentsModeration({ selectedTournament }) {
     const payload = patch.status ? { ...patch, moderated_at: new Date().toISOString(), moderated_by: userData?.user?.id || null } : patch;
     const { error } = await supabase.from('match_comments').update(payload).eq('id', id);
     setLoading(false);
-    if (error) return setStatus('Update failed: ' + error.message);
+    if (error) return setStatus('Update failed. Run the updated comments SQL if this was a pin, editor pick, or badge change: ' + error.message);
     setComments((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row).filter((row) => statusFilter === 'all' || row.status === statusFilter));
     setStatus(message || 'Comment updated.');
   }
