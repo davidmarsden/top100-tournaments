@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import KnockoutBracket from './KnockoutBracket.jsx';
+import WinnersArchive from './WinnersArchive.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const ROUND_ORDER = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
@@ -22,47 +23,14 @@ function formatShortDate(dateString) { const date = parseDate(dateString); if (!
 function dateKey(bracket, round) { return `${bracket || 'Cup'}|${round || 'Round'}`; }
 function dateRange(row) { if (!row?.leg1_date && !row?.leg2_date) return '—'; if (row.leg1_date && row.leg2_date) return `${formatShortDate(row.leg1_date)} & ${formatShortDate(row.leg2_date)}`; return formatShortDate(row.leg1_date || row.leg2_date); }
 function sectionDateLabel(matches) { const dates = [...new Set(matches.map((match) => match.fixture_date).filter(Boolean))].sort(); if (!dates.length) return ''; if (dates.length === 1) return formatDate(dates[0]); return `${formatDate(dates[0])} / ${formatDate(dates[dates.length - 1])}`; }
-function applyRoundDates(matches, roundDates) {
-  const dateMap = new Map((roundDates || []).map((row) => [dateKey(row.bracket, row.round), row]));
-  return matches.map((match) => {
-    if (match.fixture_date || match.stage !== 'knockout') return match;
-    const row = dateMap.get(dateKey(match.bracket || 'Cup', match.round));
-    if (!row) return match;
-    const fixtureDate = Number(match.leg || 1) === 2 ? (row.leg2_date || row.leg1_date) : row.leg1_date;
-    return fixtureDate ? { ...match, fixture_date: fixtureDate } : match;
-  });
-}
+function applyRoundDates(matches, roundDates) { const dateMap = new Map((roundDates || []).map((row) => [dateKey(row.bracket, row.round), row])); return matches.map((match) => { if (match.fixture_date || match.stage !== 'knockout') return match; const row = dateMap.get(dateKey(match.bracket || 'Cup', match.round)); if (!row) return match; const fixtureDate = Number(match.leg || 1) === 2 ? (row.leg2_date || row.leg1_date) : row.leg1_date; return fixtureDate ? { ...match, fixture_date: fixtureDate } : match; }); }
 function groupMatches(matches) { return matches.reduce((groups, match) => { const key = match.stage === 'group' ? `Group ${match.groups?.code || 'Ungrouped'}` : `${match.bracket || 'Knockout'} · ${roundLabel(match.round || 'Round')}`; if (!groups[key]) groups[key] = []; groups[key].push(match); return groups; }, {}); }
 function bracketsFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'knockout').map((match) => match.bracket || 'Cup'))].sort((a, b) => String(a).localeCompare(String(b))); }
 function roundsFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'knockout').map((match) => match.round || 'Round'))].sort((a, b) => roundIndex(a) - roundIndex(b) || String(a).localeCompare(String(b))); }
 function groupCodesFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'group').map((match) => match.groups?.code || 'Ungrouped'))].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })); }
-function matchSideClass(match, side) {
-  if (!isCompleted(match) || match.home_score === null || match.away_score === null) return 'result-side';
-  const homeWon = Number(match.home_score) > Number(match.away_score);
-  const awayWon = Number(match.away_score) > Number(match.home_score);
-  if (side === 'home' && homeWon) return 'result-side winner';
-  if (side === 'away' && awayWon) return 'result-side winner';
-  if ((side === 'home' && awayWon) || (side === 'away' && homeWon)) return 'result-side loser';
-  return 'result-side draw';
-}
+function matchSideClass(match, side) { if (!isCompleted(match) || match.home_score === null || match.away_score === null) return 'result-side'; const homeWon = Number(match.home_score) > Number(match.away_score); const awayWon = Number(match.away_score) > Number(match.home_score); if (side === 'home' && homeWon) return 'result-side winner'; if (side === 'away' && awayWon) return 'result-side winner'; if ((side === 'home' && awayWon) || (side === 'away' && homeWon)) return 'result-side loser'; return 'result-side draw'; }
 function blankTableRow(entry) { return { entry_id: entry.id, team_name: entry.teams?.name || 'Unknown team', manager_name: managerName(entry), seed: entry.seed, rating: entry.rating, pot: entry.pot, group_code: entry.group_code, prize_draw_eligible: entry.prize_draw_eligible, played: 0, wins: 0, draws: 0, losses: 0, goals_for: 0, goals_against: 0, goal_difference: 0, points: 0, group_position: null }; }
-function buildTables(entries, matches) {
-  const byGroup = entries.reduce((groups, entry) => { const code = entry.group_code || 'Ungrouped'; if (!groups[code]) groups[code] = []; groups[code].push(entry); return groups; }, {});
-  return Object.entries(byGroup).sort(([a], [b]) => a.localeCompare(b)).map(([groupCode, groupEntries]) => {
-    const rowsById = new Map(groupEntries.map((entry) => [entry.id, blankTableRow(entry)]));
-    matches.filter((match) => match.stage === 'group' && (match.groups?.code || groupCode) === groupCode).filter(isCompleted).forEach((match) => {
-      const home = rowsById.get(match.home_entry_id), away = rowsById.get(match.away_entry_id);
-      if (!home || !away) return;
-      const hs = Number(match.home_score || 0), as = Number(match.away_score || 0);
-      home.played += 1; away.played += 1; home.goals_for += hs; home.goals_against += as; away.goals_for += as; away.goals_against += hs;
-      if (hs > as) { home.wins += 1; home.points += 3; away.losses += 1; }
-      else if (as > hs) { away.wins += 1; away.points += 3; home.losses += 1; }
-      else { home.draws += 1; away.draws += 1; home.points += 1; away.points += 1; }
-    });
-    const rows = [...rowsById.values()].map((row) => ({ ...row, goal_difference: row.goals_for - row.goals_against })).sort(tableSort).map((row, index) => ({ ...row, group_position: index + 1 }));
-    return { groupCode, rows };
-  });
-}
+function buildTables(entries, matches) { const byGroup = entries.reduce((groups, entry) => { const code = entry.group_code || 'Ungrouped'; if (!groups[code]) groups[code] = []; groups[code].push(entry); return groups; }, {}); return Object.entries(byGroup).sort(([a], [b]) => a.localeCompare(b)).map(([groupCode, groupEntries]) => { const rowsById = new Map(groupEntries.map((entry) => [entry.id, blankTableRow(entry)])); matches.filter((match) => match.stage === 'group' && (match.groups?.code || groupCode) === groupCode).filter(isCompleted).forEach((match) => { const home = rowsById.get(match.home_entry_id), away = rowsById.get(match.away_entry_id); if (!home || !away) return; const hs = Number(match.home_score || 0), as = Number(match.away_score || 0); home.played += 1; away.played += 1; home.goals_for += hs; home.goals_against += as; away.goals_for += as; away.goals_against += hs; if (hs > as) { home.wins += 1; home.points += 3; away.losses += 1; } else if (as > hs) { away.wins += 1; away.points += 3; home.losses += 1; } else { home.draws += 1; away.draws += 1; home.points += 1; away.points += 1; } }); const rows = [...rowsById.values()].map((row) => ({ ...row, goal_difference: row.goals_for - row.goals_against })).sort(tableSort).map((row, index) => ({ ...row, group_position: index + 1 })); return { groupCode, rows }; }); }
 function allTableRows(tables) { return tables.flatMap((table) => table.rows.map((row) => ({ ...row, group_code: table.groupCode }))); }
 function rowsByFinish(tables, position) { return allTableRows(tables).filter((row) => row.group_position === position).sort(tableSort); }
 function seedRows(entries) { return [...entries].sort((a, b) => Number(a.seed || 9999) - Number(b.seed || 9999) || Number(b.rating || 0) - Number(a.rating || 0) || String(a.teams?.name || '').localeCompare(String(b.teams?.name || ''))); }
@@ -70,58 +38,20 @@ function ordinal(position) { return position === 1 ? '1st' : position === 2 ? '2
 function rankMedal(index) { return index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : ''; }
 function roundDateSummary(rows) { return [...rows].sort((a, b) => String(a.bracket || '').localeCompare(String(b.bracket || '')) || roundIndex(a.round) - roundIndex(b.round)).filter((row) => row.leg1_date || row.leg2_date); }
 function scheduleMatrix(rows) { const brackets = [...new Set(rows.map((row) => row.bracket || 'Cup'))].sort((a, b) => String(a).localeCompare(String(b))); const rounds = [...new Set(rows.map((row) => row.round || 'Round'))].sort((a, b) => roundIndex(a) - roundIndex(b) || String(a).localeCompare(String(b))); const lookup = new Map(rows.map((row) => [dateKey(row.bracket, row.round), row])); return { brackets, rounds, lookup }; }
-function groupFixtureSchedule(matches) {
-  const rows = new Map();
-  matches.filter((match) => match.stage === 'group').forEach((match) => {
-    const key = match.round || 'Group round';
-    if (!rows.has(key)) rows.set(key, { round: key, dates: new Set(), fixtures: 0 });
-    const row = rows.get(key);
-    row.fixtures += 1;
-    if (match.fixture_date) row.dates.add(match.fixture_date);
-  });
-  return [...rows.values()].map((row) => ({ ...row, dates: [...row.dates].sort() })).sort((a, b) => String(a.round).localeCompare(String(b.round), undefined, { numeric: true }));
-}
+function groupFixtureSchedule(matches) { const rows = new Map(); matches.filter((match) => match.stage === 'group').forEach((match) => { const key = match.round || 'Group round'; if (!rows.has(key)) rows.set(key, { round: key, dates: new Set(), fixtures: 0 }); const row = rows.get(key); row.fixtures += 1; if (match.fixture_date) row.dates.add(match.fixture_date); }); return [...rows.values()].map((row) => ({ ...row, dates: [...row.dates].sort() })).sort((a, b) => String(a.round).localeCompare(String(b.round), undefined, { numeric: true })); }
 function groupScheduleDate(row) { if (!row.dates.length) return 'Date TBC'; if (row.dates.length === 1) return formatShortDate(row.dates[0]); return `${formatShortDate(row.dates[0])} – ${formatShortDate(row.dates[row.dates.length - 1])}`; }
 function upcomingMatches(matches) { const today = todayUtc(); return matches.filter((match) => !isCompleted(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date) >= today).sort((a, b) => parseDate(a.fixture_date) - parseDate(b.fixture_date) || roundSort(a, b)); }
 function countdownText(match) { const date = parseDate(match?.fixture_date); if (!date) return 'Date TBC'; const days = Math.round((date - todayUtc()) / 86400000); if (days === 0) return 'Today'; if (days === 1) return 'Tomorrow'; if (days > 1) return `${days} days`; return 'In progress'; }
 function fixtureTitle(match) { return `${teamName(match.home_entry, match.home_placeholder)} v ${teamName(match.away_entry, match.away_placeholder)}`; }
 function featuredMatches(matches) { const upcoming = upcomingMatches(matches); const finals = upcoming.filter((match) => match.round === 'Final'); const knockouts = upcoming.filter((match) => match.stage === 'knockout' && match.round !== 'Final'); const groups = upcoming.filter((match) => match.stage === 'group'); return [...finals, ...knockouts, ...groups].slice(0, 4); }
-function competitionStats(matches, entries, tables, forfeits) {
-  const played = matches.filter(isCompleted);
-  const goals = played.reduce((total, match) => total + Number(match.home_score || 0) + Number(match.away_score || 0), 0);
-  const groupLeaders = tables.flatMap((table) => table.rows.filter((row) => row.group_position === 1)).length;
-  return { teams: entries.length, fixtures: matches.length, played: played.length, remaining: matches.length - played.length, goals, avgGoals: played.length ? (goals / played.length).toFixed(2) : '—', groupLeaders, forfeits: forfeits.length };
-}
+function competitionStats(matches, entries, tables, forfeits) { const played = matches.filter(isCompleted); const goals = played.reduce((total, match) => total + Number(match.home_score || 0) + Number(match.away_score || 0), 0); const groupLeaders = tables.flatMap((table) => table.rows.filter((row) => row.group_position === 1)).length; return { teams: entries.length, fixtures: matches.length, played: played.length, remaining: matches.length - played.length, goals, avgGoals: played.length ? (goals / played.length).toFixed(2) : '—', groupLeaders, forfeits: forfeits.length }; }
 function latestWinner(ordered) { return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null; }
-function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
-  if (firstAway !== secondAway) return `away goals ${firstAway}-${secondAway}`;
-  if (!decidingLeg) return winnerName === 'FET/manual winner needed' ? 'FET/manual decision needed' : 'tie-break';
-  if (decidingLeg.home_extra_time_score !== null || decidingLeg.away_extra_time_score !== null) return `FET ${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0}`;
-  if (decidingLeg.home_penalty_score !== null || decidingLeg.away_penalty_score !== null) return `penalties ${decidingLeg.home_penalty_score ?? 0}-${decidingLeg.away_penalty_score ?? 0}`;
-  return String(decidingLeg.decided_by || 'tie-break').replace(/_/g, ' ');
-}
-function finalSummary(matches, bracket) {
-  const finals = matches.filter((match) => match.stage === 'knockout' && match.bracket === bracket && match.round === 'Final').sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
-  if (!finals.length || finals.some((match) => !isCompleted(match))) return null;
-  const first = finals[0], firstId = first.home_entry_id, secondId = first.away_entry_id;
-  const firstName = teamName(first.home_entry, first.home_placeholder), secondName = teamName(first.away_entry, first.away_placeholder);
-  let firstAgg = 0, secondAgg = 0, firstAway = 0, secondAway = 0;
-  finals.forEach((leg) => { const home = Number(leg.home_score || 0), away = Number(leg.away_score || 0); if (leg.home_entry_id === firstId) { firstAgg += home; secondAgg += away; secondAway += away; } else { firstAgg += away; secondAgg += home; firstAway += away; } });
-  let winnerId = firstAgg > secondAgg ? firstId : secondAgg > firstAgg ? secondId : firstAway > secondAway ? firstId : secondAway > firstAway ? secondId : latestWinner(finals);
-  const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : 'FET/manual winner needed';
-  const decidingLeg = [...finals].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
-  const decision = firstAgg === secondAgg ? decisionText(winnerName, firstAway, secondAway, decidingLeg) : null;
-  return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, legs: finals };
-}
+function decisionText(winnerName, firstAway, secondAway, decidingLeg) { if (firstAway !== secondAway) return `away goals ${firstAway}-${secondAway}`; if (!decidingLeg) return winnerName === 'FET/manual winner needed' ? 'FET/manual decision needed' : 'tie-break'; if (decidingLeg.home_extra_time_score !== null || decidingLeg.away_extra_time_score !== null) return `FET ${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0}`; if (decidingLeg.home_penalty_score !== null || decidingLeg.away_penalty_score !== null) return `penalties ${decidingLeg.home_penalty_score ?? 0}-${decidingLeg.away_penalty_score ?? 0}`; return String(decidingLeg.decided_by || 'tie-break').replace(/_/g, ' '); }
+function finalSummary(matches, bracket) { const finals = matches.filter((match) => match.stage === 'knockout' && match.bracket === bracket && match.round === 'Final').sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1)); if (!finals.length || finals.some((match) => !isCompleted(match))) return null; const first = finals[0], firstId = first.home_entry_id, secondId = first.away_entry_id; const firstName = teamName(first.home_entry, first.home_placeholder), secondName = teamName(first.away_entry, first.away_placeholder); let firstAgg = 0, secondAgg = 0, firstAway = 0, secondAway = 0; finals.forEach((leg) => { const home = Number(leg.home_score || 0), away = Number(leg.away_score || 0); if (leg.home_entry_id === firstId) { firstAgg += home; secondAgg += away; secondAway += away; } else { firstAgg += away; secondAgg += home; firstAway += away; } }); let winnerId = firstAgg > secondAgg ? firstId : secondAgg > firstAgg ? secondId : firstAway > secondAway ? firstId : secondAway > firstAway ? secondId : latestWinner(finals); const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : 'FET/manual winner needed'; const decidingLeg = [...finals].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null); const decision = firstAgg === secondAgg ? decisionText(winnerName, firstAway, secondAway, decidingLeg) : null; return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, legs: finals }; }
 function honourTeam(row) { return row?.entry?.teams?.name || 'TBC'; }
 function honourManager(row) { return row?.entry?.managers?.display_name || row?.entry?.managers?.name || ''; }
 function honourTournament(row) { return row?.tournaments?.name || `Tournament ${row.tournament_id}`; }
-function currentHolders(honours) {
-  const rows = honours.filter((row) => TROPHY_HONOURS.some((label) => String(row.honour || '').toLowerCase().includes(label)));
-  const byHonour = new Map();
-  rows.forEach((row) => { const key = row.honour || 'Winner'; if (!byHonour.has(key)) byHonour.set(key, row); });
-  return [...byHonour.entries()].map(([honour, row]) => ({ honour, team: honourTeam(row), manager: honourManager(row), tournament: honourTournament(row) })).slice(0, 4);
-}
+function currentHolders(honours) { const rows = honours.filter((row) => TROPHY_HONOURS.some((label) => String(row.honour || '').toLowerCase().includes(label))); const byHonour = new Map(); rows.forEach((row) => { const key = row.honour || 'Winner'; if (!byHonour.has(key)) byHonour.set(key, row); }); return [...byHonour.entries()].map(([honour, row]) => ({ honour, team: honourTeam(row), manager: honourManager(row), tournament: honourTournament(row) })).slice(0, 4); }
 
 export default function PublicTournamentPage({ tournamentId }) {
   const [tournament, setTournament] = useState(null);
@@ -161,36 +91,28 @@ export default function PublicTournamentPage({ tournamentId }) {
     setStatus('Loading tournament page...');
     const tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams').eq('id', tournamentId).maybeSingle();
     if (tournamentResult.error || !tournamentResult.data) { setStatus('Tournament not found.'); return; }
-
     const matchesQuery = supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId);
     const entriesQuery = supabase.from('tournament_entries').select('id, seed, rating, pot, group_code, prize_draw_eligible, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true });
     const datesQuery = supabase.from('tournament_round_dates').select('id, bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId);
     const [matchesResult, entriesResult, roundDatesResult] = await Promise.all([matchesQuery, entriesQuery, datesQuery]);
-
     setTournament(tournamentResult.data);
     setMatches(matchesResult.error ? [] : (matchesResult.data || []));
     setEntries(entriesResult.error ? [] : (entriesResult.data || []));
     setRoundDates(roundDatesResult.error ? [] : (roundDatesResult.data || []));
     setSelectedGroup('all'); setSelectedBracket('all'); setSelectedRound('all');
-
     if (matchesResult.error) { setStatus('Could not load fixtures: ' + matchesResult.error.message); return; }
     setStatus('Tournament page loaded.');
-
     Promise.all([
       supabase.from('honours').select('id, honour, position, tournament_id, tournaments(id, name), entry:tournament_entries!honours_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))').order('tournament_id', { ascending: false }),
       supabase.from('forfeits').select('id, reason, penalty, affects_prize_draw, match_id, forfeiting_entry:tournament_entries!forfeits_forfeiting_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))'),
     ]).then(([honoursResult, forfeitsResult]) => {
       if (!honoursResult.error) setHonours(honoursResult.data || []);
-      if (!forfeitsResult.error) {
-        const currentMatchIds = new Set((matchesResult.data || []).map((match) => match.id));
-        setForfeits((forfeitsResult.data || []).filter((row) => currentMatchIds.has(row.match_id)));
-      }
+      if (!forfeitsResult.error) { const currentMatchIds = new Set((matchesResult.data || []).map((match) => match.id)); setForfeits((forfeitsResult.data || []).filter((row) => currentMatchIds.has(row.match_id))); }
     }).catch(() => {});
   }
 
   if (!hasSupabaseConfig || !supabase) return <main className="app-shell"><section className="warning-card"><strong>Supabase is not connected.</strong></section></main>;
   if (!tournament) return <main className="app-shell"><section className="card"><h1>Tournament page</h1><p className="status">{status}</p></section></main>;
-
   const nextFixture = nextFixtures[0];
 
   return <main className="app-shell public-archive tournament-hub">
@@ -198,7 +120,7 @@ export default function PublicTournamentPage({ tournamentId }) {
     <nav className="public-section-nav" aria-label="Tournament sections"><a href="#summary">Summary</a><a href="#featured">Featured</a><a href="#winners">Winners</a><a href="#groups">Groups</a><a href="#knockout">Knockout</a><a href="#rankings">Best placed tables</a><a href="#fair-play">Fair Play</a><a href="#brackets">Bracket</a></nav>
     <section id="summary" className="card format-summary-card"><div className="public-section-toolbar"><div><p className="eyebrow">Competition summary</p><h2>Tournament overview</h2></div><a className="public-link-button" href={RULES_URL} target="_blank" rel="noreferrer">Read full rules</a></div><div className="hub-stat-grid"><StatCard label="Teams" value={tournament.actual_entries || entries.length || tournament.max_entries || '—'} note={tournament.group_count && tournament.teams_per_group ? `${tournament.group_count} groups of ${tournament.teams_per_group}` : 'Registered entrants'} /><StatCard label="Fixtures" value={stats.fixtures} note={`${stats.played} played, ${stats.remaining} remaining`} /><StatCard label="Goals" value={stats.goals} note={`${stats.avgGoals} per completed match`} /><StatCard label="Forfeits" value={stats.forfeits} note="Fair Play / prize draw watch" /></div><p className="muted">Teams are seeded by average rating into pots for the group draw. Knockout seeding is explained by the best 1st, 2nd and 3rd place tables below.</p>{holders.length > 0 && <CurrentHolders rows={holders} />}{groupScheduleRows.length > 0 && <GroupSchedule rows={groupScheduleRows} />}{scheduleRows.length > 0 && <KnockoutSchedule rows={scheduleRows} />}</section>
     <section id="featured" className="card"><p className="eyebrow">Featured matches</p><h2>What to watch next</h2><div className="featured-match-grid">{featured.length ? featured.map((match) => <FeaturedMatch key={match.id} match={match} />) : <p className="muted">No upcoming featured fixtures yet.</p>}</div></section>
-    <section id="winners" className="card winners-card"><p className="eyebrow">Winners</p><h2>Current and previous winners</h2><div className="overview-metrics compact-metrics">{winners.length ? winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>🏆 {winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}{winner.decision ? ` · ${winner.decision}` : ''}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamName(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamName(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>) : <p className="muted">No completed finals yet.</p>}</div>{honours.length > 0 && <PreviousWinners rows={honours.filter((row) => Number(row.tournament_id) !== Number(tournamentId)).slice(0, 12)} />}</section>
+    <section id="winners" className="card winners-card"><p className="eyebrow">Winners</p><h2>Current and previous winners</h2><div className="overview-metrics compact-metrics">{winners.length ? winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>🏆 {winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}{winner.decision ? ` · ${winner.decision}` : ''}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamName(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamName(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>) : <p className="muted">No completed finals yet.</p>}</div><WinnersArchive rows={honours} currentTournamentId={tournamentId} /></section>
     <section id="groups" className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Group fixtures and results</p><h2>{selectedGroup === 'all' ? 'All groups' : `Group ${selectedGroup}`}</h2></div>{groupOptions.length > 1 && <label className="public-group-filter">Group<select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)}><option value="all">All groups</option>{groupOptions.map((code) => <option key={code} value={code}>Group {code}</option>)}</select></label>}</div><ResultSections sections={groupResults} /></section>
     <section id="knockout" className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Knockout fixtures and results</p><h2>{selectedBracket === 'all' ? 'All competitions' : selectedBracket}{selectedRound !== 'all' ? ` · ${roundLabel(selectedRound)}` : ''}</h2></div><div className="public-filter-pair">{knockoutBracketOptions.length > 1 && <label className="public-group-filter">Competition<select value={selectedBracket} onChange={(event) => { setSelectedBracket(event.target.value); setSelectedRound('all'); }}><option value="all">All competitions</option>{knockoutBracketOptions.map((bracket) => <option key={bracket} value={bracket}>{bracket}</option>)}</select></label>}{knockoutRoundOptions.length > 1 && <label className="public-group-filter">Round<select value={selectedRound} onChange={(event) => setSelectedRound(event.target.value)}><option value="all">All rounds</option>{knockoutRoundOptions.map((round) => <option key={round} value={round}>{roundLabel(round)}</option>)}</select></label>}</div></div><ResultSections sections={knockoutResults} /></section>
     {tables.length > 0 && <section id="rankings" className="card"><p className="eyebrow">Best placed tables</p><h2>Best 1st, 2nd and 3rd placed teams</h2><p className="muted">Medals highlight the strongest records in each finishing band. Sorting is points, goal difference, goals scored, then original seed.</p><div className="finish-grid">{finishTables.map((table) => <section className="finish-card" key={table.position}><h3>{ordinal(table.position)} placed teams</h3><div className="standings-wrap"><table className="standings-table mini-standings"><thead><tr><th>Rank</th><th>Team</th><th>Grp</th><th>Pts</th><th>GD</th><th>GF</th><th>Seed</th></tr></thead><tbody>{table.rows.map((row, index) => <tr key={row.entry_id} className={index < 3 ? 'medal-row' : ''}><td>{rankMedal(index)} {index + 1}</td><td><strong>{row.team_name}</strong><span>{row.manager_name}</span></td><td>{row.group_code}</td><td><strong>{row.points}</strong></td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td>{row.goals_for}</td><td>{row.seed || '—'}</td></tr>)}</tbody></table></div></section>)}</div></section>}
@@ -212,16 +134,7 @@ export default function PublicTournamentPage({ tournamentId }) {
 function StatCard({ label, value, note }) { return <article className="hub-stat-card"><span>{label}</span><strong>{value}</strong><small>{note}</small></article>; }
 function FeaturedMatch({ match }) { return <article className="featured-match-card"><span>{match.stage === 'knockout' ? `${match.bracket || 'Cup'} · ${roundLabel(match.round)}` : `${match.groups?.code ? `Group ${match.groups.code}` : 'Group stage'} · ${match.round}`}</span><strong>{fixtureTitle(match)}</strong><small>{formatDate(match.fixture_date)} · {countdownText(match)}</small></article>; }
 function CurrentHolders({ rows }) { return <div className="holder-strip"><h3>Current holders</h3><div>{rows.map((row) => <article key={`${row.honour}-${row.tournament}`}><span>{row.honour}</span><strong>{row.team}</strong><small>{row.manager ? `${row.manager} · ` : ''}{row.tournament}</small></article>)}</div></div>; }
-function PreviousWinners({ rows }) { const trophyRows = rows.filter((row) => String(row.honour || '').toLowerCase().includes('winner')).slice(0, 8); if (!trophyRows.length) return null; return <div className="previous-winners"><h3>Previous winners archive</h3><div className="previous-winner-list">{trophyRows.map((row) => <article key={row.id}><span>{honourTournament(row)}</span><strong>🏆 {honourTeam(row)}</strong><small>{row.honour}{honourManager(row) ? ` · ${honourManager(row)}` : ''}</small></article>)}</div></div>; }
-function FairPlay({ forfeits, entries }) {
-  const ineligible = entries.filter((entry) => entry.prize_draw_eligible === false);
-  if (!forfeits.length && !ineligible.length) return <p className="muted">No forfeits recorded. Everyone remains in good standing for now.</p>;
-  return <div className="fair-play-grid">{forfeits.map((row) => <article className="fair-play-card" key={`forfeit-${row.id}`}><strong>{teamName(row.forfeiting_entry)}</strong><span>{managerName(row.forfeiting_entry)}</span><small>{row.reason || 'Forfeit recorded'}{row.affects_prize_draw === false ? ' · prize draw unaffected' : ' · prize draw affected'}</small></article>)}{ineligible.map((entry) => <article className="fair-play-card" key={`entry-${entry.id}`}><strong>{entry.teams?.name || 'Unknown team'}</strong><span>{managerName(entry)}</span><small>Marked not eligible for prize draw</small></article>)}</div>;
-}
+function FairPlay({ forfeits, entries }) { const ineligible = entries.filter((entry) => entry.prize_draw_eligible === false); if (!forfeits.length && !ineligible.length) return <p className="muted">No forfeits recorded. Everyone remains in good standing for now.</p>; return <div className="fair-play-grid">{forfeits.map((row) => <article className="fair-play-card" key={`forfeit-${row.id}`}><strong>{teamName(row.forfeiting_entry)}</strong><span>{managerName(row.forfeiting_entry)}</span><small>{row.reason || 'Forfeit recorded'}{row.affects_prize_draw === false ? ' · prize draw unaffected' : ' · prize draw affected'}</small></article>)}{ineligible.map((entry) => <article className="fair-play-card" key={`entry-${entry.id}`}><strong>{entry.teams?.name || 'Unknown team'}</strong><span>{managerName(entry)}</span><small>Marked not eligible for prize draw</small></article>)}</div>; }
 function GroupSchedule({ rows }) { return <div className="schedule-summary compact-schedule"><h3>Group fixture schedule</h3><div className="schedule-table-wrap"><table className="schedule-table"><thead><tr><th>Round</th><th>Date</th><th>Fixtures</th></tr></thead><tbody>{rows.map((row) => <tr key={row.round}><td>{row.round}</td><td>{groupScheduleDate(row)}</td><td>{row.fixtures}</td></tr>)}</tbody></table></div></div>; }
 function KnockoutSchedule({ rows }) { const { brackets, rounds, lookup } = scheduleMatrix(rows); if (!rounds.length || !brackets.length) return null; return <div className="schedule-summary compact-schedule"><h3>Knockout schedule</h3><div className="schedule-table-wrap"><table className="schedule-table"><thead><tr><th>Round</th>{brackets.map((bracket) => <th key={bracket}>{bracket}</th>)}</tr></thead><tbody>{rounds.map((round) => <tr key={round}><td>{roundLabel(round)}</td>{brackets.map((bracket) => <td key={`${bracket}-${round}`}>{dateRange(lookup.get(dateKey(bracket, round)))}</td>)}</tr>)}</tbody></table></div></div>; }
-function ResultSections({ sections }) {
-  const entries = Object.entries(sections);
-  if (!entries.length) return <p className="muted">No fixtures or results yet.</p>;
-  return <div className="fixture-sections">{entries.map(([title, matches]) => { const dateLabel = sectionDateLabel(matches); return <section className="fixture-section" key={title}><div className="fixture-section-header"><h3>{title}{dateLabel ? ` · ${dateLabel}` : ''}</h3><span>{matches.length} fixtures</span></div><div className="fixture-card-list">{matches.map((match) => <article className={isCompleted(match) ? 'fixture-card played result-highlight-card' : 'fixture-card'} key={match.id}>{match.fixture_date && <p className="fixture-date public-fixture-date">{formatDate(match.fixture_date)}</p>}<div className="fixture-teams result-teams"><strong className={matchSideClass(match, 'home')}>{teamName(match.home_entry, match.home_placeholder)}</strong><span className="fixture-score">{isCompleted(match) ? `${match.home_score} - ${match.away_score}` : 'v'}</span><strong className={matchSideClass(match, 'away')}>{teamName(match.away_entry, match.away_placeholder)}</strong></div><div className="fixture-actions"><span>{roundLabel(match.round)}{match.leg ? ` · ${Number(match.leg) === 1 ? '1st leg' : '2nd leg'}` : ''}</span></div></article>)}</div></section>; })}</div>;
-}
+function ResultSections({ sections }) { const entries = Object.entries(sections); if (!entries.length) return <p className="muted">No fixtures or results yet.</p>; return <div className="fixture-sections">{entries.map(([title, matches]) => { const dateLabel = sectionDateLabel(matches); return <section className="fixture-section" key={title}><div className="fixture-section-header"><h3>{title}{dateLabel ? ` · ${dateLabel}` : ''}</h3><span>{matches.length} fixtures</span></div><div className="fixture-card-list">{matches.map((match) => <article className={isCompleted(match) ? 'fixture-card played result-highlight-card' : 'fixture-card'} key={match.id}>{match.fixture_date && <p className="fixture-date public-fixture-date">{formatDate(match.fixture_date)}</p>}<div className="fixture-teams result-teams"><strong className={matchSideClass(match, 'home')}>{teamName(match.home_entry, match.home_placeholder)}</strong><span className="fixture-score">{isCompleted(match) ? `${match.home_score} - ${match.away_score}` : 'v'}</span><strong className={matchSideClass(match, 'away')}>{teamName(match.away_entry, match.away_placeholder)}</strong></div><div className="fixture-actions"><span>{roundLabel(match.round)}{match.leg ? ` · ${Number(match.leg) === 1 ? '1st leg' : '2nd leg'}` : ''}</span></div></article>)}</div></section>; })}</div>; }
