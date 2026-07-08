@@ -36,6 +36,16 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+const planned = {
+  seasons: new Set(),
+  competitions: new Set(),
+  tournaments: new Set(),
+  teams: new Set(),
+  managers: new Set(),
+  entries: new Set(),
+  honours: new Set(),
+};
+
 function normalize(value = '') {
   return String(value || '')
     .normalize('NFD')
@@ -170,7 +180,6 @@ async function maybeSingle(table, select, filters) {
 }
 
 async function insertRow(table, values) {
-  if (dryRun) return { id: `dry-${table}-${JSON.stringify(values)}` };
   const { data, error } = await supabase.from(table).insert(values).select('id').single();
   if (error) throw new Error(`${table} insert failed: ${error.message}`);
   return data;
@@ -178,30 +187,38 @@ async function insertRow(table, values) {
 
 async function findOrCreateSeason(code) {
   const existing = await maybeSingle('seasons', 'id, code', [['code', code]]);
-  if (existing) return existing;
+  if (existing) return { ...existing, created: false };
+  if (dryRun) { planned.seasons.add(code); return { id: null, code, created: true }; }
   const number = Number(String(code).replace(/[^0-9]/g, '')) || null;
-  return insertRow('seasons', { code, number });
+  const inserted = await insertRow('seasons', { code, number });
+  return { ...inserted, code, created: true };
 }
 
 async function findOrCreateCompetition(name) {
   const existing = await maybeSingle('competitions', 'id, name', [['name', name]]);
-  if (existing) return existing;
-  return insertRow('competitions', { name, competition_type: 'Youth' });
+  if (existing) return { ...existing, created: false };
+  if (dryRun) { planned.competitions.add(name); return { id: null, name, created: true }; }
+  const inserted = await insertRow('competitions', { name, competition_type: 'Youth' });
+  return { ...inserted, name, created: true };
 }
 
 async function findOrCreateTeam(name) {
   const existing = await maybeSingle('teams', 'id, name', [['name', name]]);
-  if (existing) return existing;
-  return insertRow('teams', { name, active: true });
+  if (existing) return { ...existing, created: false };
+  if (dryRun) { planned.teams.add(name); return { id: null, name, created: true }; }
+  const inserted = await insertRow('teams', { name, active: true });
+  return { ...inserted, name, created: true };
 }
 
 async function findOrCreateManager(name) {
   if (!name) return null;
   let existing = await maybeSingle('managers', 'id, name, display_name', [['display_name', name]]);
-  if (existing) return existing;
+  if (existing) return { ...existing, created: false };
   existing = await maybeSingle('managers', 'id, name, display_name', [['name', name]]);
-  if (existing) return existing;
-  return insertRow('managers', { name, display_name: name, canonical_name: normalize(name), active: true });
+  if (existing) return { ...existing, created: false };
+  if (dryRun) { planned.managers.add(name); return { id: null, name, display_name: name, created: true }; }
+  const inserted = await insertRow('managers', { name, display_name: name, canonical_name: normalize(name), active: true });
+  return { ...inserted, name, display_name: name, created: true };
 }
 
 async function findOrCreateTournament({ season, competition }) {
@@ -209,19 +226,27 @@ async function findOrCreateTournament({ season, competition }) {
   const competitionRow = await findOrCreateCompetition(competition);
   const name = `${season} ${competition}`;
 
-  let existing = await maybeSingle('tournaments', 'id, name', [['season_id', seasonRow.id], ['competition_id', competitionRow.id]]);
-  if (existing) return existing;
+  if (seasonRow.id && competitionRow.id) {
+    const byIds = await maybeSingle('tournaments', 'id, name', [['season_id', seasonRow.id], ['competition_id', competitionRow.id]]);
+    if (byIds) return { ...byIds, created: false };
+  }
 
-  existing = await maybeSingle('tournaments', 'id, name', [['name', name]]);
-  if (existing) return existing;
+  const byName = await maybeSingle('tournaments', 'id, name', [['name', name]]);
+  if (byName) return { ...byName, created: false };
 
-  return insertRow('tournaments', {
+  if (dryRun) {
+    planned.tournaments.add(name);
+    return { id: null, name, created: true };
+  }
+
+  const inserted = await insertRow('tournaments', {
     season_id: seasonRow.id,
     competition_id: competitionRow.id,
     name,
     status: 'archived',
     actual_entries: 0,
   });
+  return { ...inserted, name, created: true };
 }
 
 async function updateEntryManager(entryId, managerId) {
@@ -230,48 +255,76 @@ async function updateEntryManager(entryId, managerId) {
   if (error) throw new Error(`tournament_entries manager update failed: ${error.message}`);
 }
 
-async function findOrCreateEntry({ tournamentId, teamId, managerId }) {
-  const filters = [['tournament_id', tournamentId], ['team_id', teamId]];
-  const existing = await maybeSingle('tournament_entries', 'id, manager_id', filters);
-  if (existing) {
-    await updateEntryManager(existing.id, managerId);
-    return existing;
+async function findOrCreateEntry({ tournament, team, manager }) {
+  const key = `${tournament.name}|${team.name}|${manager?.display_name || manager?.name || ''}`;
+
+  if (tournament.id && team.id) {
+    const existing = await maybeSingle('tournament_entries', 'id, manager_id', [['tournament_id', tournament.id], ['team_id', team.id]]);
+    if (existing) {
+      await updateEntryManager(existing.id, manager?.id || null);
+      return { ...existing, created: false };
+    }
   }
 
-  const values = {
-    tournament_id: tournamentId,
-    team_id: teamId,
-    manager_id: managerId || null,
+  if (dryRun) {
+    planned.entries.add(key);
+    return { id: null, created: true };
+  }
+
+  const inserted = await insertRow('tournament_entries', {
+    tournament_id: tournament.id,
+    team_id: team.id,
+    manager_id: manager?.id || null,
     entry_status: 'historic',
-  };
-  return insertRow('tournament_entries', values);
+  });
+  return { ...inserted, created: true };
 }
 
-async function honourExists({ tournamentId, entryId, honour }) {
-  const existing = await maybeSingle('honours', 'id', [['tournament_id', tournamentId], ['entry_id', entryId], ['honour', honour]]);
-  return Boolean(existing);
+async function honourExists({ tournament, entry, honour, dryKey }) {
+  if (!tournament.id || !entry.id) return false;
+  const existing = await maybeSingle('honours', 'id', [['tournament_id', tournament.id], ['entry_id', entry.id], ['honour', honour]]);
+  if (existing) return true;
+  return planned.honours.has(dryKey);
 }
 
 async function importHonour(row) {
   const tournament = await findOrCreateTournament(row);
   const team = await findOrCreateTeam(row.team);
   const manager = await findOrCreateManager(row.manager);
-  const entry = await findOrCreateEntry({ tournamentId: tournament.id, teamId: team.id, managerId: manager?.id || null });
+  const entry = await findOrCreateEntry({ tournament, team, manager });
+  const dryKey = `${row.season}|${row.competition}|${row.team}|${row.honour}`;
 
-  const exists = await honourExists({ tournamentId: tournament.id, entryId: entry.id, honour: row.honour });
+  const exists = await honourExists({ tournament, entry, honour: row.honour, dryKey });
   if (exists) return { action: 'skipped', row };
 
-  if (!dryRun) {
-    const { error } = await supabase.from('honours').insert({
-      tournament_id: tournament.id,
-      entry_id: entry.id,
-      honour: row.honour,
-      position: row.position,
-    });
-    if (error) throw new Error(`honours insert failed: ${error.message}`);
+  if (dryRun) {
+    planned.honours.add(dryKey);
+    return { action: 'would-import', row };
   }
 
-  return { action: dryRun ? 'would-import' : 'imported', row };
+  const { error } = await supabase.from('honours').insert({
+    tournament_id: tournament.id,
+    entry_id: entry.id,
+    honour: row.honour,
+    position: row.position,
+  });
+  if (error) throw new Error(`honours insert failed: ${error.message}`);
+
+  return { action: 'imported', row };
+}
+
+function printDryRunSummary(counts) {
+  console.log('Dry run only. No Supabase writes were made.');
+  console.log({
+    wouldCreateSeasons: planned.seasons.size,
+    wouldCreateCompetitions: planned.competitions.size,
+    wouldCreateTournaments: planned.tournaments.size,
+    wouldCreateTeams: planned.teams.size,
+    wouldCreateManagers: planned.managers.size,
+    wouldCreateEntries: planned.entries.size,
+    wouldImportHonours: counts['would-import'],
+    skippedExistingHonours: counts.skipped,
+  });
 }
 
 async function main() {
@@ -298,6 +351,7 @@ async function main() {
 
   console.log('Youth honours import complete.');
   console.log({ clubsFile, managersFile: managerRows.length ? managersFile : null, ...counts });
+  if (dryRun) printDryRunSummary(counts);
 }
 
 main().catch((error) => {
