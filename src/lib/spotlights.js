@@ -11,7 +11,10 @@ function parseDate(dateString) {
   const date = new Date(Date.UTC(year, month - 1, day));
   return Number.isNaN(date.getTime()) ? null : date;
 }
-function todayUtc() { const now = new Date(); return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())); }
+function todayUtc() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
 function roundSort(a, b) {
   return String(a.bracket || '').localeCompare(String(b.bracket || '')) || roundIndex(a.round) - roundIndex(b.round) || Number(a.match_order || 0) - Number(b.match_order || 0) || Number(a.leg || 1) - Number(b.leg || 1);
 }
@@ -19,10 +22,11 @@ function groupSort(a, b) {
   return String(a.groups?.code || '').localeCompare(String(b.groups?.code || '')) || String(a.round || '').localeCompare(String(b.round || ''), undefined, { numeric: true }) || Number(a.match_order || 0) - Number(b.match_order || 0);
 }
 function managerName(entry) { return entry?.managers?.display_name || entry?.managers?.name || 'TBC'; }
-function describeEntry(entry) { return `${entry?.teams?.name || 'TBC'}${entry?.managers ? ` (${managerName(entry)})` : ''}`; }
+function clubName(entry) { return entry?.teams?.name || 'TBC'; }
+function describeEntry(entry) { return `${clubName(entry)}${entry?.managers ? ` (${managerName(entry)})` : ''}`; }
 function describeManager(entry) {
   const manager = managerName(entry);
-  const club = entry?.teams?.name || 'their side';
+  const club = clubName(entry);
   return manager && manager !== 'TBC' ? `${manager}'s ${club}` : club;
 }
 function honourType(row) {
@@ -48,12 +52,21 @@ function groupFixtureTotals(matches) {
 }
 function upcomingMatches(matches) {
   const today = todayUtc();
-  return matches.filter((match) => !isCompleted(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date) >= today).sort((a, b) => parseDate(a.fixture_date) - parseDate(b.fixture_date) || roundSort(a, b));
+  return matches
+    .filter((match) => !isCompleted(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date) >= today)
+    .sort((a, b) => parseDate(a.fixture_date) - parseDate(b.fixture_date) || roundSort(a, b));
 }
 function buildPrestige(entries, honours, currentTournamentId) {
   const byTeam = new Map(entries.map((entry) => [entry.teams?.name, entry]));
   const latestSeason = Math.max(0, ...honours.map(honourSeason));
-  const prestige = new Map(entries.map((entry) => [entryKey(entry.id), { score: 0, reasons: [], storyTypes: new Set(), cupWins: 0, shieldWins: 0, topSeed: entry.seed || 9999 }]));
+  const prestige = new Map(entries.map((entry) => [entryKey(entry.id), {
+    score: 0,
+    reasons: [],
+    storyTypes: new Set(),
+    cupWins: 0,
+    shieldWins: 0,
+    topSeed: entry.seed || 9999,
+  }]));
 
   honours.filter((row) => Number(row.tournament_id) !== Number(currentTournamentId)).forEach((row) => {
     const entry = byTeam.get(row.entry?.teams?.name);
@@ -74,6 +87,7 @@ function buildPrestige(entries, honours, currentTournamentId) {
     if (record.topSeed <= 4) { record.score += 16; record.storyTypes.add('seed'); record.reasons.push(`top-${record.topSeed} seed`); }
     else if (record.topSeed <= 8) { record.score += 12; record.storyTypes.add('seed'); record.reasons.push('top-8 seed'); }
     else if (record.topSeed <= 16) { record.score += 7; record.storyTypes.add('seed'); record.reasons.push('top-16 seed'); }
+
     const titles = record.cupWins + record.shieldWins;
     if (titles >= 3) { record.storyTypes.add('pedigree'); record.reasons.push(`${titles} historic youth honours`); }
     else if (titles > 0 && !record.reasons.some((reason) => reason.includes('holder'))) { record.storyTypes.add('pedigree'); record.reasons.push('former youth winner'); }
@@ -150,7 +164,21 @@ function decorateSpotlight(match, pressure, prestige, entriesMap) {
   }
   return { type: 'spotlight', tag: `Group ${group} watch`, story: `${describeEntry(homeEntry)} meet ${describeEntry(awayEntry)} in a fixture that should help define the shape of Group ${group}.` };
 }
-
+function alternateNarrative(match, entriesMap, usedTags) {
+  const homeEntry = entriesMap.get(entryKey(match.home_entry_id));
+  const awayEntry = entriesMap.get(entryKey(match.away_entry_id));
+  const group = match.groups?.code || 'group';
+  const options = [
+    { type: 'manager', tag: 'Manager duel', story: `${managerName(homeEntry)} and ${managerName(awayEntry)} get a direct tactical read on each other here. The result may matter less than the message it sends.` },
+    { type: 'home-test', tag: 'Home test', story: `${describeManager(homeEntry)} have the home fixture. That can be an opening, or a trap, depending how quickly the visitors settle.` },
+    { type: 'group-watch', tag: `Group ${group} watch`, story: `${clubName(homeEntry)} and ${clubName(awayEntry)} meet in a fixture that should help define the early shape of Group ${group}.` },
+    { type: 'opening-marker', tag: 'Opening marker', story: `This is one of those early fixtures that may look routine now, but could matter when the final group table is sorted.` },
+    { type: 'tone-setter', tag: 'Tone-setter', story: `${describeManager(homeEntry)} and ${describeManager(awayEntry)} both get a chance to set the tone for the campaign.` },
+    { type: 'banana-skin', tag: 'Banana skin', story: `${describeManager(awayEntry)} may be expected to come through this, but away group fixtures have a habit of becoming awkward.` },
+    { type: 'form-finder', tag: 'Form finder', story: `No form guide yet, so this is an early read on who has arrived prepared and who still has work to do.` },
+  ];
+  return options.find((option) => !usedTags.has(option.tag)) || options[0];
+}
 function addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags) {
   selected.push(match);
   usedTeams.add(entryKey(match.home_entry_id));
@@ -165,6 +193,10 @@ function isFreshMatch(match, selected, usedTeams, usedGroups, usedTypes, usedTag
   if (!allowGroupRepeat && usedGroups.has(match.groups?.code || match.bracket || 'fixture')) return false;
   if (!allowTypeRepeat && (usedTypes.has(match.spotlightType || 'spotlight') || usedTags.has(match.spotlightTag || match.spotlightType || 'spotlight'))) return false;
   return true;
+}
+function withAlternateNarrative(match, entriesMap, usedTags) {
+  const alt = alternateNarrative(match, entriesMap, usedTags);
+  return { ...match, spotlightTag: alt.tag, spotlightStory: alt.story, spotlightType: alt.type };
 }
 
 export function fixtureSpotlights(matches, entries, honours, tables, tournamentId) {
@@ -202,17 +234,17 @@ export function fixtureSpotlights(matches, entries, honours, tables, tournamentI
 
   for (const match of scored) {
     if (selected.length >= 4) break;
-    if (isFreshMatch(match, selected, usedTeams, usedGroups, usedTypes, usedTags, { allowGroupRepeat: true })) addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags);
+    if (selected.some((chosen) => chosen.id === match.id)) continue;
+    if (usedTeams.has(entryKey(match.home_entry_id)) || usedTeams.has(entryKey(match.away_entry_id))) continue;
+    const candidate = usedTags.has(match.spotlightTag) || usedTypes.has(match.spotlightType) ? withAlternateNarrative(match, entriesMap, usedTags) : match;
+    addSpotlight(candidate, selected, usedTeams, usedGroups, usedTypes, usedTags);
   }
 
   for (const match of scored) {
     if (selected.length >= 4) break;
-    if (isFreshMatch(match, selected, usedTeams, usedGroups, usedTypes, usedTags, { allowTeamRepeat: true, allowGroupRepeat: true })) addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags);
-  }
-
-  for (const match of scored) {
-    if (selected.length >= 4) break;
-    if (!selected.some((chosen) => chosen.id === match.id)) addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags);
+    if (selected.some((chosen) => chosen.id === match.id)) continue;
+    const candidate = usedTags.has(match.spotlightTag) || usedTypes.has(match.spotlightType) ? withAlternateNarrative(match, entriesMap, usedTags) : match;
+    addSpotlight(candidate, selected, usedTeams, usedGroups, usedTypes, usedTags);
   }
 
   return selected;
