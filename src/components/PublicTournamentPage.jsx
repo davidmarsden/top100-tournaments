@@ -9,7 +9,6 @@ const ROUND_ORDER = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
 const RULES_URL = 'https://smtop100.blog/youth-cup-format-rules/';
 const ROUND_LABELS = { R64: 'Round of 64', R32: 'Round of 32', R16: 'Round of 16', QF: 'Quarter-finals', SF: 'Semi-finals', Final: 'Final' };
 
-const entryKey = (id) => String(id || '');
 const isCompleted = (match) => match.status === 'played' || match.status === 'forfeit';
 const teamName = (entry, fallback) => entry?.teams?.name || fallback || 'TBC';
 const managerName = (entry) => entry?.managers?.display_name || entry?.managers?.name || 'TBC';
@@ -149,126 +148,6 @@ function finalSummary(matches, bracket) {
   const decidingLeg = [...finals].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
   const decision = firstAgg === secondAgg ? decisionText(winnerName, firstAway, secondAway, decidingLeg) : null;
   return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, legs: finals };
-}
-
-function honourType(row) { const value = `${row?.honour || ''} ${row?.tournaments?.name || ''}`.toLowerCase(); return value.includes('shield') ? 'shield' : 'cup'; }
-function honourSeason(row) { const match = String(row?.tournaments?.name || '').match(/S\s*(\d+)/i); return match ? Number(match[1]) : 0; }
-function entryById(entries) { return new Map(entries.map((entry) => [entryKey(entry.id), entry])); }
-function describeEntry(entry) { return `${entry?.teams?.name || 'TBC'}${entry?.managers ? ` (${managerName(entry)})` : ''}`; }
-function groupRowsMap(tables) { const map = new Map(); tables.forEach((table) => table.rows.forEach((row) => map.set(entryKey(row.entry_id), row))); return map; }
-function groupFixtureTotals(matches) {
-  const totals = new Map();
-  matches.filter((match) => match.stage === 'group').forEach((match) => [match.home_entry_id, match.away_entry_id].forEach((id) => totals.set(entryKey(id), (totals.get(entryKey(id)) || 0) + 1)));
-  return totals;
-}
-function buildPrestige(entries, honours, currentTournamentId) {
-  const byTeam = new Map(entries.map((entry) => [entry.teams?.name, entry]));
-  const latestSeason = Math.max(0, ...honours.map(honourSeason));
-  const prestige = new Map(entries.map((entry) => [entryKey(entry.id), { score: 0, reasons: [], storyTypes: new Set(), cupWins: 0, shieldWins: 0, topSeed: entry.seed || 9999 }]));
-  honours.filter((row) => Number(row.tournament_id) !== Number(currentTournamentId)).forEach((row) => {
-    const entry = byTeam.get(row.entry?.teams?.name);
-    if (!entry) return;
-    const record = prestige.get(entryKey(entry.id));
-    const type = honourType(row);
-    if (type === 'shield') record.shieldWins += 1; else record.cupWins += 1;
-    record.score += type === 'shield' ? 7 : 10;
-    if (honourSeason(row) === latestSeason) {
-      record.score += 24;
-      record.storyTypes.add('holder');
-      record.reasons.push(type === 'shield' ? 'current Shield holder' : 'current Youth Cup holder');
-    }
-  });
-  prestige.forEach((record) => {
-    if (record.topSeed <= 4) { record.score += 16; record.storyTypes.add('seed'); record.reasons.push(`top-${record.topSeed} seed`); }
-    else if (record.topSeed <= 8) { record.score += 12; record.storyTypes.add('seed'); record.reasons.push('top-8 seed'); }
-    else if (record.topSeed <= 16) { record.score += 7; record.storyTypes.add('seed'); record.reasons.push('top-16 seed'); }
-    const titles = record.cupWins + record.shieldWins;
-    if (titles >= 3) { record.storyTypes.add('pedigree'); record.reasons.push(`${titles} historic youth honours`); }
-    else if (titles > 0 && !record.reasons.some((reason) => reason.includes('holder'))) { record.storyTypes.add('pedigree'); record.reasons.push('former youth winner'); }
-  });
-  return prestige;
-}
-function tablePressure(match, tables, totals) {
-  if (match.stage !== 'group') return { score: 0, type: 'knockout', tag: match.round || 'Knockout tie', story: `${match.bracket || 'Cup'} ${roundLabel(match.round)} fixture.` };
-  const rows = groupRowsMap(tables);
-  const home = rows.get(entryKey(match.home_entry_id));
-  const away = rows.get(entryKey(match.away_entry_id));
-  const group = match.groups?.code || home?.group_code || away?.group_code || 'group';
-  if (!home || !away || Math.max(home.played, away.played) === 0) return { score: 0, type: 'early', tag: `Group ${group} spotlight`, story: `Early Group ${group} marker with seeding and tournament pedigree in play.` };
-  const late = Math.max(home.played, away.played) >= 4;
-  const topTwo = home.group_position <= 2 && away.group_position <= 2;
-  const nearLine = Math.abs(home.group_position - away.group_position) <= 2 || Math.abs(home.points - away.points) <= 3;
-  const homeRemaining = Math.max(0, (totals.get(entryKey(match.home_entry_id)) || 6) - home.played);
-  const awayRemaining = Math.max(0, (totals.get(entryKey(match.away_entry_id)) || 6) - away.played);
-  if (late && topTwo) return { score: 35, type: 'stakes', tag: 'Winner-takes-control', story: `Top-of-the-group pressure: a win could put either side in control of Group ${group}.` };
-  if (late && nearLine) return { score: 28, type: 'stakes', tag: 'Qualification pressure', story: `Qualification places are tightening in Group ${group}; dropped points here could be expensive.` };
-  if (topTwo) return { score: 18, type: 'stakes', tag: 'Group lead at stake', story: `Both teams are in the early Group ${group} chase and can make a statement here.` };
-  if (homeRemaining <= 2 || awayRemaining <= 2) return { score: 16, type: 'stakes', tag: 'Must-move week', story: `With games running out, this could reshape the Group ${group} qualification picture.` };
-  return { score: 0, type: 'table', tag: `Group ${group} fixture`, story: `${home.team_name} and ${away.team_name} are separated by ${Math.abs(home.points - away.points)} point${Math.abs(home.points - away.points) === 1 ? '' : 's'} in Group ${group}.` };
-}
-function knockoutStory(match, prestige) {
-  if (match.stage !== 'knockout') return null;
-  const home = prestige.get(entryKey(match.home_entry_id)) || { score: 0, reasons: [] };
-  const away = prestige.get(entryKey(match.away_entry_id)) || { score: 0, reasons: [] };
-  const reasons = [...home.reasons, ...away.reasons].slice(0, 2);
-  return { score: 20 + home.score + away.score, type: 'knockout', tag: `${match.bracket || 'Cup'} ${roundLabel(match.round)}`, story: reasons.length ? `Knockout tie with ${reasons.join(' and ')} involved.` : 'A place in the next round is on the line.' };
-}
-function decorateSpotlight(match, pressure, prestige, entriesMap) {
-  const homeEntry = entriesMap.get(entryKey(match.home_entry_id));
-  const awayEntry = entriesMap.get(entryKey(match.away_entry_id));
-  const home = prestige.get(entryKey(match.home_entry_id)) || { score: 0, reasons: [], storyTypes: new Set(), topSeed: 9999 };
-  const away = prestige.get(entryKey(match.away_entry_id)) || { score: 0, reasons: [], storyTypes: new Set(), topSeed: 9999 };
-  const seedGap = Math.abs((home.topSeed || 9999) - (away.topSeed || 9999));
-  const underdogEntry = (home.topSeed || 9999) > (away.topSeed || 9999) ? homeEntry : awayEntry;
-  const favouriteEntry = underdogEntry === homeEntry ? awayEntry : homeEntry;
-  const holderEntry = home.storyTypes?.has('holder') ? homeEntry : away.storyTypes?.has('holder') ? awayEntry : null;
-  const pedigreeReasons = [...home.reasons, ...away.reasons].filter((reason) => !reason.includes('seed')).slice(0, 2);
-  if (pressure.score >= 25) return { type: 'stakes', tag: pressure.tag, story: pressure.story };
-  if (holderEntry) return { type: 'holder', tag: 'Holder watch', story: `${describeEntry(holderEntry)} begin their defence under the spotlight.` };
-  if (seedGap >= 20 && Math.min(home.topSeed || 9999, away.topSeed || 9999) <= 8) return { type: 'underdog', tag: 'Upset watch', story: `${describeEntry(underdogEntry)} get a shot at a statement result against ${describeEntry(favouriteEntry)}.` };
-  if (homeEntry?.managers || awayEntry?.managers) {
-    const managerEntry = (home.score >= away.score ? homeEntry : awayEntry) || homeEntry || awayEntry;
-    if (managerEntry?.managers) return { type: 'manager', tag: 'Manager spotlight', story: `${managerName(managerEntry)} and ${managerEntry.teams?.name || 'his side'} are worth watching here.` };
-  }
-  if (pedigreeReasons.length) return { type: 'pedigree', tag: 'Honours pedigree', story: `A fixture with history: ${pedigreeReasons.join(' and ')} involved.` };
-  if (Math.min(home.topSeed || 9999, away.topSeed || 9999) <= 8) return { type: 'seed', tag: 'Seed under pressure', story: `A top seed has an early chance to justify the billing — or give the group a twist.` };
-  return { type: pressure.type || 'spotlight', tag: pressure.tag, story: pressure.story };
-}
-function fixtureSpotlights(matches, entries, honours, tables, tournamentId) {
-  const upcoming = upcomingMatches(matches);
-  if (!upcoming.length) return [];
-  const firstDate = upcoming[0].fixture_date;
-  const candidates = upcoming.filter((match) => match.fixture_date === firstDate);
-  const prestige = buildPrestige(entries, honours, tournamentId);
-  const totals = groupFixtureTotals(matches);
-  const entriesMap = entryById(entries);
-  const scored = candidates.map((match) => {
-    const homePrestige = prestige.get(entryKey(match.home_entry_id)) || { score: 0, topSeed: 9999 };
-    const awayPrestige = prestige.get(entryKey(match.away_entry_id)) || { score: 0, topSeed: 9999 };
-    const pressure = knockoutStory(match, prestige) || tablePressure(match, tables, totals);
-    const seedGap = Math.abs((homePrestige.topSeed || 9999) - (awayPrestige.topSeed || 9999));
-    const upsetBonus = seedGap >= 20 && Math.min(homePrestige.topSeed || 9999, awayPrestige.topSeed || 9999) <= 8 ? 10 : 0;
-    const narrative = decorateSpotlight(match, pressure, prestige, entriesMap);
-    return { ...match, spotlightScore: pressure.score + homePrestige.score + awayPrestige.score + upsetBonus, spotlightTag: narrative.tag, spotlightStory: narrative.story, spotlightType: narrative.type };
-  }).sort((a, b) => b.spotlightScore - a.spotlightScore || groupSort(a, b));
-  const wantedTypes = ['holder', 'stakes', 'underdog', 'manager', 'pedigree', 'seed'];
-  const selected = [];
-  const usedTeams = new Set();
-  const usedGroups = new Set();
-  for (const type of wantedTypes) {
-    const match = scored.find((candidate) => candidate.spotlightType === type && !selected.some((chosen) => chosen.id === candidate.id) && !usedTeams.has(entryKey(candidate.home_entry_id)) && !usedTeams.has(entryKey(candidate.away_entry_id)) && !usedGroups.has(candidate.groups?.code || candidate.bracket || 'fixture'));
-    if (match) {
-      selected.push(match);
-      usedTeams.add(entryKey(match.home_entry_id)); usedTeams.add(entryKey(match.away_entry_id));
-      usedGroups.add(match.groups?.code || match.bracket || 'fixture');
-      if (selected.length >= 4) break;
-    }
-  }
-  for (const match of scored) {
-    if (selected.length >= 4) break;
-    if (!selected.some((chosen) => chosen.id === match.id)) selected.push(match);
-  }
-  return selected;
 }
 
 export default function PublicTournamentPage({ tournamentId }) {
