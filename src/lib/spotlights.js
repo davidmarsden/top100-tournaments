@@ -151,6 +151,22 @@ function decorateSpotlight(match, pressure, prestige, entriesMap) {
   return { type: 'spotlight', tag: `Group ${group} watch`, story: `${describeEntry(homeEntry)} meet ${describeEntry(awayEntry)} in a fixture that should help define the shape of Group ${group}.` };
 }
 
+function addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags) {
+  selected.push(match);
+  usedTeams.add(entryKey(match.home_entry_id));
+  usedTeams.add(entryKey(match.away_entry_id));
+  usedGroups.add(match.groups?.code || match.bracket || 'fixture');
+  usedTypes.add(match.spotlightType || 'spotlight');
+  usedTags.add(match.spotlightTag || match.spotlightType || 'spotlight');
+}
+function isFreshMatch(match, selected, usedTeams, usedGroups, usedTypes, usedTags, { allowTeamRepeat = false, allowGroupRepeat = false, allowTypeRepeat = false } = {}) {
+  if (selected.some((chosen) => chosen.id === match.id)) return false;
+  if (!allowTeamRepeat && (usedTeams.has(entryKey(match.home_entry_id)) || usedTeams.has(entryKey(match.away_entry_id)))) return false;
+  if (!allowGroupRepeat && usedGroups.has(match.groups?.code || match.bracket || 'fixture')) return false;
+  if (!allowTypeRepeat && (usedTypes.has(match.spotlightType || 'spotlight') || usedTags.has(match.spotlightTag || match.spotlightType || 'spotlight'))) return false;
+  return true;
+}
+
 export function fixtureSpotlights(matches, entries, honours, tables, tournamentId) {
   const upcoming = upcomingMatches(matches);
   if (!upcoming.length) return [];
@@ -173,21 +189,30 @@ export function fixtureSpotlights(matches, entries, honours, tables, tournamentI
   const selected = [];
   const usedTeams = new Set();
   const usedGroups = new Set();
+  const usedTypes = new Set();
+  const usedTags = new Set();
 
   for (const type of wantedTypes) {
-    const match = scored.find((candidate) => candidate.spotlightType === type && !selected.some((chosen) => chosen.id === candidate.id) && !usedTeams.has(entryKey(candidate.home_entry_id)) && !usedTeams.has(entryKey(candidate.away_entry_id)) && !usedGroups.has(candidate.groups?.code || candidate.bracket || 'fixture'));
+    const match = scored.find((candidate) => candidate.spotlightType === type && isFreshMatch(candidate, selected, usedTeams, usedGroups, usedTypes, usedTags));
     if (match) {
-      selected.push(match);
-      usedTeams.add(entryKey(match.home_entry_id));
-      usedTeams.add(entryKey(match.away_entry_id));
-      usedGroups.add(match.groups?.code || match.bracket || 'fixture');
+      addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags);
       if (selected.length >= 4) break;
     }
   }
 
   for (const match of scored) {
     if (selected.length >= 4) break;
-    if (!selected.some((chosen) => chosen.id === match.id)) selected.push(match);
+    if (isFreshMatch(match, selected, usedTeams, usedGroups, usedTypes, usedTags, { allowGroupRepeat: true })) addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags);
+  }
+
+  for (const match of scored) {
+    if (selected.length >= 4) break;
+    if (isFreshMatch(match, selected, usedTeams, usedGroups, usedTypes, usedTags, { allowTeamRepeat: true, allowGroupRepeat: true })) addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags);
+  }
+
+  for (const match of scored) {
+    if (selected.length >= 4) break;
+    if (!selected.some((chosen) => chosen.id === match.id)) addSpotlight(match, selected, usedTeams, usedGroups, usedTypes, usedTags);
   }
 
   return selected;
