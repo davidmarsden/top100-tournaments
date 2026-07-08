@@ -46,14 +46,15 @@
 .latest-winner-list { margin-bottom: 14px; }
 .latest-winner-card { border-color: #fde68a !important; background: #fffdf4 !important; box-shadow: inset 6px 0 0 #f59e0b; }
 .winners-filter-row { margin: 16px 0 12px; }
-.compact-winner-list { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.compact-winner-list { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.archive-volume-note { margin-top: 10px; }
 .honours-leaderboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 18px; }
 .honours-leaderboard-card { border: 1px solid #e4ebf7; border-radius: 20px; background: #fbfdff; padding: 14px; }
 .honours-leaderboard-card h4 { margin: 0 0 10px; }
 .honours-leaderboard-table { width: 100%; border-collapse: collapse; }
-.honours-leaderboard-table td { padding: 7px 4px; border-top: 1px solid #edf2fb; }
-.honours-leaderboard-table td:first-child { width: 2.5rem; color: var(--hub-muted); font-weight: 900; }
-.honours-leaderboard-table td:last-child { text-align: right; font-weight: 950; }
+.honours-leaderboard-table td { padding: 8px 4px; border-top: 1px solid #edf2fb; }
+.honours-leaderboard-table td:last-child { text-align: right; font-weight: 950; white-space: nowrap; }
+.wins-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 4.8rem; border-radius: 999px; padding: 0.35rem 0.65rem; background: #eef3fb; color: #1d4ed8; font-weight: 950; }
 @media (max-width: 820px) {
   .public-section-nav { border-radius: 18px; }
   .public-section-toolbar, .winners-archive-header { flex-direction: column; }
