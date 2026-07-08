@@ -29,6 +29,10 @@ function honourLabel(row) {
   return honourType(row) === 'shield' ? 'Youth Shield' : 'Youth Cup';
 }
 
+function honourIcon(row) {
+  return honourType(row) === 'shield' ? '🛡️' : '🏆';
+}
+
 function honourTeam(row) {
   return row?.entry?.teams?.name || row?.tournament_entries?.teams?.name || 'TBC';
 }
@@ -123,24 +127,25 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
     {seasonFilter === 'all' && <p className="muted archive-volume-note">Showing all imported winners. For the cleaner full honours archive, use the archive link above.</p>}
 
     <div className="honours-leaderboard-grid">
-      <HonoursTable title="Most Youth Cup wins — clubs" rows={clubCupTable} />
-      <HonoursTable title="Most Youth Shield wins — clubs" rows={clubShieldTable} />
-      <HonoursTable title="Most Youth Cup wins — managers" rows={managerCupTable} />
-      <HonoursTable title="Most Youth Shield wins — managers" rows={managerShieldTable} />
+      <HonoursTable title="Most Youth Cup wins — clubs" rows={clubCupTable} type="cup" />
+      <HonoursTable title="Most Youth Shield wins — clubs" rows={clubShieldTable} type="shield" />
+      <HonoursTable title="Most Youth Cup wins — managers" rows={managerCupTable} type="cup" />
+      <HonoursTable title="Most Youth Shield wins — managers" rows={managerShieldTable} type="shield" />
     </div>
   </div>;
 }
 
 function WinnerCard({ row, featured = false }) {
-  return <article className={featured ? 'latest-winner-card' : ''}>
+  const type = honourType(row);
+  return <article className={`${featured ? 'latest-winner-card ' : ''}honour-card honour-card-${type}`}>
     <span>{seasonLabel(row)} · {honourLabel(row)}</span>
-    <strong>🏆 {honourTeam(row)}</strong>
+    <strong>{honourIcon(row)} {honourTeam(row)}</strong>
     <small>{row.honour}{honourManager(row) ? ` · ${honourManager(row)}` : ''}</small>
   </article>;
 }
 
-function HonoursTable({ title, rows }) {
-  return <section className="honours-leaderboard-card">
+function HonoursTable({ title, rows, type }) {
+  return <section className={`honours-leaderboard-card honours-leaderboard-${type}`}>
     <h4>{title}</h4>
     {rows.length ? <div className="honours-leaderboard-list">{rows.map((row) => <div className="honours-leaderboard-row" key={row.name}><strong>{row.name}</strong><span>{row.wins}</span></div>)}</div> : <p className="muted">No winners yet.</p>}
   </section>;
