@@ -21,6 +21,17 @@
 .spotlight-match-card { border-color: #bfdbfe; box-shadow: inset 6px 0 0 #2563eb; }
 .spotlight-match-card span { color: #1d4ed8; }
 .spotlight-match-card p { margin: 6px 0 0; color: var(--hub-muted); font-weight: 750; line-height: 1.35; }
+.match-comments { margin-top: 10px; border-top: 1px solid #e4ebf7; padding-top: 10px; }
+.match-comments-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.comment-toggle { border: 0; border-radius: 999px; padding: 0.45rem 0.75rem; background: #eef3fb; color: #1d4ed8; font-weight: 950; cursor: pointer; }
+.secondary-comment { background: #f4f7fb; color: #5f6f8e; }
+.match-comments-body { display: grid; gap: 10px; margin-top: 10px; }
+.approved-comments { display: grid; gap: 8px; }
+.match-comment { border: 1px solid #e4ebf7; border-radius: 14px; padding: 10px; background: #ffffff; }
+.match-comment strong { font-size: 0.9rem; }
+.match-comment p { margin: 4px 0 0; font-size: 0.95rem; font-weight: 650; }
+.match-comment-form { display: grid; gap: 10px; padding: 10px; border: 1px solid #e4ebf7; border-radius: 16px; background: #fbfdff; }
+.match-comment-form textarea { resize: vertical; }
 .holder-strip, .schedule-summary, .previous-winners { margin-top: 18px; }
 .holder-strip h3, .schedule-summary h3, .previous-winners h3 { margin: 0 0 10px; }
 .holder-strip > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
