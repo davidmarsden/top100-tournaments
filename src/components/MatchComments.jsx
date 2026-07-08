@@ -32,6 +32,19 @@ function managerBadge(comment) {
   if (text.includes('holder') || text.includes('champion')) return '🏆 Champion voice';
   return '';
 }
+function normaliseComment(item) {
+  return {
+    comment_type: 'pre_match',
+    prediction_score: null,
+    player_to_watch: null,
+    first_goalscorer: null,
+    is_pinned: false,
+    editor_pick: false,
+    badge_label: null,
+    reactions: {},
+    ...item,
+  };
+}
 
 export default function MatchComments({ match, tournamentId, compact = false }) {
   const [comments, setComments] = useState([]);
@@ -55,7 +68,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
   const buttonLabel = approvedCount ? `View comments (${approvedCount})` : 'Add comment';
 
   async function loadComments() {
-    const { data, error } = await supabase
+    const full = await supabase
       .from('match_comments')
       .select('id, manager_name, club_name, comment, comment_type, prediction_score, player_to_watch, first_goalscorer, is_pinned, editor_pick, badge_label, reactions, created_at')
       .eq('match_id', match.id)
@@ -63,7 +76,21 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
       .order('is_pinned', { ascending: false })
       .order('editor_pick', { ascending: false })
       .order('created_at', { ascending: true });
-    if (!error) setComments(data || []);
+
+    if (!full.error) {
+      setComments((full.data || []).map(normaliseComment));
+      return;
+    }
+
+    const legacy = await supabase
+      .from('match_comments')
+      .select('id, manager_name, club_name, comment, created_at')
+      .eq('match_id', match.id)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: true });
+
+    if (!legacy.error) setComments((legacy.data || []).map(normaliseComment));
+    else setStatus('Could not load comments: ' + legacy.error.message);
   }
 
   function updateField(field, value) {
@@ -84,7 +111,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
     if (comment.length > 500) return setStatus('Keep comments under 500 characters.');
 
     setLoading(true);
-    const { error } = await supabase.from('match_comments').insert({
+    const fullInsert = await supabase.from('match_comments').insert({
       match_id: match.id,
       tournament_id: tournamentId || match.tournament_id || null,
       manager_name: managerName,
@@ -96,9 +123,22 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
       comment_type: form.comment_type || (isPlayed(match) ? 'post_match' : 'pre_match'),
       status: 'pending',
     });
-    setLoading(false);
 
-    if (error) return setStatus('Could not submit comment: ' + error.message);
+    if (fullInsert.error) {
+      const legacyInsert = await supabase.from('match_comments').insert({
+        match_id: match.id,
+        tournament_id: tournamentId || match.tournament_id || null,
+        manager_name: managerName,
+        club_name: clubName || null,
+        comment,
+        status: 'pending',
+      });
+      setLoading(false);
+      if (legacyInsert.error) return setStatus('Could not submit comment: ' + legacyInsert.error.message);
+    } else {
+      setLoading(false);
+    }
+
     setForm({ ...emptyForm, comment_type: isPlayed(match) ? 'post_match' : 'pre_match' });
     setShowForm(false);
     setOpen(true);
@@ -109,7 +149,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
     setReactingId(commentId + reactionKey);
     const { error } = await supabase.rpc('react_to_match_comment', { comment_id: commentId, reaction_key: reactionKey });
     setReactingId(null);
-    if (error) return setStatus('Could not add reaction: ' + error.message);
+    if (error) return setStatus('Reactions will work after the comments SQL update is run.');
     setComments((rows) => rows.map((row) => row.id === commentId ? { ...row, reactions: { ...reactionsFor(row), [reactionKey]: Number(reactionsFor(row)[reactionKey] || 0) + 1 } } : row));
   }
 
