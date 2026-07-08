@@ -67,20 +67,29 @@ function seasonOptions(rows) {
   return [...new Set(rows.map(seasonNumber).filter(Boolean))].sort((a, b) => b - a);
 }
 
+function recentRows(rows, latestSeason, count = 8) {
+  return rows
+    .filter((row) => seasonNumber(row) !== latestSeason)
+    .slice(0, count);
+}
+
 export default function WinnersArchive({ rows = [], currentTournamentId }) {
   const [competitionFilter, setCompetitionFilter] = useState('all');
-  const [seasonFilter, setSeasonFilter] = useState('all');
+  const [seasonFilter, setSeasonFilter] = useState('recent');
 
   const winners = useMemo(() => relevantRows(rows).filter((row) => Number(row.tournament_id) !== Number(currentTournamentId)), [rows, currentTournamentId]);
   const seasons = useMemo(() => seasonOptions(winners), [winners]);
   const latestSeason = seasons[0] || null;
 
   const latestRows = useMemo(() => winners.filter((row) => seasonNumber(row) === latestSeason), [winners, latestSeason]);
-  const filteredRows = useMemo(() => winners.filter((row) => {
-    if (competitionFilter !== 'all' && honourType(row) !== competitionFilter) return false;
-    if (seasonFilter !== 'all' && seasonNumber(row) !== Number(seasonFilter)) return false;
-    return true;
-  }), [winners, competitionFilter, seasonFilter]);
+  const filteredRows = useMemo(() => {
+    const base = winners.filter((row) => {
+      if (competitionFilter !== 'all' && honourType(row) !== competitionFilter) return false;
+      if (seasonFilter !== 'all' && seasonFilter !== 'recent' && seasonNumber(row) !== Number(seasonFilter)) return false;
+      return true;
+    });
+    return seasonFilter === 'recent' ? recentRows(base, latestSeason, 8) : base;
+  }, [winners, competitionFilter, seasonFilter, latestSeason]);
 
   const clubCupTable = useMemo(() => tableRows(winners, honourTeam, 'cup'), [winners]);
   const clubShieldTable = useMemo(() => tableRows(winners, honourTeam, 'shield'), [winners]);
@@ -104,12 +113,14 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
 
     <div className="winners-filter-row">
       <label className="public-group-filter">Competition<select value={competitionFilter} onChange={(event) => setCompetitionFilter(event.target.value)}>{COMPETITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-      <label className="public-group-filter">Season<select value={seasonFilter} onChange={(event) => setSeasonFilter(event.target.value)}><option value="all">All seasons</option>{seasons.map((season) => <option key={season} value={season}>S{season}</option>)}</select></label>
+      <label className="public-group-filter">Season<select value={seasonFilter} onChange={(event) => setSeasonFilter(event.target.value)}><option value="recent">Recent winners</option><option value="all">All seasons</option>{seasons.map((season) => <option key={season} value={season}>S{season}</option>)}</select></label>
     </div>
 
     <div className="previous-winner-list compact-winner-list">
-      {filteredRows.slice(0, 24).map((row) => <WinnerCard key={row.id} row={row} />)}
+      {filteredRows.map((row) => <WinnerCard key={row.id} row={row} />)}
     </div>
+
+    {seasonFilter === 'all' && <p className="muted archive-volume-note">Showing all imported winners. For the cleaner full honours archive, use the archive link above.</p>}
 
     <div className="honours-leaderboard-grid">
       <HonoursTable title="Most Youth Cup wins — clubs" rows={clubCupTable} />
@@ -131,6 +142,6 @@ function WinnerCard({ row, featured = false }) {
 function HonoursTable({ title, rows }) {
   return <section className="honours-leaderboard-card">
     <h4>{title}</h4>
-    {rows.length ? <table className="honours-leaderboard-table"><tbody>{rows.map((row, index) => <tr key={row.name}><td>{index + 1}</td><td><strong>{row.name}</strong></td><td>{row.wins}</td></tr>)}</tbody></table> : <p className="muted">No winners yet.</p>}
+    {rows.length ? <table className="honours-leaderboard-table"><tbody>{rows.map((row) => <tr key={row.name}><td><strong>{row.name}</strong></td><td><span className="wins-pill">{row.wins} win{row.wins === 1 ? '' : 's'}</span></td></tr>)}</tbody></table> : <p className="muted">No winners yet.</p>}
   </section>;
 }
