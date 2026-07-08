@@ -5,7 +5,7 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 const ROUND_ORDER = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
 const RULES_URL = 'https://smtop100.blog/youth-cup-format-rules/';
 const ROUND_LABELS = { R64: 'Round of 64', R32: 'Round of 32', R16: 'Round of 16', QF: 'Quarter-finals', SF: 'Semi-finals', Final: 'Final' };
-const TROPHY_HONOURS = ['Winner', 'Cup Winner', 'Youth Cup Winner', 'Shield Winner'];
+const TROPHY_HONOURS = ['winner', 'cup winner', 'youth cup winner', 'shield winner'];
 
 function isCompleted(match) { return match.status === 'played' || match.status === 'forfeit'; }
 function teamName(entry, fallback) { return entry?.teams?.name || fallback || 'TBC'; }
@@ -19,9 +19,9 @@ function parseDate(dateString) { if (!dateString) return null; const [year, mont
 function todayUtc() { const now = new Date(); return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())); }
 function formatDate(dateString) { const date = parseDate(dateString); if (!date) return dateString || ''; return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }); }
 function formatShortDate(dateString) { const date = parseDate(dateString); if (!date) return dateString || ''; return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }); }
+function dateKey(bracket, round) { return `${bracket || 'Cup'}|${round || 'Round'}`; }
 function dateRange(row) { if (!row?.leg1_date && !row?.leg2_date) return '—'; if (row.leg1_date && row.leg2_date) return `${formatShortDate(row.leg1_date)} & ${formatShortDate(row.leg2_date)}`; return formatShortDate(row.leg1_date || row.leg2_date); }
 function sectionDateLabel(matches) { const dates = [...new Set(matches.map((match) => match.fixture_date).filter(Boolean))].sort(); if (!dates.length) return ''; if (dates.length === 1) return formatDate(dates[0]); return `${formatDate(dates[0])} / ${formatDate(dates[dates.length - 1])}`; }
-function dateKey(bracket, round) { return `${bracket || 'Cup'}|${round || 'Round'}`; }
 function applyRoundDates(matches, roundDates) {
   const dateMap = new Map((roundDates || []).map((row) => [dateKey(row.bracket, row.round), row]));
   return matches.map((match) => {
@@ -31,39 +31,6 @@ function applyRoundDates(matches, roundDates) {
     const fixtureDate = Number(match.leg || 1) === 2 ? (row.leg2_date || row.leg1_date) : row.leg1_date;
     return fixtureDate ? { ...match, fixture_date: fixtureDate } : match;
   });
-}
-function latestWinner(ordered) { return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null; }
-function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
-  if (firstAway !== secondAway) return `away goals ${firstAway}-${secondAway}`;
-  if (!decidingLeg) return winnerName === 'FET/manual winner needed' ? 'FET/manual decision needed' : 'tie-break';
-  if (decidingLeg.home_extra_time_score !== null || decidingLeg.away_extra_time_score !== null) return `FET ${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0}`;
-  if (decidingLeg.home_penalty_score !== null || decidingLeg.away_penalty_score !== null) return `penalties ${decidingLeg.home_penalty_score ?? 0}-${decidingLeg.away_penalty_score ?? 0}`;
-  return String(decidingLeg.decided_by || 'tie-break').replace(/_/g, ' ');
-}
-function finalSummary(matches, bracket) {
-  const finals = matches.filter((match) => match.stage === 'knockout' && match.bracket === bracket && match.round === 'Final').sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
-  if (!finals.length || finals.some((match) => !isCompleted(match))) return null;
-  const first = finals[0];
-  const firstId = first.home_entry_id;
-  const secondId = first.away_entry_id;
-  const firstName = teamName(first.home_entry, first.home_placeholder);
-  const secondName = teamName(first.away_entry, first.away_placeholder);
-  let firstAgg = 0, secondAgg = 0, firstAway = 0, secondAway = 0;
-  finals.forEach((leg) => {
-    const home = Number(leg.home_score || 0), away = Number(leg.away_score || 0);
-    if (leg.home_entry_id === firstId) { firstAgg += home; secondAgg += away; secondAway += away; }
-    else { firstAgg += away; secondAgg += home; firstAway += away; }
-  });
-  let winnerId = null;
-  if (firstAgg > secondAgg) winnerId = firstId;
-  else if (secondAgg > firstAgg) winnerId = secondId;
-  else if (firstAway > secondAway) winnerId = firstId;
-  else if (secondAway > firstAway) winnerId = secondId;
-  else winnerId = latestWinner(finals);
-  const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : 'FET/manual winner needed';
-  const decidingLeg = [...finals].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
-  const decision = firstAgg === secondAgg ? decisionText(winnerName, firstAway, secondAway, decidingLeg) : null;
-  return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, legs: finals };
 }
 function groupMatches(matches) { return matches.reduce((groups, match) => { const key = match.stage === 'group' ? `Group ${match.groups?.code || 'Ungrouped'}` : `${match.bracket || 'Knockout'} · ${roundLabel(match.round || 'Round')}`; if (!groups[key]) groups[key] = []; groups[key].push(match); return groups; }, {}); }
 function bracketsFrom(matches) { return [...new Set(matches.filter((match) => match.stage === 'knockout').map((match) => match.bracket || 'Cup'))].sort((a, b) => String(a).localeCompare(String(b))); }
@@ -125,11 +92,32 @@ function competitionStats(matches, entries, tables, forfeits) {
   const groupLeaders = tables.flatMap((table) => table.rows.filter((row) => row.group_position === 1)).length;
   return { teams: entries.length, fixtures: matches.length, played: played.length, remaining: matches.length - played.length, goals, avgGoals: played.length ? (goals / played.length).toFixed(2) : '—', groupLeaders, forfeits: forfeits.length };
 }
-function honourTeam(row) { return row?.entry?.teams?.name || row?.tournament_entries?.teams?.name || 'TBC'; }
-function honourManager(row) { return row?.entry?.managers?.display_name || row?.entry?.managers?.name || row?.tournament_entries?.managers?.display_name || row?.tournament_entries?.managers?.name || ''; }
-function honourTournament(row) { return row?.tournaments?.name || row?.tournament?.name || `Tournament ${row.tournament_id}`; }
+function latestWinner(ordered) { return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null; }
+function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
+  if (firstAway !== secondAway) return `away goals ${firstAway}-${secondAway}`;
+  if (!decidingLeg) return winnerName === 'FET/manual winner needed' ? 'FET/manual decision needed' : 'tie-break';
+  if (decidingLeg.home_extra_time_score !== null || decidingLeg.away_extra_time_score !== null) return `FET ${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0}`;
+  if (decidingLeg.home_penalty_score !== null || decidingLeg.away_penalty_score !== null) return `penalties ${decidingLeg.home_penalty_score ?? 0}-${decidingLeg.away_penalty_score ?? 0}`;
+  return String(decidingLeg.decided_by || 'tie-break').replace(/_/g, ' ');
+}
+function finalSummary(matches, bracket) {
+  const finals = matches.filter((match) => match.stage === 'knockout' && match.bracket === bracket && match.round === 'Final').sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
+  if (!finals.length || finals.some((match) => !isCompleted(match))) return null;
+  const first = finals[0], firstId = first.home_entry_id, secondId = first.away_entry_id;
+  const firstName = teamName(first.home_entry, first.home_placeholder), secondName = teamName(first.away_entry, first.away_placeholder);
+  let firstAgg = 0, secondAgg = 0, firstAway = 0, secondAway = 0;
+  finals.forEach((leg) => { const home = Number(leg.home_score || 0), away = Number(leg.away_score || 0); if (leg.home_entry_id === firstId) { firstAgg += home; secondAgg += away; secondAway += away; } else { firstAgg += away; secondAgg += home; firstAway += away; } });
+  let winnerId = firstAgg > secondAgg ? firstId : secondAgg > firstAgg ? secondId : firstAway > secondAway ? firstId : secondAway > firstAway ? secondId : latestWinner(finals);
+  const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : 'FET/manual winner needed';
+  const decidingLeg = [...finals].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
+  const decision = firstAgg === secondAgg ? decisionText(winnerName, firstAway, secondAway, decidingLeg) : null;
+  return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, legs: finals };
+}
+function honourTeam(row) { return row?.entry?.teams?.name || 'TBC'; }
+function honourManager(row) { return row?.entry?.managers?.display_name || row?.entry?.managers?.name || ''; }
+function honourTournament(row) { return row?.tournaments?.name || `Tournament ${row.tournament_id}`; }
 function currentHolders(honours) {
-  const rows = honours.filter((row) => TROPHY_HONOURS.some((label) => String(row.honour || '').toLowerCase().includes(label.toLowerCase())));
+  const rows = honours.filter((row) => TROPHY_HONOURS.some((label) => String(row.honour || '').toLowerCase().includes(label)));
   const byHonour = new Map();
   rows.forEach((row) => { const key = row.honour || 'Winner'; if (!byHonour.has(key)) byHonour.set(key, row); });
   return [...byHonour.entries()].map(([honour, row]) => ({ honour, team: honourTeam(row), manager: honourManager(row), tournament: honourTournament(row) })).slice(0, 4);
@@ -173,23 +161,31 @@ export default function PublicTournamentPage({ tournamentId }) {
     setStatus('Loading tournament page...');
     const tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams').eq('id', tournamentId).maybeSingle();
     if (tournamentResult.error || !tournamentResult.data) { setStatus('Tournament not found.'); return; }
-    const [matchesResult, entriesResult, roundDatesResult, honoursResult, forfeitsResult] = await Promise.all([
-      supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))').eq('tournament_id', tournamentId),
-      supabase.from('tournament_entries').select('id, seed, rating, pot, group_code, prize_draw_eligible, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
-      supabase.from('tournament_round_dates').select('id, bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
+
+    const matchesQuery = supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId);
+    const entriesQuery = supabase.from('tournament_entries').select('id, seed, rating, pot, group_code, prize_draw_eligible, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true });
+    const datesQuery = supabase.from('tournament_round_dates').select('id, bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId);
+    const [matchesResult, entriesResult, roundDatesResult] = await Promise.all([matchesQuery, entriesQuery, datesQuery]);
+
+    setTournament(tournamentResult.data);
+    setMatches(matchesResult.error ? [] : (matchesResult.data || []));
+    setEntries(entriesResult.error ? [] : (entriesResult.data || []));
+    setRoundDates(roundDatesResult.error ? [] : (roundDatesResult.data || []));
+    setSelectedGroup('all'); setSelectedBracket('all'); setSelectedRound('all');
+
+    if (matchesResult.error) { setStatus('Could not load fixtures: ' + matchesResult.error.message); return; }
+    setStatus('Tournament page loaded.');
+
+    Promise.all([
       supabase.from('honours').select('id, honour, position, tournament_id, tournaments(id, name), entry:tournament_entries!honours_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))').order('tournament_id', { ascending: false }),
       supabase.from('forfeits').select('id, reason, penalty, affects_prize_draw, match_id, forfeiting_entry:tournament_entries!forfeits_forfeiting_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))'),
-    ]);
-    if (matchesResult.error) { setStatus('Could not load results: ' + matchesResult.error.message); return; }
-    if (entriesResult.error) { setStatus('Could not load seedings: ' + entriesResult.error.message); return; }
-    setTournament(tournamentResult.data);
-    setMatches(matchesResult.data || []);
-    setEntries(entriesResult.data || []);
-    setRoundDates(roundDatesResult.error ? [] : (roundDatesResult.data || []));
-    setHonours(honoursResult.error ? [] : (honoursResult.data || []));
-    setForfeits(forfeitsResult.error ? [] : (forfeitsResult.data || []));
-    setSelectedGroup('all'); setSelectedBracket('all'); setSelectedRound('all');
-    setStatus('Tournament page loaded.');
+    ]).then(([honoursResult, forfeitsResult]) => {
+      if (!honoursResult.error) setHonours(honoursResult.data || []);
+      if (!forfeitsResult.error) {
+        const currentMatchIds = new Set((matchesResult.data || []).map((match) => match.id));
+        setForfeits((forfeitsResult.data || []).filter((row) => currentMatchIds.has(row.match_id)));
+      }
+    }).catch(() => {});
   }
 
   if (!hasSupabaseConfig || !supabase) return <main className="app-shell"><section className="warning-card"><strong>Supabase is not connected.</strong></section></main>;
@@ -200,7 +196,7 @@ export default function PublicTournamentPage({ tournamentId }) {
   return <main className="app-shell public-archive tournament-hub">
     <section className="hero tournament-hero"><p className="eyebrow">Top 100 Youth Cup Hub</p><h1>{tournament.name}</h1><p>{tournament.status || 'draft'} · {stats.played} results · {stats.remaining} fixtures remaining · {stats.goals} goals</p><div className="hero-countdown"><span>Next fixture</span><strong>{nextFixture ? countdownText(nextFixture) : 'Complete'}</strong><small>{nextFixture ? `${formatDate(nextFixture.fixture_date)} · ${fixtureTitle(nextFixture)}` : 'No upcoming fixtures listed'}</small></div></section>
     <nav className="public-section-nav" aria-label="Tournament sections"><a href="#summary">Summary</a><a href="#featured">Featured</a><a href="#winners">Winners</a><a href="#groups">Groups</a><a href="#knockout">Knockout</a><a href="#rankings">Best placed tables</a><a href="#fair-play">Fair Play</a><a href="#brackets">Bracket</a></nav>
-    <section id="summary" className="card format-summary-card"><div className="public-section-toolbar"><div><p className="eyebrow">Competition summary</p><h2>Mini UEFA-site mode: activated</h2></div><a className="public-link-button" href={RULES_URL} target="_blank" rel="noreferrer">Read full rules</a></div><div className="hub-stat-grid"><StatCard label="Teams" value={tournament.actual_entries || entries.length || tournament.max_entries || '—'} note={tournament.group_count && tournament.teams_per_group ? `${tournament.group_count} groups of ${tournament.teams_per_group}` : 'Registered entrants'} /><StatCard label="Fixtures" value={stats.fixtures} note={`${stats.played} played, ${stats.remaining} remaining`} /><StatCard label="Goals" value={stats.goals} note={`${stats.avgGoals} per completed match`} /><StatCard label="Forfeits" value={stats.forfeits} note="Fair Play / prize draw watch" /></div><p className="muted">Teams are seeded by average rating into pots for the group draw. Knockout seeding is explained by the best 1st, 2nd and 3rd place tables below.</p>{holders.length > 0 && <CurrentHolders rows={holders} />}{groupScheduleRows.length > 0 && <GroupSchedule rows={groupScheduleRows} />}{scheduleRows.length > 0 && <KnockoutSchedule rows={scheduleRows} />}</section>
+    <section id="summary" className="card format-summary-card"><div className="public-section-toolbar"><div><p className="eyebrow">Competition summary</p><h2>Tournament overview</h2></div><a className="public-link-button" href={RULES_URL} target="_blank" rel="noreferrer">Read full rules</a></div><div className="hub-stat-grid"><StatCard label="Teams" value={tournament.actual_entries || entries.length || tournament.max_entries || '—'} note={tournament.group_count && tournament.teams_per_group ? `${tournament.group_count} groups of ${tournament.teams_per_group}` : 'Registered entrants'} /><StatCard label="Fixtures" value={stats.fixtures} note={`${stats.played} played, ${stats.remaining} remaining`} /><StatCard label="Goals" value={stats.goals} note={`${stats.avgGoals} per completed match`} /><StatCard label="Forfeits" value={stats.forfeits} note="Fair Play / prize draw watch" /></div><p className="muted">Teams are seeded by average rating into pots for the group draw. Knockout seeding is explained by the best 1st, 2nd and 3rd place tables below.</p>{holders.length > 0 && <CurrentHolders rows={holders} />}{groupScheduleRows.length > 0 && <GroupSchedule rows={groupScheduleRows} />}{scheduleRows.length > 0 && <KnockoutSchedule rows={scheduleRows} />}</section>
     <section id="featured" className="card"><p className="eyebrow">Featured matches</p><h2>What to watch next</h2><div className="featured-match-grid">{featured.length ? featured.map((match) => <FeaturedMatch key={match.id} match={match} />) : <p className="muted">No upcoming featured fixtures yet.</p>}</div></section>
     <section id="winners" className="card winners-card"><p className="eyebrow">Winners</p><h2>Current and previous winners</h2><div className="overview-metrics compact-metrics">{winners.length ? winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>🏆 {winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}{winner.decision ? ` · ${winner.decision}` : ''}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamName(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamName(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>) : <p className="muted">No completed finals yet.</p>}</div>{honours.length > 0 && <PreviousWinners rows={honours.filter((row) => Number(row.tournament_id) !== Number(tournamentId)).slice(0, 12)} />}</section>
     <section id="groups" className="card"><div className="public-section-toolbar"><div><p className="eyebrow">Group fixtures and results</p><h2>{selectedGroup === 'all' ? 'All groups' : `Group ${selectedGroup}`}</h2></div>{groupOptions.length > 1 && <label className="public-group-filter">Group<select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)}><option value="all">All groups</option>{groupOptions.map((code) => <option key={code} value={code}>Group {code}</option>)}</select></label>}</div><ResultSections sections={groupResults} /></section>
