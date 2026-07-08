@@ -1,0 +1,33 @@
+name: Wire match comments
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/wire-match-comments.mjs
+      - .github/workflows/wire-match-comments.yml
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Wire comments into public fixture cards
+        run: node scripts/wire-match-comments.mjs
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/components/PublicTournamentPage.jsx
+            git commit -m "Wire match comments into public fixture cards"
+            git push
+          fi
