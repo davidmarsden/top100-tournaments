@@ -26,7 +26,7 @@
 .winner-summary-card::after { content: "🏆"; position: absolute; right: 12px; bottom: 2px; font-size: 3rem; opacity: 0.13; }
 .mini-results { display: grid; gap: 4px; margin-top: 10px; }
 .mini-results p { margin: 0; color: var(--hub-muted); font-size: 0.9rem; }
-.public-filter-pair { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.public-filter-pair, .winners-filter-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .public-group-filter { min-width: 190px; margin: 0; }
 .result-side.winner { color: #15803d; }
 .result-side.loser { color: #64748b; }
@@ -41,8 +41,21 @@
 .schedule-table-wrap { overflow-x: auto; }
 .schedule-table { min-width: 560px; }
 .public-bracket-stack { display: grid; gap: 18px; }
+.winners-archive-header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 14px; }
+.winners-archive-header p { margin: 6px 0 0; }
+.latest-winner-list { margin-bottom: 14px; }
+.latest-winner-card { border-color: #fde68a !important; background: #fffdf4 !important; box-shadow: inset 6px 0 0 #f59e0b; }
+.winners-filter-row { margin: 16px 0 12px; }
+.compact-winner-list { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.honours-leaderboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 18px; }
+.honours-leaderboard-card { border: 1px solid #e4ebf7; border-radius: 20px; background: #fbfdff; padding: 14px; }
+.honours-leaderboard-card h4 { margin: 0 0 10px; }
+.honours-leaderboard-table { width: 100%; border-collapse: collapse; }
+.honours-leaderboard-table td { padding: 7px 4px; border-top: 1px solid #edf2fb; }
+.honours-leaderboard-table td:first-child { width: 2.5rem; color: var(--hub-muted); font-weight: 900; }
+.honours-leaderboard-table td:last-child { text-align: right; font-weight: 950; }
 @media (max-width: 820px) {
   .public-section-nav { border-radius: 18px; }
-  .public-section-toolbar { flex-direction: column; }
+  .public-section-toolbar, .winners-archive-header { flex-direction: column; }
   .public-link-button, .public-group-filter { width: 100%; }
 }
