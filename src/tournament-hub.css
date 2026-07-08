@@ -28,10 +28,21 @@
 .match-comments-body { display: grid; gap: 10px; margin-top: 10px; }
 .approved-comments { display: grid; gap: 8px; }
 .match-comment { border: 1px solid #e4ebf7; border-radius: 14px; padding: 10px; background: #ffffff; }
+.pinned-comment, .pinned-comment-preview { border-color: #fde68a; background: #fffdf4; box-shadow: inset 4px 0 0 #f59e0b; }
+.pinned-comment-preview { margin-bottom: 8px; }
 .match-comment strong { font-size: 0.9rem; }
 .match-comment p { margin: 4px 0 0; font-size: 0.95rem; font-weight: 650; }
+.comment-meta-line { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
+.comment-meta-line span { color: #5f6f8e; font-size: 0.72rem; font-weight: 950; text-transform: uppercase; letter-spacing: 0.06em; }
+.manager-badge { display: inline-flex; width: fit-content; margin-top: 4px; border-radius: 999px; padding: 0.24rem 0.5rem; background: #eef3fb; color: #1d4ed8; font-weight: 950; }
+.prediction-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.prediction-strip span { border-radius: 999px; padding: 0.28rem 0.55rem; background: #f4f7fb; color: #172033; font-size: 0.82rem; font-weight: 900; letter-spacing: 0; text-transform: none; }
+.reaction-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.reaction-row button { border: 0; border-radius: 999px; padding: 0.28rem 0.52rem; background: #eef3fb; color: #1d4ed8; font-weight: 950; cursor: pointer; }
 .match-comment-form { display: grid; gap: 10px; padding: 10px; border: 1px solid #e4ebf7; border-radius: 16px; background: #fbfdff; }
 .match-comment-form textarea { resize: vertical; }
+.featured-moderation-card { border-color: #fde68a; background: #fffdf4; }
+.moderation-predictions { margin-bottom: 8px; }
 .holder-strip, .schedule-summary, .previous-winners { margin-top: 18px; }
 .holder-strip h3, .schedule-summary h3, .previous-winners h3 { margin: 0 0 10px; }
 .holder-strip > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
