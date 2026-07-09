@@ -24,8 +24,9 @@ export const demoEntrants = ['Genoa', 'Espanyol', 'Bayern Munich', 'Barcelona', 
 
 export function normalStatus(tournament) { return String(tournament?.status || 'draft').toLowerCase(); }
 export function isArchived(tournament) { return normalStatus(tournament) === 'archived'; }
+export function isPlaceholderArchive(tournament) { return tournament?.archive_quality === 'placeholder' || (normalStatus(tournament) === 'archived' && Number(tournament?.actual_entries || 0) === 0 && tournament?.source !== 'challonge'); }
 export function completed(match) { return match.status === 'played' || match.status === 'forfeit'; }
-function sortTournaments(items) { const rank = { published: 0, groups_approved: 1, draft: 2, completed: 3, archived: 4 }; return [...items].sort((a, b) => (rank[normalStatus(a)] ?? 2) - (rank[normalStatus(b)] ?? 2) || new Date(b.created_at || 0) - new Date(a.created_at || 0)); }
+function sortTournaments(items) { const rank = { published: 0, groups_approved: 1, draft: 2, completed: 3, archived: 4 }; return [...items].sort((a, b) => (rank[normalStatus(a)] ?? 2) - (rank[normalStatus(b)] ?? 2) || Number(isPlaceholderArchive(a)) - Number(isPlaceholderArchive(b)) || new Date(b.created_at || 0) - new Date(a.created_at || 0)); }
 function generateGroups(entries, groupCount) {
   const groups = groupCodes.slice(0, groupCount).map((code, index) => ({ code, group_order: index + 1, entries: [] }));
   for (let start = 0; start < entries.length; start += groupCount) {
@@ -76,7 +77,7 @@ export function TournamentProvider({ children }) {
   const canUseDatabase = hasSupabaseConfig && supabase;
 
   useEffect(() => { if (canUseDatabase) loadTournaments(); }, [canUseDatabase]);
-  const selectedTournament = useMemo(() => tournaments.find((item) => item.id === selectedTournamentId) || tournaments.find((item) => !isArchived(item)) || tournaments[0] || null, [selectedTournamentId, tournaments]);
+  const selectedTournament = useMemo(() => tournaments.find((item) => item.id === selectedTournamentId) || tournaments.find((item) => !isArchived(item) && !isPlaceholderArchive(item)) || tournaments.find((item) => !isPlaceholderArchive(item)) || tournaments[0] || null, [selectedTournamentId, tournaments]);
   useEffect(() => { if (canUseDatabase && selectedTournament?.id) loadProgressStats(selectedTournament.id); }, [canUseDatabase, selectedTournament?.id]);
 
   function updateField(field, value) { setForm((current) => ({ ...current, [field]: value })); }
@@ -93,12 +94,13 @@ export function TournamentProvider({ children }) {
   async function loadTournaments() {
     setLoading(true);
     setStatus('Loading tournaments...');
-    const fullSelect = 'id, name, status, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, created_at, season_number, public_slug, slug, is_public, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)';
+    const fullSelect = 'id, name, status, source, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, created_at, season_number, public_slug, slug, is_public, archive_quality, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)';
     let result = await supabase.from('tournaments').select(fullSelect).order('created_at', { ascending: false });
+    if (result.error) result = await supabase.from('tournaments').select('id, name, status, source, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, created_at, season_number, public_slug, slug, is_public, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)').order('created_at', { ascending: false });
     if (result.error) result = await supabase.from('tournaments').select('id, name, status, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, created_at').order('created_at', { ascending: false });
     const { data, error } = result;
     if (error) setStatus('Could not load tournaments: ' + error.message);
-    else { const ordered = sortTournaments(data || []); setTournaments(ordered); if (!selectedTournamentId && ordered[0]) setSelectedTournamentId(ordered[0].id); setBulkSelectedIds((ids) => ids.filter((id) => ordered.some((item) => item.id === id))); setStatus('Tournaments loaded'); }
+    else { const ordered = sortTournaments(data || []); setTournaments(ordered); if (!selectedTournamentId && ordered[0]) setSelectedTournamentId(ordered.find((item) => !isPlaceholderArchive(item))?.id || ordered[0].id); setBulkSelectedIds((ids) => ids.filter((id) => ordered.some((item) => item.id === id))); setStatus('Tournaments loaded'); }
     setLoading(false);
   }
   async function loadProgressStats(tournamentId) {
@@ -110,17 +112,18 @@ export function TournamentProvider({ children }) {
     setProgressStats({ groupTotal: groupMatches.length, groupPlayed: groupMatches.filter(completed).length, knockoutTotal: knockoutMatches.length, knockoutPlayed: knockoutMatches.filter(completed).length });
   }
   async function refreshTournamentData() { await loadTournaments(); const tournamentId = selectedTournament?.id || selectedTournamentId; if (tournamentId) await loadProgressStats(tournamentId); }
-  async function deleteRows(table, tournamentIds) { if (!tournamentIds.length) return; const { error } = await supabase.from(table).delete().in('tournament_id', tournamentIds); if (error) throw error; }
+  async function deleteRows(table, tournamentIds) { if (!tournamentIds.length) return; const { error } = await supabase.from(table).delete().in('tournament_id', tournamentIds); if (error && !String(error.message || '').includes('does not exist')) throw error; }
+  async function deleteByMatchIds(table, matchIds) { if (!matchIds.length) return; const { error } = await supabase.from(table).delete().in('match_id', matchIds); if (error && !String(error.message || '').includes('does not exist')) throw error; }
   async function deleteTournamentIds(ids, label = 'selected') {
     if (!canUseDatabase || !ids.length) return;
     if (!window.confirm(`Delete ${ids.length} ${label} tournament(s) and their fixtures, groups, entries and honours? This cannot be undone.`)) return;
     setLoading(true); setStatus(`Deleting ${label} tournaments...`);
     try {
-      await deleteRows('achievements', ids); await deleteRows('honours', ids); await deleteRows('tournament_round_dates', ids);
+      await deleteRows('match_comments', ids); await deleteRows('achievements', ids); await deleteRows('honours', ids); await deleteRows('tournament_round_dates', ids);
       const { data: matchRows, error: matchFindError } = await supabase.from('matches').select('id').in('tournament_id', ids);
       if (matchFindError) throw matchFindError;
       const matchIds = (matchRows || []).map((match) => match.id);
-      if (matchIds.length) { const { error: forfeitError } = await supabase.from('forfeits').delete().in('match_id', matchIds); if (forfeitError) throw forfeitError; }
+      await deleteByMatchIds('forfeits', matchIds); await deleteByMatchIds('match_comments', matchIds);
       await deleteRows('matches', ids); await deleteRows('groups', ids); await deleteRows('tournament_entries', ids); await deleteRows('tournament_rounds', ids); await deleteRows('tournament_stages', ids);
       const { error: tournamentError } = await supabase.from('tournaments').delete().in('id', ids);
       if (tournamentError) throw tournamentError;
@@ -162,7 +165,7 @@ export function TournamentProvider({ children }) {
         competitionTypeId = await findOrCreate('competition_types', { slug: competitionSlug }, { name: form.competitionName, slug: competitionSlug, default_max_entries: Number(form.maxEntries), default_group_count: Number(form.groupCount), default_teams_per_group: Number(form.teamsPerGroup), default_knockout_teams: Number(form.knockoutTeams), default_secondary_bracket_name: form.secondaryBracketName || null });
       } catch { gameWorldId = null; competitionTypeId = null; }
       const basePayload = { season_id: seasonId, competition_id: competitionId, name: form.tournamentName, status: 'draft', format: 'groups_then_knockout', source: 'app', max_entries: Number(form.maxEntries), actual_entries: 0, group_count: Number(form.groupCount), teams_per_group: Number(form.teamsPerGroup), knockout_teams: Number(form.knockoutTeams), secondary_bracket_name: form.secondaryBracketName || null, rules_notes: 'Created from Top 100 tournament app dashboard' };
-      const v2Payload = { ...basePayload, game_world_id: gameWorldId, competition_type_id: competitionTypeId, season_number: seasonNumber, slug: slugify(form.tournamentName), public_slug: seasonSlugFromCode(form.seasonCode), is_public: true, registration_status: form.registrationStatus || 'closed' };
+      const v2Payload = { ...basePayload, game_world_id: gameWorldId, competition_type_id: competitionTypeId, season_number: seasonNumber, slug: slugify(form.tournamentName), public_slug: seasonSlugFromCode(form.seasonCode), is_public: true, archive_quality: 'unknown', registration_status: form.registrationStatus || 'closed' };
       let result = await supabase.from('tournaments').insert(v2Payload).select('id').single();
       if (result.error) result = await supabase.from('tournaments').insert(basePayload).select('id').single();
       const { data, error } = result;
