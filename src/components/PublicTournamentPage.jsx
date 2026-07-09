@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import KnockoutBracket from './KnockoutBracket.jsx';
 import MatchComments from './MatchComments.jsx';
 import WinnersArchive from './WinnersArchive.jsx';
+import PublicTournamentSwitcher from './PublicTournamentSwitcher.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { fixtureSpotlights as buildFixtureSpotlights } from '../lib/spotlights';
 
@@ -150,7 +151,7 @@ function finalSummary(matches, bracket) {
   return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, legs: finals };
 }
 
-export default function PublicTournamentPage({ tournamentId }) {
+export default function PublicTournamentPage({ tournamentId, routeRows = [] }) {
   const [tournament, setTournament] = useState(null);
   const [matches, setMatches] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -186,7 +187,8 @@ export default function PublicTournamentPage({ tournamentId }) {
 
   async function loadTournament() {
     setStatus('Loading tournament page...');
-    const tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams').eq('id', tournamentId).maybeSingle();
+    let tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, season_number, public_slug, slug, is_public, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)').eq('id', tournamentId).maybeSingle();
+    if (tournamentResult.error) tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams').eq('id', tournamentId).maybeSingle();
     if (tournamentResult.error || !tournamentResult.data) { setStatus('Tournament not found.'); return; }
     const [matchesResult, entriesResult, roundDatesResult] = await Promise.all([
       supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
@@ -214,7 +216,8 @@ export default function PublicTournamentPage({ tournamentId }) {
   const nextFixture = nextFixtures[0];
 
   return <main className="app-shell public-archive tournament-hub">
-    <section className="hero tournament-hero"><p className="eyebrow">Top 100 Youth Cup Hub</p><h1>{tournament.name}</h1><p>{tournament.status || 'draft'} · {stats.played} results · {stats.remaining} fixtures remaining · {stats.goals} goals</p><div className="hero-countdown"><span>Next fixture</span><strong>{nextFixture ? countdownText(nextFixture) : 'Complete'}</strong><small>{nextFixture ? `${formatDate(nextFixture.fixture_date)} · ${fixtureTitle(nextFixture)}` : 'No upcoming fixtures listed'}</small></div></section>
+    <section className="hero tournament-hero"><p className="eyebrow">{tournament.game_worlds?.name || 'Top 100'} · {tournament.competition_types?.name || 'Youth Cup'} Hub</p><h1>{tournament.name}</h1><p>{tournament.status || 'draft'} · {stats.played} results · {stats.remaining} fixtures remaining · {stats.goals} goals</p><div className="hero-countdown"><span>Next fixture</span><strong>{nextFixture ? countdownText(nextFixture) : 'Complete'}</strong><small>{nextFixture ? `${formatDate(nextFixture.fixture_date)} · ${fixtureTitle(nextFixture)}` : 'No upcoming fixtures listed'}</small></div></section>
+    <PublicTournamentSwitcher routes={routeRows} currentTournament={tournament} />
     <nav className="public-section-nav" aria-label="Tournament sections"><a href="#summary">Summary</a><a href="#featured">Featured</a><a href="#winners">Winners</a><a href="#groups">Groups</a><a href="#knockout">Knockout</a><a href="#rankings">Best placed tables</a><a href="#fair-play">Fair Play</a><a href="#brackets">Bracket</a></nav>
     <section id="summary" className="card format-summary-card"><div className="public-section-toolbar"><div><p className="eyebrow">Competition summary</p><h2>Tournament overview</h2></div><a className="public-link-button" href={RULES_URL} target="_blank" rel="noreferrer">Read full rules</a></div><div className="hub-stat-grid"><StatCard label="Teams" value={tournament.actual_entries || entries.length || tournament.max_entries || '—'} note={tournament.group_count && tournament.teams_per_group ? `${tournament.group_count} groups of ${tournament.teams_per_group}` : 'Registered entrants'} /><StatCard label="Fixtures" value={stats.fixtures} note={`${stats.played} played, ${stats.remaining} remaining`} /><StatCard label="Goals" value={stats.goals} note={`${stats.avgGoals} per completed match`} /><StatCard label="Forfeits" value={stats.forfeits} note="Fair Play / prize draw watch" /></div><p className="muted">Teams are seeded by average rating into pots for the group draw. Knockout seeding is explained by the best 1st, 2nd and 3rd place tables below.</p>{groupScheduleRows.length > 0 && <GroupSchedule rows={groupScheduleRows} />}{scheduleRows.length > 0 && <KnockoutSchedule rows={scheduleRows} />}</section>
     <section id="featured" className="card"><p className="eyebrow">Spotlight fixtures</p><h2>This week's storylines</h2><div className="featured-match-grid">{featured.length ? featured.map((match) => <FeaturedMatch key={match.id} match={match} tournamentId={tournamentId} />) : <p className="muted">No upcoming featured fixtures yet.</p>}</div></section>
