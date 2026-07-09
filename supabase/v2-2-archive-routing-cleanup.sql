@@ -103,7 +103,11 @@ from duplicate_real_routes d
 where t.id = d.id
   and d.route_number > 1;
 
-create or replace view tournament_public_routes as
+-- Dropping first is intentional: PostgreSQL will not allow CREATE OR REPLACE VIEW
+-- when a new column is inserted before existing columns.
+drop view if exists tournament_public_routes;
+
+create view tournament_public_routes as
 select
   t.id,
   t.name,
