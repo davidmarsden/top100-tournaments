@@ -151,6 +151,20 @@ function cleanUnique(values) { return [...new Set(values.map((v) => String(v || 
 async function selectByNames(db, table, names) { if (!names.length) return []; const { data, error } = await db.from(table).select('id, name').in('name', names); if (error) throw error; return data || []; }
 async function insertRows(db, table, rows) { if (!rows.length) return []; const { data, error } = await db.from(table).insert(rows).select('id, name'); if (error) throw error; return data || []; }
 async function findOrCreateOne(db, table, match, row) { const existing = await db.from(table).select('id').match(match).maybeSingle(); if (existing.error) throw existing.error; if (existing.data) return existing.data.id; const created = await db.from(table).insert(row).select('id').single(); if (created.error) throw created.error; return created.data.id; }
+async function routeMetadata(db, body, seasonCode, competitionName, tournamentNameValue) {
+  const worldSlug = slugify(body.gameWorldSlug || body.gameWorldName || 'top-100') || 'top-100';
+  const worldName = body.gameWorldName || (worldSlug === 'regen' ? 'Top 100 Regen' : 'Top 100');
+  const compSlug = slugify(body.competitionSlug || competitionTypeSlug(competitionName)) || 'youth-cup';
+  const compName = compSlug === 'youth-cup' ? 'Youth Cup' : competitionName;
+  try {
+    const gameWorldId = await findOrCreateOne(db, 'game_worlds', { slug: worldSlug }, { name: worldName, slug: worldSlug, display_order: worldSlug === 'top-100' ? 1 : 100 });
+    const competitionTypeId = await findOrCreateOne(db, 'competition_types', { slug: compSlug }, { name: compName, slug: compSlug, default_secondary_bracket_name: compSlug === 'youth-cup' ? 'Shield' : null });
+    const seasonNumber = seasonNumberFromCode(seasonCode || tournamentNameValue);
+    return { game_world_id: gameWorldId, competition_type_id: competitionTypeId, season_number: seasonNumber, public_slug: seasonNumber ? `s${seasonNumber}` : seasonSlugFromCode(seasonCode || tournamentNameValue), slug: slugify(tournamentNameValue), is_public: true, archive_quality: 'complete' };
+  } catch {
+    return {};
+  }
+}
 
 async function loadV2TournamentPages(path, maxPages = 10) {
   const all = [];
@@ -256,10 +270,12 @@ async function importTournament(body) {
   let tournamentId = existingTournament.data?.id;
   const a = attrs(bundle.tournament);
   const groupSize = Number(a.group_stage_options?.group_size || 0) || null;
+  const tournamentNameValue = body.tournamentName || tournamentName(bundle.tournament);
+  const metadata = await routeMetadata(db, body, seasonCode, competitionName, tournamentNameValue);
   const tournamentRow = {
     season_id: seasonId,
     competition_id: competitionId,
-    name: body.tournamentName || tournamentName(bundle.tournament),
+    name: tournamentNameValue,
     status: body.status || 'archived',
     format: groupStage ? 'challonge_group_import' : 'challonge_knockout_import',
     source: 'challonge',
@@ -271,6 +287,7 @@ async function importTournament(body) {
     knockout_teams: body.knockoutTeams || null,
     secondary_bracket_name: body.secondaryBracketName || null,
     rules_notes: `Imported from Challonge API using ${bundle.source}`,
+    ...metadata,
   };
   if (!tournamentId) {
     const created = await db.from('tournaments').insert(tournamentRow).select('id').single();
