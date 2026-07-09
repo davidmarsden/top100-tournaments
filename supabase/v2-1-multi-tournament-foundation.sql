@@ -88,9 +88,6 @@ set public_slug = 's' || season_number
 where public_slug is null
   and season_number is not null;
 
-create unique index if not exists tournaments_public_route_idx
-  on tournaments(game_world_id, competition_type_id, public_slug)
-  where is_public = true and public_slug is not null;
 
 create index if not exists tournaments_world_comp_status_idx
   on tournaments(game_world_id, competition_type_id, status, season_number desc);
