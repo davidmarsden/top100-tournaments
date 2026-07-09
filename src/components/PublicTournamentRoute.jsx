@@ -3,7 +3,14 @@ import PublicTournamentPage from './PublicTournamentPage.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { LIVE_STATUSES, parseTournamentPath, pickLiveTournament, routeTitle } from '../lib/publicTournamentRoutes';
 
-const routeSelect = 'id, name, status, season_number, public_slug, slug, is_public, game_worlds(id, name, slug), competition_types(id, name, slug)';
+const routeSelect = 'id, name, status, season_number, public_slug, slug, is_public, archive_quality, source, actual_entries, max_entries, game_worlds(id, name, slug), competition_types(id, name, slug)';
+
+function isPlaceholderArchive(row) {
+  return row?.archive_quality === 'placeholder' || (String(row?.status || '').toLowerCase() === 'archived' && Number(row?.actual_entries || 0) === 0 && row?.source !== 'challonge');
+}
+function publicRouteRows(rows = []) {
+  return rows.filter((row) => row.is_public !== false && !isPlaceholderArchive(row));
+}
 
 export default function PublicTournamentRoute({ fallbackTournamentId }) {
   const route = useMemo(() => parseTournamentPath(), []);
@@ -20,14 +27,23 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
 
   async function loadRoutes() {
     if (!hasSupabaseConfig || !supabase) return;
-    const { data } = await supabase
+    let result = await supabase
       .from('tournaments')
       .select(routeSelect)
       .eq('is_public', true)
       .not('game_world_id', 'is', null)
       .not('competition_type_id', 'is', null)
       .order('season_number', { ascending: false });
-    setRoutes(data || []);
+    if (result.error) {
+      result = await supabase
+        .from('tournaments')
+        .select('id, name, status, season_number, public_slug, slug, is_public, actual_entries, max_entries, game_worlds(id, name, slug), competition_types(id, name, slug)')
+        .eq('is_public', true)
+        .not('game_world_id', 'is', null)
+        .not('competition_type_id', 'is', null)
+        .order('season_number', { ascending: false });
+    }
+    setRoutes(publicRouteRows(result.data || []));
   }
 
   async function resolveRoute() {
@@ -47,14 +63,28 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
     if (route.seasonSlug) query = query.eq('public_slug', route.seasonSlug.toLowerCase());
     else query = query.in('status', LIVE_STATUSES);
 
-    const { data, error } = await query;
+    let { data, error } = await query;
+    if (error) {
+      let fallbackQuery = supabase
+        .from('tournaments')
+        .select('id, name, status, season_number, public_slug, slug, is_public, actual_entries, max_entries, game_worlds(id, name, slug), competition_types(id, name, slug)')
+        .eq('is_public', true)
+        .eq('game_worlds.slug', route.worldSlug)
+        .eq('competition_types.slug', route.competitionSlug);
+      if (route.seasonSlug) fallbackQuery = fallbackQuery.eq('public_slug', route.seasonSlug.toLowerCase());
+      else fallbackQuery = fallbackQuery.in('status', LIVE_STATUSES);
+      const fallback = await fallbackQuery;
+      data = fallback.data;
+      error = fallback.error;
+    }
     if (error) {
       setResolvedId(fallbackTournamentId);
       setStatus('Could not resolve this route. Showing the default tournament for now.');
       return;
     }
 
-    const row = route.seasonSlug ? (data || [])[0] : pickLiveTournament(data || []);
+    const candidates = publicRouteRows(data || []);
+    const row = route.seasonSlug ? candidates[0] : pickLiveTournament(candidates);
     if (!row) {
       setStatus(`No public tournament found for ${routeTitle(route)}.`);
       setResolvedId(null);
