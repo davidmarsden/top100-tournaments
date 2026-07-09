@@ -1,0 +1,33 @@
+name: Apply V2.2 Challonge route metadata
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/apply-v2-2-challonge-route-metadata.mjs
+      - .github/workflows/apply-v2-2-challonge-route-metadata.yml
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Wire Challonge route metadata
+        run: node scripts/apply-v2-2-challonge-route-metadata.mjs
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add netlify/functions/challonge-import.js
+            git commit -m "Add route metadata to Challonge imports"
+            git push
+          fi
