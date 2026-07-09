@@ -6,6 +6,35 @@
 alter table tournaments add column if not exists archive_quality text not null default 'unknown'
   check (archive_quality in ('unknown', 'placeholder', 'partial', 'complete'));
 
+-- Backfill V2 route metadata for existing Challonge imports.
+-- These are the real archive records and should take precedence over empty honour placeholders.
+update tournaments t
+set
+  game_world_id = coalesce(t.game_world_id, (select id from game_worlds where slug = 'top-100')),
+  competition_type_id = coalesce(t.competition_type_id, (select id from competition_types where slug = 'youth-cup')),
+  season_number = coalesce(
+    t.season_number,
+    nullif(regexp_replace(coalesce(t.name, ''), '^.*?S\s*([0-9]+).*$', '\1'), coalesce(t.name, ''))::integer
+  ),
+  public_slug = coalesce(
+    t.public_slug,
+    case
+      when coalesce(t.name, '') ~* 'S\s*[0-9]+' then 's' || nullif(regexp_replace(coalesce(t.name, ''), '^.*?S\s*([0-9]+).*$', '\1'), coalesce(t.name, ''))
+      else null
+    end
+  ),
+  slug = coalesce(t.slug, lower(regexp_replace(coalesce(t.name, 'challonge-' || t.id), '[^a-zA-Z0-9]+', '-', 'g'))),
+  is_public = true,
+  archive_quality = 'complete'
+where coalesce(t.source, '') = 'challonge'
+  and coalesce(t.name, '') ~* 'S\s*[0-9]+';
+
+-- Keep the latest/live tournament public even if its route is not a historic archive yet.
+update tournaments
+set is_public = true,
+    archive_quality = case when archive_quality = 'placeholder' then 'unknown' else archive_quality end
+where status in ('draft', 'groups_approved', 'published');
+
 with tournament_counts as (
   select
     t.id,
@@ -51,6 +80,28 @@ where r.id = t.id
   and r.has_challonge = 1
   and coalesce(t.source, '') <> 'challonge'
   and t.status in ('archived', 'completed');
+
+-- If two real imports share a route, keep the first one at /sNN and suffix later imports.
+-- This prevents /top-100/youth-cup/s27 from resolving to an arbitrary duplicate.
+with duplicate_real_routes as (
+  select
+    id,
+    public_slug,
+    row_number() over (
+      partition by game_world_id, competition_type_id, public_slug
+      order by case when source = 'challonge' then 0 else 1 end, created_at nulls last, id
+    ) as route_number
+  from tournaments
+  where is_public = true
+    and public_slug is not null
+    and game_world_id is not null
+    and competition_type_id is not null
+)
+update tournaments t
+set public_slug = d.public_slug || '-' || d.route_number
+from duplicate_real_routes d
+where t.id = d.id
+  and d.route_number > 1;
 
 create or replace view tournament_public_routes as
 select
