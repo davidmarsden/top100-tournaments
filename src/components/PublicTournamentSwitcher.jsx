@@ -24,6 +24,10 @@ function liveRowFor(competition) {
     return ar - br || Number(b.season_number || 0) - Number(a.season_number || 0) || Number(b.id || 0) - Number(a.id || 0);
   })[0] || null;
 }
+function livePathFor(world, competition) {
+  const live = liveRowFor(competition);
+  return live ? routePath(live, { live: true }) : `/${world?.slug || 'top-100'}/${competition?.slug || 'youth-cup'}`;
+}
 
 export default function PublicTournamentSwitcher({ routes = [], currentTournament }) {
   const worlds = useMemo(() => groupRouteRows(routes), [routes]);
@@ -39,13 +43,11 @@ export default function PublicTournamentSwitcher({ routes = [], currentTournamen
   function onWorldChange(event) {
     const world = findWorld(worlds, event.target.value);
     const competition = world?.competitions?.[0];
-    const live = liveRowFor(competition);
-    goTo(live ? routePath(live, { live: true }) : `/${world.slug}/${competition?.slug || 'youth-cup'}`);
+    goTo(livePathFor(world, competition));
   }
   function onCompetitionChange(event) {
     const competition = findCompetition(currentWorld, event.target.value);
-    const live = liveRowFor(competition);
-    goTo(live ? routePath(live, { live: true }) : `/${currentWorld.slug}/${competition.slug}`);
+    goTo(livePathFor(currentWorld, competition));
   }
   function onSeasonChange(event) {
     goTo(event.target.value);
@@ -54,6 +56,6 @@ export default function PublicTournamentSwitcher({ routes = [], currentTournamen
   return <section className="public-tournament-switcher" aria-label="Tournament selector">
     <label>World<select value={currentWorld?.slug || ''} onChange={onWorldChange}>{worlds.map((world) => <option key={world.slug} value={world.slug}>{world.name}</option>)}</select></label>
     <label>Competition<select value={currentCompetition?.slug || ''} onChange={onCompetitionChange}>{(currentWorld?.competitions || []).map((competition) => <option key={competition.slug} value={competition.slug}>{competition.name}</option>)}</select></label>
-    <label>Season<select value={currentSeasonPath} onChange={onSeasonChange}>{currentCompetition && <option value={routePath(liveRowFor(currentCompetition), { live: true })}>Latest / live</option>}{(currentCompetition?.seasons || []).map((row) => <option key={row.id} value={routePath(row)}>{labelSeason(row)} · {row.status}</option>)}</select></label>
+    <label>Season<select value={currentSeasonPath} onChange={onSeasonChange}>{currentCompetition && <option value={livePathFor(currentWorld, currentCompetition)}>Latest / live</option>}{(currentCompetition?.seasons || []).map((row) => <option key={row.id} value={routePath(row)}>{labelSeason(row)} · {row.status}</option>)}</select></label>
   </section>;
 }
