@@ -10,6 +10,7 @@ import TablesManager from './TablesManager.jsx';
 import TournamentCreateForm from './TournamentCreateForm.jsx';
 import { isPlaceholderArchive, normalStatus, useTournament } from '../context/TournamentProvider.jsx';
 import { publicTournamentPath } from '../lib/tournamentSlugs';
+import { deleteTournamentsOnServer } from '../lib/deleteTournaments.js';
 import { supabase } from '../lib/supabaseClient';
 
 const modules = ['Overview', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Challonge', 'Public Page'];
@@ -30,8 +31,22 @@ function WorkflowCard({ selectedTournament, preview, progressStats }) {
 }
 function moduleHeading(activeModule) { const headings = { Overview: 'Tournament dashboard', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', Results: 'Results archive and editing', Tables: 'Live group tables', Knockout: 'Cup and Shield draw', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' }; return headings[activeModule] || activeModule; }
 function ModuleContent({ activeModule }) {
-  const { tournaments, selectedTournament, setSelectedTournamentId, preview, setPreview, buildPreview, refreshTournamentData, bulkSelectedIds, setBulkSelectedIds, deleteTournamentIds, updateTournamentIds, loading } = useTournament();
-  if (activeModule === 'Overview') return <Overview tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} bulkSelectedIds={bulkSelectedIds} setBulkSelectedIds={setBulkSelectedIds} onDeleteTournaments={deleteTournamentIds} onUpdateTournaments={updateTournamentIds} loading={loading} />;
+  const { tournaments, selectedTournament, setSelectedTournamentId, preview, setPreview, buildPreview, refreshTournamentData, bulkSelectedIds, setBulkSelectedIds, setStatus, updateTournamentIds, loading } = useTournament();
+  async function deleteSelected(ids, label = 'selected') {
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} ${label} tournament(s) and all linked data? This cannot be undone.`)) return;
+    setStatus(`Deleting ${ids.length} tournament(s)...`);
+    try {
+      await deleteTournamentsOnServer(ids);
+      setBulkSelectedIds([]);
+      setSelectedTournamentId((current) => ids.includes(current) ? null : current);
+      await refreshTournamentData();
+      setStatus(`Deleted ${ids.length} tournament(s).`);
+    } catch (error) {
+      setStatus('Delete failed: ' + error.message);
+    }
+  }
+  if (activeModule === 'Overview') return <Overview tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} bulkSelectedIds={bulkSelectedIds} setBulkSelectedIds={setBulkSelectedIds} onDeleteTournaments={deleteSelected} onUpdateTournaments={updateTournamentIds} loading={loading} />;
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={buildPreview} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
   if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding onDataChanged={refreshTournamentData} />;
