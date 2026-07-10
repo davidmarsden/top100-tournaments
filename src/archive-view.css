@@ -19,8 +19,40 @@
   display: none;
 }
 
+.knockout-only-archive-route .hero-countdown > span,
+.knockout-only-archive-route .hero-countdown > strong,
+.knockout-only-archive-route .hero-countdown > small {
+  display: none;
+}
+
+.knockout-only-archive-route .hero-countdown .archive-winner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.knockout-only-archive-route .hero-countdown .archive-winner-content span,
+.knockout-only-archive-route .hero-countdown .archive-winner-content strong,
+.knockout-only-archive-route .hero-countdown .archive-winner-content small {
+  display: block;
+}
+
+.knockout-only-archive-route .hero-countdown .archive-winner-content strong {
+  font-size: clamp(1.35rem, 3vw, 2rem);
+}
+
 .knockout-only-archive-route #brackets {
   margin-top: 18px;
+}
+
+.knockout-only-archive-route #brackets > .eyebrow,
+.knockout-only-archive-route #brackets > h2,
+.knockout-only-archive-route .visual-bracket-header .eyebrow {
+  display: none;
+}
+
+.knockout-only-archive-route .visual-bracket-header h3 {
+  margin-top: 0;
 }
 
 .bracket-team-name {
@@ -44,4 +76,19 @@
   font-weight: 950;
   line-height: 1;
   flex: 0 0 auto;
+}
+
+.knockout-only-archive-route .bracket-legend::before {
+  content: "12  Seed";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #edf3ff;
+  color: #2457d6;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1;
 }
