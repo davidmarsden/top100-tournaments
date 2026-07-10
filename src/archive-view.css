@@ -7,3 +7,41 @@
 .historical-tournament-route .public-section-nav a[href="#winners"] {
   display: none;
 }
+
+.knockout-only-archive-route .public-section-nav,
+.knockout-only-archive-route #summary,
+.knockout-only-archive-route #groups,
+.knockout-only-archive-route #knockout,
+.knockout-only-archive-route #rankings,
+.knockout-only-archive-route #statistics,
+.knockout-only-archive-route #fair-play,
+.knockout-only-archive-route #seedings {
+  display: none;
+}
+
+.knockout-only-archive-route #brackets {
+  margin-top: 18px;
+}
+
+.bracket-team-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.bracket-seed-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #edf3ff;
+  color: #2457d6;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1;
+  flex: 0 0 auto;
+}
