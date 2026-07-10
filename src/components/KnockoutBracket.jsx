@@ -1,3 +1,6 @@
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+
 const ROUND_LABELS = {
   R64: 'Round of 64',
   R32: 'Round of 32',
@@ -125,9 +128,26 @@ function buildTies(matches) {
 }
 
 export default function KnockoutBracket({ matches = [], title = 'Knockout bracket', showChampion = true }) {
-  const rounds = buildTies(matches.filter((match) => match.stage === 'knockout'));
+  const [seedByEntryId, setSeedByEntryId] = useState(new Map());
+  const entryIds = useMemo(() => [...new Set(matches.flatMap((match) => [match.home_entry_id, match.away_entry_id]).filter(Boolean))], [matches]);
+  const rounds = useMemo(() => buildTies(matches.filter((match) => match.stage === 'knockout')), [matches]);
   const finalRound = rounds.find((round) => round.round === 'Final') || rounds[rounds.length - 1];
   const finalTie = finalRound?.ties?.find((tie) => tie.winnerName) || null;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSeeds() {
+      if (!entryIds.length || !supabase) {
+        setSeedByEntryId(new Map());
+        return;
+      }
+      const { data, error } = await supabase.from('tournament_entries').select('id, seed').in('id', entryIds);
+      if (cancelled || error) return;
+      setSeedByEntryId(new Map((data || []).map((row) => [row.id, row.seed])));
+    }
+    loadSeeds();
+    return () => { cancelled = true; };
+  }, [entryIds.join(',')]);
 
   if (!rounds.length) return <p className="muted">No knockout bracket yet.</p>;
 
@@ -151,7 +171,7 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
             <div className="bracket-round-column" key={round.round}>
               <div className="bracket-round-title">{roundLabel(round.round)}</div>
               <div className="bracket-tie-stack">
-                {round.ties.map((tie) => <BracketTie tie={tie} key={`${round.round}-${tie.key}`} />)}
+                {round.ties.map((tie) => <BracketTie tie={tie} seedByEntryId={seedByEntryId} key={`${round.round}-${tie.key}`} />)}
               </div>
             </div>
           ))}
@@ -172,20 +192,22 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
   );
 }
 
-function BracketTie({ tie }) {
+function BracketTie({ tie, seedByEntryId }) {
   const firstWon = tie.winnerId && tie.winnerId === tie.firstId;
   const secondWon = tie.winnerId && tie.winnerId === tie.secondId;
   const hasAggregate = tie.ordered.length > 1 && tie.allPlayed;
+  const firstSeed = seedByEntryId.get(tie.firstId);
+  const secondSeed = seedByEntryId.get(tie.secondId);
 
   return (
     <article className={tie.allPlayed ? 'bracket-tie played' : 'bracket-tie'}>
       <div className={firstWon ? 'bracket-team winner' : secondWon ? 'bracket-team loser' : 'bracket-team'}>
-        <strong>{tie.firstName}</strong>
+        <strong className="bracket-team-name">{firstSeed ? <span className="bracket-seed-pill">{firstSeed}</span> : null}{tie.firstName}</strong>
         <span>{hasAggregate ? tie.firstAgg : scoreText(tie.ordered[0])?.split(' - ')[0]}</span>
         {firstWon && <b>✓</b>}
       </div>
       <div className={secondWon ? 'bracket-team winner' : firstWon ? 'bracket-team loser' : 'bracket-team'}>
-        <strong>{tie.secondName}</strong>
+        <strong className="bracket-team-name">{secondSeed ? <span className="bracket-seed-pill">{secondSeed}</span> : null}{tie.secondName}</strong>
         <span>{hasAggregate ? tie.secondAgg : scoreText(tie.ordered[0])?.split(' - ')[1] || ''}</span>
         {secondWon && <b>✓</b>}
       </div>
