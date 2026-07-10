@@ -10,9 +10,12 @@ function defaultPublicTournamentId() {
   const id = Number(import.meta.env.VITE_PUBLIC_TOURNAMENT_ID || '13');
   return Number.isFinite(id) && id > 0 ? id : 13;
 }
-function isSeasonArchivePath() {
+function archiveRouteClass() {
   const parts = window.location.pathname.split('/').filter(Boolean);
-  return parts.length >= 3 && /^s\d+(?:-\d+)?$/i.test(parts[2]);
+  const seasonSlug = parts[2] || '';
+  if (!/^s\d+(?:-\d+)?$/i.test(seasonSlug)) return '';
+  if (/^s(?:14|15)(?:-\d+)?$/i.test(seasonSlug)) return 'historical-tournament-route mixed-format-archive-route';
+  return 'historical-tournament-route knockout-only-archive-route';
 }
 export function isAdminPath() {
   return window.location.pathname.match(/^\/admin\/?$/);
@@ -23,7 +26,6 @@ export default function TournamentRouter() {
   if (explicitPublicTournamentId) return <PublicTournamentPage tournamentId={explicitPublicTournamentId} />;
 
   const route = <PublicTournamentRoute fallbackTournamentId={defaultPublicTournamentId()} />;
-  return isSeasonArchivePath()
-    ? <div className="historical-tournament-route">{route}</div>
-    : route;
+  const className = archiveRouteClass();
+  return className ? <div className={className}>{route}</div> : route;
 }
