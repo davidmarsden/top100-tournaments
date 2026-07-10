@@ -358,16 +358,28 @@ async function importTournament(body) {
 
   const participantToEntry = new Map();
   const participantNameToEntry = new Map();
+  const participantToTeamName = new Map();
+  const entryToTeamName = new Map();
   bundle.parsedParticipants.forEach((p) => {
     const entryId = entryByTeam.get(teamMap.get(p.teamName));
+    if (entryId) entryToTeamName.set(entryId, p.teamName);
     [p.challongeParticipantId, ...p.aliases].forEach((alias) => {
       addId(new Set(), alias);
       const clean = s(alias);
       const normalized = normalAlias(alias);
-      if (clean) participantToEntry.set(clean, entryId);
-      if (normalized) participantToEntry.set(normalized, entryId);
+      if (clean) {
+        participantToEntry.set(clean, entryId);
+        participantToTeamName.set(clean, p.teamName);
+      }
+      if (normalized) {
+        participantToEntry.set(normalized, entryId);
+        participantToTeamName.set(normalized, p.teamName);
+      }
       const digits = clean.match(/\d+/g)?.join('');
-      if (digits) participantToEntry.set(digits, entryId);
+      if (digits) {
+        participantToEntry.set(digits, entryId);
+        participantToTeamName.set(digits, p.teamName);
+      }
     });
     [p.teamName, participantName(bundle.participants.find((raw) => itemId(raw) === p.challongeParticipantId))].filter(Boolean).forEach((name) => participantNameToEntry.set(normalAlias(name), entryId));
   });
@@ -387,6 +399,19 @@ async function importTournament(body) {
     return null;
   }
 
+  function resolveTeamName(match, side, entryId) {
+    if (entryId && entryToTeamName.get(entryId)) return entryToTeamName.get(entryId);
+    const aliases = side === 1
+      ? relationAliases(match, 'player1', 'player1_id', 'player1Id', 'participant1', 'participant1_id', 'participant1Id')
+      : relationAliases(match, 'player2', 'player2_id', 'player2Id', 'participant2', 'participant2_id', 'participant2Id');
+    for (const alias of aliases) {
+      const name = participantToTeamName.get(s(alias)) || participantToTeamName.get(normalAlias(alias));
+      if (name) return name;
+    }
+    const embeddedName = relationNames(match, side)[0];
+    return embeddedName ? parseTeamAndManager(embeddedName).teamName : null;
+  }
+
   const deleted = await db.from('matches').delete().eq('tournament_id', tournamentId).eq('source_id', id);
   if (deleted.error) throw deleted.error;
   const groupMap = groupStage ? await upsertGroups(db, tournamentId, bundle.matches) : new Map();
@@ -403,6 +428,8 @@ async function importTournament(body) {
     const loserAliases = relationAliases(match, 'loser', 'loser_id', 'loserId');
     const homeEntryId = resolveEntry(match, 1);
     const awayEntryId = resolveEntry(match, 2);
+    const homeTeamName = resolveTeamName(match, 1, homeEntryId);
+    const awayTeamName = resolveTeamName(match, 2, awayEntryId);
     if (player1Aliases.length && !homeEntryId) unresolvedPlayers += 1;
     if (player2Aliases.length && !awayEntryId) unresolvedPlayers += 1;
     if ((!homeEntryId || !awayEntryId) && unresolvedExamples.length < 8) unresolvedExamples.push({ matchId: itemId(match), player1Aliases, player2Aliases, player1Names: relationNames(match, 1), player2Names: relationNames(match, 2) });
@@ -420,8 +447,8 @@ async function importTournament(body) {
       fixture_date: attr.scheduled_time ? String(attr.scheduled_time).slice(0, 10) : null,
       home_entry_id: homeEntryId,
       away_entry_id: awayEntryId,
-      home_placeholder: homeEntryId ? null : (relationNames(match, 1)[0] || (player1Aliases[0] ? `Challonge participant ${player1Aliases[0]}` : 'TBC')),
-      away_placeholder: awayEntryId ? null : (relationNames(match, 2)[0] || (player2Aliases[0] ? `Challonge participant ${player2Aliases[0]}` : 'TBC')),
+      home_placeholder: homeTeamName || (player1Aliases[0] ? `Challonge participant ${player1Aliases[0]}` : 'TBC'),
+      away_placeholder: awayTeamName || (player2Aliases[0] ? `Challonge participant ${player2Aliases[0]}` : 'TBC'),
       home_score: Number.isFinite(score.home_score) ? score.home_score : null,
       away_score: Number.isFinite(score.away_score) ? score.away_score : null,
       winner_entry_id: winnerEntryId,
