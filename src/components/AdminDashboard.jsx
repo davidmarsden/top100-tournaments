@@ -6,6 +6,7 @@ import GroupsApproval from './GroupsApproval.jsx';
 import KnockoutManager from './KnockoutManager.jsx';
 import ProgressBar, { isStepDone } from './ProgressBar.jsx';
 import PublicPageManager from './PublicPageManager.jsx';
+import RegistrationManager from './RegistrationManager.jsx';
 import TablesManager from './TablesManager.jsx';
 import TournamentCreateForm from './TournamentCreateForm.jsx';
 import { isPlaceholderArchive, normalStatus, useTournament } from '../context/TournamentProvider.jsx';
@@ -13,8 +14,8 @@ import { publicTournamentPath } from '../lib/tournamentSlugs';
 import { deleteTournamentsOnServer } from '../lib/deleteTournaments.js';
 import { supabase } from '../lib/supabaseClient';
 
-const modules = ['Overview', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Challonge', 'Public Page'];
-const workflowSteps = ['Tournament', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Publish', 'Archive'];
+const modules = ['Overview', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Challonge', 'Public Page'];
+const workflowSteps = ['Tournament', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Publish', 'Archive'];
 
 export default function AdminDashboard() {
   const [activeModule, setActiveModule] = useState('Overview');
@@ -23,13 +24,13 @@ export default function AdminDashboard() {
   async function logout() { await supabase.auth.signOut(); window.location.href = '/'; }
   function onDemoPreview() { setActiveModule('Groups'); }
 
-  return <main className="app-shell"><section className="hero"><div className="hero-row"><div><p className="eyebrow">Top 100 Tournament Manager</p><h1>Tournament control centre</h1><p>Create tournaments, choose entrants, generate groups and fixtures, enter results, build knockouts and publish a public tournament page.</p></div><button type="button" className="secondary admin-logout" onClick={logout}>Log out</button></div></section><ProgressBar selectedTournament={selectedTournament} preview={preview} progressStats={progressStats} onJump={setActiveModule} />{!canUseDatabase && <section className="warning-card"><strong>Supabase is not connected yet.</strong><span>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify environment variables.</span></section>}<section className="dashboard-layout"><aside className="sidebar card"><p className="eyebrow">Modules</p>{modules.map((module) => <button key={module} type="button" className={activeModule === module ? 'nav-pill active' : 'nav-pill'} onClick={() => setActiveModule(module)}>{module}</button>)}</aside><section className="workspace"><section className="grid two-columns compact"><TournamentCreateForm onDemoPreview={onDemoPreview} /><WorkflowCard selectedTournament={selectedTournament} preview={preview} progressStats={progressStats} /></section><section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div><button type="button" className="secondary" onClick={refreshTournamentData} disabled={loading || !canUseDatabase}>Refresh tournament data</button></div><ModuleContent activeModule={activeModule} /></section></section></section></main>;
+  return <main className="app-shell"><section className="hero"><div className="hero-row"><div><p className="eyebrow">Top 100 Tournament Manager</p><h1>Tournament control centre</h1><p>Create tournaments, manage registrations and entrants, generate groups and fixtures, enter results, build knockouts and publish a public tournament page.</p></div><button type="button" className="secondary admin-logout" onClick={logout}>Log out</button></div></section><ProgressBar selectedTournament={selectedTournament} preview={preview} progressStats={progressStats} onJump={setActiveModule} />{!canUseDatabase && <section className="warning-card"><strong>Supabase is not connected yet.</strong><span>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify environment variables.</span></section>}<section className="dashboard-layout"><aside className="sidebar card"><p className="eyebrow">Modules</p>{modules.map((module) => <button key={module} type="button" className={activeModule === module ? 'nav-pill active' : 'nav-pill'} onClick={() => setActiveModule(module)}>{module}</button>)}</aside><section className="workspace"><section className="grid two-columns compact"><TournamentCreateForm onDemoPreview={onDemoPreview} /><WorkflowCard selectedTournament={selectedTournament} preview={preview} progressStats={progressStats} /></section><section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div><button type="button" className="secondary" onClick={refreshTournamentData} disabled={loading || !canUseDatabase}>Refresh tournament data</button></div><ModuleContent activeModule={activeModule} /></section></section></section></main>;
 }
 
 function WorkflowCard({ selectedTournament, preview, progressStats }) {
-  return <section className="card"><div className="card-header"><p className="eyebrow">Workflow status</p><h2>{selectedTournament ? selectedTournament.name : 'No tournament selected'}</h2></div><ol className="steps">{workflowSteps.map((step, index) => { const done = isStepDone(step, selectedTournament, preview, progressStats); return <li key={step} className={done ? 'done' : ''}><span>{done ? 'Done' : index + 1}</span>{step}</li>; })}</ol></section>;
+  return <section className="card"><div className="card-header"><p className="eyebrow">Workflow status</p><h2>{selectedTournament ? selectedTournament.name : 'No tournament selected'}</h2></div><ol className="steps">{workflowSteps.map((step, index) => { const done = step === 'Registration' ? Boolean(selectedTournament?.registration_status) : isStepDone(step, selectedTournament, preview, progressStats); return <li key={step} className={done ? 'done' : ''}><span>{done ? 'Done' : index + 1}</span>{step}</li>; })}</ol></section>;
 }
-function moduleHeading(activeModule) { const headings = { Overview: 'Tournament dashboard', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', Results: 'Results archive and editing', Tables: 'Live group tables', Knockout: 'Cup and Shield draw', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' }; return headings[activeModule] || activeModule; }
+function moduleHeading(activeModule) { const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', Results: 'Results archive and editing', Tables: 'Live group tables', Knockout: 'Cup and Shield draw', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' }; return headings[activeModule] || activeModule; }
 function ModuleContent({ activeModule }) {
   const { tournaments, selectedTournament, setSelectedTournamentId, preview, setPreview, buildPreview, refreshTournamentData, bulkSelectedIds, setBulkSelectedIds, setStatus, updateTournamentIds, loading } = useTournament();
   async function deleteSelected(ids, label = 'selected') {
@@ -47,6 +48,7 @@ function ModuleContent({ activeModule }) {
     }
   }
   if (activeModule === 'Overview') return <Overview tournaments={tournaments} selectedTournament={selectedTournament} setSelectedTournamentId={setSelectedTournamentId} preview={preview} bulkSelectedIds={bulkSelectedIds} setBulkSelectedIds={setBulkSelectedIds} onDeleteTournaments={deleteSelected} onUpdateTournaments={updateTournamentIds} loading={loading} />;
+  if (activeModule === 'Registration') return <RegistrationManager selectedTournament={selectedTournament} onTournamentUpdated={refreshTournamentData} />;
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={buildPreview} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} />;
   if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding onDataChanged={refreshTournamentData} />;
