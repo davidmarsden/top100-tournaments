@@ -1,3 +1,4 @@
+import ArchiveWinnerHero from './ArchiveWinnerHero.jsx';
 import PublicTournamentPage from './PublicTournamentPage.jsx';
 import PublicTournamentRoute from './PublicTournamentRoute.jsx';
 import '../archive-view.css';
@@ -27,5 +28,7 @@ export default function TournamentRouter() {
 
   const route = <PublicTournamentRoute fallbackTournamentId={defaultPublicTournamentId()} />;
   const className = archiveRouteClass();
-  return className ? <div className={className}>{route}</div> : route;
+  return className
+    ? <div className={className}>{className.includes('knockout-only') && <ArchiveWinnerHero />}{route}</div>
+    : route;
 }
