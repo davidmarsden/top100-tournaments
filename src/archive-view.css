@@ -1,0 +1,9 @@
+.historical-tournament-route #featured,
+.historical-tournament-route #winners {
+  display: none;
+}
+
+.historical-tournament-route .public-section-nav a[href="#featured"],
+.historical-tournament-route .public-section-nav a[href="#winners"] {
+  display: none;
+}
