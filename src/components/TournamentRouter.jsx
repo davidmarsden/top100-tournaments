@@ -1,4 +1,5 @@
 import ArchiveWinnerHero from './ArchiveWinnerHero.jsx';
+import PublicRegistrationPage from './PublicRegistrationPage.jsx';
 import PublicTournamentPage from './PublicTournamentPage.jsx';
 import PublicTournamentRoute from './PublicTournamentRoute.jsx';
 import '../archive-view.css';
@@ -10,6 +11,9 @@ function publicTournamentIdFromPath() {
 function defaultPublicTournamentId() {
   const id = Number(import.meta.env.VITE_PUBLIC_TOURNAMENT_ID || '13');
   return Number.isFinite(id) && id > 0 ? id : 13;
+}
+function isRegistrationPath() {
+  return window.location.pathname.split('/').filter(Boolean).at(-1) === 'register';
 }
 function archiveRouteClass() {
   const parts = window.location.pathname.split('/').filter(Boolean);
@@ -23,6 +27,8 @@ export function isAdminPath() {
 }
 
 export default function TournamentRouter() {
+  if (isRegistrationPath()) return <PublicRegistrationPage />;
+
   const explicitPublicTournamentId = publicTournamentIdFromPath();
   if (explicitPublicTournamentId) return <PublicTournamentPage tournamentId={explicitPublicTournamentId} />;
 
