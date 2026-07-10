@@ -87,27 +87,64 @@ function asArray(payload) {
 function attrs(item) { return item?.attributes || item?.tournament || item?.participant || item?.match || item || {}; }
 function s(v) { return v === undefined || v === null || typeof v === 'object' ? '' : String(v).trim(); }
 function itemId(item) { const a = attrs(item); return s(item?.id || a.id || item?.tournament?.id || item?.participant?.id || item?.match?.id); }
-function addId(set, value) { const clean = s(value); if (!clean) return; set.add(clean); const digits = clean.match(/\d+/g)?.join(''); if (digits) set.add(digits); }
-function deepIds(value, set, depth = 0) { if (!value || depth > 3) return; if (typeof value !== 'object') return addId(set, value); addId(set, value.id); addId(set, value.participant_id); addId(set, value.participantId); addId(set, value.player_id); addId(set, value.playerId); Object.values(value).forEach((v) => deepIds(v, set, depth + 1)); }
-function participantAliases(p) { const set = new Set(); deepIds(p, set); deepIds(attrs(p), set); return [...set]; }
+function normalAlias(value) { return s(value).toLowerCase().replace(/[^a-z0-9]+/g, ''); }
+function addId(set, value) { const clean = s(value); if (!clean) return; set.add(clean); const normalized = normalAlias(clean); if (normalized) set.add(normalized); const digits = clean.match(/\d+/g)?.join(''); if (digits) set.add(digits); }
+function deepIds(value, set, depth = 0) { if (!value || depth > 4) return; if (typeof value !== 'object') return addId(set, value); addId(set, value.id); addId(set, value.participant_id); addId(set, value.participantId); addId(set, value.player_id); addId(set, value.playerId); addId(set, value.challonge_id); addId(set, value.challongeId); Object.values(value).forEach((v) => deepIds(v, set, depth + 1)); }
+function participantAliases(p) { const set = new Set(); addId(set, itemId(p)); deepIds(p, set); deepIds(attrs(p), set); return [...set]; }
+
+function relationValues(item, ...keys) {
+  const a = attrs(item);
+  const values = [];
+  for (const key of keys) {
+    values.push(item?.[key], a?.[key], item?.match?.[key], item?.participant?.[key], item?.relationships?.[key]?.data, a?.relationships?.[key]?.data);
+  }
+  return values.filter((value) => value !== undefined && value !== null);
+}
+
+function relationAliases(item, ...keys) {
+  const set = new Set();
+  relationValues(item, ...keys).forEach((value) => deepIds(value, set));
+  return [...set];
+}
 
 function relationId(item, ...keys) {
+  return relationAliases(item, ...keys)[0] || null;
+}
+
+function nestedName(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value !== 'object') return '';
+  const a = attrs(value);
+  return String(a.name || a.display_name || a.displayName || a.username || value.name || '').trim();
+}
+
+function relationNames(item, side) {
   const a = attrs(item);
-  for (const key of keys) {
-    const values = [item?.[key], a?.[key], item?.match?.[key], item?.participant?.[key], item?.relationships?.[key]?.data];
-    for (const value of values) {
-      const set = new Set();
-      deepIds(value, set);
-      const first = [...set][0];
-      if (first) return first;
-    }
-  }
-  return null;
+  const keys = side === 1
+    ? ['player1_name', 'player1Name', 'participant1_name', 'participant1Name', 'team1_name', 'team1Name', 'player1', 'participant1', 'team1']
+    : ['player2_name', 'player2Name', 'participant2_name', 'participant2Name', 'team2_name', 'team2Name', 'player2', 'participant2', 'team2'];
+  const names = new Set();
+  keys.forEach((key) => {
+    [item?.[key], a?.[key], item?.match?.[key], item?.relationships?.[key]?.data, a?.relationships?.[key]?.data].forEach((value) => {
+      const name = nestedName(value);
+      if (name) {
+        names.add(name);
+        const parsed = parseTeamAndManager(name);
+        if (parsed.teamName) names.add(parsed.teamName);
+      }
+    });
+  });
+  return [...names];
 }
 
 function tournamentName(t) { const a = attrs(t); return String(a.name || a.full_name || a.fullName || t?.name || `Challonge ${itemId(t)}`).trim(); }
 function participantName(p) { const a = attrs(p); return String(a.name || a.display_name || a.displayName || a.username || p?.name || `Participant ${itemId(p)}`).trim(); }
 function parseTeamAndManager(name) { const clean = String(name || '').trim(); const m = clean.match(/^(.*?)\s*[–—-]?\s*\((.*?)\)\s*$/); return m ? { teamName: m[1].trim() || clean, managerName: m[2].trim() || 'TBC Manager' } : { teamName: clean, managerName: 'TBC Manager' }; }
+function slugify(value = '') { return String(value || '').trim().toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+function seasonNumberFromCode(value = '') { const match = String(value || '').match(/(\d+)/); return match ? Number(match[1]) : null; }
+function seasonSlugFromCode(value = '') { const number = seasonNumberFromCode(value); return number ? `s${number}` : slugify(value); }
+function competitionTypeSlug(name = '') { const text = String(name || '').toLowerCase(); if (text.includes('world')) return 'world-club-cup'; if (text.includes('youth') || text.includes('shield')) return 'youth-cup'; return slugify(name) || 'challonge-import'; }
 
 function parseScores(match) {
   const a = attrs(match);
@@ -235,7 +272,7 @@ async function previewTournament(body) {
     participantsCount: bundle.parsedParticipants.length,
     matchesCount: bundle.matches.length,
     sampleParticipants: bundle.parsedParticipants.slice(0, 12),
-    sampleMatches: bundle.matches.slice(0, 8).map((m, i) => ({ id: itemId(m), round: groupStage ? groupRound(m, i) : knockoutRound(m), group: groupStage ? groupKey(m) : null, order: matchOrder(m, i), player1: relationId(m, 'player1', 'player1_id', 'player1Id', 'participant1', 'participant1_id', 'participant1Id'), player2: relationId(m, 'player2', 'player2_id', 'player2Id', 'participant2', 'participant2_id', 'participant2Id'), score: parseScores(m), status: matchStatus(m, parseScores(m)) })),
+    sampleMatches: bundle.matches.slice(0, 8).map((m, i) => ({ id: itemId(m), round: groupStage ? groupRound(m, i) : knockoutRound(m), group: groupStage ? groupKey(m) : null, order: matchOrder(m, i), player1: relationAliases(m, 'player1', 'player1_id', 'player1Id', 'participant1', 'participant1_id', 'participant1Id'), player2: relationAliases(m, 'player2', 'player2_id', 'player2Id', 'participant2', 'participant2_id', 'participant2Id'), player1Names: relationNames(m, 1), player2Names: relationNames(m, 2), score: parseScores(m), status: matchStatus(m, parseScores(m)) })),
   });
 }
 
@@ -320,27 +357,57 @@ async function importTournament(body) {
   }
 
   const participantToEntry = new Map();
+  const participantNameToEntry = new Map();
   bundle.parsedParticipants.forEach((p) => {
     const entryId = entryByTeam.get(teamMap.get(p.teamName));
-    p.aliases.forEach((alias) => participantToEntry.set(String(alias), entryId));
+    [p.challongeParticipantId, ...p.aliases].forEach((alias) => {
+      addId(new Set(), alias);
+      const clean = s(alias);
+      const normalized = normalAlias(alias);
+      if (clean) participantToEntry.set(clean, entryId);
+      if (normalized) participantToEntry.set(normalized, entryId);
+      const digits = clean.match(/\d+/g)?.join('');
+      if (digits) participantToEntry.set(digits, entryId);
+    });
+    [p.teamName, participantName(bundle.participants.find((raw) => itemId(raw) === p.challongeParticipantId))].filter(Boolean).forEach((name) => participantNameToEntry.set(normalAlias(name), entryId));
   });
+
+  function resolveEntry(match, side) {
+    const aliases = side === 1
+      ? relationAliases(match, 'player1', 'player1_id', 'player1Id', 'participant1', 'participant1_id', 'participant1Id')
+      : relationAliases(match, 'player2', 'player2_id', 'player2Id', 'participant2', 'participant2_id', 'participant2Id');
+    for (const alias of aliases) {
+      const direct = participantToEntry.get(s(alias)) || participantToEntry.get(normalAlias(alias));
+      if (direct) return direct;
+    }
+    for (const name of relationNames(match, side)) {
+      const byName = participantNameToEntry.get(normalAlias(name));
+      if (byName) return byName;
+    }
+    return null;
+  }
+
   const deleted = await db.from('matches').delete().eq('tournament_id', tournamentId).eq('source_id', id);
   if (deleted.error) throw deleted.error;
   const groupMap = groupStage ? await upsertGroups(db, tournamentId, bundle.matches) : new Map();
 
   let unresolvedPlayers = 0;
+  const unresolvedExamples = [];
   const matchRows = bundle.matches.map((match, index) => {
     const attr = attrs(match);
-    const player1 = relationId(match, 'player1', 'player1_id', 'player1Id', 'participant1', 'participant1_id', 'participant1Id');
-    const player2 = relationId(match, 'player2', 'player2_id', 'player2Id', 'participant2', 'participant2_id', 'participant2Id');
+    const player1Aliases = relationAliases(match, 'player1', 'player1_id', 'player1Id', 'participant1', 'participant1_id', 'participant1Id');
+    const player2Aliases = relationAliases(match, 'player2', 'player2_id', 'player2Id', 'participant2', 'participant2_id', 'participant2Id');
     const score = parseScores(match);
     const status = matchStatus(match, score);
-    const winner = relationId(match, 'winner', 'winner_id', 'winnerId');
-    const loser = relationId(match, 'loser', 'loser_id', 'loserId');
-    const homeEntryId = player1 ? participantToEntry.get(String(player1)) : null;
-    const awayEntryId = player2 ? participantToEntry.get(String(player2)) : null;
-    if (player1 && !homeEntryId) unresolvedPlayers += 1;
-    if (player2 && !awayEntryId) unresolvedPlayers += 1;
+    const winnerAliases = relationAliases(match, 'winner', 'winner_id', 'winnerId');
+    const loserAliases = relationAliases(match, 'loser', 'loser_id', 'loserId');
+    const homeEntryId = resolveEntry(match, 1);
+    const awayEntryId = resolveEntry(match, 2);
+    if (player1Aliases.length && !homeEntryId) unresolvedPlayers += 1;
+    if (player2Aliases.length && !awayEntryId) unresolvedPlayers += 1;
+    if ((!homeEntryId || !awayEntryId) && unresolvedExamples.length < 8) unresolvedExamples.push({ matchId: itemId(match), player1Aliases, player2Aliases, player1Names: relationNames(match, 1), player2Names: relationNames(match, 2) });
+    const winnerEntryId = winnerAliases.map((alias) => participantToEntry.get(s(alias)) || participantToEntry.get(normalAlias(alias))).find(Boolean) || null;
+    const loserEntryId = loserAliases.map((alias) => participantToEntry.get(s(alias)) || participantToEntry.get(normalAlias(alias))).find(Boolean) || null;
     const gKey = groupKey(match);
     return {
       tournament_id: tournamentId,
@@ -351,14 +418,14 @@ async function importTournament(body) {
       match_order: matchOrder(match, index),
       scheduled_at: attr.scheduled_time || attr.scheduledTime || null,
       fixture_date: attr.scheduled_time ? String(attr.scheduled_time).slice(0, 10) : null,
-      home_entry_id: homeEntryId || null,
-      away_entry_id: awayEntryId || null,
-      home_placeholder: homeEntryId ? null : (player1 ? `Challonge participant ${player1}` : 'TBC'),
-      away_placeholder: awayEntryId ? null : (player2 ? `Challonge participant ${player2}` : 'TBC'),
+      home_entry_id: homeEntryId,
+      away_entry_id: awayEntryId,
+      home_placeholder: homeEntryId ? null : (relationNames(match, 1)[0] || (player1Aliases[0] ? `Challonge participant ${player1Aliases[0]}` : 'TBC')),
+      away_placeholder: awayEntryId ? null : (relationNames(match, 2)[0] || (player2Aliases[0] ? `Challonge participant ${player2Aliases[0]}` : 'TBC')),
       home_score: Number.isFinite(score.home_score) ? score.home_score : null,
       away_score: Number.isFinite(score.away_score) ? score.away_score : null,
-      winner_entry_id: winner ? participantToEntry.get(String(winner)) || null : null,
-      loser_entry_id: loser ? participantToEntry.get(String(loser)) || null : null,
+      winner_entry_id: winnerEntryId,
+      loser_entry_id: loserEntryId,
       status,
       source_id: id,
       challonge_match_id: itemId(match) || String(index + 1),
@@ -377,7 +444,7 @@ async function importTournament(body) {
       importedMatches += chunk.length;
     }
   }
-  return json(200, { ok: true, mode: 'import', authMode: bundle.source, tournamentId, importedTournamentName: tournamentRow.name, importedParticipants: bundle.parsedParticipants.length, importedMatches, updatedMatches: 0, unresolvedPlayers, detectedStage: groupStage ? 'group' : 'knockout', challongeTournamentId: id });
+  return json(200, { ok: true, mode: 'import', authMode: bundle.source, tournamentId, importedTournamentName: tournamentRow.name, importedParticipants: bundle.parsedParticipants.length, importedMatches, updatedMatches: 0, unresolvedPlayers, unresolvedExamples, detectedStage: groupStage ? 'group' : 'knockout', challongeTournamentId: id });
 }
 
 export async function handler(event) {
@@ -390,7 +457,6 @@ export async function handler(event) {
     }
     return json(405, { ok: false, error: 'Method not allowed' });
   } catch (error) {
-    console.error(error);
-    return json(500, { ok: false, error: error.message, attempts: error.attempts || undefined });
+    return json(error.statusCode || 500, { ok: false, error: error.message, attempts: error.attempts || null });
   }
 }
