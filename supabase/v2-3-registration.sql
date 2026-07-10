@@ -142,17 +142,15 @@ begin
   select id into manager_row_id
   from managers
   where normal_registration_key(coalesce(display_name, name)) = registration_row.manager_key
-     or lower(coalesce(email, '')) = registration_row.email_key
   order by id
   limit 1;
 
   if manager_row_id is null then
-    insert into managers(name, display_name, canonical_name, email, active)
+    insert into managers(name, display_name, canonical_name, active)
     values (
       registration_row.manager_name,
       registration_row.manager_name,
       lower(registration_row.manager_name),
-      registration_row.manager_email,
       true
     )
     returning id into manager_row_id;
@@ -186,7 +184,7 @@ begin
       registration_row.rating,
       'active',
       true,
-      'Promoted from registration #' || registration_row.id
+      'Promoted from registration #' || registration_row.id || ' · ' || registration_row.manager_email
     )
     returning id into entry_row_id;
   end if;
