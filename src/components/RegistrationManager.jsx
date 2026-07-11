@@ -22,6 +22,7 @@ export default function RegistrationManager({ selectedTournament, onTournamentUp
   const [filter, setFilter] = useState('pending');
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
+  const [testEntrantCount, setTestEntrantCount] = useState(16);
   const [settings, setSettings] = useState({ registration_status: 'closed', registration_opens_at: '', registration_closes_at: '' });
   const tournamentId = selectedTournament?.id;
 
@@ -76,6 +77,24 @@ export default function RegistrationManager({ selectedTournament, onTournamentUp
       await loadRegistrationSettings();
       await onTournamentUpdated?.();
       setStatus('Registration settings saved.');
+    }
+    setLoading(false);
+  }
+
+  async function createSeededTestTournament() {
+    if (!tournamentId) return;
+    const confirmed = window.confirm(`Create a separate draft test tournament with ${testEntrantCount} generated managers, clubs and ratings? The live ${selectedTournament.name} tournament will not be changed.`);
+    if (!confirmed) return;
+    setLoading(true);
+    setStatus(`Creating ${testEntrantCount}-team seeded test tournament...`);
+    const { data, error } = await supabase.rpc('create_seeded_test_tournament', {
+      source_tournament_id: tournamentId,
+      entrant_count: Number(testEntrantCount),
+    });
+    if (error) setStatus('Could not create test tournament: ' + error.message);
+    else {
+      await onTournamentUpdated?.();
+      setStatus(`Test tournament #${data} created with ${testEntrantCount} approved registrations and entrants. Select it from Overview to continue the test run.`);
     }
     setLoading(false);
   }
@@ -143,6 +162,16 @@ export default function RegistrationManager({ selectedTournament, onTournamentUp
         </div>
         <div className="button-row"><button type="submit" disabled={loading}>Save registration window</button><a className="button secondary" href={`/${selectedTournament.game_worlds?.slug || 'top-100'}/${selectedTournament.competition_types?.slug || 'youth-cup'}/${selectedTournament.public_slug || `s${selectedTournament.season_number}`}/register`} target="_blank" rel="noreferrer">Open public form</a></div>
       </form>
+    </section>
+
+    <section className="entrant-panel">
+      <p className="eyebrow">Test harness</p>
+      <h3>Create a populated test tournament</h3>
+      <p className="muted">Creates a separate private draft based on {selectedTournament.name}. Generated registrations are already approved and promoted into entrants, so it is immediately ready for group generation.</p>
+      <div className="mini-grid">
+        <label>Test entrants<select value={testEntrantCount} onChange={(event) => setTestEntrantCount(Number(event.target.value))}><option value={16}>16 managers</option><option value={32}>32 managers</option><option value={64}>64 managers</option></select></label>
+      </div>
+      <button type="button" onClick={createSeededTestTournament} disabled={loading}>Create seeded test tournament</button>
     </section>
 
     <section className="entrant-panel">
