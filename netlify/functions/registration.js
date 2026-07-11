@@ -19,8 +19,6 @@ function database() {
 }
 
 const keyOf = (value = '') => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-const emailOf = (value = '') => String(value).trim().toLowerCase();
-const validEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 async function resolveTournament(db, input) {
   if (input.tournamentId) {
@@ -75,41 +73,38 @@ async function submit(db, tournament, body) {
   if (!availability.open) return reply(409, { ok: false, error: availability.reason });
 
   const managerName = String(body.managerName || '').trim();
-  const managerEmail = emailOf(body.managerEmail);
   const clubName = String(body.clubName || '').trim();
-  const notes = String(body.notes || '').trim().slice(0, 1000) || null;
-  const rating = body.rating === '' || body.rating === null || body.rating === undefined ? null : Number(body.rating);
+  const rating = Number(body.rating);
 
   if (managerName.length < 2) return reply(400, { ok: false, error: 'Enter your manager name.' });
-  if (!validEmail(managerEmail)) return reply(400, { ok: false, error: 'Enter a valid email address.' });
   if (clubName.length < 2) return reply(400, { ok: false, error: 'Enter your club name.' });
-  if (rating !== null && !Number.isFinite(rating)) return reply(400, { ok: false, error: 'Rating must be a number.' });
+  if (!Number.isInteger(rating) || rating < 70 || rating > 95) return reply(400, { ok: false, error: 'Choose a team rating from 70 to 95.' });
 
   const managerKey = keyOf(managerName);
   const clubKey = keyOf(clubName);
   const duplicateResult = await db.from('tournament_registrations')
-    .select('manager_key, email_key, club_key')
+    .select('manager_key, club_key')
     .eq('tournament_id', tournament.id)
     .in('status', ['pending', 'approved'])
-    .or(`manager_key.eq.${managerKey},email_key.eq.${managerEmail},club_key.eq.${clubKey}`);
+    .or(`manager_key.eq.${managerKey},club_key.eq.${clubKey}`);
   if (duplicateResult.error) throw duplicateResult.error;
-  if (duplicateResult.data?.length) return reply(409, { ok: false, duplicate: true, error: 'This manager, email address or club is already registered.' });
+  if (duplicateResult.data?.length) return reply(409, { ok: false, duplicate: true, error: 'This manager or club is already registered.' });
 
   const result = await db.from('tournament_registrations').insert({
     tournament_id: tournament.id,
     manager_name: managerName,
-    manager_email: managerEmail,
+    manager_email: null,
     club_name: clubName,
     rating,
-    notes,
+    notes: null,
     status: 'pending',
     manager_key: managerKey,
-    email_key: managerEmail,
+    email_key: '',
     club_key: clubKey,
   }).select('id, submitted_at').single();
 
   if (result.error) {
-    if (result.error.code === '23505') return reply(409, { ok: false, duplicate: true, error: 'This manager, email address or club is already registered.' });
+    if (result.error.code === '23505') return reply(409, { ok: false, duplicate: true, error: 'This manager or club is already registered.' });
     throw result.error;
   }
 
