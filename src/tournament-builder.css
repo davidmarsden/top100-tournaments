@@ -1,0 +1,15 @@
+.tournament-builder { margin-bottom: 20px; }
+.builder-hero { display: grid; gap: 12px; }
+.builder-hero h3 { margin: 0; font-size: 1.6rem; }
+.compact-metrics { margin: 4px 0; }
+.builder-steps { display: grid; gap: 10px; margin-top: 14px; }
+.builder-step { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 13px 14px; border: 1px solid #e4ebf7; border-radius: 18px; background: #f8fafc; }
+.builder-step > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 999px; background: #e2e8f0; color: #475569; font-weight: 900; }
+.builder-step div { display: grid; gap: 3px; }
+.builder-step small { color: #64748b; font-weight: 800; }
+.builder-step.done { border-color: #bbf7d0; background: #f0fdf4; }
+.builder-step.done > span { background: #16a34a; color: white; }
+.builder-step.done small { color: #166534; }
+.builder-step.current { border-color: #93c5fd; background: #eff6ff; box-shadow: inset 5px 0 0 #2563eb; }
+.builder-step.current > span { background: #2563eb; color: white; }
+@media (max-width: 820px) { .builder-step { grid-template-columns: 38px minmax(0, 1fr); } .builder-step button { grid-column: 1 / -1; width: 100%; } }
