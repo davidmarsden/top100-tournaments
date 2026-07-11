@@ -7,6 +7,7 @@ import './bracket.css';
 import './schedule.css';
 import './tournament-hub.css';
 import './tournament-builder.css';
+import './manager-portal.css';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
