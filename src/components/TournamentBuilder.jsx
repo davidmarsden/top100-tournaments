@@ -16,6 +16,64 @@ function isPlayed(match) {
   return match.status === 'played' || match.status === 'forfeit';
 }
 
+function roundRobinRounds(entries) {
+  const teams = [...entries];
+  if (teams.length % 2 === 1) teams.push({ bye: true });
+  const rounds = [];
+  let rotation = [...teams];
+
+  for (let roundIndex = 0; roundIndex < teams.length - 1; roundIndex += 1) {
+    const pairings = [];
+    for (let index = 0; index < teams.length / 2; index += 1) {
+      const first = rotation[index];
+      const second = rotation[rotation.length - 1 - index];
+      if (!first.bye && !second.bye) pairings.push(roundIndex % 2 === 0 ? [first, second] : [second, first]);
+    }
+    rounds.push(pairings);
+    rotation = [rotation[0], rotation[rotation.length - 1], ...rotation.slice(1, -1)];
+  }
+
+  return rounds;
+}
+
+function buildGroupFixtureRows(tournamentId, groups, entries) {
+  const entriesByGroup = entries.reduce((map, entry) => {
+    if (!map.has(entry.group_code)) map.set(entry.group_code, []);
+    map.get(entry.group_code).push(entry);
+    return map;
+  }, new Map());
+
+  const rows = [];
+  let matchOrder = 1;
+
+  groups.forEach((group) => {
+    const groupEntries = (entriesByGroup.get(group.code) || []).sort((a, b) => Number(a.pot || 99) - Number(b.pot || 99) || Number(a.seed || 999) - Number(b.seed || 999));
+    const firstLegRounds = roundRobinRounds(groupEntries);
+    const allRounds = [...firstLegRounds, ...firstLegRounds.map((round) => round.map(([home, away]) => [away, home]))];
+
+    allRounds.forEach((roundPairings, roundIndex) => {
+      roundPairings.forEach(([home, away]) => {
+        rows.push({
+          tournament_id: tournamentId,
+          group_id: group.id,
+          stage: 'group',
+          round: 'MD' + (roundIndex + 1),
+          leg: roundIndex < firstLegRounds.length ? 1 : 2,
+          match_order: matchOrder++,
+          home_entry_id: home.id,
+          away_entry_id: away.id,
+          home_placeholder: home.team_name,
+          away_placeholder: away.team_name,
+          bracket: 'Group Stage',
+          status: 'scheduled',
+        });
+      });
+    });
+  });
+
+  return rows;
+}
+
 export default function TournamentBuilder({ selectedTournament, preview, buildPreview, onNavigate, onRefresh }) {
   const [summary, setSummary] = useState(null);
   const [status, setStatus] = useState('Loading builder status...');
@@ -99,6 +157,51 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
     onNavigate('Groups');
   }
 
+  async function generateFixtures() {
+    if (!window.confirm(`Generate all group-stage fixtures for ${selectedTournament.name}?`)) return;
+    setLoading(true);
+    setStatus('Generating group-stage fixtures...');
+
+    try {
+      const [groupsResult, entriesResult, matchesResult] = await Promise.all([
+        supabase.from('groups').select('id, code, group_order').eq('tournament_id', tournamentId).order('group_order', { ascending: true }),
+        supabase.from('tournament_entries').select('id, seed, pot, group_code, teams(name)').eq('tournament_id', tournamentId),
+        supabase.from('matches').select('id', { count: 'exact', head: true }).eq('tournament_id', tournamentId).eq('stage', 'group'),
+      ]);
+      const error = groupsResult.error || entriesResult.error || matchesResult.error;
+      if (error) throw error;
+      if (matchesResult.count) throw new Error('Group fixtures already exist.');
+
+      const groups = groupsResult.data || [];
+      const entries = (entriesResult.data || []).map((entry) => ({
+        id: entry.id,
+        seed: entry.seed,
+        pot: entry.pot,
+        group_code: entry.group_code,
+        team_name: entry.teams?.name || 'Unknown team',
+      }));
+
+      if (!groups.length) throw new Error('Approve the groups before generating fixtures.');
+      const unassigned = entries.filter((entry) => !entry.group_code);
+      if (unassigned.length) throw new Error(`${unassigned.length} entrants do not have a group assignment.`);
+
+      const fixtureRows = buildGroupFixtureRows(tournamentId, groups, entries);
+      if (!fixtureRows.length) throw new Error('No fixtures could be generated from the saved groups.');
+
+      const { error: insertError } = await supabase.from('matches').insert(fixtureRows);
+      if (insertError) throw insertError;
+
+      setStatus(`${fixtureRows.length} group-stage fixtures generated successfully.`);
+      await onRefresh?.();
+      await loadSummary();
+      onNavigate('Fixtures');
+    } catch (error) {
+      setStatus('Fixture generation failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function markCompleted() {
     if (!window.confirm(`Mark ${selectedTournament.name} completed? This will switch it to archive presentation automatically.`)) return;
     setLoading(true);
@@ -123,7 +226,7 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
     if (step === 'groups') return preview?.groups?.length
       ? { label: 'Review generated groups', action: () => onNavigate('Groups') }
       : { label: 'Generate groups', action: generateGroupPreview };
-    if (step === 'fixtures') return { label: 'Open fixtures', action: () => onNavigate('Fixtures') };
+    if (step === 'fixtures') return { label: 'Generate fixtures', action: generateFixtures };
     if (step === 'results') return { label: 'Enter results', action: () => onNavigate('Results') };
     if (step === 'knockout') return { label: 'Generate knockout', action: () => onNavigate('Knockout') };
     if (step === 'publish') return { label: 'Open public page settings', action: () => onNavigate('Public Page') };
