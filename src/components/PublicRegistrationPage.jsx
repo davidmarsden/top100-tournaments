@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+const ratings = Array.from({ length: 26 }, (_, index) => 70 + index);
+
 function routeParts() {
   const parts = window.location.pathname.split('/').filter(Boolean);
   const registerIndex = parts.indexOf('register');
@@ -20,7 +22,7 @@ function formatDate(value) {
 export default function PublicRegistrationPage() {
   const route = useMemo(routeParts, []);
   const [config, setConfig] = useState(null);
-  const [form, setForm] = useState({ managerName: '', managerEmail: '', clubName: '', rating: '', notes: '' });
+  const [form, setForm] = useState({ managerName: '', clubName: '', rating: '' });
   const [status, setStatus] = useState('Loading registration...');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -62,7 +64,7 @@ export default function PublicRegistrationPage() {
       const payload = await request(form);
       setSubmitted(true);
       setStatus(payload.message);
-      setForm({ managerName: '', managerEmail: '', clubName: '', rating: '', notes: '' });
+      setForm({ managerName: '', clubName: '', rating: '' });
       await loadConfig();
     } catch (error) {
       setStatus(error.message);
@@ -94,15 +96,13 @@ export default function PublicRegistrationPage() {
     <section className="card registration-card">
       <p className="eyebrow">Your entry</p>
       <h2>{submitted ? 'Registration received' : 'Register your club'}</h2>
-      <p className="muted">Registrations are checked by an admin before they become tournament entrants. Duplicate manager, email and club registrations are blocked automatically.</p>
+      <p className="muted">Registrations are checked by an admin before they become tournament entrants. Duplicate manager and club registrations are blocked automatically.</p>
       <form onSubmit={submit}>
         <div className="mini-grid">
           <label>Manager name<input required value={form.managerName} onChange={(event) => update('managerName', event.target.value)} autoComplete="name" /></label>
-          <label>Email address<input required type="email" value={form.managerEmail} onChange={(event) => update('managerEmail', event.target.value)} autoComplete="email" /></label>
           <label>Club name<input required value={form.clubName} onChange={(event) => update('clubName', event.target.value)} /></label>
-          <label>Average rating<input type="number" step="0.1" value={form.rating} onChange={(event) => update('rating', event.target.value)} placeholder="Optional" /></label>
+          <label>Team rating<select required value={form.rating} onChange={(event) => update('rating', event.target.value)}><option value="">Choose rating</option>{ratings.map((rating) => <option key={rating} value={rating}>{rating}</option>)}</select></label>
         </div>
-        <label>Anything the admin should know?<textarea rows="4" value={form.notes} onChange={(event) => update('notes', event.target.value)} maxLength="1000" /></label>
         <button type="submit" disabled={loading || !open}>{loading ? 'Submitting...' : 'Submit registration'}</button>
       </form>
     </section>
