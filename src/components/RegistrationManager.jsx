@@ -9,6 +9,14 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function toLocalInput(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
+}
+
 export default function RegistrationManager({ selectedTournament, onTournamentUpdated }) {
   const [rows, setRows] = useState([]);
   const [filter, setFilter] = useState('pending');
@@ -19,22 +27,32 @@ export default function RegistrationManager({ selectedTournament, onTournamentUp
 
   useEffect(() => {
     if (!tournamentId) return;
-    setSettings({
-      registration_status: selectedTournament.registration_status || 'closed',
-      registration_opens_at: selectedTournament.registration_opens_at ? String(selectedTournament.registration_opens_at).slice(0, 16) : '',
-      registration_closes_at: selectedTournament.registration_closes_at ? String(selectedTournament.registration_closes_at).slice(0, 16) : '',
-    });
+    loadRegistrationSettings();
     loadRegistrations();
   }, [tournamentId]);
 
   const visible = useMemo(() => rows.filter((row) => filter === 'all' || row.status === filter), [rows, filter]);
   const counts = useMemo(() => rows.reduce((result, row) => ({ ...result, [row.status]: (result[row.status] || 0) + 1 }), {}), [rows]);
 
+  async function loadRegistrationSettings() {
+    if (!tournamentId) return;
+    const { data, error } = await supabase.from('tournaments')
+      .select('registration_status, registration_opens_at, registration_closes_at')
+      .eq('id', tournamentId)
+      .maybeSingle();
+    if (error) return setStatus('Could not load registration settings: ' + error.message);
+    setSettings({
+      registration_status: data?.registration_status || 'closed',
+      registration_opens_at: toLocalInput(data?.registration_opens_at),
+      registration_closes_at: toLocalInput(data?.registration_closes_at),
+    });
+  }
+
   async function loadRegistrations() {
     if (!tournamentId) return;
     setLoading(true);
     const { data, error } = await supabase.from('tournament_registrations')
-      .select('id, tournament_id, manager_name, manager_email, club_name, rating, notes, status, duplicate_reason, submitted_at, reviewed_at, review_notes, promoted_entry_id, promoted_at')
+      .select('id, tournament_id, manager_name, club_name, rating, status, duplicate_reason, submitted_at, reviewed_at, review_notes, promoted_entry_id, promoted_at')
       .eq('tournament_id', tournamentId)
       .order('submitted_at', { ascending: false });
     if (error) setStatus('Could not load registrations: ' + error.message);
@@ -47,16 +65,17 @@ export default function RegistrationManager({ selectedTournament, onTournamentUp
     if (!tournamentId) return;
     setLoading(true);
     setStatus('Saving registration settings...');
-    const payload = {
-      registration_status: settings.registration_status,
-      registration_opens_at: settings.registration_opens_at ? new Date(settings.registration_opens_at).toISOString() : null,
-      registration_closes_at: settings.registration_closes_at ? new Date(settings.registration_closes_at).toISOString() : null,
-    };
-    const { error } = await supabase.from('tournaments').update(payload).eq('id', tournamentId);
+    const { error } = await supabase.rpc('set_tournament_registration_window', {
+      target_tournament_id: tournamentId,
+      next_registration_status: settings.registration_status,
+      next_registration_opens_at: settings.registration_opens_at ? new Date(settings.registration_opens_at).toISOString() : null,
+      next_registration_closes_at: settings.registration_closes_at ? new Date(settings.registration_closes_at).toISOString() : null,
+    });
     if (error) setStatus('Could not save registration settings: ' + error.message);
     else {
-      setStatus('Registration settings saved.');
+      await loadRegistrationSettings();
       await onTournamentUpdated?.();
+      setStatus('Registration settings saved.');
     }
     setLoading(false);
   }
@@ -74,7 +93,7 @@ export default function RegistrationManager({ selectedTournament, onTournamentUp
     setLoading(false);
   }
 
-  async function updateReviewNotes(row, reviewNotes) {
+  function updateReviewNotes(row, reviewNotes) {
     setRows((current) => current.map((item) => item.id === row.id ? { ...item, review_notes: reviewNotes } : item));
   }
 
@@ -130,7 +149,7 @@ export default function RegistrationManager({ selectedTournament, onTournamentUp
       <div className="card-header row"><div><p className="eyebrow">Registration review</p><h3>Pending, approved and rejected</h3></div><div className="button-row"><button type="button" className="secondary" onClick={loadRegistrations} disabled={loading}>Refresh</button><button type="button" onClick={promoteAllApproved} disabled={loading}>Promote all approved</button></div></div>
       <div className="status-filter-row">{filters.map((item) => <button type="button" key={item} className={filter === item ? 'status-filter active' : 'status-filter'} onClick={() => setFilter(item)}>{item} <span>{item === 'all' ? rows.length : counts[item] || 0}</span></button>)}</div>
       <p className="status">{status}</p>
-      {!visible.length ? <p className="muted">No registrations in this filter.</p> : <div className="entrant-list">{visible.map((row) => <article className="entrant-row registration-row" key={row.id}><div className="registration-details"><strong>{row.manager_name} · {row.club_name}</strong><span>{row.manager_email} · rating {row.rating ?? 'not supplied'} · submitted {formatDate(row.submitted_at)}</span>{row.notes && <p>{row.notes}</p>}{row.promoted_entry_id && <span>Entrant created #{row.promoted_entry_id} · {formatDate(row.promoted_at)}</span>}<label>Admin note<input value={row.review_notes || ''} onChange={(event) => updateReviewNotes(row, event.target.value)} /></label></div><div className="button-row"><button type="button" className="secondary" onClick={() => review(row, 'approved')} disabled={loading || row.status === 'approved'}>Approve</button><button type="button" className="danger" onClick={() => review(row, 'rejected')} disabled={loading || row.status === 'rejected'}>Reject</button><button type="button" onClick={() => promote(row)} disabled={loading || row.status !== 'approved' || Boolean(row.promoted_entry_id)}>Promote</button></div></article>)}</div>}
+      {!visible.length ? <p className="muted">No registrations in this filter.</p> : <div className="entrant-list">{visible.map((row) => <article className="entrant-row registration-row" key={row.id}><div className="registration-details"><strong>{row.manager_name} · {row.club_name}</strong><span>Rating {row.rating} · submitted {formatDate(row.submitted_at)}</span>{row.promoted_entry_id && <span>Entrant created #{row.promoted_entry_id} · {formatDate(row.promoted_at)}</span>}<label>Admin note<input value={row.review_notes || ''} onChange={(event) => updateReviewNotes(row, event.target.value)} /></label></div><div className="button-row"><button type="button" className="secondary" onClick={() => review(row, 'approved')} disabled={loading || row.status === 'approved'}>Approve</button><button type="button" className="danger" onClick={() => review(row, 'rejected')} disabled={loading || row.status === 'rejected'}>Reject</button><button type="button" onClick={() => promote(row)} disabled={loading || row.status !== 'approved' || Boolean(row.promoted_entry_id)}>Promote</button></div></article>)}</div>}
     </section>
   </div>;
 }
