@@ -23,10 +23,10 @@ create policy "Users can create their own manager claim"
   on public.manager_portal_claims for insert to authenticated
   with check (auth.uid() = auth_user_id and lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')));
 
-create policy "Users can update their pending manager claim"
+create policy "Users can correct their own manager claim"
   on public.manager_portal_claims for update to authenticated
-  using (auth.uid() = auth_user_id and status = 'pending')
-  with check (auth.uid() = auth_user_id and status = 'pending');
+  using (auth.uid() = auth_user_id and status in ('pending', 'rejected'))
+  with check (auth.uid() = auth_user_id and status = 'pending' and lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')));
 
 create policy "Admins can manage manager claims"
   on public.manager_portal_claims for all to authenticated
