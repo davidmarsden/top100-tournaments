@@ -7,6 +7,7 @@ import KnockoutManager from './KnockoutManager.jsx';
 import ProgressBar, { isStepDone } from './ProgressBar.jsx';
 import PublicPageManager from './PublicPageManager.jsx';
 import RegistrationManager from './RegistrationManager.jsx';
+import ResultsTestControls from './ResultsTestControls.jsx';
 import TablesManager from './TablesManager.jsx';
 import TournamentBuilder from './TournamentBuilder.jsx';
 import TournamentCreateForm from './TournamentCreateForm.jsx';
@@ -72,7 +73,7 @@ function ModuleContent({ activeModule }) {
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={buildPreview} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} onDataChanged={refreshTournamentData} />;
   if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding onDataChanged={refreshTournamentData} />;
-  if (activeModule === 'Results') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted onDataChanged={refreshTournamentData} />;
+  if (activeModule === 'Results') return <><ResultsTestControls selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} /><FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted onDataChanged={refreshTournamentData} /></>;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />;
   if (activeModule === 'Challonge') return <ChallongeImportManager onTournamentUpdated={refreshTournamentData} />;
