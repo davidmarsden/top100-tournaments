@@ -6,6 +6,7 @@ import './workflow-overrides.css';
 import './bracket.css';
 import './schedule.css';
 import './tournament-hub.css';
+import './tournament-builder.css';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {

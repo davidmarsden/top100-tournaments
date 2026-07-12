@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const AdminAuthContext = { Provider: ({ children }) => children };
+const configuredUsername = String(import.meta.env.VITE_ADMIN_USERNAME || 'admin').trim();
+const configuredEmail = String(import.meta.env.VITE_ADMIN_LOGIN_EMAIL || import.meta.env.VITE_ADMIN_EMAIL || '').trim();
 
 export default function AdminGate({ children }) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [checking, setChecking] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -35,9 +37,24 @@ export default function AdminGate({ children }) {
   async function login(event) {
     event.preventDefault();
     setError('');
+
+    const cleanUsername = username.trim();
+    if (cleanUsername.toLowerCase() !== configuredUsername.toLowerCase()) {
+      setError('Incorrect username.');
+      return;
+    }
+    if (!configuredEmail) {
+      setError('Admin login email is not configured. Add VITE_ADMIN_LOGIN_EMAIL in Netlify.');
+      return;
+    }
+
     setChecking(true);
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (signInError) { setError(signInError.message); setChecking(false); return; }
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: configuredEmail, password });
+    if (signInError) {
+      setError(`Supabase login failed for ${configuredEmail}: ${signInError.message}`);
+      setChecking(false);
+      return;
+    }
     setPassword('');
   }
 
@@ -51,5 +68,5 @@ export default function AdminGate({ children }) {
   if (checking) return <main className="app-shell"><section className="card"><h1>Checking admin access...</h1></section></main>;
   if (isAdmin) return <AdminAuthContext.Provider value={{ logout, userEmail }}>{children}</AdminAuthContext.Provider>;
 
-  return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Admin login</h1><p>Public visitors see the live Youth Cup page. Admin tools require a Supabase admin account.</p></section><section className="card admin-login-card"><form onSubmit={login}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" autoFocus /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label><button type="submit" disabled={checking}>Log in</button>{error && <p className="status error-text">{error}</p>}</form>{userEmail && <p className="muted">Signed in as {userEmail}, but this account is not in admin_users.</p>}<p className="muted">Admin URL: /admin</p></section></main>;
+  return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Admin login</h1><p>Public visitors see the live Youth Cup page. Tournament administration requires the private admin login.</p></section><section className="card admin-login-card"><form onSubmit={login}><label>Username<input type="text" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoCapitalize="none" autoFocus /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label><button type="submit" disabled={checking}>Log in</button>{error && <p className="status error-text">{error}</p>}</form>{userEmail && <p className="muted">Signed in as {userEmail}, but this account is not in admin_users.</p>}<p className="muted">Admin username: {configuredUsername}</p></section></main>;
 }
