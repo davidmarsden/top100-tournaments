@@ -4,6 +4,7 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 export default function GroupsApproval({ selectedTournament, preview, setPreview, onDataChanged }) {
   const [status, setStatus] = useState('Ready to approve draw');
   const [saving, setSaving] = useState(false);
+  const [approved, setApproved] = useState(false);
 
   async function approveDraw() {
     if (!selectedTournament) return setStatus('Select a tournament first.');
@@ -53,7 +54,9 @@ export default function GroupsApproval({ selectedTournament, preview, setPreview
       if (tournamentError) throw tournamentError;
 
       await onDataChanged?.();
-      setStatus('Groups approved. Return to the Tournament Builder to generate fixtures.');
+      setApproved(true);
+      setStatus('Groups approved. The Tournament Builder is now ready to generate fixtures.');
+      window.dispatchEvent(new CustomEvent('top100:tournament-data-changed', { detail: { tournamentId } }));
     } catch (error) {
       setStatus('Approval failed: ' + error.message);
     } finally {
@@ -71,8 +74,8 @@ export default function GroupsApproval({ selectedTournament, preview, setPreview
         <p className="muted">Review the seeded draw, then approve the groups and team assignments. Fixtures are generated separately in the next builder step.</p>
       </div>
       <div className="button-row">
-        <button type="button" onClick={approveDraw} disabled={saving}>{saving ? 'Saving...' : 'Approve groups'}</button>
-        <button type="button" className="secondary" onClick={() => setPreview(null)} disabled={saving}>Regenerate</button>
+        <button type="button" onClick={approveDraw} disabled={saving || approved}>{saving ? 'Saving...' : approved ? 'Groups approved' : 'Approve groups'}</button>
+        <button type="button" className="secondary" onClick={() => setPreview(null)} disabled={saving || approved}>Regenerate</button>
       </div>
     </div>
     <p className="status">{status}</p>
