@@ -40,7 +40,7 @@ export default function AdminGate({ children }) {
 
     const cleanUsername = username.trim();
     if (cleanUsername.toLowerCase() !== configuredUsername.toLowerCase()) {
-      setError('Incorrect username or password.');
+      setError('Incorrect username.');
       return;
     }
     if (!configuredEmail) {
@@ -50,7 +50,11 @@ export default function AdminGate({ children }) {
 
     setChecking(true);
     const { error: signInError } = await supabase.auth.signInWithPassword({ email: configuredEmail, password });
-    if (signInError) { setError('Incorrect username or password.'); setChecking(false); return; }
+    if (signInError) {
+      setError(`Supabase login failed for ${configuredEmail}: ${signInError.message}`);
+      setChecking(false);
+      return;
+    }
     setPassword('');
   }
 
