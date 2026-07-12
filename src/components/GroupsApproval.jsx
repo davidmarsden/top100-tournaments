@@ -55,8 +55,8 @@ export default function GroupsApproval({ selectedTournament, preview, setPreview
 
       await onDataChanged?.();
       setApproved(true);
-      setStatus('Groups approved. The Tournament Builder is now ready to generate fixtures.');
-      window.dispatchEvent(new CustomEvent('top100:tournament-data-changed', { detail: { tournamentId } }));
+      setStatus('Groups approved. Reloading the Tournament Builder for fixture generation...');
+      window.setTimeout(() => window.location.reload(), 700);
     } catch (error) {
       setStatus('Approval failed: ' + error.message);
     } finally {
