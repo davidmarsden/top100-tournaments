@@ -12,7 +12,7 @@ export default function ResultSubmissionsPage() {
 
   async function loadRows() {
     setLoading(true);
-    const { data, error } = await supabase.from('manager_result_submissions').select('*, matches(id, home_placeholder, away_placeholder, round, fixture_date, tournaments(name)), submitter:submitted_by_manager_id(name, display_name), opponent:opponent_manager_id(name, display_name)').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('manager_result_submissions').select('*, matches(id, home_placeholder, away_placeholder, round, fixture_date, tournaments(name)), submitter:managers!manager_result_submissions_submitted_by_manager_id_fkey(name, display_name), opponent:managers!manager_result_submissions_opponent_manager_id_fkey(name, display_name)').order('created_at', { ascending: false });
     if (error) setStatus('Could not load submissions: ' + error.message);
     else { setRows(data || []); setStatus(`${data?.length || 0} result submissions loaded.`); }
     setLoading(false);
