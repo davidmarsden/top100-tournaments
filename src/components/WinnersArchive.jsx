@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const ARCHIVE_URL = 'https://archive.smtop100.blog/#honours';
 const ARCHIVE_API_URL = 'https://archive.smtop100.blog/.netlify/functions/youth-winners';
@@ -84,6 +85,31 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
   const [seasonFilter, setSeasonFilter] = useState('recent');
   const [archiveRows, setArchiveRows] = useState(rows);
   const [archiveStatus, setArchiveStatus] = useState(rows.length ? 'loaded' : 'loading');
+  const [currentSeasonNumber, setCurrentSeasonNumber] = useState(null);
+
+  useEffect(() => {
+    if (!currentTournamentId || !hasSupabaseConfig || !supabase) {
+      setCurrentSeasonNumber(null);
+      return undefined;
+    }
+
+    let active = true;
+    supabase
+      .from('tournaments')
+      .select('season_number, name')
+      .eq('id', currentTournamentId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return;
+        const season = Number(data?.season_number) || seasonNumber({ tournament_name: data?.name });
+        setCurrentSeasonNumber(season || null);
+      })
+      .catch(() => {
+        if (active) setCurrentSeasonNumber(null);
+      });
+
+    return () => { active = false; };
+  }, [currentTournamentId]);
 
   useEffect(() => {
     if (rows.length) {
@@ -114,7 +140,11 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
     return () => controller.abort();
   }, [rows]);
 
-  const winners = useMemo(() => relevantRows(archiveRows).filter((row) => !row.tournament_id || Number(row.tournament_id) !== Number(currentTournamentId)), [archiveRows, currentTournamentId]);
+  const winners = useMemo(() => relevantRows(archiveRows).filter((row) => {
+    if (row.tournament_id && Number(row.tournament_id) === Number(currentTournamentId)) return false;
+    if (currentSeasonNumber && seasonNumber(row) === currentSeasonNumber) return false;
+    return true;
+  }), [archiveRows, currentTournamentId, currentSeasonNumber]);
   const seasons = useMemo(() => seasonOptions(winners), [winners]);
   const latestSeason = seasons[0] || null;
 
