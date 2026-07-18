@@ -6,8 +6,9 @@
 -- see the submission while the public tournament page still showed "v".
 --
 -- This migration is deliberately conservative: it only promotes legacy rows
--- whose official match is still non-terminal and has no score. It will not
--- overwrite a result already entered or amended by an administrator.
+-- whose official match is still scheduled and has no score. It will not
+-- overwrite a result already entered or amended by an administrator, or revive
+-- a cancelled, forfeited, voided or otherwise terminal fixture.
 
 with legacy_results as (
   select
@@ -25,7 +26,7 @@ with legacy_results as (
   from public.manager_result_submissions s
   join public.matches m on m.id = s.match_id
   where s.status in ('pending_confirmation', 'disputed')
-    and m.status not in ('played', 'forfeit', 'voided')
+    and m.status = 'scheduled'
     and m.home_score is null
     and m.away_score is null
 )
@@ -73,7 +74,7 @@ with legacy_results as (
   from public.manager_result_submissions s
   join public.matches m on m.id = s.match_id
   where s.status in ('pending_confirmation', 'disputed')
-    and m.status not in ('played', 'forfeit', 'voided')
+    and m.status = 'scheduled'
     and m.home_score is null
     and m.away_score is null
 )
