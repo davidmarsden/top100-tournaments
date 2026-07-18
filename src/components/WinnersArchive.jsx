@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const ARCHIVE_URL = 'https://archive.smtop100.blog/#honours';
 const COMPETITION_OPTIONS = [
@@ -8,18 +9,19 @@ const COMPETITION_OPTIONS = [
 ];
 
 function seasonNumber(row) {
-  const name = row?.tournaments?.name || row?.tournament?.name || '';
+  if (Number(row?.season_number)) return Number(row.season_number);
+  const name = row?.tournaments?.name || row?.tournament?.name || row?.tournament_name || '';
   const match = String(name).match(/S\s*(\d+)/i) || String(row?.season || '').match(/S?\s*(\d+)/i);
   return match ? Number(match[1]) : 0;
 }
 
 function seasonLabel(row) {
   const n = seasonNumber(row);
-  return n ? `S${n}` : row?.tournaments?.name || `Tournament ${row.tournament_id}`;
+  return n ? `S${n}` : row?.tournaments?.name || row?.tournament_name || `Tournament ${row.tournament_id}`;
 }
 
 function honourType(row) {
-  const value = `${row?.honour || ''} ${row?.tournaments?.name || ''}`.toLowerCase();
+  const value = `${row?.honour || ''} ${row?.tournaments?.name || ''} ${row?.tournament_name || ''}`.toLowerCase();
   if (value.includes('shield')) return 'shield';
   if (value.includes('youth cup') || value.includes('cup winner') || value.includes('winner')) return 'cup';
   return 'other';
@@ -34,11 +36,11 @@ function honourIcon(row) {
 }
 
 function honourTeam(row) {
-  return row?.entry?.teams?.name || row?.tournament_entries?.teams?.name || 'TBC';
+  return row?.team_name || row?.entry?.teams?.name || row?.tournament_entries?.teams?.name || 'TBC';
 }
 
 function honourManager(row) {
-  return row?.entry?.managers?.display_name || row?.entry?.managers?.name || row?.tournament_entries?.managers?.display_name || row?.tournament_entries?.managers?.name || '';
+  return row?.manager_name || row?.entry?.managers?.display_name || row?.entry?.managers?.name || row?.tournament_entries?.managers?.display_name || row?.tournament_entries?.managers?.name || '';
 }
 
 function normaliseName(value) {
@@ -80,8 +82,41 @@ function recentRows(rows, latestSeason, count = 8) {
 export default function WinnersArchive({ rows = [], currentTournamentId }) {
   const [competitionFilter, setCompetitionFilter] = useState('all');
   const [seasonFilter, setSeasonFilter] = useState('recent');
+  const [archiveRows, setArchiveRows] = useState(rows);
+  const [archiveStatus, setArchiveStatus] = useState(rows.length ? 'loaded' : 'loading');
 
-  const winners = useMemo(() => relevantRows(rows).filter((row) => Number(row.tournament_id) !== Number(currentTournamentId)), [rows, currentTournamentId]);
+  useEffect(() => {
+    if (rows.length) {
+      setArchiveRows(rows);
+      setArchiveStatus('loaded');
+      return;
+    }
+    if (!hasSupabaseConfig || !supabase) {
+      setArchiveStatus('unavailable');
+      return;
+    }
+
+    let active = true;
+    setArchiveStatus('loading');
+    supabase.rpc('get_public_youth_winners').then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setArchiveRows([]);
+        setArchiveStatus('unavailable');
+        return;
+      }
+      setArchiveRows(data || []);
+      setArchiveStatus(data?.length ? 'loaded' : 'empty');
+    }).catch(() => {
+      if (!active) return;
+      setArchiveRows([]);
+      setArchiveStatus('unavailable');
+    });
+
+    return () => { active = false; };
+  }, [rows]);
+
+  const winners = useMemo(() => relevantRows(archiveRows).filter((row) => Number(row.tournament_id) !== Number(currentTournamentId)), [archiveRows, currentTournamentId]);
   const seasons = useMemo(() => seasonOptions(winners), [winners]);
   const latestSeason = seasons[0] || null;
 
@@ -100,13 +135,19 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
   const managerCupTable = useMemo(() => tableRows(winners, honourManager, 'cup'), [winners]);
   const managerShieldTable = useMemo(() => tableRows(winners, honourManager, 'shield'), [winners]);
 
-  if (!winners.length) return null;
+  if (archiveStatus === 'loading') return <div className="previous-winners winners-archive-panel"><p className="muted">Loading the historic winners archive...</p></div>;
+
+  if (!winners.length) return <div className="previous-winners winners-archive-panel archive-unavailable-card">
+    <h3>Historic winners archive</h3>
+    <p className="muted">{archiveStatus === 'empty' ? 'No local Youth Cup or Shield winner records are available yet.' : 'The local winners archive could not be loaded.'}</p>
+    <a className="public-link-button" href={ARCHIVE_URL} target="_blank" rel="noreferrer">Open full honours archive</a>
+  </div>;
 
   return <div className="previous-winners winners-archive-panel">
     <div className="winners-archive-header">
       <div>
         <h3>{latestSeason ? `Last season's winners — S${latestSeason}` : 'Previous winners archive'}</h3>
-        <p className="muted">Historic Youth Cup and Shield winners imported from the Top 100 honours archive.</p>
+        <p className="muted">Historic Youth Cup and Shield winners from the local Top 100 honours snapshot.</p>
       </div>
       <a className="public-link-button" href={ARCHIVE_URL} target="_blank" rel="noreferrer">Full honours archive</a>
     </div>
@@ -124,7 +165,7 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
       {filteredRows.map((row) => <WinnerCard key={row.id} row={row} />)}
     </div>
 
-    {seasonFilter === 'all' && <p className="muted archive-volume-note">Showing all imported winners. For the cleaner full honours archive, use the archive link above.</p>}
+    {seasonFilter === 'all' && <p className="muted archive-volume-note">Showing all locally imported winners. Use the archive link above for the complete honours database.</p>}
 
     <div className="honours-leaderboard-grid">
       <HonoursTable title="Most Youth Cup wins — clubs" rows={clubCupTable} type="cup" />
