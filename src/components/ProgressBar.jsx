@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+
 const workflowSteps = [
   'Tournament',
   'Entrants',
@@ -67,37 +70,64 @@ function jumpToStep(step, onJump) {
 }
 
 export default function ProgressBar({ selectedTournament, preview, progressStats, onJump }) {
+  const [pendingResults, setPendingResults] = useState(0);
   const doneCount = workflowSteps.filter((step) => isStepDone(step, selectedTournament, preview, progressStats)).length;
   const progress = Math.round((doneCount / workflowSteps.length) * 100);
 
+  useEffect(() => {
+    let active = true;
+    async function loadPendingResults() {
+      const { count, error } = await supabase
+        .from('manager_result_submissions')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['pending_confirmation', 'disputed']);
+      if (active && !error) setPendingResults(count || 0);
+    }
+    loadPendingResults();
+    return () => { active = false; };
+  }, []);
+
   return (
-    <section className="progress-card">
-      <div className="progress-header">
-        <div>
-          <p className="eyebrow">Tournament progress</p>
-          <h2>{progress}% complete</h2>
+    <>
+      <section className="progress-card">
+        <div className="progress-header">
+          <div>
+            <p className="eyebrow">Tournament progress</p>
+            <h2>{progress}% complete</h2>
+          </div>
+          <span className="stage-pill">{currentStageLabel(selectedTournament, preview, progressStats)}</span>
         </div>
-        <span className="stage-pill">{currentStageLabel(selectedTournament, preview, progressStats)}</span>
-      </div>
-      <div className="progress-track">
-        <div className="progress-fill" style={{ width: progress + '%' }} />
-      </div>
-      <div className="progress-steps">
-        {workflowSteps.map((step) => {
-          const done = isStepDone(step, selectedTournament, preview, progressStats);
-          return (
-            <button
-              key={step}
-              type="button"
-              className={done ? 'progress-step done' : 'progress-step'}
-              onClick={() => jumpToStep(step, onJump)}
-            >
-              <span>{done ? 'Done' : 'Next'}</span>
-              {step}
-            </button>
-          );
-        })}
-      </div>
-    </section>
+        <div className="progress-track">
+          <div className="progress-fill" style={{ width: progress + '%' }} />
+        </div>
+        <div className="progress-steps">
+          {workflowSteps.map((step) => {
+            const done = isStepDone(step, selectedTournament, preview, progressStats);
+            return (
+              <button
+                key={step}
+                type="button"
+                className={done ? 'progress-step done' : 'progress-step'}
+                onClick={() => jumpToStep(step, onJump)}
+              >
+                <span>{done ? 'Done' : 'Next'}</span>
+                {step}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="card admin-attention-bar">
+        <div>
+          <p className="eyebrow">Admin inbox</p>
+          <strong>{pendingResults ? `${pendingResults} manager result${pendingResults === 1 ? '' : 's'} awaiting attention` : 'No manager results awaiting attention'}</strong>
+        </div>
+        <div className="button-row">
+          <a className="button" href="/admin/result-submissions">Review result submissions{pendingResults ? ` (${pendingResults})` : ''}</a>
+          <a className="button secondary" href="/admin/manager-accounts">Manager accounts</a>
+        </div>
+      </section>
+    </>
   );
 }
