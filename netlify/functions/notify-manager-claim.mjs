@@ -27,22 +27,22 @@ export async function handler(event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendApiKey = process.env.RESEND_API_KEY;
   const adminEmail = process.env.MANAGER_CLAIM_ADMIN_EMAIL;
+  const webhookSecret = process.env.MANAGER_CLAIM_WEBHOOK_SECRET;
   const emailFrom = process.env.MANAGER_CLAIM_EMAIL_FROM || 'Top 100 Tournaments <notifications@resend.dev>';
   const adminUrl = process.env.MANAGER_ACCOUNTS_ADMIN_URL || `${process.env.URL || ''}/admin/manager-accounts`;
 
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return json(503, { error: 'Supabase notification configuration is incomplete.' });
+  }
+  if (!webhookSecret || event.headers['x-manager-claim-webhook-secret'] !== webhookSecret) {
+    return json(401, { error: 'Invalid webhook credentials.' });
   }
   if (!resendApiKey || !adminEmail) {
     return json(202, { skipped: true, reason: 'Email notifications are not configured.' });
   }
-
-  const authorization = event.headers.authorization || event.headers.Authorization;
-  if (!authorization?.startsWith('Bearer ')) return json(401, { error: 'Authentication required.' });
 
   let payload;
   try { payload = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Invalid JSON body.' }); }
@@ -50,10 +50,6 @@ export async function handler(event) {
   if (!Number.isInteger(claimId) || claimId <= 0) return json(400, { error: 'A valid claimId is required.' });
 
   try {
-    const user = await supabaseRequest(`${supabaseUrl}/auth/v1/user`, {
-      headers: { apikey: anonKey, authorization },
-    });
-
     const serviceHeaders = {
       apikey: serviceRoleKey,
       authorization: `Bearer ${serviceRoleKey}`,
@@ -61,7 +57,7 @@ export async function handler(event) {
     };
 
     const rows = await supabaseRequest(
-      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&auth_user_id=eq.${encodeURIComponent(user.id)}&select=id,email,claimed_manager_name,claimed_club_name,status,admin_notified_at,created_at`,
+      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&select=id,email,claimed_manager_name,claimed_club_name,status,admin_notified_at,created_at`,
       { headers: serviceHeaders },
     );
     const claim = rows?.[0];
