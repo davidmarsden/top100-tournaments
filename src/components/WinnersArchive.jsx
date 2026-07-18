@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const ARCHIVE_URL = 'https://archive.smtop100.blog/#honours';
+const ARCHIVE_API_URL = 'https://archive.smtop100.blog/.netlify/functions/youth-winners';
 const COMPETITION_OPTIONS = [
   { value: 'all', label: 'Cup and Shield' },
   { value: 'cup', label: 'Youth Cup' },
@@ -21,7 +22,7 @@ function seasonLabel(row) {
 }
 
 function honourType(row) {
-  const value = `${row?.honour || ''} ${row?.tournaments?.name || ''} ${row?.tournament_name || ''}`.toLowerCase();
+  const value = `${row?.honour || ''} ${row?.competition || ''} ${row?.tournaments?.name || ''} ${row?.tournament_name || ''}`.toLowerCase();
   if (value.includes('shield')) return 'shield';
   if (value.includes('youth cup') || value.includes('cup winner') || value.includes('winner')) return 'cup';
   return 'other';
@@ -84,39 +85,66 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
   const [seasonFilter, setSeasonFilter] = useState('recent');
   const [archiveRows, setArchiveRows] = useState(rows);
   const [archiveStatus, setArchiveStatus] = useState(rows.length ? 'loaded' : 'loading');
+  const [currentSeasonNumber, setCurrentSeasonNumber] = useState(null);
+
+  useEffect(() => {
+    if (!currentTournamentId || !hasSupabaseConfig || !supabase) {
+      setCurrentSeasonNumber(null);
+      return undefined;
+    }
+
+    let active = true;
+    supabase
+      .from('tournaments')
+      .select('season_number, name')
+      .eq('id', currentTournamentId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return;
+        const season = Number(data?.season_number) || seasonNumber({ tournament_name: data?.name });
+        setCurrentSeasonNumber(season || null);
+      })
+      .catch(() => {
+        if (active) setCurrentSeasonNumber(null);
+      });
+
+    return () => { active = false; };
+  }, [currentTournamentId]);
 
   useEffect(() => {
     if (rows.length) {
       setArchiveRows(rows);
       setArchiveStatus('loaded');
-      return;
-    }
-    if (!hasSupabaseConfig || !supabase) {
-      setArchiveStatus('unavailable');
-      return;
+      return undefined;
     }
 
-    let active = true;
+    const controller = new AbortController();
     setArchiveStatus('loading');
-    supabase.rpc('get_public_youth_winners').then(({ data, error }) => {
-      if (!active) return;
-      if (error) {
+
+    fetch(ARCHIVE_API_URL, { signal: controller.signal, headers: { Accept: 'application/json' } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Archive API returned ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        const nextRows = Array.isArray(payload) ? payload : payload?.rows;
+        setArchiveRows(Array.isArray(nextRows) ? nextRows : []);
+        setArchiveStatus(Array.isArray(nextRows) && nextRows.length ? 'loaded' : 'empty');
+      })
+      .catch((error) => {
+        if (error.name === 'AbortError') return;
         setArchiveRows([]);
         setArchiveStatus('unavailable');
-        return;
-      }
-      setArchiveRows(data || []);
-      setArchiveStatus(data?.length ? 'loaded' : 'empty');
-    }).catch(() => {
-      if (!active) return;
-      setArchiveRows([]);
-      setArchiveStatus('unavailable');
-    });
+      });
 
-    return () => { active = false; };
+    return () => controller.abort();
   }, [rows]);
 
-  const winners = useMemo(() => relevantRows(archiveRows).filter((row) => Number(row.tournament_id) !== Number(currentTournamentId)), [archiveRows, currentTournamentId]);
+  const winners = useMemo(() => relevantRows(archiveRows).filter((row) => {
+    if (row.tournament_id && Number(row.tournament_id) === Number(currentTournamentId)) return false;
+    if (currentSeasonNumber && seasonNumber(row) === currentSeasonNumber) return false;
+    return true;
+  }), [archiveRows, currentTournamentId, currentSeasonNumber]);
   const seasons = useMemo(() => seasonOptions(winners), [winners]);
   const latestSeason = seasons[0] || null;
 
@@ -135,11 +163,11 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
   const managerCupTable = useMemo(() => tableRows(winners, honourManager, 'cup'), [winners]);
   const managerShieldTable = useMemo(() => tableRows(winners, honourManager, 'shield'), [winners]);
 
-  if (archiveStatus === 'loading') return <div className="previous-winners winners-archive-panel"><p className="muted">Loading the historic winners archive...</p></div>;
+  if (archiveStatus === 'loading') return <div className="previous-winners winners-archive-panel"><p className="muted">Loading winners from the Top 100 archive...</p></div>;
 
   if (!winners.length) return <div className="previous-winners winners-archive-panel archive-unavailable-card">
     <h3>Historic winners archive</h3>
-    <p className="muted">{archiveStatus === 'empty' ? 'No local Youth Cup or Shield winner records are available yet.' : 'The local winners archive could not be loaded.'}</p>
+    <p className="muted">{archiveStatus === 'empty' ? 'The archive returned no Youth Cup or Shield winner records.' : 'The Top 100 archive could not be reached.'}</p>
     <a className="public-link-button" href={ARCHIVE_URL} target="_blank" rel="noreferrer">Open full honours archive</a>
   </div>;
 
@@ -147,7 +175,7 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
     <div className="winners-archive-header">
       <div>
         <h3>{latestSeason ? `Last season's winners — S${latestSeason}` : 'Previous winners archive'}</h3>
-        <p className="muted">Historic Youth Cup and Shield winners from the local Top 100 honours snapshot.</p>
+        <p className="muted">Historic Youth Cup and Shield winners supplied by the Top 100 archive.</p>
       </div>
       <a className="public-link-button" href={ARCHIVE_URL} target="_blank" rel="noreferrer">Full honours archive</a>
     </div>
@@ -165,7 +193,7 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
       {filteredRows.map((row) => <WinnerCard key={row.id} row={row} />)}
     </div>
 
-    {seasonFilter === 'all' && <p className="muted archive-volume-note">Showing all locally imported winners. Use the archive link above for the complete honours database.</p>}
+    {seasonFilter === 'all' && <p className="muted archive-volume-note">Showing all Youth Cup and Shield winners supplied by the archive.</p>}
 
     <div className="honours-leaderboard-grid">
       <HonoursTable title="Most Youth Cup wins — clubs" rows={clubCupTable} type="cup" />
