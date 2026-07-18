@@ -12,15 +12,21 @@ function fixtureTitle(row) {
   const away = match?.away_entry?.teams?.name || match?.away_placeholder || 'TBC';
   return `${home} v ${away}`;
 }
-function commentTypeLabel(type) {
-  if (type === 'post_match') return 'Post-match reaction';
-  if (type === 'admin_preview') return 'Admin preview';
+function conferenceLabel(type) {
+  if (type === 'post_match') return 'Post-match press conference';
+  if (type === 'admin_preview') return 'Press preview';
   if (type === 'admin_report') return 'Match report';
-  return 'Pre-match quote';
+  return 'Pre-match press conference';
+}
+function contributionLabel(type) {
+  if (type === 'question') return 'Question';
+  if (type === 'comment') return 'Media comment';
+  return 'Manager statement';
 }
 function normaliseComment(item) {
   return {
     comment_type: 'pre_match',
+    contribution_type: 'statement',
     prediction_score: null,
     player_to_watch: null,
     first_goalscorer: null,
@@ -46,13 +52,11 @@ export default function CommentsModeration({ selectedTournament }) {
     let query = supabase
       .from('match_comments')
       .select(full
-        ? 'id, manager_name, club_name, comment, comment_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))'
-        : 'id, manager_name, club_name, comment, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
+        ? 'id, manager_name, club_name, comment, comment_type, contribution_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))'
+        : 'id, manager_name, club_name, comment, comment_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
       .eq('tournament_id', selectedTournament.id)
       .order('created_at', { ascending: false });
-    if (full) {
-      query = query.order('is_pinned', { ascending: false }).order('editor_pick', { ascending: false });
-    }
+    if (full) query = query.order('is_pinned', { ascending: false }).order('editor_pick', { ascending: false });
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
     return query;
   }
@@ -60,13 +64,13 @@ export default function CommentsModeration({ selectedTournament }) {
   async function loadComments() {
     if (!hasSupabaseConfig || !supabase || !selectedTournament?.id) return;
     setLoading(true);
-    setStatus('Loading comments...');
+    setStatus('Loading press conference contributions...');
     let result = await runCommentsQuery(true);
     if (result.error) result = await runCommentsQuery(false);
     setLoading(false);
-    if (result.error) return setStatus('Could not load comments: ' + result.error.message);
+    if (result.error) return setStatus('Could not load press conference contributions: ' + result.error.message);
     setComments((result.data || []).map(normaliseComment));
-    setStatus(`${result.data?.length || 0} comments loaded.`);
+    setStatus(`${result.data?.length || 0} press conference contributions loaded.`);
   }
 
   async function updateComment(id, patch, message) {
@@ -75,13 +79,13 @@ export default function CommentsModeration({ selectedTournament }) {
     const payload = patch.status ? { ...patch, moderated_at: new Date().toISOString(), moderated_by: userData?.user?.id || null } : patch;
     const { error } = await supabase.from('match_comments').update(payload).eq('id', id);
     setLoading(false);
-    if (error) return setStatus('Update failed. Run the updated comments SQL if this was a pin, editor pick, or badge change: ' + error.message);
+    if (error) return setStatus('Update failed. Run the latest press conference migration if this was a contribution-type, pin, editor pick, or badge change: ' + error.message);
     setComments((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row).filter((row) => statusFilter === 'all' || row.status === statusFilter));
-    setStatus(message || 'Comment updated.');
+    setStatus(message || 'Contribution updated.');
   }
 
   function setCommentStatus(id, nextStatus) {
-    updateComment(id, { status: nextStatus }, `Comment marked ${nextStatus}.`);
+    updateComment(id, { status: nextStatus }, `Contribution marked ${nextStatus}.`);
   }
 
   async function promptBadge(item) {
@@ -94,11 +98,11 @@ export default function CommentsModeration({ selectedTournament }) {
 
   return <div className="comments-moderation">
     <div className="overview-actions bulk-toolbar">
-      <p className="muted">Approve manager comments before they appear publicly. Pin one as the headline quote, mark an Editor's Pick, or add a badge.</p>
+      <p className="muted">Approve press conference statements, questions and media comments before they appear publicly. Pin one as the headline quote, mark an Editor's Pick, or add a badge.</p>
       <div className="status-filter-row">
         {['pending', 'approved', 'hidden', 'all'].map((value) => <button key={value} type="button" className={statusFilter === value ? 'status-filter active' : 'status-filter'} onClick={() => setStatusFilter(value)}>{value}</button>)}
       </div>
-      <button type="button" className="secondary" onClick={loadComments} disabled={loading}>Refresh comments</button>
+      <button type="button" className="secondary" onClick={loadComments} disabled={loading}>Refresh press room</button>
       <p className="status">{status}</p>
     </div>
 
@@ -106,7 +110,7 @@ export default function CommentsModeration({ selectedTournament }) {
       {comments.map((item) => <article className={item.is_pinned || item.editor_pick ? 'comment-moderation-card featured-moderation-card' : 'comment-moderation-card'} key={item.id}>
         <div className="card-header row">
           <div>
-            <p className="eyebrow">{item.status} · {commentTypeLabel(item.comment_type)} · {formatDate(item.created_at)}</p>
+            <p className="eyebrow">{item.status} · {conferenceLabel(item.comment_type)} · {contributionLabel(item.contribution_type)} · {formatDate(item.created_at)}</p>
             <h3>{fixtureTitle(item)}</h3>
           </div>
           <span className={`status-pill status-${item.status}`}>{item.status}</span>
@@ -122,12 +126,12 @@ export default function CommentsModeration({ selectedTournament }) {
           <button type="button" onClick={() => setCommentStatus(item.id, 'approved')} disabled={loading || item.status === 'approved'}>Approve</button>
           <button type="button" className="secondary" onClick={() => setCommentStatus(item.id, 'pending')} disabled={loading || item.status === 'pending'}>Pending</button>
           <button type="button" className="danger" onClick={() => setCommentStatus(item.id, 'hidden')} disabled={loading || item.status === 'hidden'}>Hide</button>
-          <button type="button" className="secondary" onClick={() => updateComment(item.id, { is_pinned: !item.is_pinned }, item.is_pinned ? 'Unpinned.' : 'Pinned.')}>{item.is_pinned ? 'Unpin' : 'Pin'}</button>
+          <button type="button" className="secondary" onClick={() => updateComment(item.id, { is_pinned: !item.is_pinned }, item.is_pinned ? 'Headline quote removed.' : 'Set as headline quote.')}>{item.is_pinned ? 'Unpin' : 'Headline quote'}</button>
           <button type="button" className="secondary" onClick={() => updateComment(item.id, { editor_pick: !item.editor_pick }, item.editor_pick ? 'Editor pick removed.' : 'Marked Editor pick.')}>{item.editor_pick ? 'Remove pick' : "Editor's Pick"}</button>
           <button type="button" className="secondary" onClick={() => promptBadge(item)}>Badge</button>
         </div>
       </article>)}
-      {!comments.length && <p className="muted">No comments in this filter.</p>}
+      {!comments.length && <p className="muted">No press conference contributions in this filter.</p>}
     </div>
   </div>;
 }
