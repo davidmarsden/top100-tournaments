@@ -127,7 +127,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
 
     const legacy = await supabase
       .from('match_comments')
-      .select('id, manager_name, club_name, comment, comment_type, prediction_score, player_to_watch, first_goalscorer, is_pinned, editor_pick, badge_label, reactions, created_at')
+      .select('id, manager_name, club_name, comment, created_at')
       .eq('match_id', match.id)
       .eq('status', 'approved')
       .order('created_at', { ascending: true });
@@ -175,7 +175,6 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
         manager_name: managerName,
         club_name: clubName || null,
         comment,
-        comment_type: form.comment_type || (isPlayed(match) ? 'post_match' : 'pre_match'),
         status: 'pending',
       });
       setLoading(false);
