@@ -25,7 +25,7 @@
 .match-comments-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .comment-toggle { border: 0; border-radius: 999px; padding: 0.45rem 0.75rem; background: #eef3fb; color: #1d4ed8; font-weight: 950; cursor: pointer; }
 .secondary-comment { background: #f4f7fb; color: #5f6f8e; }
-.match-comments-body { display: grid; gap: 10px; margin-top: 10px; }
+.match-comments-body { display: grid; gap: 14px; margin-top: 10px; }
 .approved-comments { display: grid; gap: 8px; }
 .match-comment { border: 1px solid #e4ebf7; border-radius: 14px; padding: 10px; background: #ffffff; }
 .pinned-comment, .pinned-comment-preview { border-color: #fde68a; background: #fffdf4; box-shadow: inset 4px 0 0 #f59e0b; }
@@ -41,6 +41,17 @@
 .reaction-row button { border: 0; border-radius: 999px; padding: 0.28rem 0.52rem; background: #eef3fb; color: #1d4ed8; font-weight: 950; cursor: pointer; }
 .match-comment-form { display: grid; gap: 10px; padding: 10px; border: 1px solid #e4ebf7; border-radius: 16px; background: #fbfdff; }
 .match-comment-form textarea { resize: vertical; }
+.press-conference-section { overflow: hidden; border: 1px solid #dce5f5; border-radius: 18px; background: #fbfdff; }
+.press-conference-heading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; padding: 14px 16px; border-bottom: 1px solid #e4ebf7; background: linear-gradient(135deg, #f8fbff, #eef4ff); }
+.press-conference-heading h4 { margin: 0; font-size: 1.05rem; }
+.press-conference-heading p:not(.eyebrow) { margin: 4px 0 0; color: #64748b; font-size: .88rem; font-weight: 700; }
+.press-conference-heading > span { flex: 0 0 auto; border-radius: 999px; padding: .34rem .58rem; background: #fff; color: #475569; font-size: .75rem; font-weight: 900; }
+.press-conference-section .approved-comments { padding: 10px; }
+.press-room-empty { margin: 0; padding: 14px 16px; }
+.press-conference-form { padding: 14px; border-color: #bfdbfe; background: #f8fbff; }
+.press-form-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.press-form-header h4 { margin: 0; }
+.press-form-header > span { border-radius: 999px; padding: .35rem .6rem; background: #e8eefc; color: #1d4ed8; font-size: .75rem; font-weight: 900; }
 .featured-moderation-card { border-color: #fde68a; background: #fffdf4; }
 .moderation-predictions { margin-bottom: 8px; }
 .holder-strip, .schedule-summary, .previous-winners { margin-top: 18px; }
@@ -94,8 +105,9 @@
 .honours-leaderboard-shield .honours-leaderboard-row span { background: #eff6ff; color: #1d4ed8; }
 @media (max-width: 820px) {
   .public-section-nav { border-radius: 18px; }
-  .public-section-toolbar, .winners-archive-header { flex-direction: column; }
+  .public-section-toolbar, .winners-archive-header, .press-conference-heading, .press-form-header { flex-direction: column; }
   .public-link-button, .public-group-filter { width: 100%; }
+  .comment-meta-line { flex-direction: column; }
 }
 
 .public-tournament-switcher { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: -8px 0 18px; padding: 14px; border: 1px solid #dce5f5; border-radius: 24px; background: rgba(255,255,255,0.92); box-shadow: 0 16px 36px rgba(21, 39, 75, 0.08); backdrop-filter: blur(10px); }
