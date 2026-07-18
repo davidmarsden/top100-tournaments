@@ -3,7 +3,7 @@ import CommentsModeration from './CommentsModeration.jsx';
 import KnockoutBracket from './KnockoutBracket.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
-function isCompleted(match) { return match.status === 'played' || match.status === 'forfeit'; }
+function isCompleted(match) { return ['played', 'forfeit', 'voided'].includes(match.status); }
 function teamNameFromEntry(entry, fallback) { return entry?.teams?.name || fallback || 'TBC'; }
 function latestWinner(ordered) { return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null; }
 function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
