@@ -31,10 +31,10 @@ begin
     when club in ('dynamo moscow', 'dynamo moskva') then 'dynamo moskva'
     when club in ('besiktas', 'besiktas jk') then 'besiktas'
     when club in ('galatasaray', 'galatasaray sk') then 'galatasaray'
-    when club in ('internacional', 'sc internacional', 'internacional porto alegre') then 'internacional'
-    when club in ('milan', 'ac milan') then 'milan'
+    when club in ('internacional', 'internacional porto alegre') then 'internacional'
+    when club = 'milan' then 'milan'
     when club in ('marseille', 'olympique marseille') then 'marseille'
-    when club in ('saint etienne', 'st etienne', 'as saint etienne') then 'saint etienne'
+    when club in ('saint etienne', 'st etienne') then 'saint etienne'
     when club in ('sporting', 'sporting cp', 'sporting lisbon') then 'sporting'
     when club in ('athletic club', 'athletic bilbao') then 'athletic club'
     when club in ('psv', 'psv eindhoven') then 'psv'
@@ -92,6 +92,8 @@ before insert or update of claimed_manager_name, claimed_club_name
 on public.manager_portal_claims
 for each row execute function public.populate_manager_portal_claim_suggestion();
 
+-- Re-check existing pending claims immediately, so administrators do not need
+-- to ask managers to submit them again after this migration is installed.
 update public.manager_portal_claims
 set suggested_manager_id = public.find_manager_portal_claim_match(
   claimed_manager_name,
