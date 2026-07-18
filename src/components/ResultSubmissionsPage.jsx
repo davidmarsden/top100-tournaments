@@ -134,9 +134,16 @@ export default function ResultSubmissionsPage() {
           const value = scoreFor(row, scores);
           const isOpen = ['pending_confirmation', 'disputed'].includes(row.status);
           const disabled = loadingId === row.id;
+          const displayedHomeScore = isOpen
+            ? row.submitted_home_score
+            : (row.resolved_home_score ?? row.submitted_home_score);
+          const displayedAwayScore = isOpen
+            ? row.submitted_away_score
+            : (row.resolved_away_score ?? row.submitted_away_score);
+
           return <article className="entrant-row registration-row" key={row.id}>
             <div className="registration-details">
-              <strong>{row.matches?.home_placeholder} {row.submitted_home_score}–{row.submitted_away_score} {row.matches?.away_placeholder}</strong>
+              <strong>{row.matches?.home_placeholder} {displayedHomeScore}–{displayedAwayScore} {row.matches?.away_placeholder}</strong>
               <span>{row.matches?.tournaments?.name || 'Tournament'} · {row.matches?.round || 'Fixture'} · {row.matches?.fixture_date || 'Date TBC'}</span>
               <span>Submitted by {managerName(row.submitter)} · Opponent: {managerName(row.opponent)}</span>
               <span className={`status-pill status-${row.status}`}>{row.status.replaceAll('_', ' ')}</span>
