@@ -1,5 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import './ManagerAccountsManager.css';
+
+const normalise = (value) => String(value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+function confidenceTone(confidence) {
+  if (confidence === 'Very strong') return 'strong';
+  if (confidence === 'Likely') return 'likely';
+  return 'possible';
+}
+
+function formatReviewedAt(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function NameComparison({ claimed, canonical }) {
+  const claimedWords = normalise(claimed).split(' ').filter(Boolean);
+  const canonicalWords = new Set(normalise(canonical).split(' ').filter(Boolean));
+  const differentWords = claimedWords.filter((word) => !canonicalWords.has(word));
+
+  if (!differentWords.length || normalise(claimed) === normalise(canonical)) {
+    return <span className="claim-name-comparison exact">Same club name after normalisation</span>;
+  }
+
+  return <span className="claim-name-comparison">
+    Submitted: {claimedWords.map((word, index) => <span
+      className={canonicalWords.has(word) ? '' : 'claim-name-difference'}
+      key={`${word}-${index}`}
+    >{index ? ' ' : ''}{word}</span>)} → Canonical: <strong>{canonical}</strong>
+  </span>;
+}
 
 export default function ManagerAccountsManager() {
   const [claims, setClaims] = useState([]);
@@ -10,13 +49,14 @@ export default function ManagerAccountsManager() {
   const [rememberAliases, setRememberAliases] = useState({});
   const [suggestions, setSuggestions] = useState({});
   const [suggestionErrors, setSuggestionErrors] = useState({});
+  const [search, setSearch] = useState('');
 
   useEffect(() => { loadClaims(); }, []);
 
   async function loadClaims() {
     setLoading(true);
     const { data, error } = await supabase.from('manager_portal_claims')
-      .select('id, email, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, created_at, managers:suggested_manager_id(id, name, display_name)')
+      .select('id, email, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, reviewed_at, reviewed_by_label, created_at, managers:suggested_manager_id(id, name, display_name)')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -101,8 +141,17 @@ export default function ManagerAccountsManager() {
     setLoading(false);
   }
 
-  const pending = claims.filter((claim) => claim.status === 'pending');
-  const reviewed = claims.filter((claim) => claim.status !== 'pending');
+  const matchesSearch = (claim) => {
+    const query = normalise(search);
+    if (!query) return true;
+    const suggestionText = (suggestions[claim.id] || [])
+      .map((row) => `${row.manager_name} ${row.team_name}`)
+      .join(' ');
+    return normalise(`${claim.claimed_manager_name} ${claim.claimed_club_name} ${claim.email} ${suggestionText}`).includes(query);
+  };
+
+  const pending = useMemo(() => claims.filter((claim) => claim.status === 'pending' && matchesSearch(claim)), [claims, search, suggestions]);
+  const reviewed = useMemo(() => claims.filter((claim) => claim.status !== 'pending' && matchesSearch(claim)), [claims, search, suggestions]);
 
   return <div className="registration-manager">
     <section className="entrant-panel">
@@ -114,9 +163,18 @@ export default function ManagerAccountsManager() {
         </div>
         <button type="button" className="secondary" onClick={loadClaims} disabled={loading}>Refresh claims</button>
       </div>
-      <p className="status">{status}</p>
 
-      {!pending.length ? <p className="muted">No manager claims are waiting for approval.</p> : <div className="entrant-list">
+      <label className="manager-claim-search">Search manager, club or email
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Try Jibriil, Wolfsburg or an email address…"
+        />
+      </label>
+      <p className="status">{status}{search ? ` Showing ${pending.length + reviewed.length} matching claims.` : ''}</p>
+
+      {!pending.length ? <p className="muted">{search ? 'No pending claims match this search.' : 'No manager claims are waiting for approval.'}</p> : <div className="entrant-list">
         {pending.map((claim) => {
           const claimSuggestions = suggestions[claim.id] || [];
           const suggestionError = suggestionErrors[claim.id];
@@ -131,15 +189,20 @@ export default function ManagerAccountsManager() {
                 <span className="muted">Possible matches</span>
                 {claimSuggestions.map((suggestion) => {
                   const selected = selectedManagerId === Number(suggestion.manager_id) && selectedTeamId === Number(suggestion.team_id);
+                  const tone = confidenceTone(suggestion.confidence);
                   return <button
                     type="button"
                     className={selected ? 'claim-suggestion selected' : 'claim-suggestion'}
                     key={`${suggestion.manager_id}-${suggestion.team_id}`}
                     onClick={() => chooseSuggestion(claim.id, suggestion)}
                   >
-                    <strong>{suggestion.team_name}</strong>
+                    <div className="claim-suggestion-heading">
+                      <strong>{suggestion.team_name}</strong>
+                      <span className={`claim-confidence ${tone}`}>{tone === 'strong' ? '●' : tone === 'likely' ? '◆' : '○'} {suggestion.confidence}</span>
+                    </div>
                     <span>{suggestion.manager_name} · S{suggestion.latest_season || '—'}{suggestion.seed ? ` · seed ${suggestion.seed}` : ''}{suggestion.group_code ? ` · group ${suggestion.group_code}` : ''}</span>
-                    <small>{suggestion.confidence} · {suggestion.score}% · {(suggestion.reasons || []).join(' · ')}</small>
+                    <NameComparison claimed={claim.claimed_club_name} canonical={suggestion.team_name} />
+                    <small>{suggestion.score}% match · {(suggestion.reasons || []).join(' · ')}</small>
                   </button>;
                 })}
               </div> : <span>No likely match found. Search using the canonical manager ID below.</span>}
@@ -173,9 +236,14 @@ export default function ManagerAccountsManager() {
     <section className="entrant-panel">
       <p className="eyebrow">History</p>
       <h3>Reviewed claims</h3>
-      {!reviewed.length ? <p className="muted">No claims reviewed yet.</p> : <div className="entrant-list">
+      {!reviewed.length ? <p className="muted">{search ? 'No reviewed claims match this search.' : 'No claims reviewed yet.'}</p> : <div className="entrant-list">
         {reviewed.map((claim) => <article className="entrant-row" key={claim.id}>
-          <div><strong>{claim.claimed_manager_name} · {claim.claimed_club_name}</strong><span>{claim.email} · {claim.status}</span>{claim.review_notes && <span>{claim.review_notes}</span>}</div>
+          <div>
+            <strong>{claim.claimed_manager_name} · {claim.claimed_club_name}</strong>
+            <span>{claim.email} · {claim.status}</span>
+            {claim.review_notes && <span>{claim.review_notes}</span>}
+            {claim.reviewed_at && <span className="claim-audit">{claim.status === 'approved' ? 'Approved' : 'Rejected'} by {claim.reviewed_by_label || 'an administrator'} · {formatReviewedAt(claim.reviewed_at)}</span>}
+          </div>
         </article>)}
       </div>}
     </section>
