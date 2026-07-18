@@ -1,33 +1,24 @@
-name: Store Challonge team name fallbacks
+name: Verify Challonge team name fallbacks
 
 on:
   workflow_dispatch:
   push:
     paths:
       - scripts/store-challonge-team-name-fallbacks.mjs
+      - netlify/functions/challonge-import.js
+      - netlify/functions/lib/challongeImporter.js
       - .github/workflows/store-challonge-team-name-fallbacks.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Store team name fallbacks
+      - name: Verify team name fallbacks
         run: node scripts/store-challonge-team-name-fallbacks.mjs
-      - name: Commit changes
-        run: |
-          if git diff --quiet; then
-            echo "No changes to commit"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add netlify/functions/challonge-import.js
-            git commit -m "Store Challonge team names on matches"
-            git push
-          fi
