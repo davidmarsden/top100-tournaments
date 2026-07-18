@@ -30,8 +30,8 @@ function honourType(row) {
 
 function honourLabel(row) { return honourType(row) === 'shield' ? 'Youth Shield' : 'Youth Cup'; }
 function honourIcon(row) { return honourType(row) === 'shield' ? '🛡️' : '🏆'; }
-function honourTeam(row) { return row?.team_name || row?.entry?.teams?.name || row?.tournament_entries?.teams?.name || 'TBC'; }
-function honourManager(row) { return row?.manager_name || row?.entry?.managers?.display_name || row?.entry?.managers?.name || row?.tournament_entries?.managers?.display_name || row?.tournament_entries?.managers?.name || ''; }
+function honourTeam(row) { return row?.team || row?.team_name || row?.entry?.teams?.name || row?.tournament_entries?.teams?.name || 'TBC'; }
+function honourManager(row) { return row?.manager || row?.manager_name || row?.entry?.managers?.display_name || row?.entry?.managers?.name || row?.tournament_entries?.managers?.display_name || row?.tournament_entries?.managers?.name || ''; }
 function normaliseName(value) { return String(value || '').trim(); }
 
 function relevantRows(rows = []) {
