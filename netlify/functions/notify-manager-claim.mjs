@@ -49,13 +49,14 @@ export async function handler(event) {
   const claimId = Number(payload.claimId);
   if (!Number.isInteger(claimId) || claimId <= 0) return json(400, { error: 'A valid claimId is required.' });
 
-  try {
-    const serviceHeaders = {
-      apikey: serviceRoleKey,
-      authorization: `Bearer ${serviceRoleKey}`,
-      'content-type': 'application/json',
-    };
+  const serviceHeaders = {
+    apikey: serviceRoleKey,
+    authorization: `Bearer ${serviceRoleKey}`,
+    'content-type': 'application/json',
+  };
+  let reservationMade = false;
 
+  try {
     const rows = await supabaseRequest(
       `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&select=id,email,claimed_manager_name,claimed_club_name,status,admin_notified_at,created_at`,
       { headers: serviceHeaders },
@@ -75,6 +76,7 @@ export async function handler(event) {
       },
     );
     if (!reserved?.length) return json(200, { skipped: true, reason: 'Notification already reserved.' });
+    reservationMade = true;
 
     const managerName = escapeHtml(claim.claimed_manager_name);
     const clubName = escapeHtml(claim.claimed_club_name);
@@ -109,16 +111,21 @@ export async function handler(event) {
 
     if (!emailResponse.ok) {
       const errorText = await emailResponse.text();
-      await fetch(`${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}`, {
-        method: 'PATCH',
-        headers: serviceHeaders,
-        body: JSON.stringify({ admin_notified_at: null, admin_notification_error: errorText.slice(0, 1000) }),
-      });
-      return json(502, { error: 'Email provider rejected the notification.' });
+      throw new Error(`Resend rejected the notification: ${errorText.slice(0, 800)}`);
     }
 
     return json(200, { sent: true });
   } catch (error) {
+    if (reservationMade) {
+      await fetch(`${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}`, {
+        method: 'PATCH',
+        headers: serviceHeaders,
+        body: JSON.stringify({
+          admin_notified_at: null,
+          admin_notification_error: String(error.message || error).slice(0, 1000),
+        }),
+      }).catch(() => {});
+    }
     return json(500, { error: error.message || 'Could not send manager claim notification.' });
   }
 }
