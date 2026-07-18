@@ -16,7 +16,7 @@ import { publicTournamentPath } from '../lib/tournamentSlugs';
 import { deleteTournamentsOnServer } from '../lib/deleteTournaments.js';
 import { supabase } from '../lib/supabaseClient';
 
-const modules = ['Overview', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Challonge', 'Public Page'];
+const modules = ['Overview', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Knockout', 'Challonge', 'Public Page'];
 const workflowSteps = ['Tournament', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Publish', 'Archive'];
 
 export default function AdminDashboard() {
@@ -35,7 +35,7 @@ export default function AdminDashboard() {
       <section className="workspace">
         <section className="grid two-columns compact"><TournamentCreateForm onDemoPreview={onDemoPreview} /><WorkflowCard selectedTournament={selectedTournament} preview={preview} progressStats={progressStats} /></section>
         {canUseDatabase && selectedTournament && <TournamentBuilder selectedTournament={selectedTournament} preview={preview} buildPreview={buildPreview} onNavigate={setActiveModule} onRefresh={refreshTournamentData} />}
-        <section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div><button type="button" className="secondary" onClick={refreshTournamentData} disabled={loading || !canUseDatabase}>Refresh tournament data</button></div><ModuleContent activeModule={activeModule} /></section>
+        <section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div>{activeModule !== 'Result Approvals' && <button type="button" className="secondary" onClick={refreshTournamentData} disabled={loading || !canUseDatabase}>Refresh tournament data</button>}</div><ModuleContent activeModule={activeModule} /></section>
       </section>
     </section>
   </main>;
@@ -46,7 +46,7 @@ function WorkflowCard({ selectedTournament, preview, progressStats }) {
 }
 
 function moduleHeading(activeModule) {
-  const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', Results: 'Results archive and editing', Tables: 'Live group tables', Knockout: 'Cup and Shield draw', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
+  const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: 'Results archive and editing', Tables: 'Live group tables', Knockout: 'Cup and Shield draw', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
   return headings[activeModule] || activeModule;
 }
 
@@ -73,6 +73,7 @@ function ModuleContent({ activeModule }) {
   if (activeModule === 'Entrants') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={buildPreview} />;
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} onDataChanged={refreshTournamentData} />;
   if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding onDataChanged={refreshTournamentData} />;
+  if (activeModule === 'Result Approvals') return <div className="overview-actions"><p>Manager-submitted scores are reviewed in the dedicated approval queue.</p><div className="button-row"><a className="button" href="/admin/result-submissions">Open result approval queue</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div>;
   if (activeModule === 'Results') return <><ResultsTestControls selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} /><FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted onDataChanged={refreshTournamentData} /></>;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />;
