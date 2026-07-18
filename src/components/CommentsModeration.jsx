@@ -53,7 +53,7 @@ export default function CommentsModeration({ selectedTournament }) {
       .from('match_comments')
       .select(full
         ? 'id, manager_name, club_name, comment, comment_type, contribution_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))'
-        : 'id, manager_name, club_name, comment, comment_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
+        : 'id, manager_name, club_name, comment, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
       .eq('tournament_id', selectedTournament.id)
       .order('created_at', { ascending: false });
     if (full) query = query.order('is_pinned', { ascending: false }).order('editor_pick', { ascending: false });
