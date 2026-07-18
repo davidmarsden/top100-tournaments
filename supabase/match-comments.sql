@@ -7,6 +7,7 @@ create table if not exists match_comments (
   comment text not null,
   status text not null default 'pending' check (status in ('pending', 'approved', 'hidden')),
   comment_type text not null default 'pre_match' check (comment_type in ('pre_match', 'post_match', 'admin_preview', 'admin_report')),
+  contribution_type text not null default 'statement' check (contribution_type in ('statement', 'question', 'comment')),
   prediction_score text,
   player_to_watch text,
   first_goalscorer text,
@@ -20,6 +21,9 @@ create table if not exists match_comments (
 );
 
 alter table match_comments add column if not exists comment_type text not null default 'pre_match' check (comment_type in ('pre_match', 'post_match', 'admin_preview', 'admin_report'));
+alter table match_comments add column if not exists contribution_type text not null default 'statement';
+alter table match_comments drop constraint if exists match_comments_contribution_type_check;
+alter table match_comments add constraint match_comments_contribution_type_check check (contribution_type in ('statement', 'question', 'comment'));
 alter table match_comments add column if not exists prediction_score text;
 alter table match_comments add column if not exists player_to_watch text;
 alter table match_comments add column if not exists first_goalscorer text;
@@ -51,6 +55,7 @@ create policy "Public submit pending match comments"
     and coalesce(is_pinned, false) = false
     and coalesce(editor_pick, false) = false
     and comment_type in ('pre_match', 'post_match')
+    and contribution_type in ('statement', 'question', 'comment')
     and length(trim(manager_name)) between 2 and 80
     and length(trim(comment)) between 3 and 500
   );
