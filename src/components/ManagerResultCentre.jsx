@@ -9,7 +9,14 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
   const [loading, setLoading] = useState(false);
 
   const fixtureIds = useMemo(() => fixtures.map((fixture) => fixture.id), [fixtures]);
-  const byMatch = useMemo(() => new Map(submissions.map((submission) => [submission.match_id, submission])), [submissions]);
+  const activeSubmissions = useMemo(
+    () => submissions.filter((submission) => submission.status !== 'withdrawn'),
+    [submissions],
+  );
+  const byMatch = useMemo(
+    () => new Map(activeSubmissions.map((submission) => [submission.match_id, submission])),
+    [activeSubmissions],
+  );
 
   useEffect(() => { loadSubmissions(); }, [fixtureIds.join(',')]);
 
