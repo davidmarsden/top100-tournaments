@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
+const OPEN_STATUSES = ['pending_admin_check', 'opponent_confirmed', 'appealed'];
+const TERMINAL_MATCH_STATUSES = ['played', 'forfeit', 'voided'];
+
 export default function ManagerResultCentre({ selectedEntry, fixtures, onResultChanged }) {
   const [submissions, setSubmissions] = useState([]);
   const [scores, setScores] = useState({});
@@ -8,7 +11,6 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const fixtureIds = useMemo(() => fixtures.map((fixture) => fixture.id), [fixtures]);
   const activeSubmissions = useMemo(
     () => submissions.filter((submission) => submission.status !== 'withdrawn'),
     [submissions],
@@ -17,12 +19,24 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
     () => new Map(activeSubmissions.map((submission) => [submission.match_id, submission])),
     [activeSubmissions],
   );
+  const visibleFixtures = useMemo(() => {
+    const rows = new Map(fixtures.map((fixture) => [fixture.id, fixture]));
+    activeSubmissions.forEach((submission) => {
+      if (submission.matches?.tournament_id === selectedEntry.tournament_id) {
+        rows.set(submission.match_id, submission.matches);
+      }
+    });
+    return [...rows.values()].sort((a, b) => String(a.fixture_date || '9999').localeCompare(String(b.fixture_date || '9999')) || Number(a.match_order || 0) - Number(b.match_order || 0));
+  }, [fixtures, activeSubmissions, selectedEntry.tournament_id]);
 
-  useEffect(() => { loadSubmissions(); }, [fixtureIds.join(',')]);
+  useEffect(() => { loadSubmissions(); }, [selectedEntry.manager_id, selectedEntry.tournament_id]);
 
   async function loadSubmissions() {
-    if (!fixtureIds.length) { setSubmissions([]); return; }
-    const { data, error } = await supabase.from('manager_result_submissions').select('*').in('match_id', fixtureIds);
+    const { data, error } = await supabase
+      .from('manager_result_submissions')
+      .select('*, matches(id, tournament_id, round, fixture_date, match_order, status, home_entry_id, away_entry_id, home_placeholder, away_placeholder)')
+      .or(`submitted_by_manager_id.eq.${selectedEntry.manager_id},opponent_manager_id.eq.${selectedEntry.manager_id}`)
+      .in('status', [...OPEN_STATUSES, 'final']);
     if (error) setStatus('Could not load submitted results: ' + error.message);
     else setSubmissions(data || []);
   }
@@ -34,48 +48,55 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
     const isHome = fixture.home_entry_id === selectedEntry.id;
     const homeScore = isHome ? mine : theirs;
     const awayScore = isHome ? theirs : mine;
-    if (!window.confirm(`Submit ${fixture.home_placeholder} ${homeScore}–${awayScore} ${fixture.away_placeholder}?`)) return;
+    if (!window.confirm(`Publish ${fixture.home_placeholder} ${homeScore}–${awayScore} ${fixture.away_placeholder} provisionally?`)) return;
     setLoading(true);
     const { error } = await supabase.rpc('submit_manager_result', { target_match_id: fixture.id, target_home_score: homeScore, target_away_score: awayScore });
     if (error) setStatus('Could not submit result: ' + error.message);
-    else { setStatus('Result submitted to the opposing manager for confirmation.'); await loadSubmissions(); }
-    setLoading(false);
-  }
-
-  async function respond(submission, response) {
-    const note = notes[submission.id] || null;
-    if (response === 'dispute' && !note) return setStatus('Add a short note explaining the disputed score.');
-    setLoading(true);
-    const { error } = await supabase.rpc('respond_to_manager_result', { target_submission_id: submission.id, response, note });
-    if (error) setStatus('Could not record response: ' + error.message);
     else {
-      setStatus(response === 'confirm' ? 'Result confirmed and added to the tournament.' : 'Result disputed and sent to the administrator.');
+      setStatus('Result published provisionally. The table is updated, with admin final checks and an opponent appeal still available.');
       await loadSubmissions();
       await onResultChanged?.();
     }
     setLoading(false);
   }
 
-  if (!fixtures.length) return null;
+  async function respond(submission, response) {
+    const note = notes[submission.id] || null;
+    if (response === 'appeal' && !note?.trim()) return setStatus('Add a short reason for the appeal.');
+    setLoading(true);
+    const { error } = await supabase.rpc('respond_to_manager_result', { target_submission_id: submission.id, response, note });
+    if (error) setStatus('Could not record response: ' + error.message);
+    else {
+      setStatus(response === 'confirm' ? 'Result acknowledged. It remains pending the administrator’s final check.' : 'Appeal submitted for urgent administrator review.');
+      await loadSubmissions();
+    }
+    setLoading(false);
+  }
+
+  if (!visibleFixtures.length) return null;
 
   return <section className="card portal-panel result-centre">
-    <div className="card-header"><p className="eyebrow">V3.2 result centre</p><h2>Submit and confirm results</h2><p className="muted">A submitted score becomes official only after the opposing manager confirms it, or an administrator resolves a dispute.</p></div>
+    <div className="card-header"><p className="eyebrow">Result centre</p><h2>Submit results and raise appeals</h2><p className="muted">A submitted score is published immediately and updates the tournament provisionally. The opposing manager may appeal, and an administrator completes the final check.</p></div>
     {status && <p className="status">{status}</p>}
-    <div className="portal-fixtures">{fixtures.map((fixture) => {
+    <div className="portal-fixtures">{visibleFixtures.map((fixture) => {
       const submission = byMatch.get(fixture.id);
       const isHome = fixture.home_entry_id === selectedEntry.id;
       const opponent = isHome ? fixture.away_placeholder : fixture.home_placeholder;
       const mineSubmitted = submission ? (isHome ? submission.submitted_home_score : submission.submitted_away_score) : null;
       const theirsSubmitted = submission ? (isHome ? submission.submitted_away_score : submission.submitted_home_score) : null;
       const isOpponent = submission?.opponent_manager_id === selectedEntry.manager_id;
+      const canRespond = isOpponent && OPEN_STATUSES.includes(submission?.status);
+      const canSubmit = !submission && !TERMINAL_MATCH_STATUSES.includes(fixture.status);
 
       return <article className="result-submission-card" key={fixture.id}>
         <div><strong>{isHome ? 'Home' : 'Away'} vs {opponent}</strong><span>{fixture.round} · {fixture.fixture_date || 'Date TBC'}</span></div>
-        {!submission && <div className="result-score-form"><label>Your score<input type="number" min="0" value={scores[fixture.id]?.mine ?? ''} onChange={(event) => setScores((current) => ({ ...current, [fixture.id]: { ...current[fixture.id], mine: event.target.value } }))} /></label><label>{opponent}<input type="number" min="0" value={scores[fixture.id]?.theirs ?? ''} onChange={(event) => setScores((current) => ({ ...current, [fixture.id]: { ...current[fixture.id], theirs: event.target.value } }))} /></label><button type="button" onClick={() => submitResult(fixture)} disabled={loading}>Submit score</button></div>}
+        {canSubmit && <div className="result-score-form"><label>Your score<input type="number" min="0" value={scores[fixture.id]?.mine ?? ''} onChange={(event) => setScores((current) => ({ ...current, [fixture.id]: { ...current[fixture.id], mine: event.target.value } }))} /></label><label>{opponent}<input type="number" min="0" value={scores[fixture.id]?.theirs ?? ''} onChange={(event) => setScores((current) => ({ ...current, [fixture.id]: { ...current[fixture.id], theirs: event.target.value } }))} /></label><button type="button" onClick={() => submitResult(fixture)} disabled={loading}>Publish result</button></div>}
         {submission && <div className="result-submission-status"><strong>{mineSubmitted}–{theirsSubmitted}</strong><span className={`status-pill status-${submission.status}`}>{submission.status.replaceAll('_', ' ')}</span></div>}
-        {submission?.status === 'pending_confirmation' && isOpponent && <div className="result-response"><label>Dispute note<input value={notes[submission.id] || ''} onChange={(event) => setNotes((current) => ({ ...current, [submission.id]: event.target.value }))} placeholder="Only needed if disputing" /></label><div className="button-row"><button type="button" onClick={() => respond(submission, 'confirm')} disabled={loading}>Confirm result</button><button type="button" className="danger" onClick={() => respond(submission, 'dispute')} disabled={loading}>Dispute</button></div></div>}
-        {submission?.status === 'pending_confirmation' && !isOpponent && <p className="muted">Waiting for the opposing manager to confirm.</p>}
-        {submission?.status === 'disputed' && <p className="muted">Disputed: {submission.opponent_response_note || 'Awaiting administrator review.'}</p>}
+        {canRespond && <div className="result-response"><label>Appeal reason<input value={notes[submission.id] || ''} onChange={(event) => setNotes((current) => ({ ...current, [submission.id]: event.target.value }))} placeholder="Required only if appealing" /></label><div className="button-row"><button type="button" onClick={() => respond(submission, 'confirm')} disabled={loading}>Acknowledge result</button><button type="button" className="danger" onClick={() => respond(submission, 'appeal')} disabled={loading}>Report incorrect result</button></div></div>}
+        {submission?.status === 'pending_admin_check' && !isOpponent && <p className="muted">Published provisionally and awaiting the administrator’s final check.</p>}
+        {submission?.status === 'opponent_confirmed' && <p className="muted">Opponent acknowledged. Awaiting the administrator’s final check.</p>}
+        {submission?.status === 'appealed' && <p className="muted">Appealed: {submission.opponent_response_note || 'Awaiting administrator review.'}</p>}
+        {submission?.status === 'final' && <p className="muted">Finalised by the administrator. It can still be amended later if disciplinary or eligibility issues emerge.</p>}
       </article>;
     })}</div>
   </section>;

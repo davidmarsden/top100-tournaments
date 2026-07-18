@@ -25,7 +25,7 @@ export const demoEntrants = ['Genoa', 'Espanyol', 'Bayern Munich', 'Barcelona', 
 export function normalStatus(tournament) { return String(tournament?.status || 'draft').toLowerCase(); }
 export function isArchived(tournament) { return normalStatus(tournament) === 'archived'; }
 export function isPlaceholderArchive(tournament) { return tournament?.archive_quality === 'placeholder' || (normalStatus(tournament) === 'archived' && Number(tournament?.actual_entries || 0) === 0 && tournament?.source !== 'challonge'); }
-export function completed(match) { return match.status === 'played' || match.status === 'forfeit'; }
+export function completed(match) { return ['played', 'forfeit', 'voided'].includes(match.status); }
 function sortTournaments(items) { const rank = { published: 0, groups_approved: 1, draft: 2, completed: 3, archived: 4 }; return [...items].sort((a, b) => (rank[normalStatus(a)] ?? 2) - (rank[normalStatus(b)] ?? 2) || Number(isPlaceholderArchive(a)) - Number(isPlaceholderArchive(b)) || new Date(b.created_at || 0) - new Date(a.created_at || 0)); }
 function generateGroups(entries, groupCount) {
   const groups = groupCodes.slice(0, groupCount).map((code, index) => ({ code, group_order: index + 1, entries: [] }));
@@ -83,7 +83,7 @@ export function TournamentProvider({ children }) {
   function updateField(field, value) { setForm((current) => ({ ...current, [field]: value })); }
   function buildPreview(entries) {
     const groupCount = Number(selectedTournament?.group_count || form.groupCount || Math.ceil(entries.length / Number(form.teamsPerGroup || 4)) || 16);
-    const sorted = [...entries].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || String(a.team_name).localeCompare(String(b.team_name))).map((entry, index) => ({ ...entry, seed: index + 1 }));
+    const sorted = [...entries].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || String(a.team_name).localeCompare(b.team_name)).map((entry, index) => ({ ...entry, seed: index + 1 }));
     const groups = generateGroups(sorted, groupCount);
     const fixtures = generateFixtures(groups);
     setPreview({ groups, fixtures });
