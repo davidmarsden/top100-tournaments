@@ -9,6 +9,7 @@ export default function ManagerAccountsManager() {
   const [selectedTeams, setSelectedTeams] = useState({});
   const [rememberAliases, setRememberAliases] = useState({});
   const [suggestions, setSuggestions] = useState({});
+  const [suggestionErrors, setSuggestionErrors] = useState({});
 
   useEffect(() => { loadClaims(); }, []);
 
@@ -36,24 +37,24 @@ export default function ManagerAccountsManager() {
       const { data, error } = await supabase.rpc('manager_portal_claim_suggestions', {
         target_claim_id: claim.id,
       });
-      return [claim.id, error ? [] : (data || [])];
+      return { claimId: claim.id, rows: data || [], error };
     }));
 
-    const nextSuggestions = Object.fromEntries(results);
-    setSuggestions(nextSuggestions);
+    setSuggestions(Object.fromEntries(results.map(({ claimId, rows, error }) => [claimId, error ? [] : rows])));
+    setSuggestionErrors(Object.fromEntries(results.filter(({ error }) => error).map(({ claimId, error }) => [claimId, error.message])));
 
     setManagerOverrides((current) => {
       const next = { ...current };
-      results.forEach(([claimId, rows]) => {
-        if (rows[0] && !next[claimId]) next[claimId] = String(rows[0].manager_id);
+      results.forEach(({ claimId, rows, error }) => {
+        if (!error && rows[0] && !next[claimId]) next[claimId] = String(rows[0].manager_id);
       });
       return next;
     });
 
     setSelectedTeams((current) => {
       const next = { ...current };
-      results.forEach(([claimId, rows]) => {
-        if (rows[0] && !next[claimId]) next[claimId] = String(rows[0].team_id);
+      results.forEach(({ claimId, rows, error }) => {
+        if (!error && rows[0] && !next[claimId]) next[claimId] = String(rows[0].team_id);
       });
       return next;
     });
@@ -118,6 +119,7 @@ export default function ManagerAccountsManager() {
       {!pending.length ? <p className="muted">No manager claims are waiting for approval.</p> : <div className="entrant-list">
         {pending.map((claim) => {
           const claimSuggestions = suggestions[claim.id] || [];
+          const suggestionError = suggestionErrors[claim.id];
           const selectedManagerId = Number(managerOverrides[claim.id] || claim.suggested_manager_id);
           const selectedTeamId = Number(selectedTeams[claim.id] || 0);
           return <article className="entrant-row registration-row" key={claim.id}>
@@ -125,7 +127,7 @@ export default function ManagerAccountsManager() {
               <strong>{claim.claimed_manager_name} · {claim.claimed_club_name}</strong>
               <span>{claim.email}</span>
 
-              {claimSuggestions.length ? <div className="claim-suggestion-list">
+              {suggestionError ? <span className="error-text">Could not load likely matches: {suggestionError}</span> : claimSuggestions.length ? <div className="claim-suggestion-list">
                 <span className="muted">Possible matches</span>
                 {claimSuggestions.map((suggestion) => {
                   const selected = selectedManagerId === Number(suggestion.manager_id) && selectedTeamId === Number(suggestion.team_id);
