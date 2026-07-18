@@ -1,4 +1,52 @@
--- Complete provisional-result rejection and retrospective void handling.
+-- Complete provisional-result rejection, final-score protection and void handling.
+
+-- Add a genuine terminal `voided` status to matches. Drop the existing status
+-- check dynamically because older environments may have generated a different
+-- constraint name.
+do $$
+declare
+  constraint_row record;
+begin
+  for constraint_row in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.matches'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%status%'
+  loop
+    execute format('alter table public.matches drop constraint %I', constraint_row.conname);
+  end loop;
+end;
+$$;
+
+alter table public.matches
+  add constraint matches_status_check
+  check (status in ('scheduled','played','forfeit','postponed','cancelled','voided'));
+
+-- A manager must never be able to move a finalised submission back into a live
+-- state. This trigger protects the row even if the RPC is called directly.
+create or replace function public.protect_final_manager_result()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.status = 'final'
+     and new.status is distinct from old.status
+     and not public.is_admin() then
+    raise exception 'This result has been finalised. Only an administrator can reopen or amend it.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_final_manager_result_trigger
+  on public.manager_result_submissions;
+
+create trigger protect_final_manager_result_trigger
+before update on public.manager_result_submissions
+for each row execute function public.protect_final_manager_result();
 
 create or replace function public.reject_manager_result(
   target_submission_id bigint,
@@ -70,7 +118,6 @@ declare
   match_row public.matches%rowtype;
   winner_id bigint;
   loser_id bigint;
-  stored_status text;
   revision_action text;
 begin
   if not public.is_admin() then raise exception 'Admin access required'; end if;
@@ -82,8 +129,6 @@ begin
 
   select * into match_row from public.matches where id = target_match_id for update;
   if not found then raise exception 'Match not found'; end if;
-
-  stored_status := case when target_status = 'voided' then 'scheduled' else target_status end;
 
   if target_status = 'voided' then
     winner_id := null;
@@ -110,8 +155,8 @@ begin
     away_score = case when target_status = 'voided' then null else target_away_score end,
     winner_entry_id = winner_id,
     loser_entry_id = loser_id,
-    status = stored_status,
-    played_at = case when target_status = 'voided' then null else coalesce(played_at, now()) end
+    status = target_status,
+    played_at = coalesce(played_at, now())
   where id = target_match_id;
 
   update public.manager_result_submissions set
