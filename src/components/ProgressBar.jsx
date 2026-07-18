@@ -80,7 +80,7 @@ export default function ProgressBar({ selectedTournament, preview, progressStats
       const { count, error } = await supabase
         .from('manager_result_submissions')
         .select('id', { count: 'exact', head: true })
-        .in('status', ['pending_confirmation', 'disputed']);
+        .in('status', ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed']);
       if (active && !error) setPendingResults(count || 0);
     }
     loadPendingResults();
@@ -104,12 +104,7 @@ export default function ProgressBar({ selectedTournament, preview, progressStats
           {workflowSteps.map((step) => {
             const done = isStepDone(step, selectedTournament, preview, progressStats);
             return (
-              <button
-                key={step}
-                type="button"
-                className={done ? 'progress-step done' : 'progress-step'}
-                onClick={() => jumpToStep(step, onJump)}
-              >
+              <button key={step} type="button" className={done ? 'progress-step done' : 'progress-step'} onClick={() => jumpToStep(step, onJump)}>
                 <span>{done ? 'Done' : 'Next'}</span>
                 {step}
               </button>
@@ -121,10 +116,10 @@ export default function ProgressBar({ selectedTournament, preview, progressStats
       <section className="card admin-attention-bar">
         <div>
           <p className="eyebrow">Admin inbox</p>
-          <strong>{pendingResults ? `${pendingResults} manager result${pendingResults === 1 ? '' : 's'} awaiting attention` : 'No manager results awaiting attention'}</strong>
+          <strong>{pendingResults ? `${pendingResults} provisional result${pendingResults === 1 ? '' : 's'} awaiting final checks or appeal review` : 'No provisional results awaiting attention'}</strong>
         </div>
         <div className="button-row">
-          <a className="button" href="/admin/result-submissions">Review result submissions{pendingResults ? ` (${pendingResults})` : ''}</a>
+          <a className="button" href="/admin/result-submissions">Review result checks{pendingResults ? ` (${pendingResults})` : ''}</a>
           <a className="button secondary" href="/admin/manager-accounts">Manager accounts</a>
         </div>
       </section>
