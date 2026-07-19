@@ -31,11 +31,23 @@ function rulingFor(row, rulings) {
 
 function rulingLabel(ruling) {
   switch (ruling) {
-    case 'home_forfeit_win': return 'Home win by forfeit';
-    case 'away_forfeit_win': return 'Away win by forfeit';
+    case 'home_forfeit_win': return 'Away team forfeited — home win';
+    case 'away_forfeit_win': return 'Home team forfeited — away win';
     case 'voided': return 'Void match';
     default: return 'Played normally';
   }
+}
+
+function validateForfeitScore(ruling, home, away) {
+  if (ruling === 'home_forfeit_win') {
+    if (home <= away) return 'The home team must be shown as the winner when the away team forfeits.';
+    if (home - away < 3) return 'A forfeit result must give the home team at least a three-goal advantage. Keep a better played score such as 5–0, or use at least 3–0.';
+  }
+  if (ruling === 'away_forfeit_win') {
+    if (away <= home) return 'The away team must be shown as the winner when the home team forfeits.';
+    if (away - home < 3) return 'A forfeit result must give the away team at least a three-goal advantage. Keep a better played score, or use at least 0–3.';
+  }
+  return null;
 }
 
 const OPEN_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
@@ -79,12 +91,8 @@ export default function ResultSubmissionsPage() {
     if (ruling !== 'voided' && (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0)) {
       return setStatus('Enter a valid home and away score.');
     }
-    if (ruling === 'home_forfeit_win' && home <= away) {
-      return setStatus('A home win by forfeit must show the home team as the winner.');
-    }
-    if (ruling === 'away_forfeit_win' && away <= home) {
-      return setStatus('An away win by forfeit must show the away team as the winner.');
-    }
+    const forfeitError = validateForfeitScore(ruling, home, away);
+    if (forfeitError) return setStatus(forfeitError);
 
     const homeTeam = matchTeamName(row.matches, 'home');
     const awayTeam = matchTeamName(row.matches, 'away');
@@ -133,11 +141,12 @@ export default function ResultSubmissionsPage() {
     const home = ruling === 'voided' ? null : Number(value.home);
     const away = ruling === 'voided' ? null : Number(value.away);
     if (ruling !== 'voided' && (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0)) return setStatus('Enter valid scores for the amended result.');
-    if (ruling === 'home_forfeit_win' && home <= away) return setStatus('A home win by forfeit must show the home team as the winner.');
-    if (ruling === 'away_forfeit_win' && away <= home) return setStatus('An away win by forfeit must show the away team as the winner.');
+    const forfeitError = validateForfeitScore(ruling, home, away);
+    if (forfeitError) return setStatus(forfeitError);
     const homeTeam = matchTeamName(row.matches, 'home');
     const awayTeam = matchTeamName(row.matches, 'away');
-    if (!window.confirm(`Apply “${rulingLabel(ruling)}” to ${homeTeam} vs ${awayTeam}?`)) return;
+    const scoreLine = ruling === 'voided' ? `${homeTeam} vs ${awayTeam}` : `${homeTeam} ${home}–${away} ${awayTeam}`;
+    if (!window.confirm(`Apply “${rulingLabel(ruling)}” as:\n\n${scoreLine}?`)) return;
 
     setLoadingId(row.id);
     const { error } = await supabase.rpc('admin_amend_match_result', {
@@ -201,10 +210,10 @@ export default function ResultSubmissionsPage() {
             <div className="mini-grid">
               <label>Official home score<input type="number" min="0" disabled={ruling === 'voided'} value={ruling === 'voided' ? '' : value.home ?? ''} onChange={(event) => setScores((current) => ({ ...current, [row.id]: { ...value, home: event.target.value } }))} /></label>
               <label>Official away score<input type="number" min="0" disabled={ruling === 'voided'} value={ruling === 'voided' ? '' : value.away ?? ''} onChange={(event) => setScores((current) => ({ ...current, [row.id]: { ...value, away: event.target.value } }))} /></label>
-              <label>Official ruling<select value={ruling} onChange={(event) => setRulings((current) => ({ ...current, [row.id]: event.target.value }))}><option value="played">Played normally</option><option value="home_forfeit_win">Home win by forfeit</option><option value="away_forfeit_win">Away win by forfeit</option><option value="voided">Void match</option></select></label>
+              <label>Official ruling<select value={ruling} onChange={(event) => setRulings((current) => ({ ...current, [row.id]: event.target.value }))}><option value="played">Played normally</option><option value="home_forfeit_win">Away team forfeited — home win</option><option value="away_forfeit_win">Home team forfeited — away win</option><option value="voided">Void match</option></select></label>
               <label>{isOpen ? 'Final-check note / rejection reason' : 'Reason for amendment'}<input value={notes[row.id] || ''} onChange={(event) => setNotes((current) => ({ ...current, [row.id]: event.target.value }))} placeholder={isOpen ? 'Optional for approval; required for rejection' : 'Required — e.g. ineligible player'} /></label>
             </div>
-            {isOpen && <p className="muted">Check both the score and the ruling. A forfeit can be recorded even when the submitted score is already correct.</p>}
+            {isOpen && <p className="muted">Edit the score and select the ruling together. If the non-forfeiting team already won by three or more goals, keep that better scoreline — for example, record a played 5–0 as 5–0 with “Away team forfeited — home win”.</p>}
           </div>
 
           {isOpen ? <div className="button-row"><button type="button" onClick={() => approve(row)} disabled={disabled}>Approve official result</button><button type="button" className="danger" onClick={() => reject(row)} disabled={disabled}>Reject submission</button></div> : <div className="button-row"><button type="button" className="secondary" onClick={() => amend(row)} disabled={disabled}>Amend official result</button></div>}
