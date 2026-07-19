@@ -21,6 +21,7 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
   const [entries, setEntries] = useState([]);
   const [matches, setMatches] = useState([]);
   const [forfeits, setForfeits] = useState([]);
+  const [managerProfiles, setManagerProfiles] = useState([]);
   const [status, setStatus] = useState('Loading manager forfeit register...');
   const [loading, setLoading] = useState(false);
 
@@ -61,6 +62,7 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
     const matchRows = matchesResult.data || [];
     const matchIds = matchRows.map((match) => match.id);
     let forfeitRows = [];
+    let profiles = [];
     if (matchIds.length) {
       const forfeitsResult = await supabase
         .from('forfeits')
@@ -73,11 +75,17 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
         return;
       }
       forfeitRows = forfeitsResult.data || [];
+      const managerIds = [...new Set(forfeitRows.map((row) => row.manager_id).filter(Boolean))];
+      if (managerIds.length) {
+        const managersResult = await supabase.from('managers').select('id, name, display_name').in('id', managerIds);
+        if (!managersResult.error) profiles = managersResult.data || [];
+      }
     }
 
     setEntries(entriesResult.data || []);
     setMatches(matchRows);
     setForfeits(forfeitRows);
+    setManagerProfiles(profiles);
     setStatus('');
     setLoading(false);
   }
@@ -86,6 +94,7 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
     const matchesById = new Map(matches.map((match) => [match.id, match]));
     const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
     const currentEntryByManager = new Map(entries.filter((entry) => entry.manager_id).map((entry) => [entry.manager_id, entry]));
+    const profilesById = new Map(managerProfiles.map((manager) => [manager.id, manager]));
     const grouped = new Map();
 
     forfeits.forEach((forfeit) => {
@@ -97,13 +106,15 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
     });
 
     return [...grouped.entries()].map(([managerId, records]) => {
-      const currentEntry = currentEntryByManager.get(managerId) || records[records.length - 1]?.historicalEntry;
+      const currentEntry = currentEntryByManager.get(managerId);
+      const fallbackEntry = records[records.length - 1]?.historicalEntry;
+      const profile = profilesById.get(managerId);
       const groupForfeits = records.filter((record) => record.match?.stage === 'group').length;
       const prizeDrawExcluded = records.some((record) => record.affects_prize_draw !== false);
       return {
         managerId,
-        managerName: managerName(currentEntry),
-        currentClub: teamName(currentEntry),
+        managerName: profile?.display_name || profile?.name || managerName(currentEntry || fallbackEntry),
+        currentClub: currentEntry ? teamName(currentEntry) : 'No longer managing this entrant',
         groupCode: currentEntry?.group_code || '—',
         groupForfeits,
         totalForfeits: records.length,
@@ -112,7 +123,7 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
         records,
       };
     }).sort((a, b) => b.groupForfeits - a.groupForfeits || b.totalForfeits - a.totalForfeits || a.managerName.localeCompare(b.managerName));
-  }, [entries, matches, forfeits]);
+  }, [entries, matches, forfeits, managerProfiles]);
 
   if (!tournamentId) return <p className="muted">Select a tournament first.</p>;
   if (!hasSupabaseConfig || !supabase) return <p className="muted">Supabase is not connected yet.</p>;
