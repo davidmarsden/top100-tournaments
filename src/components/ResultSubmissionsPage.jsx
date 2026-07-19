@@ -5,6 +5,12 @@ function managerName(manager) {
   return manager?.display_name || manager?.name || 'Manager';
 }
 
+function matchTeamName(match, side) {
+  const entry = side === 'home' ? match?.home_entry : match?.away_entry;
+  const placeholder = side === 'home' ? match?.home_placeholder : match?.away_placeholder;
+  return entry?.teams?.name || placeholder || (side === 'home' ? 'Home' : 'Away');
+}
+
 function scoreFor(row, scores) {
   return scores[row.id] || {
     home: row.matches?.home_score ?? row.resolved_home_score ?? row.submitted_home_score,
@@ -53,7 +59,7 @@ export default function ResultSubmissionsPage() {
     setStatus('Loading result submissions...');
     const { data, error } = await supabase
       .from('manager_result_submissions')
-      .select('*, matches(id, home_placeholder, away_placeholder, home_score, away_score, round, fixture_date, status, tournaments(name)), submitter:managers!manager_result_submissions_submitted_by_manager_id_fkey(name, display_name), opponent:managers!manager_result_submissions_opponent_manager_id_fkey(name, display_name)')
+      .select('*, matches(id, home_placeholder, away_placeholder, home_score, away_score, round, fixture_date, status, tournaments(name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))), submitter:managers!manager_result_submissions_submitted_by_manager_id_fkey(name, display_name), opponent:managers!manager_result_submissions_opponent_manager_id_fkey(name, display_name)')
       .order('created_at', { ascending: false });
 
     if (error) setStatus('Could not load submissions: ' + error.message);
@@ -80,8 +86,8 @@ export default function ResultSubmissionsPage() {
       return setStatus('An away win by forfeit must show the away team as the winner.');
     }
 
-    const homeTeam = row.matches?.home_placeholder || 'Home';
-    const awayTeam = row.matches?.away_placeholder || 'Away';
+    const homeTeam = matchTeamName(row.matches, 'home');
+    const awayTeam = matchTeamName(row.matches, 'away');
     const scoreLine = ruling === 'voided' ? `${homeTeam} vs ${awayTeam}` : `${homeTeam} ${home}–${away} ${awayTeam}`;
     const confirmation = `Approve the official result as:\n\n${scoreLine}\nRuling: ${rulingLabel(ruling)}?`;
     if (!window.confirm(confirmation)) return;
@@ -129,7 +135,9 @@ export default function ResultSubmissionsPage() {
     if (ruling !== 'voided' && (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0)) return setStatus('Enter valid scores for the amended result.');
     if (ruling === 'home_forfeit_win' && home <= away) return setStatus('A home win by forfeit must show the home team as the winner.');
     if (ruling === 'away_forfeit_win' && away <= home) return setStatus('An away win by forfeit must show the away team as the winner.');
-    if (!window.confirm(`Apply “${rulingLabel(ruling)}” to ${row.matches?.home_placeholder} vs ${row.matches?.away_placeholder}?`)) return;
+    const homeTeam = matchTeamName(row.matches, 'home');
+    const awayTeam = matchTeamName(row.matches, 'away');
+    if (!window.confirm(`Apply “${rulingLabel(ruling)}” to ${homeTeam} vs ${awayTeam}?`)) return;
 
     setLoadingId(row.id);
     const { error } = await supabase.rpc('admin_amend_match_result', {
@@ -177,10 +185,12 @@ export default function ResultSubmissionsPage() {
         const ruling = rulingFor(row, rulings);
         const displayedHomeScore = row.matches?.home_score ?? row.resolved_home_score ?? row.submitted_home_score;
         const displayedAwayScore = row.matches?.away_score ?? row.resolved_away_score ?? row.submitted_away_score;
+        const homeTeam = matchTeamName(row.matches, 'home');
+        const awayTeam = matchTeamName(row.matches, 'away');
 
         return <article className="entrant-row registration-row" key={row.id}>
           <div className="registration-details">
-            <strong>{row.matches?.home_placeholder} {displayedHomeScore ?? '–'}–{displayedAwayScore ?? '–'} {row.matches?.away_placeholder}</strong>
+            <strong>{homeTeam} {displayedHomeScore ?? '–'}–{displayedAwayScore ?? '–'} {awayTeam}</strong>
             <span>{row.matches?.tournaments?.name || 'Tournament'} · {row.matches?.round || 'Fixture'} · {row.matches?.fixture_date || 'Date TBC'}</span>
             <span>Submitted by {managerName(row.submitter)} · Opponent: {managerName(row.opponent)}</span>
             <span className={`status-pill status-${row.status}`}>{row.status.replaceAll('_', ' ')}</span>
