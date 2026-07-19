@@ -7,26 +7,23 @@ export default function PublicForfeitRegisterPortal({ tournamentId }) {
 
   useEffect(() => {
     let portalHost = null;
-    let navLink = null;
+    let legacyFairPlay = null;
     let observer = null;
 
     const mount = () => {
       const page = document.querySelector('main.public-archive.tournament-hub');
-      if (!page || portalHost) return false;
-      portalHost = document.createElement('section');
-      portalHost.id = 'manager-forfeits';
-      portalHost.className = 'card public-manager-forfeit-register';
-      const fairPlay = document.getElementById('fair-play');
-      if (fairPlay?.nextSibling) page.insertBefore(portalHost, fairPlay.nextSibling);
-      else page.appendChild(portalHost);
+      legacyFairPlay = document.getElementById('fair-play');
+      if (!page || !legacyFairPlay || portalHost) return false;
 
-      const nav = page.querySelector('.public-section-nav');
-      if (nav) {
-        navLink = document.createElement('a');
-        navLink.href = '#manager-forfeits';
-        navLink.textContent = 'Manager forfeits';
-        nav.appendChild(navLink);
-      }
+      // Replace the older team-based Fair Play summary with the manager register.
+      // The existing navigation link continues to target #fair-play.
+      legacyFairPlay.id = 'legacy-fair-play-summary';
+      legacyFairPlay.hidden = true;
+
+      portalHost = document.createElement('section');
+      portalHost.id = 'fair-play';
+      portalHost.className = 'card public-manager-forfeit-register';
+      page.insertBefore(portalHost, legacyFairPlay);
 
       setHost(portalHost);
       return true;
@@ -41,8 +38,11 @@ export default function PublicForfeitRegisterPortal({ tournamentId }) {
 
     return () => {
       observer?.disconnect();
-      navLink?.remove();
       portalHost?.remove();
+      if (legacyFairPlay) {
+        legacyFairPlay.id = 'fair-play';
+        legacyFairPlay.hidden = false;
+      }
       setHost(null);
     };
   }, [tournamentId]);
