@@ -2,24 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const emptyForm = {
-  manager_name: '',
-  club_name: '',
-  comment: '',
-  prediction_score: '',
-  player_to_watch: '',
-  first_goalscorer: '',
-  comment_type: 'pre_match',
-  contribution_type: 'statement',
+  manager_name: '', club_name: '', comment: '', prediction_score: '',
+  player_to_watch: '', first_goalscorer: '', comment_type: 'pre_match', contribution_type: 'statement',
 };
-const reactionButtons = [
-  ['like', '👍'],
-  ['laugh', '😂'],
-  ['eyes', '👀'],
-  ['fire', '🔥'],
-];
+const reactionButtons = [['like', '👍'], ['laugh', '😂'], ['eyes', '👀'], ['fire', '🔥']];
 
 function clean(value = '') { return String(value || '').trim(); }
-function isPlayed(match) { return match?.status === 'played' || match?.status === 'forfeit'; }
+function isPlayed(match) { return ['played', 'forfeit', 'voided'].includes(match?.status); }
 function reactionsFor(comment) { return comment?.reactions || {}; }
 function conferenceLabel(type) {
   if (type === 'post_match') return 'Post-match press conference';
@@ -45,20 +34,13 @@ function managerBadge(comment) {
 }
 function normaliseComment(item) {
   return {
-    comment_type: 'pre_match',
-    contribution_type: 'statement',
-    prediction_score: null,
-    player_to_watch: null,
-    first_goalscorer: null,
-    is_pinned: false,
-    editor_pick: false,
-    badge_label: null,
-    reactions: {},
-    ...item,
+    comment_type: 'pre_match', contribution_type: 'statement', prediction_score: null,
+    player_to_watch: null, first_goalscorer: null, is_pinned: false, editor_pick: false,
+    badge_label: null, reactions: {}, ...item,
   };
 }
 
-function ConferenceSection({ title, subtitle, comments, onReact, reactingId }) {
+function ConferenceSection({ title, subtitle, comments, onReact, reactingId, signedIn, onReport, reportingId }) {
   return <section className="press-conference-section">
     <div className="press-conference-heading">
       <div><p className="eyebrow">🎙️ Press room</p><h4>{title}</h4><p>{subtitle}</p></div>
@@ -81,6 +63,7 @@ function ConferenceSection({ title, subtitle, comments, onReact, reactingId }) {
         </div>}
         <div className="reaction-row">
           {reactionButtons.map(([key, emoji]) => <button type="button" key={key} onClick={() => onReact(item.id, key)} disabled={reactingId === item.id + key}>{emoji} {Number(reactions[key] || 0)}</button>)}
+          {signedIn && <button type="button" className="secondary-comment" onClick={() => onReport(item)} disabled={reportingId === item.id}>🚩 {reportingId === item.id ? 'Reporting…' : 'Report'}</button>}
         </div>
       </article>;
     })}</div> : <p className="muted press-room-empty">The press room is quiet so far.</p>}
@@ -95,35 +78,41 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [reactingId, setReactingId] = useState(null);
+  const [reportingId, setReportingId] = useState(null);
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
     if (hasSupabaseConfig && supabase && match?.id) loadComments();
   }, [match?.id]);
 
   useEffect(() => {
+    let active = true;
+    supabase?.auth?.getSession().then(({ data }) => { if (active) setSignedIn(Boolean(data?.session?.user)); });
+    const listener = supabase?.auth?.onAuthStateChange?.((_event, session) => setSignedIn(Boolean(session?.user)));
+    return () => { active = false; listener?.data?.subscription?.unsubscribe?.(); };
+  }, []);
+
+  useEffect(() => {
     setForm((current) => ({ ...current, comment_type: isPlayed(match) ? 'post_match' : 'pre_match' }));
   }, [match?.status]);
 
-  const approvedCount = comments.length;
+  const visibleCount = comments.length;
   const pinnedComment = useMemo(() => comments.find((item) => item.is_pinned || item.editor_pick), [comments]);
   const preMatchComments = useMemo(() => comments.filter((item) => item.comment_type !== 'post_match' && item.comment_type !== 'admin_report'), [comments]);
   const postMatchComments = useMemo(() => comments.filter((item) => item.comment_type === 'post_match' || item.comment_type === 'admin_report'), [comments]);
-  const buttonLabel = approvedCount ? `Open press conferences (${approvedCount})` : 'Open press conference';
+  const buttonLabel = visibleCount ? `Open press conferences (${visibleCount})` : 'Open press conference';
 
   async function loadComments() {
     const full = await supabase
       .from('match_comments')
       .select('id, manager_name, club_name, comment, comment_type, contribution_type, prediction_score, player_to_watch, first_goalscorer, is_pinned, editor_pick, badge_label, reactions, created_at')
       .eq('match_id', match.id)
-      .eq('status', 'approved')
+      .eq('status', 'visible')
       .order('is_pinned', { ascending: false })
       .order('editor_pick', { ascending: false })
       .order('created_at', { ascending: true });
 
-    if (!full.error) {
-      setComments((full.data || []).map(normaliseComment));
-      return;
-    }
+    if (!full.error) { setComments((full.data || []).map(normaliseComment)); return; }
 
     const legacy = await supabase
       .from('match_comments')
@@ -136,9 +125,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
     else setStatus('Could not load press conference: ' + legacy.error.message);
   }
 
-  function updateField(field, value) {
-    setForm((current) => ({ ...current, [field]: value }));
-  }
+  function updateField(field, value) { setForm((current) => ({ ...current, [field]: value })); }
 
   async function submitComment(event) {
     event.preventDefault();
@@ -165,36 +152,34 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
       first_goalscorer: firstGoalscorer || null,
       comment_type: form.comment_type || (isPlayed(match) ? 'post_match' : 'pre_match'),
       contribution_type: form.contribution_type || 'statement',
-      status: 'pending',
+      status: 'visible',
     });
-
-    if (fullInsert.error) {
-      const legacyInsert = await supabase.from('match_comments').insert({
-        match_id: match.id,
-        tournament_id: tournamentId || match.tournament_id || null,
-        manager_name: managerName,
-        club_name: clubName || null,
-        comment,
-        status: 'pending',
-      });
-      setLoading(false);
-      if (legacyInsert.error) return setStatus('Could not submit contribution: ' + legacyInsert.error.message);
-    } else {
-      setLoading(false);
-    }
+    setLoading(false);
+    if (fullInsert.error) return setStatus('Could not publish contribution: ' + fullInsert.error.message);
 
     setForm({ ...emptyForm, comment_type: isPlayed(match) ? 'post_match' : 'pre_match' });
     setShowForm(false);
     setOpen(true);
-    setStatus('Press conference contribution submitted for approval.');
+    setStatus('Press conference contribution published.');
+    await loadComments();
   }
 
   async function react(commentId, reactionKey) {
     setReactingId(commentId + reactionKey);
     const { error } = await supabase.rpc('react_to_match_comment', { comment_id: commentId, reaction_key: reactionKey });
     setReactingId(null);
-    if (error) return setStatus('Reactions will work after the comments SQL update is run.');
+    if (error) return setStatus('Reaction failed: ' + error.message);
     setComments((rows) => rows.map((row) => row.id === commentId ? { ...row, reactions: { ...reactionsFor(row), [reactionKey]: Number(reactionsFor(row)[reactionKey] || 0) + 1 } } : row));
+  }
+
+  async function report(item) {
+    const reason = window.prompt('Why are you reporting this contribution?');
+    if (reason === null) return;
+    if (clean(reason).length < 3) return setStatus('Give a brief reason for the report.');
+    setReportingId(item.id);
+    const { error } = await supabase.rpc('report_match_comment', { target_comment_id: item.id, report_reason: clean(reason) });
+    setReportingId(null);
+    setStatus(error ? 'Could not submit report: ' + error.message : 'Report submitted for administrator review. The contribution remains visible unless an administrator hides it.');
   }
 
   if (!hasSupabaseConfig || !supabase || !match?.id) return null;
@@ -206,18 +191,17 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
     </article>}
 
     <div className="match-comments-actions">
-      <button type="button" className="comment-toggle" onClick={() => { setOpen((value) => !value); if (!approvedCount) setShowForm(true); }}>
-        🎙️ {buttonLabel}
-      </button>
-      {approvedCount > 0 && <button type="button" className="comment-toggle secondary-comment" onClick={() => { setShowForm((value) => !value); setOpen(true); }}>Take the microphone</button>}
+      <button type="button" className="comment-toggle" onClick={() => { setOpen((value) => !value); if (!visibleCount) setShowForm(true); }}>🎙️ {buttonLabel}</button>
+      {visibleCount > 0 && <button type="button" className="comment-toggle secondary-comment" onClick={() => { setShowForm((value) => !value); setOpen(true); }}>Take the microphone</button>}
     </div>
 
     {open && <div className="match-comments-body">
-      <ConferenceSection title="Pre-match press conference" subtitle="Statements, predictions, questions and mind games before kickoff." comments={preMatchComments} onReact={react} reactingId={reactingId} />
-      {(isPlayed(match) || postMatchComments.length > 0) && <ConferenceSection title="Post-match press conference" subtitle="Manager reactions, awkward questions and the final word after the whistle." comments={postMatchComments} onReact={react} reactingId={reactingId} />}
+      <ConferenceSection title="Pre-match press conference" subtitle="Statements, predictions, questions and mind games before kickoff." comments={preMatchComments} onReact={react} reactingId={reactingId} signedIn={signedIn} onReport={report} reportingId={reportingId} />
+      {(isPlayed(match) || postMatchComments.length > 0) && <ConferenceSection title="Post-match press conference" subtitle="Manager reactions, awkward questions and the final word after the whistle." comments={postMatchComments} onReact={react} reactingId={reactingId} signedIn={signedIn} onReport={report} reportingId={reportingId} />}
 
       {showForm && <form className="match-comment-form press-conference-form" onSubmit={submitComment}>
         <div className="press-form-header"><div><p className="eyebrow">🎤 Your turn</p><h4>Enter the press room</h4></div><span>{conferenceLabel(form.comment_type)}</span></div>
+        <p className="muted">Contributions publish immediately. Signed-in users can report anything that needs administrator review.</p>
         <div className="mini-grid">
           <label>Manager name<input value={form.manager_name} maxLength={80} onChange={(event) => updateField('manager_name', event.target.value)} /></label>
           <label>Club<input value={form.club_name} maxLength={80} onChange={(event) => updateField('club_name', event.target.value)} /></label>
@@ -232,7 +216,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
           <label>Player to watch<input value={form.player_to_watch} maxLength={80} onChange={(event) => updateField('player_to_watch', event.target.value)} /></label>
           <label>First scorer<input value={form.first_goalscorer} maxLength={80} onChange={(event) => updateField('first_goalscorer', event.target.value)} /></label>
         </div>}
-        <div className="button-row"><button type="submit" disabled={loading}>{loading ? 'Submitting...' : 'Submit for approval'}</button><button type="button" className="secondary" onClick={() => setShowForm(false)}>Leave press room</button></div>
+        <div className="button-row"><button type="submit" disabled={loading}>{loading ? 'Publishing…' : 'Publish contribution'}</button><button type="button" className="secondary" onClick={() => setShowForm(false)}>Leave press room</button></div>
       </form>}
 
       {status && <p className="status">{status}</p>}
