@@ -262,6 +262,7 @@ function openingRoundTarget(selectedTournament, bracket, sourceMatches = []) {
 export default function KnockoutManager({ selectedTournament, onDataChanged }) {
   const [entries, setEntries] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [forfeits, setForfeits] = useState([]);
   const [presets, setPresets] = useState([]);
   const [roundTemplates, setRoundTemplates] = useState(FALLBACK_ROUNDS);
   const [qualificationRules, setQualificationRules] = useState(FALLBACK_RULES);
@@ -279,6 +280,15 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
   const playedGroupMatches = groupMatches.filter(isCompleted);
   const groupComplete = groupMatches.length > 0 && playedGroupMatches.length === groupMatches.length;
   const tables = useMemo(() => buildTables(entries, groupMatches), [entries, groupMatches]);
+  const groupMatchIds = useMemo(() => new Set(groupMatches.map((match) => match.id)), [groupMatches]);
+  const groupForfeitCounts = useMemo(() => forfeits.reduce((counts, forfeit) => {
+    if (!groupMatchIds.has(forfeit.match_id) || !forfeit.manager_id) return counts;
+    counts.set(forfeit.manager_id, (counts.get(forfeit.manager_id) || 0) + 1);
+    return counts;
+  }, new Map()), [forfeits, groupMatchIds]);
+  const ineligibleManagerIds = useMemo(() => new Set([...groupForfeitCounts.entries()].filter(([, count]) => count >= 3).map(([managerId]) => managerId)), [groupForfeitCounts]);
+  const ineligibleEntryIds = useMemo(() => new Set(entries.filter((entry) => ineligibleManagerIds.has(entry.manager_id)).map((entry) => entry.id)), [entries, ineligibleManagerIds]);
+  const ineligibleEntries = useMemo(() => entries.filter((entry) => ineligibleEntryIds.has(entry.id)), [entries, ineligibleEntryIds]);
 
   async function resolveFormatId() {
     if (selectedTournament?.format_id) return selectedTournament.format_id;
@@ -306,17 +316,22 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
     const formatId = await resolveFormatId();
     const templateData = await loadTemplateData(formatId);
 
-    const [entriesResult, matchesResult, presetsResult] = await Promise.all([
+    const [entriesResult, matchesResult, presetsResult, forfeitsResult] = await Promise.all([
       supabase.from('tournament_entries').select('id, tournament_id, team_id, manager_id, seed, rating, group_code, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
       supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, bracket, home_placeholder, away_placeholder, groups(id, code, name)').eq('tournament_id', tournamentId).order('stage', { ascending: true }).order('bracket', { ascending: true }).order('round', { ascending: true }).order('match_order', { ascending: true }).order('leg', { ascending: true }),
       supabase.from('tournament_round_dates').select('bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
+      supabase.from('forfeits').select('id, match_id, manager_id'),
     ]);
 
     if (entriesResult.error) setStatus('Could not load entrants: ' + entriesResult.error.message);
     else if (matchesResult.error) setStatus('Could not load matches: ' + matchesResult.error.message);
+    else if (forfeitsResult.error) setStatus('Could not load manager forfeits: ' + forfeitsResult.error.message);
     else {
+      const matchRows = matchesResult.data || [];
+      const matchIds = new Set(matchRows.map((match) => match.id));
       setEntries(entriesResult.data || []);
-      setMatches([...(matchesResult.data || [])].sort((a, b) => roundSort(templateData.rounds, a, b)));
+      setMatches([...matchRows].sort((a, b) => roundSort(templateData.rounds, a, b)));
+      setForfeits((forfeitsResult.data || []).filter((forfeit) => matchIds.has(forfeit.match_id)));
       setPresets(presetsResult.error ? [] : presetsResult.data || []);
       setRoundTemplates(templateData.rounds);
       setQualificationRules(templateData.rules);
@@ -347,8 +362,8 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
     if (bracket === 'Shield') return generateShieldOpeningRound(firstRoundName);
 
     const targetSlots = openingRoundTarget(selectedTournament, bracket);
-    const qualifiers = qualifiersForRules(tables, qualificationRules, bracket, firstRoundName, { targetSlots });
-    if (!qualifiers.length) return setStatus(`No ${bracket} qualifiers found for ${firstRoundName}.`);
+    const qualifiers = qualifiersForRules(tables, qualificationRules, bracket, firstRoundName, { targetSlots, excludeEntryIds: ineligibleEntryIds });
+    if (!qualifiers.length) return setStatus(`No eligible ${bracket} qualifiers found for ${firstRoundName}.`);
 
     const slots = [...qualifiers];
     while (slots.length < targetSlots) slots.push({ bye: true, team_name: 'BYE', knockout_seed: slots.length + 1 });
@@ -381,7 +396,8 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
       });
     }
 
-    await insertMatches(rows, `${bracket} ${firstRoundName} saved with ${qualifiers.length} qualifier(s) for ${targetSlots} slots.`);
+    const excludedText = ineligibleEntries.length ? ` ${ineligibleEntries.length} manager(s) with three or more group forfeits were excluded.` : '';
+    await insertMatches(rows, `${bracket} ${firstRoundName} saved with ${qualifiers.length} eligible qualifier(s) for ${targetSlots} slots.${excludedText}`);
   }
 
   async function generateShieldOpeningRound(firstRoundName) {
@@ -395,9 +411,12 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
     if (realSourceMatches.some((match) => !isCompleted(match) || !match.loser_entry_id)) return setStatus(`Finish ${sourceBracket} ${sourceRoundName} first.`);
 
     const cupParticipantIds = entryIdsFromMatches(sourceMatches);
+    const shieldExcluded = new Set([...cupParticipantIds, ...ineligibleEntryIds]);
     const targetHomeSlots = openingRoundTarget(selectedTournament, 'Shield', sourceMatches);
-    const homeTeams = qualifiersForRules(tables, qualificationRules, 'Shield', firstRoundName, { targetSlots: targetHomeSlots, excludeEntryIds: cupParticipantIds });
-    const cupLosers = realSourceMatches.map((match, index) => ({ entry_id: match.loser_entry_id, team_name: entryName(entries, match.loser_entry_id, `${sourceBracket} loser ${index + 1}`) }));
+    const homeTeams = qualifiersForRules(tables, qualificationRules, 'Shield', firstRoundName, { targetSlots: targetHomeSlots, excludeEntryIds: shieldExcluded });
+    const cupLosers = realSourceMatches
+      .filter((match) => !ineligibleEntryIds.has(match.loser_entry_id))
+      .map((match, index) => ({ entry_id: match.loser_entry_id, team_name: entryName(entries, match.loser_entry_id, `${sourceBracket} loser ${index + 1}`) }));
     const awaySlots = [...cupLosers];
     while (awaySlots.length < homeTeams.length) awaySlots.push({ bye: true, team_name: 'BYE' });
 
@@ -426,7 +445,7 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
       };
     });
 
-    await insertMatches(rows, `Shield ${firstRoundName} saved with ${homeTeams.length} group qualifier(s) and ${cupLosers.length} drop-in loser(s).`);
+    await insertMatches(rows, `Shield ${firstRoundName} saved with ${homeTeams.length} eligible group qualifier(s) and ${cupLosers.length} eligible drop-in loser(s).`);
   }
 
   async function autoFillKnockout() {
@@ -532,8 +551,10 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
 
       <div className={groupComplete ? 'ready-banner ready' : 'ready-banner'}>
         <strong>{groupComplete ? 'Group stage complete.' : 'Group stage not complete yet.'}</strong>
-        <span>{groupComplete ? 'Opening knockout rounds can be generated from qualification rules. Cup opening rounds are filled to the target slot count with best next-placed teams, then byes if needed.' : 'Finish all group fixtures before saving the knockout draw.'}</span>
+        <span>{groupComplete ? 'Opening knockout rounds can be generated from qualification rules. Managers with three or more group-stage forfeits are excluded automatically.' : 'Finish all group fixtures before saving the knockout draw.'}</span>
       </div>
+
+      {ineligibleEntries.length > 0 && <section className="warning-card knockout-exclusions"><strong>Excluded from the knockout draw</strong><span>{ineligibleEntries.map((entry) => `${entry.managers?.display_name || entry.managers?.name || 'Unknown manager'} (${entry.teams?.name || 'Unknown team'}: ${groupForfeitCounts.get(entry.manager_id)} group forfeits)`).join(' · ')}</span></section>}
 
       <KnockoutScheduleManager selectedTournament={selectedTournament} roundTemplates={roundTemplates} onDataChanged={async () => { await loadData(); await onDataChanged?.(); }} />
 
