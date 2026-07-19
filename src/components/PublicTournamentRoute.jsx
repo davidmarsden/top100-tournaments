@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import PublicTournamentPage from './PublicTournamentPage.jsx';
+import PublicGroupTablesPortal from './PublicGroupTablesPortal.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { LIVE_STATUSES, parseTournamentPath, pickLiveTournament, routeTitle } from '../lib/publicTournamentRoutes';
 
@@ -8,6 +9,7 @@ const routeSelect = 'id, name, status, season_number, public_slug, slug, is_publ
 function isPlaceholderArchive(row) {
   return row?.archive_quality === 'placeholder' || (String(row?.status || '').toLowerCase() === 'archived' && Number(row?.actual_entries || 0) === 0 && row?.source !== 'challonge');
 }
+
 function publicRouteRows(rows = []) {
   return rows.filter((row) => row.is_public !== false && !isPlaceholderArchive(row));
 }
@@ -95,7 +97,10 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
     setStatus('');
   }
 
-  if (resolvedId) return <PublicTournamentPage tournamentId={resolvedId} routeRows={routes} />;
+  if (resolvedId) return <>
+    <PublicTournamentPage tournamentId={resolvedId} routeRows={routes} />
+    <PublicGroupTablesPortal tournamentId={resolvedId} />
+  </>;
 
   return <main className="app-shell public-archive tournament-hub">
     <section className="card">
