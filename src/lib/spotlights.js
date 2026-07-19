@@ -36,11 +36,11 @@ function winnerSide(match) {
   return 'draw';
 }
 function groupPositionText(row) {
-  if (!row?.group_position) return '';
+  if (!row?.group_position) return 'still waiting for a settled table position';
   return row.group_position === 1 ? 'top of the group' : row.group_position === 2 ? 'in the second qualification place' : row.group_position === 3 ? 'in the Shield place' : 'outside the qualification places';
 }
 
-function completedNarrative(match, entryMap, rowMap) {
+function groupCompletedNarrative(match, entryMap, rowMap) {
   const homeEntry = entryMap.get(key(match.home_entry_id));
   const awayEntry = entryMap.get(key(match.away_entry_id));
   const homeRow = rowMap.get(key(match.home_entry_id));
@@ -64,8 +64,40 @@ function completedNarrative(match, entryMap, rowMap) {
   const margin = Math.abs(Number(match.home_score) - Number(match.away_score));
   const tag = match.status === 'forfeit' ? 'Forfeit changes the picture' : margin >= 3 ? 'Statement win' : winnerRow?.group_position === 1 ? 'New group leader' : 'Opening-round mover';
   const type = match.status === 'forfeit' ? 'forfeit' : margin >= 3 ? 'statement' : winnerRow?.group_position === 1 ? 'leader' : 'result';
-  const story = `${describeManager(winnerEntry)} beat ${clubName(loserEntry)} ${resultScore(match)}${match.status === 'forfeit' ? ' by forfeit' : ''} and are now ${groupPositionText(winnerRow)} in Group ${group}. ${margin >= 3 ? 'That goal difference could matter later.' : 'The first table has already started to take shape.'}`;
+  const story = `${describeManager(winnerEntry)} beat ${clubName(loserEntry)} ${resultScore(match)}${match.status === 'forfeit' ? ' by forfeit' : ''} and are now ${groupPositionText(winnerRow)} in Group ${group}. ${margin >= 3 ? 'That goal difference could matter later.' : 'The table has already started to take shape.'}`;
   return { type, tag, story, score: 45 + margin * 3 + (winnerRow?.group_position === 1 ? 8 : 0) + (match.status === 'forfeit' ? 6 : 0) };
+}
+
+function knockoutCompletedNarrative(match, entryMap) {
+  const homeEntry = entryMap.get(key(match.home_entry_id));
+  const awayEntry = entryMap.get(key(match.away_entry_id));
+  const bracket = match.bracket || 'Cup';
+  const round = roundLabel(match.round);
+  const side = winnerSide(match);
+  const leg = Number(match.leg || 1);
+  const legText = leg === 2 ? 'second leg' : leg === 1 ? 'first leg' : `leg ${leg}`;
+  const forfeitText = match.status === 'forfeit' ? ' by forfeit' : '';
+
+  if (side === 'draw') {
+    return {
+      type: 'knockout-result',
+      tag: `${bracket} ${round} result`,
+      story: `${clubName(homeEntry)} and ${clubName(awayEntry)} drew ${resultScore(match)} in the ${legText} of their ${bracket} ${round} tie. The bracket remains unresolved after this result.`,
+      score: 48,
+    };
+  }
+
+  const winnerEntry = side === 'home' ? homeEntry : awayEntry;
+  const loserEntry = side === 'home' ? awayEntry : homeEntry;
+  const margin = Math.abs(Number(match.home_score) - Number(match.away_score));
+  const oneLegRound = match.round === 'R64' || match.round === 'R32' || (bracket === 'Shield' && match.round === 'R16');
+  const progressText = oneLegRound ? ` and booked a place in the next round` : leg === 2 ? ` in the decisive second leg` : ` to take an advantage into the return leg`;
+  return {
+    type: match.status === 'forfeit' ? 'forfeit' : 'knockout-result',
+    tag: `${bracket} ${round} result`,
+    story: `${describeManager(winnerEntry)} beat ${clubName(loserEntry)} ${resultScore(match)}${forfeitText}${progressText}.`,
+    score: 55 + margin * 3 + (match.status === 'forfeit' ? 5 : 0),
+  };
 }
 
 function upcomingNarrative(match, entryMap, rowMap) {
@@ -122,7 +154,12 @@ export function fixtureSpotlights(matches, entries, honours, tables) {
   const nextFixtures = nextDate ? upcoming.filter((match) => match.fixture_date === nextDate) : [];
 
   const candidates = [];
-  recentResults.forEach((match) => { const narrative = completedNarrative(match, entryMap, rowMap); candidates.push({ ...match, spotlightType: narrative.type, spotlightTag: narrative.tag, spotlightStory: narrative.story, spotlightScore: narrative.score, spotlightIsResult: true }); });
+  recentResults.forEach((match) => {
+    const narrative = match.stage === 'knockout'
+      ? knockoutCompletedNarrative(match, entryMap)
+      : groupCompletedNarrative(match, entryMap, rowMap);
+    candidates.push({ ...match, spotlightType: narrative.type, spotlightTag: narrative.tag, spotlightStory: narrative.story, spotlightScore: narrative.score, spotlightIsResult: true });
+  });
   nextFixtures.forEach((match) => { const narrative = upcomingNarrative(match, entryMap, rowMap); candidates.push({ ...match, spotlightType: narrative.type, spotlightTag: narrative.tag, spotlightStory: narrative.story, spotlightScore: narrative.score, spotlightIsResult: false }); });
 
   return selectDistinct(candidates.sort((a, b) => b.spotlightScore - a.spotlightScore || sortMatches(a, b)));
