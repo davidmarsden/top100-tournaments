@@ -7,6 +7,7 @@ export default function PublicForfeitRegisterPortal({ tournamentId }) {
 
   useEffect(() => {
     let portalHost = null;
+    let navLink = null;
     let observer = null;
 
     const mount = () => {
@@ -18,6 +19,15 @@ export default function PublicForfeitRegisterPortal({ tournamentId }) {
       const fairPlay = document.getElementById('fair-play');
       if (fairPlay?.nextSibling) page.insertBefore(portalHost, fairPlay.nextSibling);
       else page.appendChild(portalHost);
+
+      const nav = page.querySelector('.public-section-nav');
+      if (nav) {
+        navLink = document.createElement('a');
+        navLink.href = '#manager-forfeits';
+        navLink.textContent = 'Manager forfeits';
+        nav.appendChild(navLink);
+      }
+
       setHost(portalHost);
       return true;
     };
@@ -31,6 +41,7 @@ export default function PublicForfeitRegisterPortal({ tournamentId }) {
 
     return () => {
       observer?.disconnect();
+      navLink?.remove();
       portalHost?.remove();
       setHost(null);
     };
