@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import PublicTournamentPage from './PublicTournamentPage.jsx';
 import PublicGroupTablesPortal from './PublicGroupTablesPortal.jsx';
+import PublicForfeitRegisterPortal from './PublicForfeitRegisterPortal.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { LIVE_STATUSES, parseTournamentPath, pickLiveTournament, routeTitle } from '../lib/publicTournamentRoutes';
 
@@ -100,6 +101,7 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
   if (resolvedId) return <>
     <PublicTournamentPage tournamentId={resolvedId} routeRows={routes} />
     <PublicGroupTablesPortal tournamentId={resolvedId} />
+    <PublicForfeitRegisterPortal tournamentId={resolvedId} />
   </>;
 
   return <main className="app-shell public-archive tournament-hub">
