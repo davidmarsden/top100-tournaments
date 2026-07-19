@@ -45,17 +45,35 @@ begin
     forfeiting_entry := new.loser_entry_id;
 
     if forfeiting_entry is null then
-      if coalesce(new.home_score, 0) < coalesce(new.away_score, 0) then
+      if new.home_score is not null
+         and new.away_score is not null
+         and new.home_score < new.away_score then
         forfeiting_entry := new.home_entry_id;
-      elsif coalesce(new.away_score, 0) < coalesce(new.home_score, 0) then
+      elsif new.home_score is not null
+            and new.away_score is not null
+            and new.away_score < new.home_score then
         forfeiting_entry := new.away_entry_id;
       end if;
+    end if;
+
+    if forfeiting_entry is null then
+      raise exception using
+        errcode = '23514',
+        message = 'Cannot record forfeit: the responsible losing entrant could not be determined.',
+        hint = 'Supply loser_entry_id and a decisive official score before setting the match status to forfeit.';
     end if;
 
     select manager_id
       into responsible_manager
     from public.tournament_entries
     where id = forfeiting_entry;
+
+    if responsible_manager is null then
+      raise exception using
+        errcode = '23514',
+        message = 'Cannot record forfeit: the responsible entrant has no manager.',
+        hint = 'Assign the responsible manager to the tournament entrant before recording the forfeit.';
+    end if;
 
     insert into public.forfeits (
       match_id,
@@ -96,7 +114,8 @@ on public.matches
 for each row
 execute function public.sync_match_forfeit_record();
 
--- Backfill current match rulings that pre-date the trigger.
+-- Backfill current valid match rulings that pre-date the trigger. Invalid legacy
+-- rulings are deliberately skipped rather than creating managerless discipline rows.
 insert into public.forfeits (
   match_id,
   forfeiting_entry_id,
@@ -108,29 +127,27 @@ insert into public.forfeits (
 )
 select
   m.id,
-  coalesce(
-    m.loser_entry_id,
-    case
-      when coalesce(m.home_score, 0) < coalesce(m.away_score, 0) then m.home_entry_id
-      when coalesce(m.away_score, 0) < coalesce(m.home_score, 0) then m.away_entry_id
-      else null
-    end
-  ) as forfeiting_entry_id,
+  inferred.forfeiting_entry_id,
   e.manager_id,
   'Match recorded as a forfeit',
   'Match forfeiture',
   true,
   'match_ruling'
 from public.matches m
-left join public.tournament_entries e on e.id = coalesce(
-  m.loser_entry_id,
-  case
-    when coalesce(m.home_score, 0) < coalesce(m.away_score, 0) then m.home_entry_id
-    when coalesce(m.away_score, 0) < coalesce(m.home_score, 0) then m.away_entry_id
-    else null
-  end
-)
+cross join lateral (
+  select coalesce(
+    m.loser_entry_id,
+    case
+      when m.home_score is not null and m.away_score is not null and m.home_score < m.away_score then m.home_entry_id
+      when m.home_score is not null and m.away_score is not null and m.away_score < m.home_score then m.away_entry_id
+      else null
+    end
+  ) as forfeiting_entry_id
+) inferred
+join public.tournament_entries e on e.id = inferred.forfeiting_entry_id
 where m.status = 'forfeit'
+  and inferred.forfeiting_entry_id is not null
+  and e.manager_id is not null
 on conflict (match_id) where match_id is not null
   do update set
     forfeiting_entry_id = excluded.forfeiting_entry_id,
