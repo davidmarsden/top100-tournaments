@@ -91,15 +91,26 @@ export default function ResultSubmissionsPage() {
       : ruling === 'voided'
         ? 'Match voided during final check.'
         : `${rulingLabel(ruling)} confirmed during final check.`;
+    const note = (notes[row.id] || '').trim() || defaultNote;
 
     setLoadingId(row.id);
-    const { error } = await supabase.rpc('admin_amend_match_result', {
-      target_match_id: row.match_id,
-      target_home_score: home,
-      target_away_score: away,
-      target_status: ruling === 'voided' ? 'voided' : ruling === 'played' ? 'played' : 'forfeit',
-      note: (notes[row.id] || '').trim() || defaultNote,
-    });
+    let error;
+    if (ruling === 'played') {
+      ({ error } = await supabase.rpc('resolve_manager_result', {
+        target_submission_id: row.id,
+        target_home_score: home,
+        target_away_score: away,
+        note,
+      }));
+    } else {
+      ({ error } = await supabase.rpc('admin_amend_match_result', {
+        target_match_id: row.match_id,
+        target_home_score: home,
+        target_away_score: away,
+        target_status: ruling === 'voided' ? 'voided' : 'forfeit',
+        note,
+      }));
+    }
     if (error) setStatus('Final check failed: ' + error.message);
     else {
       setStatus(`Official result approved as ${rulingLabel(ruling).toLowerCase()}. It remains amendable by an administrator.`);
