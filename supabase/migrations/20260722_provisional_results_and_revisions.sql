@@ -1,5 +1,6 @@
 -- Manager-submitted results become provisionally official immediately.
 -- Admins retain permanent authority to finalise, correct, forfeit or void any result.
+-- This migration is intentionally rerunnable after a partial SQL Editor execution.
 
 alter table public.manager_result_submissions
   drop constraint if exists manager_result_submissions_status_check;
@@ -16,7 +17,10 @@ create table if not exists public.match_result_revisions (
   match_id bigint not null references public.matches(id) on delete cascade,
   submission_id bigint references public.manager_result_submissions(id) on delete set null,
   changed_by uuid references auth.users(id) on delete set null,
-  action text not null check (action in ('manager_submission','admin_finalised','admin_corrected','forfeit','voided','reopened')),
+  action text not null check (action in (
+    'manager_submission', 'admin_finalised', 'admin_corrected',
+    'forfeit', 'voided', 'reopened'
+  )),
   previous_status text,
   previous_home_score integer,
   previous_away_score integer,
@@ -29,12 +33,24 @@ create table if not exists public.match_result_revisions (
 
 alter table public.match_result_revisions enable row level security;
 
+-- PostgreSQL has no CREATE POLICY IF NOT EXISTS. Drop and recreate the
+-- policies so rerunning this migration cannot fail after a partial run.
+drop policy if exists "Admins can read result revisions"
+  on public.match_result_revisions;
+
 create policy "Admins can read result revisions"
-  on public.match_result_revisions for select to authenticated
+  on public.match_result_revisions
+  for select
+  to authenticated
   using (public.is_admin());
 
+drop policy if exists "Admins can manage result revisions"
+  on public.match_result_revisions;
+
 create policy "Admins can manage result revisions"
-  on public.match_result_revisions for all to authenticated
+  on public.match_result_revisions
+  for all
+  to authenticated
   using (public.is_admin())
   with check (public.is_admin());
 
@@ -58,27 +74,53 @@ declare
   winner_id bigint;
   loser_id bigint;
 begin
-  if target_home_score < 0 or target_away_score < 0 then raise exception 'Scores cannot be negative'; end if;
+  if target_home_score < 0 or target_away_score < 0 then
+    raise exception 'Scores cannot be negative';
+  end if;
 
-  select * into account_row from public.manager_portal_accounts
-  where auth_user_id = auth.uid() and active = true;
-  if not found then raise exception 'Manager Portal account not found'; end if;
+  select * into account_row
+  from public.manager_portal_accounts
+  where auth_user_id = auth.uid()
+    and active = true;
 
-  select * into match_row from public.matches where id = target_match_id for update;
-  if not found then raise exception 'Match not found'; end if;
-  if match_row.status = 'forfeit' then raise exception 'This match has already been decided by forfeit'; end if;
+  if not found then
+    raise exception 'Manager Portal account not found';
+  end if;
 
-  select * into submitter_entry from public.tournament_entries
+  select * into match_row
+  from public.matches
+  where id = target_match_id
+  for update;
+
+  if not found then
+    raise exception 'Match not found';
+  end if;
+
+  if match_row.status = 'forfeit' then
+    raise exception 'This match has already been decided by forfeit';
+  end if;
+
+  select * into submitter_entry
+  from public.tournament_entries
   where manager_id = account_row.manager_id
     and id in (match_row.home_entry_id, match_row.away_entry_id)
   limit 1;
-  if not found then raise exception 'You are not a manager in this fixture'; end if;
 
-  select * into opponent_entry from public.tournament_entries
-  where id = case when submitter_entry.id = match_row.home_entry_id then match_row.away_entry_id else match_row.home_entry_id end;
+  if not found then
+    raise exception 'You are not a manager in this fixture';
+  end if;
 
-  select * into opponent_account from public.manager_portal_accounts
-  where manager_id = opponent_entry.manager_id and active = true
+  select * into opponent_entry
+  from public.tournament_entries
+  where id = case
+    when submitter_entry.id = match_row.home_entry_id then match_row.away_entry_id
+    else match_row.home_entry_id
+  end;
+
+  select * into opponent_account
+  from public.manager_portal_accounts
+  where manager_id = opponent_entry.manager_id
+    and active = true
   limit 1;
 
   winner_id := case
@@ -86,6 +128,7 @@ begin
     when target_away_score > target_home_score then match_row.away_entry_id
     else null
   end;
+
   loser_id := case
     when target_home_score > target_away_score then match_row.away_entry_id
     when target_away_score > target_home_score then match_row.home_entry_id
@@ -93,14 +136,25 @@ begin
   end;
 
   insert into public.manager_result_submissions (
-    match_id, submitted_by_user_id, submitted_by_manager_id,
-    submitted_home_score, submitted_away_score,
-    opponent_user_id, opponent_manager_id, status, updated_at
+    match_id,
+    submitted_by_user_id,
+    submitted_by_manager_id,
+    submitted_home_score,
+    submitted_away_score,
+    opponent_user_id,
+    opponent_manager_id,
+    status,
+    updated_at
   ) values (
-    target_match_id, auth.uid(), account_row.manager_id,
-    target_home_score, target_away_score,
-    opponent_account.auth_user_id, opponent_entry.manager_id,
-    'pending_admin_check', now()
+    target_match_id,
+    auth.uid(),
+    account_row.manager_id,
+    target_home_score,
+    target_away_score,
+    opponent_account.auth_user_id,
+    opponent_entry.manager_id,
+    'pending_admin_check',
+    now()
   )
   on conflict (match_id) do update set
     submitted_by_user_id = excluded.submitted_by_user_id,
@@ -122,23 +176,38 @@ begin
   returning id into submission_id;
 
   insert into public.match_result_revisions (
-    match_id, submission_id, changed_by, action,
-    previous_status, previous_home_score, previous_away_score,
-    new_status, new_home_score, new_away_score, reason
+    match_id,
+    submission_id,
+    changed_by,
+    action,
+    previous_status,
+    previous_home_score,
+    previous_away_score,
+    new_status,
+    new_home_score,
+    new_away_score,
+    reason
   ) values (
-    target_match_id, submission_id, auth.uid(), 'manager_submission',
-    match_row.status, match_row.home_score, match_row.away_score,
-    'played', target_home_score, target_away_score,
+    target_match_id,
+    submission_id,
+    auth.uid(),
+    'manager_submission',
+    match_row.status,
+    match_row.home_score,
+    match_row.away_score,
+    'played',
+    target_home_score,
+    target_away_score,
     'Provisionally published from Manager Portal submission.'
   );
 
-  update public.matches set
-    home_score = target_home_score,
-    away_score = target_away_score,
-    winner_entry_id = winner_id,
-    loser_entry_id = loser_id,
-    status = 'played',
-    played_at = coalesce(played_at, now())
+  update public.matches
+  set home_score = target_home_score,
+      away_score = target_away_score,
+      winner_entry_id = winner_id,
+      loser_entry_id = loser_id,
+      status = 'played',
+      played_at = coalesce(played_at, now())
   where id = target_match_id;
 
   return submission_id;
@@ -158,22 +227,40 @@ as $$
 declare
   submission_row public.manager_result_submissions%rowtype;
 begin
-  select * into submission_row from public.manager_result_submissions
-  where id = target_submission_id for update;
-  if not found then raise exception 'Result submission not found'; end if;
-  if submission_row.opponent_user_id is distinct from auth.uid() then raise exception 'Only the opposing manager can respond'; end if;
-  if submission_row.status not in ('pending_admin_check','opponent_confirmed') then raise exception 'This result is no longer open for opponent response'; end if;
+  select * into submission_row
+  from public.manager_result_submissions
+  where id = target_submission_id
+  for update;
+
+  if not found then
+    raise exception 'Result submission not found';
+  end if;
+
+  if submission_row.opponent_user_id is distinct from auth.uid() then
+    raise exception 'Only the opposing manager can respond';
+  end if;
+
+  if submission_row.status not in ('pending_admin_check', 'opponent_confirmed') then
+    raise exception 'This result is no longer open for opponent response';
+  end if;
 
   if response = 'confirm' then
-    update public.manager_result_submissions set
-      status = 'opponent_confirmed', opponent_response_note = note,
-      confirmed_at = now(), updated_at = now()
+    update public.manager_result_submissions
+    set status = 'opponent_confirmed',
+        opponent_response_note = note,
+        confirmed_at = now(),
+        updated_at = now()
     where id = target_submission_id;
-  elsif response in ('dispute','appeal') then
-    if nullif(trim(note), '') is null then raise exception 'An appeal reason is required'; end if;
-    update public.manager_result_submissions set
-      status = 'appealed', opponent_response_note = note,
-      disputed_at = now(), updated_at = now()
+  elsif response in ('dispute', 'appeal') then
+    if nullif(trim(note), '') is null then
+      raise exception 'An appeal reason is required';
+    end if;
+
+    update public.manager_result_submissions
+    set status = 'appealed',
+        opponent_response_note = note,
+        disputed_at = now(),
+        updated_at = now()
     where id = target_submission_id;
   else
     raise exception 'Response must be confirm or appeal';
@@ -199,41 +286,90 @@ declare
   loser_id bigint;
   revision_action text;
 begin
-  if not public.is_admin() then raise exception 'Admin access required'; end if;
-  if target_home_score < 0 or target_away_score < 0 then raise exception 'Scores cannot be negative'; end if;
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
 
-  select * into submission_row from public.manager_result_submissions where id = target_submission_id for update;
-  if not found then raise exception 'Result submission not found'; end if;
-  select * into match_row from public.matches where id = submission_row.match_id for update;
+  if target_home_score < 0 or target_away_score < 0 then
+    raise exception 'Scores cannot be negative';
+  end if;
 
-  winner_id := case when target_home_score > target_away_score then match_row.home_entry_id when target_away_score > target_home_score then match_row.away_entry_id else null end;
-  loser_id := case when target_home_score > target_away_score then match_row.away_entry_id when target_away_score > target_home_score then match_row.home_entry_id else null end;
-  revision_action := case when match_row.home_score is distinct from target_home_score or match_row.away_score is distinct from target_away_score then 'admin_corrected' else 'admin_finalised' end;
+  select * into submission_row
+  from public.manager_result_submissions
+  where id = target_submission_id
+  for update;
+
+  if not found then
+    raise exception 'Result submission not found';
+  end if;
+
+  select * into match_row
+  from public.matches
+  where id = submission_row.match_id
+  for update;
+
+  winner_id := case
+    when target_home_score > target_away_score then match_row.home_entry_id
+    when target_away_score > target_home_score then match_row.away_entry_id
+    else null
+  end;
+
+  loser_id := case
+    when target_home_score > target_away_score then match_row.away_entry_id
+    when target_away_score > target_home_score then match_row.home_entry_id
+    else null
+  end;
+
+  revision_action := case
+    when match_row.home_score is distinct from target_home_score
+      or match_row.away_score is distinct from target_away_score
+      then 'admin_corrected'
+    else 'admin_finalised'
+  end;
 
   insert into public.match_result_revisions (
-    match_id, submission_id, changed_by, action,
-    previous_status, previous_home_score, previous_away_score,
-    new_status, new_home_score, new_away_score, reason
+    match_id,
+    submission_id,
+    changed_by,
+    action,
+    previous_status,
+    previous_home_score,
+    previous_away_score,
+    new_status,
+    new_home_score,
+    new_away_score,
+    reason
   ) values (
-    match_row.id, submission_row.id, auth.uid(), revision_action,
-    match_row.status, match_row.home_score, match_row.away_score,
-    'played', target_home_score, target_away_score, note
+    match_row.id,
+    submission_row.id,
+    auth.uid(),
+    revision_action,
+    match_row.status,
+    match_row.home_score,
+    match_row.away_score,
+    'played',
+    target_home_score,
+    target_away_score,
+    note
   );
 
-  update public.matches set
-    home_score = target_home_score,
-    away_score = target_away_score,
-    winner_entry_id = winner_id,
-    loser_entry_id = loser_id,
-    status = 'played',
-    played_at = coalesce(played_at, now())
+  update public.matches
+  set home_score = target_home_score,
+      away_score = target_away_score,
+      winner_entry_id = winner_id,
+      loser_entry_id = loser_id,
+      status = 'played',
+      played_at = coalesce(played_at, now())
   where id = submission_row.match_id;
 
-  update public.manager_result_submissions set
-    status = 'final', resolved_by = auth.uid(),
-    resolved_home_score = target_home_score,
-    resolved_away_score = target_away_score,
-    resolution_note = note, resolved_at = now(), updated_at = now()
+  update public.manager_result_submissions
+  set status = 'final',
+      resolved_by = auth.uid(),
+      resolved_home_score = target_home_score,
+      resolved_away_score = target_away_score,
+      resolution_note = note,
+      resolved_at = now(),
+      updated_at = now()
   where id = target_submission_id;
 end;
 $$;
@@ -256,53 +392,118 @@ declare
   loser_id bigint;
   revision_action text;
 begin
-  if not public.is_admin() then raise exception 'Admin access required'; end if;
-  if nullif(trim(note), '') is null then raise exception 'A reason is required for retrospective result changes'; end if;
-  if target_status not in ('played','forfeit','voided') then raise exception 'Status must be played, forfeit or voided'; end if;
-  if target_status <> 'voided' and (target_home_score is null or target_away_score is null or target_home_score < 0 or target_away_score < 0) then
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  if nullif(trim(note), '') is null then
+    raise exception 'A reason is required for retrospective result changes';
+  end if;
+
+  if target_status not in ('played', 'forfeit', 'voided') then
+    raise exception 'Status must be played, forfeit or voided';
+  end if;
+
+  if target_status <> 'voided'
+    and (
+      target_home_score is null
+      or target_away_score is null
+      or target_home_score < 0
+      or target_away_score < 0
+    ) then
     raise exception 'Valid scores are required unless the match is voided';
   end if;
 
-  select * into match_row from public.matches where id = target_match_id for update;
-  if not found then raise exception 'Match not found'; end if;
+  select * into match_row
+  from public.matches
+  where id = target_match_id
+  for update;
+
+  if not found then
+    raise exception 'Match not found';
+  end if;
 
   if target_status = 'voided' then
     winner_id := null;
     loser_id := null;
     revision_action := 'voided';
   else
-    winner_id := case when target_home_score > target_away_score then match_row.home_entry_id when target_away_score > target_home_score then match_row.away_entry_id else null end;
-    loser_id := case when target_home_score > target_away_score then match_row.away_entry_id when target_away_score > target_home_score then match_row.home_entry_id else null end;
-    revision_action := case when target_status = 'forfeit' then 'forfeit' else 'admin_corrected' end;
+    winner_id := case
+      when target_home_score > target_away_score then match_row.home_entry_id
+      when target_away_score > target_home_score then match_row.away_entry_id
+      else null
+    end;
+
+    loser_id := case
+      when target_home_score > target_away_score then match_row.away_entry_id
+      when target_away_score > target_home_score then match_row.home_entry_id
+      else null
+    end;
+
+    revision_action := case
+      when target_status = 'forfeit' then 'forfeit'
+      else 'admin_corrected'
+    end;
   end if;
 
   insert into public.match_result_revisions (
-    match_id, changed_by, action,
-    previous_status, previous_home_score, previous_away_score,
-    new_status, new_home_score, new_away_score, reason
+    match_id,
+    changed_by,
+    action,
+    previous_status,
+    previous_home_score,
+    previous_away_score,
+    new_status,
+    new_home_score,
+    new_away_score,
+    reason
   ) values (
-    match_row.id, auth.uid(), revision_action,
-    match_row.status, match_row.home_score, match_row.away_score,
-    target_status, target_home_score, target_away_score, note
+    match_row.id,
+    auth.uid(),
+    revision_action,
+    match_row.status,
+    match_row.home_score,
+    match_row.away_score,
+    target_status,
+    target_home_score,
+    target_away_score,
+    note
   );
 
-  update public.matches set
-    home_score = case when target_status = 'voided' then null else target_home_score end,
-    away_score = case when target_status = 'voided' then null else target_away_score end,
-    winner_entry_id = winner_id,
-    loser_entry_id = loser_id,
-    status = target_status,
-    played_at = case when target_status = 'voided' then null else coalesce(played_at, now()) end
+  update public.matches
+  set home_score = case when target_status = 'voided' then null else target_home_score end,
+      away_score = case when target_status = 'voided' then null else target_away_score end,
+      winner_entry_id = winner_id,
+      loser_entry_id = loser_id,
+      status = target_status,
+      played_at = case
+        when target_status = 'voided' then null
+        else coalesce(played_at, now())
+      end
   where id = target_match_id;
 
-  update public.manager_result_submissions set
-    status = 'final', resolved_by = auth.uid(),
-    resolved_home_score = case when target_status = 'voided' then null else target_home_score end,
-    resolved_away_score = case when target_status = 'voided' then null else target_away_score end,
-    resolution_note = note, resolved_at = now(), updated_at = now()
+  update public.manager_result_submissions
+  set status = 'final',
+      resolved_by = auth.uid(),
+      resolved_home_score = case when target_status = 'voided' then null else target_home_score end,
+      resolved_away_score = case when target_status = 'voided' then null else target_away_score end,
+      resolution_note = note,
+      resolved_at = now(),
+      updated_at = now()
   where match_id = target_match_id;
 end;
 $$;
 
-grant execute on function public.admin_amend_match_result(bigint, integer, integer, text, text) to authenticated;
+grant execute on function public.submit_manager_result(bigint, integer, integer)
+  to authenticated;
+
+grant execute on function public.respond_to_manager_result(bigint, text, text)
+  to authenticated;
+
+grant execute on function public.resolve_manager_result(bigint, integer, integer, text)
+  to authenticated;
+
+grant execute on function public.admin_amend_match_result(bigint, integer, integer, text, text)
+  to authenticated;
+
 grant select on public.match_result_revisions to authenticated;
