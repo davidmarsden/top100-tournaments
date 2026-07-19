@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 function formatDate(value) {
@@ -25,67 +25,102 @@ function contributionLabel(type) {
 }
 function normaliseComment(item) {
   return {
-    comment_type: 'pre_match',
-    contribution_type: 'statement',
-    prediction_score: null,
-    player_to_watch: null,
-    first_goalscorer: null,
-    badge_label: null,
-    is_pinned: false,
-    editor_pick: false,
-    reactions: {},
-    ...item,
+    comment_type: 'pre_match', contribution_type: 'statement', prediction_score: null,
+    player_to_watch: null, first_goalscorer: null, badge_label: null, is_pinned: false,
+    editor_pick: false, reactions: {}, ...item,
   };
 }
 
 export default function CommentsModeration({ selectedTournament }) {
   const [comments, setComments] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [reports, setReports] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('visible');
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (selectedTournament?.id) loadComments();
+    if (selectedTournament?.id) loadEverything();
   }, [selectedTournament?.id, statusFilter]);
 
-  async function runCommentsQuery(full = true) {
-    let query = supabase
-      .from('match_comments')
-      .select(full
-        ? 'id, manager_name, club_name, comment, comment_type, contribution_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))'
-        : 'id, manager_name, club_name, comment, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
-      .eq('tournament_id', selectedTournament.id)
-      .order('created_at', { ascending: false });
-    if (full) query = query.order('is_pinned', { ascending: false }).order('editor_pick', { ascending: false });
-    if (statusFilter !== 'all') query = query.eq('status', statusFilter);
-    return query;
-  }
+  const unresolvedReports = useMemo(() => reports.filter((report) => report.status === 'unresolved'), [reports]);
+  const reportsByComment = useMemo(() => {
+    const map = new Map();
+    unresolvedReports.forEach((report) => {
+      const rows = map.get(report.content_id) || [];
+      rows.push(report);
+      map.set(report.content_id, rows);
+    });
+    return map;
+  }, [unresolvedReports]);
 
-  async function loadComments() {
+  async function loadEverything() {
     if (!hasSupabaseConfig || !supabase || !selectedTournament?.id) return;
     setLoading(true);
-    setStatus('Loading press conference contributions...');
-    let result = await runCommentsQuery(true);
-    if (result.error) result = await runCommentsQuery(false);
+    setStatus('Loading press room moderation...');
+
+    let commentsQuery = supabase
+      .from('match_comments')
+      .select('id, manager_name, club_name, comment, comment_type, contribution_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
+      .eq('tournament_id', selectedTournament.id)
+      .order('created_at', { ascending: false });
+    if (statusFilter !== 'all') commentsQuery = commentsQuery.eq('status', statusFilter);
+
+    const commentsResult = await commentsQuery;
+    const reportsResult = await supabase
+      .from('content_reports')
+      .select('id, content_type, content_id, reporter_id, reason, status, created_at, resolved_at, resolution_note')
+      .eq('content_type', 'match_comment')
+      .order('created_at', { ascending: false });
+
     setLoading(false);
-    if (result.error) return setStatus('Could not load press conference contributions: ' + result.error.message);
-    setComments((result.data || []).map(normaliseComment));
-    setStatus(`${result.data?.length || 0} press conference contributions loaded.`);
+    if (commentsResult.error) return setStatus('Could not load press conference contributions: ' + commentsResult.error.message);
+    if (reportsResult.error) return setStatus('Could not load content reports: ' + reportsResult.error.message);
+    setComments((commentsResult.data || []).map(normaliseComment));
+    setReports(reportsResult.data || []);
+    setStatus(`${commentsResult.data?.length || 0} contributions loaded · ${reportsResult.data?.filter((item) => item.status === 'unresolved').length || 0} unresolved reports.`);
   }
 
   async function updateComment(id, patch, message) {
     setLoading(true);
-    const { data: userData } = await supabase.auth.getUser();
-    const payload = patch.status ? { ...patch, moderated_at: new Date().toISOString(), moderated_by: userData?.user?.id || null } : patch;
-    const { error } = await supabase.from('match_comments').update(payload).eq('id', id);
+    const { error } = await supabase.from('match_comments').update(patch).eq('id', id);
     setLoading(false);
-    if (error) return setStatus('Update failed. Run the latest press conference migration if this was a contribution-type, pin, editor pick, or badge change: ' + error.message);
+    if (error) return setStatus('Update failed: ' + error.message);
     setComments((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row).filter((row) => statusFilter === 'all' || row.status === statusFilter));
     setStatus(message || 'Contribution updated.');
   }
 
-  function setCommentStatus(id, nextStatus) {
-    updateComment(id, { status: nextStatus }, `Contribution marked ${nextStatus}.`);
+  async function moderate(item, nextStatus) {
+    const action = nextStatus === 'visible' ? 'restore' : nextStatus === 'hidden' ? 'hide' : 'permanently remove';
+    const note = nextStatus === 'visible' ? null : window.prompt(`Reason to ${action} this contribution?`, '');
+    if (nextStatus !== 'visible' && note === null) return;
+    if (nextStatus === 'removed' && !window.confirm('Permanently remove this contribution from public view? The moderation record will be retained.')) return;
+    setLoading(true);
+    const { error } = await supabase.rpc('moderate_match_comment', {
+      target_comment_id: item.id,
+      target_status: nextStatus,
+      moderation_note: note || null,
+    });
+    setLoading(false);
+    if (error) return setStatus('Moderation failed: ' + error.message);
+    setStatus(`Contribution marked ${nextStatus}.`);
+    await loadEverything();
+  }
+
+  async function resolveReport(report, nextStatus) {
+    const note = window.prompt(nextStatus === 'dismissed' ? 'Why is this report being dismissed?' : 'Resolution note?', '');
+    if (note === null) return;
+    const { data: userData } = await supabase.auth.getUser();
+    setLoading(true);
+    const { error } = await supabase.from('content_reports').update({
+      status: nextStatus,
+      resolved_at: new Date().toISOString(),
+      resolved_by: userData?.user?.id || null,
+      resolution_note: note.trim() || null,
+    }).eq('id', report.id);
+    setLoading(false);
+    if (error) return setStatus('Could not update report: ' + error.message);
+    setStatus(`Report ${nextStatus}.`);
+    await loadEverything();
   }
 
   async function promptBadge(item) {
@@ -98,39 +133,66 @@ export default function CommentsModeration({ selectedTournament }) {
 
   return <div className="comments-moderation">
     <div className="overview-actions bulk-toolbar">
-      <p className="muted">Approve press conference statements, questions and media comments before they appear publicly. Pin one as the headline quote, mark an Editor's Pick, or add a badge.</p>
+      <p className="muted">Press conference contributions publish immediately. Review reports, hide or restore content, permanently remove serious breaches, and feature the best contributions.</p>
       <div className="status-filter-row">
-        {['pending', 'approved', 'hidden', 'all'].map((value) => <button key={value} type="button" className={statusFilter === value ? 'status-filter active' : 'status-filter'} onClick={() => setStatusFilter(value)}>{value}</button>)}
+        {['visible', 'hidden', 'removed', 'all'].map((value) => <button key={value} type="button" className={statusFilter === value ? 'status-filter active' : 'status-filter'} onClick={() => setStatusFilter(value)}>{value}</button>)}
       </div>
-      <button type="button" className="secondary" onClick={loadComments} disabled={loading}>Refresh press room</button>
+      <button type="button" className="secondary" onClick={loadEverything} disabled={loading}>Refresh press room</button>
       <p className="status">{status}</p>
     </div>
 
+    <section className="card module-card">
+      <div className="card-header"><p className="eyebrow">Moderation queue</p><h3>Unresolved reports ({unresolvedReports.length})</h3></div>
+      {!unresolvedReports.length && <p className="muted">No unresolved reports.</p>}
+      <div className="comment-moderation-list">
+        {unresolvedReports.map((report) => {
+          const item = comments.find((comment) => comment.id === report.content_id);
+          return <article className="comment-moderation-card" key={report.id}>
+            <p className="eyebrow">Reported {formatDate(report.created_at)} · {report.content_type}</p>
+            <h3>{item ? fixtureTitle(item) : `Contribution #${report.content_id}`}</h3>
+            {item && <p className="comment-quote">“{item.comment}”</p>}
+            <p><strong>Reason:</strong> {report.reason}</p>
+            <div className="button-row">
+              {item?.status === 'visible' && <button type="button" className="danger" onClick={() => moderate(item, 'hidden')} disabled={loading}>Hide content</button>}
+              {item?.status === 'hidden' && <button type="button" onClick={() => moderate(item, 'visible')} disabled={loading}>Restore content</button>}
+              {item?.status !== 'removed' && <button type="button" className="danger" onClick={() => moderate(item, 'removed')} disabled={loading}>Remove permanently</button>}
+              <button type="button" className="secondary" onClick={() => resolveReport(report, 'resolved')} disabled={loading}>Resolve report</button>
+              <button type="button" className="secondary" onClick={() => resolveReport(report, 'dismissed')} disabled={loading}>Dismiss report</button>
+            </div>
+          </article>;
+        })}
+      </div>
+    </section>
+
     <div className="comment-moderation-list">
-      {comments.map((item) => <article className={item.is_pinned || item.editor_pick ? 'comment-moderation-card featured-moderation-card' : 'comment-moderation-card'} key={item.id}>
-        <div className="card-header row">
-          <div>
-            <p className="eyebrow">{item.status} · {conferenceLabel(item.comment_type)} · {contributionLabel(item.contribution_type)} · {formatDate(item.created_at)}</p>
-            <h3>{fixtureTitle(item)}</h3>
+      {comments.map((item) => {
+        const itemReports = reportsByComment.get(item.id) || [];
+        return <article className={item.is_pinned || item.editor_pick ? 'comment-moderation-card featured-moderation-card' : 'comment-moderation-card'} key={item.id}>
+          <div className="card-header row">
+            <div>
+              <p className="eyebrow">{item.status} · {conferenceLabel(item.comment_type)} · {contributionLabel(item.contribution_type)} · {formatDate(item.created_at)}</p>
+              <h3>{fixtureTitle(item)}</h3>
+            </div>
+            <span className={`status-pill status-${item.status}`}>{item.status}</span>
           </div>
-          <span className={`status-pill status-${item.status}`}>{item.status}</span>
-        </div>
-        <p className="comment-quote">“{item.comment}”</p>
-        <p className="muted"><strong>{item.manager_name}</strong>{item.club_name ? ` · ${item.club_name}` : ''}{item.badge_label ? ` · ${item.badge_label}` : ''}</p>
-        {(item.prediction_score || item.player_to_watch || item.first_goalscorer) && <div className="prediction-strip moderation-predictions">
-          {item.prediction_score && <span>🔮 {item.prediction_score}</span>}
-          {item.player_to_watch && <span>⭐ {item.player_to_watch}</span>}
-          {item.first_goalscorer && <span>⚽ {item.first_goalscorer}</span>}
-        </div>}
-        <div className="button-row">
-          <button type="button" onClick={() => setCommentStatus(item.id, 'approved')} disabled={loading || item.status === 'approved'}>Approve</button>
-          <button type="button" className="secondary" onClick={() => setCommentStatus(item.id, 'pending')} disabled={loading || item.status === 'pending'}>Pending</button>
-          <button type="button" className="danger" onClick={() => setCommentStatus(item.id, 'hidden')} disabled={loading || item.status === 'hidden'}>Hide</button>
-          <button type="button" className="secondary" onClick={() => updateComment(item.id, { is_pinned: !item.is_pinned }, item.is_pinned ? 'Headline quote removed.' : 'Set as headline quote.')}>{item.is_pinned ? 'Unpin' : 'Headline quote'}</button>
-          <button type="button" className="secondary" onClick={() => updateComment(item.id, { editor_pick: !item.editor_pick }, item.editor_pick ? 'Editor pick removed.' : 'Marked Editor pick.')}>{item.editor_pick ? 'Remove pick' : "Editor's Pick"}</button>
-          <button type="button" className="secondary" onClick={() => promptBadge(item)}>Badge</button>
-        </div>
-      </article>)}
+          <p className="comment-quote">“{item.comment}”</p>
+          <p className="muted"><strong>{item.manager_name}</strong>{item.club_name ? ` · ${item.club_name}` : ''}{item.badge_label ? ` · ${item.badge_label}` : ''}</p>
+          {itemReports.length > 0 && <p className="status">🚩 {itemReports.length} unresolved report{itemReports.length === 1 ? '' : 's'}</p>}
+          {(item.prediction_score || item.player_to_watch || item.first_goalscorer) && <div className="prediction-strip moderation-predictions">
+            {item.prediction_score && <span>🔮 {item.prediction_score}</span>}
+            {item.player_to_watch && <span>⭐ {item.player_to_watch}</span>}
+            {item.first_goalscorer && <span>⚽ {item.first_goalscorer}</span>}
+          </div>}
+          <div className="button-row">
+            {item.status !== 'visible' && <button type="button" onClick={() => moderate(item, 'visible')} disabled={loading}>Restore</button>}
+            {item.status === 'visible' && <button type="button" className="danger" onClick={() => moderate(item, 'hidden')} disabled={loading}>Hide</button>}
+            {item.status !== 'removed' && <button type="button" className="danger" onClick={() => moderate(item, 'removed')} disabled={loading}>Remove permanently</button>}
+            {item.status === 'visible' && <button type="button" className="secondary" onClick={() => updateComment(item.id, { is_pinned: !item.is_pinned }, item.is_pinned ? 'Headline quote removed.' : 'Set as headline quote.')}>{item.is_pinned ? 'Unpin' : 'Headline quote'}</button>}
+            {item.status === 'visible' && <button type="button" className="secondary" onClick={() => updateComment(item.id, { editor_pick: !item.editor_pick }, item.editor_pick ? 'Editor pick removed.' : 'Marked Editor pick.')}>{item.editor_pick ? 'Remove pick' : "Editor's Pick"}</button>}
+            {item.status === 'visible' && <button type="button" className="secondary" onClick={() => promptBadge(item)}>Badge</button>}
+          </div>
+        </article>;
+      })}
       {!comments.length && <p className="muted">No press conference contributions in this filter.</p>}
     </div>
   </div>;
