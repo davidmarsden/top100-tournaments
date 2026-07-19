@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
-function blankRow(entry) {
+function blankRow(entry, managerForfeits = 0) {
   return {
     entry_id: entry.id,
+    manager_id: entry.manager_id,
     seed: entry.seed,
     rating: entry.rating,
     pot: entry.pot,
     group_code: entry.group_code,
     team_name: entry.teams?.name || 'Unknown team',
     manager_name: entry.managers?.display_name || entry.managers?.name || 'TBC',
+    manager_forfeits: managerForfeits,
     played: 0,
     wins: 0,
     draws: 0,
@@ -46,13 +48,20 @@ function seedRows(entries) {
 export default function TablesManager({ selectedTournament }) {
   const [entries, setEntries] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [forfeits, setForfeits] = useState([]);
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
   const tournamentId = selectedTournament?.id;
 
   useEffect(() => { if (hasSupabaseConfig && supabase && tournamentId) loadData(); }, [tournamentId]);
 
-  const tables = useMemo(() => buildTables(entries, matches), [entries, matches]);
+  const groupMatchIds = useMemo(() => new Set(matches.map((match) => match.id)), [matches]);
+  const managerForfeitCounts = useMemo(() => forfeits.reduce((counts, forfeit) => {
+    if (!groupMatchIds.has(forfeit.match_id) || !forfeit.manager_id) return counts;
+    counts.set(forfeit.manager_id, (counts.get(forfeit.manager_id) || 0) + 1);
+    return counts;
+  }, new Map()), [forfeits, groupMatchIds]);
+  const tables = useMemo(() => buildTables(entries, matches, managerForfeitCounts), [entries, matches, managerForfeitCounts]);
   const playedCount = matches.filter(isCompleted).length;
   const orderedSeeds = useMemo(() => seedRows(entries), [entries]);
   const finishTables = useMemo(() => [1, 2, 3, 4].map((position) => ({ position, rows: rowsByFinish(tables, position) })), [tables]);
@@ -67,7 +76,19 @@ export default function TablesManager({ selectedTournament }) {
     ]);
     if (entriesResult.error) setStatus('Could not load entrants: ' + entriesResult.error.message);
     else if (matchesResult.error) setStatus('Could not load matches: ' + matchesResult.error.message);
-    else { setEntries(entriesResult.data || []); setMatches(matchesResult.data || []); setStatus('Tables loaded.'); }
+    else {
+      const matchRows = matchesResult.data || [];
+      let forfeitRows = [];
+      if (matchRows.length) {
+        const forfeitsResult = await supabase.from('forfeits').select('id, match_id, manager_id').in('match_id', matchRows.map((match) => match.id));
+        if (forfeitsResult.error) setStatus('Could not load forfeits: ' + forfeitsResult.error.message);
+        else forfeitRows = forfeitsResult.data || [];
+      }
+      setEntries(entriesResult.data || []);
+      setMatches(matchRows);
+      setForfeits(forfeitRows);
+      setStatus('Tables loaded.');
+    }
     setLoading(false);
   }
 
@@ -80,7 +101,7 @@ export default function TablesManager({ selectedTournament }) {
         <div>
           <p className="eyebrow">Live standings</p>
           <h3>{playedCount} / {matches.length} group fixtures played</h3>
-          <p className="muted">Tables recalculate from saved results and forfeits. Seed, rating and pot are shown so everyone can see how the draw and later qualification seedings were produced.</p>
+          <p className="muted">Tables recalculate from saved results and forfeits. “Mgr F” is the current manager’s group-stage forfeit total, regardless of which club they managed when the forfeit occurred.</p>
         </div>
         <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload tables</button>
       </div>
@@ -91,14 +112,14 @@ export default function TablesManager({ selectedTournament }) {
         <div className="standings-wrap"><table className="standings-table seed-table"><thead><tr><th>Seed</th><th>Team</th><th>Manager</th><th>Rating</th><th>Pot</th><th>Group</th></tr></thead><tbody>{orderedSeeds.map((entry) => <tr key={entry.id}><td><strong>{entry.seed || '—'}</strong></td><td><strong>{entry.teams?.name || 'Unknown team'}</strong></td><td>{entry.managers?.display_name || entry.managers?.name || 'TBC'}</td><td>{entry.rating ?? '—'}</td><td>{entry.pot ?? '—'}</td><td>{entry.group_code || '—'}</td></tr>)}</tbody></table></div>
       </section>
 
-      {tables.length > 0 && <section className="transparency-card"><div className="standings-header"><h3>Cross-group finishing rankings</h3><span>Used for knockout qualification and seeding</span></div><div className="finish-grid">{finishTables.map((table) => <section className="finish-card" key={table.position}><h4>{table.position}{table.position === 1 ? 'st' : table.position === 2 ? 'nd' : table.position === 3 ? 'rd' : 'th'} placed teams</h4><div className="standings-wrap"><table className="standings-table mini-standings"><thead><tr><th>Rank</th><th>Team</th><th>Grp</th><th>Pts</th><th>GD</th><th>GF</th><th>Seed</th></tr></thead><tbody>{table.rows.map((row, index) => <tr key={row.entry_id}><td>{index + 1}</td><td><strong>{row.team_name}</strong></td><td>{row.group_code}</td><td><strong>{row.points}</strong></td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td>{row.goals_for}</td><td>{row.seed || '—'}</td></tr>)}</tbody></table></div></section>)}</div></section>}
+      {tables.length > 0 && <section className="transparency-card"><div className="standings-header"><h3>Cross-group finishing rankings</h3><span>Used for knockout qualification and seeding</span></div><div className="finish-grid">{finishTables.map((table) => <section className="finish-card" key={table.position}><h4>{table.position}{table.position === 1 ? 'st' : table.position === 2 ? 'nd' : table.position === 3 ? 'rd' : 'th'} placed teams</h4><div className="standings-wrap"><table className="standings-table mini-standings"><thead><tr><th>Rank</th><th>Team</th><th>Grp</th><th>Pts</th><th>GD</th><th>GF</th><th>Mgr F</th><th>Seed</th></tr></thead><tbody>{table.rows.map((row, index) => <tr key={row.entry_id}><td>{index + 1}</td><td><strong>{row.team_name}</strong></td><td>{row.group_code}</td><td><strong>{row.points}</strong></td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td>{row.goals_for}</td><td className={row.manager_forfeits >= 3 ? 'forfeit-count ineligible' : row.manager_forfeits ? 'forfeit-count' : ''}>{row.manager_forfeits}</td><td>{row.seed || '—'}</td></tr>)}</tbody></table></div></section>)}</div></section>}
 
-      {tables.length === 0 ? <div className="empty-state"><h3>No group data yet.</h3><p className="muted">Approve the draw and save fixtures first, then enter results on the Fixtures tab.</p></div> : <div className="standings-grid">{tables.map((table) => <section className="standings-card" key={table.groupCode}><div className="standings-header"><h3>Group {table.groupCode}</h3><span>{table.rows.reduce((total, row) => total + row.played, 0) / 2} results</span></div><div className="standings-wrap"><table className="standings-table"><thead><tr><th>Pos</th><th>Team</th><th>Seed</th><th>Rt</th><th>Pot</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th><th>Form</th></tr></thead><tbody>{table.rows.map((row, index) => { const qualification = qualificationForIndex(index); return <tr key={row.entry_id} className={qualification.rowClass}><td className="pos-cell"><strong>{index + 1}</strong><span className={'standing-qual ' + qualification.badgeClass}>{qualification.label}</span></td><td><strong>{row.team_name}</strong><span>{row.manager_name}</span></td><td>{row.seed || '—'}</td><td>{row.rating ?? '—'}</td><td>{row.pot ?? '—'}</td><td>{row.played}</td><td>{row.wins}</td><td>{row.draws}</td><td>{row.losses}</td><td>{row.goals_for}</td><td>{row.goals_against}</td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td><strong>{row.points}</strong></td><td className="form-cell">{row.form.slice(-5).map((item, itemIndex) => <span key={itemIndex} className={'form-badge ' + item}>{formSymbol(item)}</span>)}</td></tr>; })}</tbody></table></div></section>)}</div>}
+      {tables.length === 0 ? <div className="empty-state"><h3>No group data yet.</h3><p className="muted">Approve the draw and save fixtures first, then enter results on the Fixtures tab.</p></div> : <div className="standings-grid">{tables.map((table) => <section className="standings-card" key={table.groupCode}><div className="standings-header"><h3>Group {table.groupCode}</h3><span>{table.rows.reduce((total, row) => total + row.played, 0) / 2} results</span></div><div className="standings-wrap"><table className="standings-table"><thead><tr><th>Pos</th><th>Team</th><th>Seed</th><th>Rt</th><th>Pot</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th><th>Mgr F</th><th>Form</th></tr></thead><tbody>{table.rows.map((row, index) => { const qualification = qualificationForIndex(index); return <tr key={row.entry_id} className={qualification.rowClass}><td className="pos-cell"><strong>{index + 1}</strong><span className={'standing-qual ' + qualification.badgeClass}>{qualification.label}</span></td><td><strong>{row.team_name}</strong><span>{row.manager_name}</span></td><td>{row.seed || '—'}</td><td>{row.rating ?? '—'}</td><td>{row.pot ?? '—'}</td><td>{row.played}</td><td>{row.wins}</td><td>{row.draws}</td><td>{row.losses}</td><td>{row.goals_for}</td><td>{row.goals_against}</td><td>{row.goal_difference > 0 ? '+' + row.goal_difference : row.goal_difference}</td><td><strong>{row.points}</strong></td><td className={row.manager_forfeits >= 3 ? 'forfeit-count ineligible' : row.manager_forfeits ? 'forfeit-count' : ''}>{row.manager_forfeits}</td><td className="form-cell">{row.form.slice(-5).map((item, itemIndex) => <span key={itemIndex} className={'form-badge ' + item}>{formSymbol(item)}</span>)}</td></tr>; })}</tbody></table></div></section>)}</div>}
     </div>
   );
 }
 
-function buildTables(entries, matches) {
+function buildTables(entries, matches, managerForfeitCounts) {
   const entriesByGroup = entries.reduce((groups, entry) => {
     const groupCode = entry.group_code || 'Ungrouped';
     if (!groups[groupCode]) groups[groupCode] = [];
@@ -106,7 +127,7 @@ function buildTables(entries, matches) {
     return groups;
   }, {});
   return Object.entries(entriesByGroup).sort(([a], [b]) => a.localeCompare(b)).map(([groupCode, groupEntries]) => {
-    const rowsById = new Map(groupEntries.map((entry) => [entry.id, blankRow(entry)]));
+    const rowsById = new Map(groupEntries.map((entry) => [entry.id, blankRow(entry, managerForfeitCounts.get(entry.manager_id) || 0)]));
     matches.filter((match) => (match.groups?.code || groupCode) === groupCode).filter(isCompleted).forEach((match) => {
       const home = rowsById.get(match.home_entry_id);
       const away = rowsById.get(match.away_entry_id);
