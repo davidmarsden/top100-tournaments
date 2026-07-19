@@ -2,6 +2,33 @@
 -- Contributions appear immediately; signed-in users may report them; admins may hide,
 -- restore or permanently remove them without reports automatically changing visibility.
 
+-- Bring older or partially migrated match_comments tables up to the schema expected below.
+alter table public.match_comments
+  add column if not exists tournament_id bigint references public.tournaments(id) on delete cascade,
+  add column if not exists comment_type text not null default 'pre_match',
+  add column if not exists contribution_type text not null default 'statement',
+  add column if not exists prediction_score text,
+  add column if not exists player_to_watch text,
+  add column if not exists first_goalscorer text,
+  add column if not exists is_pinned boolean not null default false,
+  add column if not exists editor_pick boolean not null default false,
+  add column if not exists badge_label text,
+  add column if not exists reactions jsonb not null default '{"like":0,"laugh":0,"eyes":0,"fire":0}'::jsonb,
+  add column if not exists moderated_at timestamptz,
+  add column if not exists moderated_by uuid references auth.users(id) on delete set null;
+
+alter table public.match_comments
+  drop constraint if exists match_comments_comment_type_check;
+alter table public.match_comments
+  add constraint match_comments_comment_type_check
+  check (comment_type in ('pre_match', 'post_match', 'admin_preview', 'admin_report'));
+
+alter table public.match_comments
+  drop constraint if exists match_comments_contribution_type_check;
+alter table public.match_comments
+  add constraint match_comments_contribution_type_check
+  check (contribution_type in ('statement', 'question', 'comment'));
+
 alter table public.match_comments
   drop constraint if exists match_comments_status_check;
 
