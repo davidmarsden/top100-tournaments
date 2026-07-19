@@ -132,9 +132,9 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
     <div className="manager-forfeit-register">
       <div className="fixtures-toolbar">
         <div>
-          <p className="eyebrow">Manager discipline</p>
-          <h3>Manager forfeit register</h3>
-          <p className="muted">Forfeits stay with the responsible manager. The club keeps the forfeited match result, while a replacement manager starts with their own disciplinary record.</p>
+          <p className="eyebrow">Fair Play</p>
+          <h3>Manager discipline</h3>
+          <p className="muted">Forfeits stay with the responsible manager. The club keeps the forfeited match result, while a replacement manager starts with their own disciplinary record. Any manager who forfeits a match is ineligible for the end-of-season prize draw.</p>
         </div>
         {admin && <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload register</button>}
       </div>
