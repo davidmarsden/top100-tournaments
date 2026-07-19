@@ -45,16 +45,27 @@ export default function ResultSubmissionsPage() {
   }
 
   async function finalise(row, usePublishedScore = false) {
-    const value = usePublishedScore
-      ? { home: row.matches?.home_score ?? row.submitted_home_score, away: row.matches?.away_score ?? row.submitted_away_score }
-      : scoreFor(row, scores);
+    const published = {
+      home: row.matches?.home_score ?? row.submitted_home_score,
+      away: row.matches?.away_score ?? row.submitted_away_score,
+    };
+    const value = usePublishedScore ? published : scoreFor(row, scores);
     const home = Number(value.home);
     const away = Number(value.away);
     if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0) return setStatus('Enter a valid home and away score.');
 
+    const publishedHome = Number(published.home);
+    const publishedAway = Number(published.away);
+    if (!usePublishedScore && home === publishedHome && away === publishedAway) {
+      return setStatus('Change the home or away score before choosing “Correct and finalise”. To approve the score as shown, choose “Finalise published score”.');
+    }
+
     const homeTeam = row.matches?.home_placeholder || 'Home';
     const awayTeam = row.matches?.away_placeholder || 'Away';
-    if (!window.confirm(`Finalise ${homeTeam} ${home}–${away} ${awayTeam}?`)) return;
+    const confirmation = usePublishedScore
+      ? `Finalise the published result: ${homeTeam} ${home}–${away} ${awayTeam}?`
+      : `Correct the result from ${homeTeam} ${publishedHome}–${publishedAway} ${awayTeam} to ${homeTeam} ${home}–${away} ${awayTeam}, then finalise it?`;
+    if (!window.confirm(confirmation)) return;
 
     setLoadingId(row.id);
     const { error } = await supabase.rpc('resolve_manager_result', {
@@ -144,6 +155,7 @@ export default function ResultSubmissionsPage() {
               {!isOpen && <label>Retrospective ruling<select value={ruling} onChange={(event) => setRulings((current) => ({ ...current, [row.id]: event.target.value }))}><option value="played">Corrected result</option><option value="forfeit">Forfeit</option><option value="voided">Void match</option></select></label>}
               <label>{isOpen ? 'Final-check note / rejection reason' : 'Reason for amendment'}<input value={notes[row.id] || ''} onChange={(event) => setNotes((current) => ({ ...current, [row.id]: event.target.value }))} placeholder={isOpen ? 'Optional for finalising; required for rejection' : 'Required — e.g. ineligible player'} /></label>
             </div>
+            {isOpen && <p className="muted">To correct the result, edit the official score fields above before selecting “Correct and finalise”.</p>}
           </div>
 
           {isOpen ? <div className="button-row"><button type="button" onClick={() => finalise(row, true)} disabled={disabled}>Finalise published score</button><button type="button" className="secondary" onClick={() => finalise(row, false)} disabled={disabled}>Correct and finalise</button><button type="button" className="danger" onClick={() => reject(row)} disabled={disabled}>Reject submission</button></div> : <div className="button-row"><button type="button" className="secondary" onClick={() => amend(row)} disabled={disabled}>Amend official result</button></div>}
