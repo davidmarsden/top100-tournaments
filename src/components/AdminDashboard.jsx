@@ -4,6 +4,7 @@ import EntrantsManager from './EntrantsManager.jsx';
 import FixturesManager from './FixturesManager.jsx';
 import GroupsApproval from './GroupsApproval.jsx';
 import KnockoutManager from './KnockoutManager.jsx';
+import ManagerForfeitRegister from './ManagerForfeitRegister.jsx';
 import ProgressBar, { isStepDone } from './ProgressBar.jsx';
 import PublicPageManager from './PublicPageManager.jsx';
 import RegistrationManager from './RegistrationManager.jsx';
@@ -16,7 +17,7 @@ import { publicTournamentPath } from '../lib/tournamentSlugs';
 import { deleteTournamentsOnServer } from '../lib/deleteTournaments.js';
 import { supabase } from '../lib/supabaseClient';
 
-const modules = ['Overview', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Knockout', 'Challonge', 'Public Page'];
+const modules = ['Overview', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Challonge', 'Public Page'];
 const workflowSteps = ['Tournament', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Publish', 'Archive'];
 
 export default function AdminDashboard() {
@@ -46,7 +47,7 @@ function WorkflowCard({ selectedTournament, preview, progressStats }) {
 }
 
 function moduleHeading(activeModule) {
-  const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: 'Results archive and editing', Tables: 'Live group tables', Knockout: 'Cup and Shield draw', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
+  const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: 'Results archive and editing', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: 'Cup and Shield draw', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
   return headings[activeModule] || activeModule;
 }
 
@@ -76,6 +77,7 @@ function ModuleContent({ activeModule }) {
   if (activeModule === 'Result Approvals') return <div className="overview-actions"><p>Manager-submitted scores are reviewed in the dedicated approval queue.</p><div className="button-row"><a className="button" href="/admin/result-submissions">Open result approval queue</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div>;
   if (activeModule === 'Results') return <><ResultsTestControls selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} /><FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted onDataChanged={refreshTournamentData} /></>;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
+  if (activeModule === 'Forfeits') return <ManagerForfeitRegister selectedTournament={selectedTournament} admin />;
   if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />;
   if (activeModule === 'Challonge') return <ChallongeImportManager onTournamentUpdated={refreshTournamentData} />;
   if (activeModule === 'Public Page') return <PublicPageManager selectedTournament={selectedTournament} onTournamentUpdated={refreshTournamentData} />;
