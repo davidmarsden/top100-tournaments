@@ -12,6 +12,26 @@ function scoreFor(row, scores) {
   };
 }
 
+function rulingFor(row, rulings) {
+  if (rulings[row.id]) return rulings[row.id];
+  if (row.matches?.status === 'voided') return 'voided';
+  if (row.matches?.status === 'forfeit') {
+    const home = row.matches?.home_score ?? row.resolved_home_score;
+    const away = row.matches?.away_score ?? row.resolved_away_score;
+    return Number(home) > Number(away) ? 'home_forfeit_win' : 'away_forfeit_win';
+  }
+  return 'played';
+}
+
+function rulingLabel(ruling) {
+  switch (ruling) {
+    case 'home_forfeit_win': return 'Home win by forfeit';
+    case 'away_forfeit_win': return 'Away win by forfeit';
+    case 'voided': return 'Void match';
+    default: return 'Played normally';
+  }
+}
+
 const OPEN_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
 
 export default function ResultSubmissionsPage() {
@@ -44,60 +64,79 @@ export default function ResultSubmissionsPage() {
     }
   }
 
-  async function finalise(row, usePublishedScore = false) {
-    const published = {
-      home: row.matches?.home_score ?? row.submitted_home_score,
-      away: row.matches?.away_score ?? row.submitted_away_score,
-    };
-    const value = usePublishedScore ? published : scoreFor(row, scores);
-    const home = Number(value.home);
-    const away = Number(value.away);
-    if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0) return setStatus('Enter a valid home and away score.');
+  async function approve(row) {
+    const ruling = rulingFor(row, rulings);
+    const value = scoreFor(row, scores);
+    const home = ruling === 'voided' ? null : Number(value.home);
+    const away = ruling === 'voided' ? null : Number(value.away);
 
-    const publishedHome = Number(published.home);
-    const publishedAway = Number(published.away);
-    if (!usePublishedScore && home === publishedHome && away === publishedAway) {
-      return setStatus('Change the home or away score before choosing “Correct and finalise”. To approve the score as shown, choose “Finalise published score”.');
+    if (ruling !== 'voided' && (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0)) {
+      return setStatus('Enter a valid home and away score.');
+    }
+    if (ruling === 'home_forfeit_win' && home <= away) {
+      return setStatus('A home win by forfeit must show the home team as the winner.');
+    }
+    if (ruling === 'away_forfeit_win' && away <= home) {
+      return setStatus('An away win by forfeit must show the away team as the winner.');
     }
 
     const homeTeam = row.matches?.home_placeholder || 'Home';
     const awayTeam = row.matches?.away_placeholder || 'Away';
-    const confirmation = usePublishedScore
-      ? `Finalise the published result: ${homeTeam} ${home}–${away} ${awayTeam}?`
-      : `Correct the result from ${homeTeam} ${publishedHome}–${publishedAway} ${awayTeam} to ${homeTeam} ${home}–${away} ${awayTeam}, then finalise it?`;
+    const scoreLine = ruling === 'voided' ? `${homeTeam} vs ${awayTeam}` : `${homeTeam} ${home}–${away} ${awayTeam}`;
+    const confirmation = `Approve the official result as:\n\n${scoreLine}\nRuling: ${rulingLabel(ruling)}?`;
     if (!window.confirm(confirmation)) return;
 
+    const defaultNote = ruling === 'played'
+      ? 'Final check completed.'
+      : ruling === 'voided'
+        ? 'Match voided during final check.'
+        : `${rulingLabel(ruling)} confirmed during final check.`;
+    const note = (notes[row.id] || '').trim() || defaultNote;
+
     setLoadingId(row.id);
-    const { error } = await supabase.rpc('resolve_manager_result', {
-      target_submission_id: row.id,
-      target_home_score: home,
-      target_away_score: away,
-      note: notes[row.id] || (usePublishedScore ? 'Final check completed.' : 'Corrected and finalised by administrator.'),
-    });
+    let error;
+    if (ruling === 'played') {
+      ({ error } = await supabase.rpc('resolve_manager_result', {
+        target_submission_id: row.id,
+        target_home_score: home,
+        target_away_score: away,
+        note,
+      }));
+    } else {
+      ({ error } = await supabase.rpc('admin_amend_match_result', {
+        target_match_id: row.match_id,
+        target_home_score: home,
+        target_away_score: away,
+        target_status: ruling === 'voided' ? 'voided' : 'forfeit',
+        note,
+      }));
+    }
     if (error) setStatus('Final check failed: ' + error.message);
     else {
-      setStatus('Result finalised. It remains amendable by an administrator if a later eligibility or disciplinary issue is found.');
+      setStatus(`Official result approved as ${rulingLabel(ruling).toLowerCase()}. It remains amendable by an administrator.`);
       await loadRows();
     }
     setLoadingId(null);
   }
 
   async function amend(row) {
-    const ruling = rulings[row.id] || 'played';
+    const ruling = rulingFor(row, rulings);
     const value = scoreFor(row, scores);
     const reason = (notes[row.id] || '').trim();
     if (!reason) return setStatus('Add a reason for the retrospective amendment.');
     const home = ruling === 'voided' ? null : Number(value.home);
     const away = ruling === 'voided' ? null : Number(value.away);
     if (ruling !== 'voided' && (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0)) return setStatus('Enter valid scores for the amended result.');
-    if (!window.confirm(`Apply this ${ruling} ruling to ${row.matches?.home_placeholder} vs ${row.matches?.away_placeholder}?`)) return;
+    if (ruling === 'home_forfeit_win' && home <= away) return setStatus('A home win by forfeit must show the home team as the winner.');
+    if (ruling === 'away_forfeit_win' && away <= home) return setStatus('An away win by forfeit must show the away team as the winner.');
+    if (!window.confirm(`Apply “${rulingLabel(ruling)}” to ${row.matches?.home_placeholder} vs ${row.matches?.away_placeholder}?`)) return;
 
     setLoadingId(row.id);
     const { error } = await supabase.rpc('admin_amend_match_result', {
       target_match_id: row.match_id,
       target_home_score: home,
       target_away_score: away,
-      target_status: ruling,
+      target_status: ruling === 'voided' ? 'voided' : ruling === 'played' ? 'played' : 'forfeit',
       note: reason,
     });
     if (error) setStatus('Amendment failed: ' + error.message);
@@ -135,7 +174,7 @@ export default function ResultSubmissionsPage() {
         const value = scoreFor(row, scores);
         const isOpen = OPEN_STATUSES.includes(row.status);
         const disabled = loadingId === row.id;
-        const ruling = rulings[row.id] || 'played';
+        const ruling = rulingFor(row, rulings);
         const displayedHomeScore = row.matches?.home_score ?? row.resolved_home_score ?? row.submitted_home_score;
         const displayedAwayScore = row.matches?.away_score ?? row.resolved_away_score ?? row.submitted_away_score;
 
@@ -150,15 +189,15 @@ export default function ResultSubmissionsPage() {
             {row.resolution_note && <span><strong>Admin note:</strong> {row.resolution_note}</span>}
 
             <div className="mini-grid">
-              <label>Official home score<input type="number" min="0" disabled={!isOpen && ruling === 'voided'} value={value.home ?? ''} onChange={(event) => setScores((current) => ({ ...current, [row.id]: { ...value, home: event.target.value } }))} /></label>
-              <label>Official away score<input type="number" min="0" disabled={!isOpen && ruling === 'voided'} value={value.away ?? ''} onChange={(event) => setScores((current) => ({ ...current, [row.id]: { ...value, away: event.target.value } }))} /></label>
-              {!isOpen && <label>Retrospective ruling<select value={ruling} onChange={(event) => setRulings((current) => ({ ...current, [row.id]: event.target.value }))}><option value="played">Corrected result</option><option value="forfeit">Forfeit</option><option value="voided">Void match</option></select></label>}
-              <label>{isOpen ? 'Final-check note / rejection reason' : 'Reason for amendment'}<input value={notes[row.id] || ''} onChange={(event) => setNotes((current) => ({ ...current, [row.id]: event.target.value }))} placeholder={isOpen ? 'Optional for finalising; required for rejection' : 'Required — e.g. ineligible player'} /></label>
+              <label>Official home score<input type="number" min="0" disabled={ruling === 'voided'} value={ruling === 'voided' ? '' : value.home ?? ''} onChange={(event) => setScores((current) => ({ ...current, [row.id]: { ...value, home: event.target.value } }))} /></label>
+              <label>Official away score<input type="number" min="0" disabled={ruling === 'voided'} value={ruling === 'voided' ? '' : value.away ?? ''} onChange={(event) => setScores((current) => ({ ...current, [row.id]: { ...value, away: event.target.value } }))} /></label>
+              <label>Official ruling<select value={ruling} onChange={(event) => setRulings((current) => ({ ...current, [row.id]: event.target.value }))}><option value="played">Played normally</option><option value="home_forfeit_win">Home win by forfeit</option><option value="away_forfeit_win">Away win by forfeit</option><option value="voided">Void match</option></select></label>
+              <label>{isOpen ? 'Final-check note / rejection reason' : 'Reason for amendment'}<input value={notes[row.id] || ''} onChange={(event) => setNotes((current) => ({ ...current, [row.id]: event.target.value }))} placeholder={isOpen ? 'Optional for approval; required for rejection' : 'Required — e.g. ineligible player'} /></label>
             </div>
-            {isOpen && <p className="muted">To correct the result, edit the official score fields above before selecting “Correct and finalise”.</p>}
+            {isOpen && <p className="muted">Check both the score and the ruling. A forfeit can be recorded even when the submitted score is already correct.</p>}
           </div>
 
-          {isOpen ? <div className="button-row"><button type="button" onClick={() => finalise(row, true)} disabled={disabled}>Finalise published score</button><button type="button" className="secondary" onClick={() => finalise(row, false)} disabled={disabled}>Correct and finalise</button><button type="button" className="danger" onClick={() => reject(row)} disabled={disabled}>Reject submission</button></div> : <div className="button-row"><button type="button" className="secondary" onClick={() => amend(row)} disabled={disabled}>Amend official result</button></div>}
+          {isOpen ? <div className="button-row"><button type="button" onClick={() => approve(row)} disabled={disabled}>Approve official result</button><button type="button" className="danger" onClick={() => reject(row)} disabled={disabled}>Reject submission</button></div> : <div className="button-row"><button type="button" className="secondary" onClick={() => amend(row)} disabled={disabled}>Amend official result</button></div>}
         </article>;
       })}</div>
     </section>
