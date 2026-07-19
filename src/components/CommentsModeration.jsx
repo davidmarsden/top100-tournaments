@@ -40,8 +40,12 @@ export default function CommentsModeration({ selectedTournament }) {
 
   useEffect(() => {
     if (selectedTournament?.id) loadEverything();
-  }, [selectedTournament?.id, statusFilter]);
+  }, [selectedTournament?.id]);
 
+  const filteredComments = useMemo(
+    () => statusFilter === 'all' ? comments : comments.filter((comment) => comment.status === statusFilter),
+    [comments, statusFilter],
+  );
   const unresolvedReports = useMemo(() => reports.filter((report) => report.status === 'unresolved'), [reports]);
   const reportsByComment = useMemo(() => {
     const map = new Map();
@@ -58,26 +62,35 @@ export default function CommentsModeration({ selectedTournament }) {
     setLoading(true);
     setStatus('Loading press room moderation...');
 
-    let commentsQuery = supabase
+    const commentsResult = await supabase
       .from('match_comments')
       .select('id, manager_name, club_name, comment, comment_type, contribution_type, prediction_score, player_to_watch, first_goalscorer, badge_label, is_pinned, editor_pick, reactions, status, created_at, matches(id, round, fixture_date, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name)))')
       .eq('tournament_id', selectedTournament.id)
       .order('created_at', { ascending: false });
-    if (statusFilter !== 'all') commentsQuery = commentsQuery.eq('status', statusFilter);
 
-    const commentsResult = await commentsQuery;
-    const reportsResult = await supabase
-      .from('content_reports')
-      .select('id, content_type, content_id, reporter_id, reason, status, created_at, resolved_at, resolution_note')
-      .eq('content_type', 'match_comment')
-      .order('created_at', { ascending: false });
+    if (commentsResult.error) {
+      setLoading(false);
+      return setStatus('Could not load press conference contributions: ' + commentsResult.error.message);
+    }
+
+    const tournamentComments = (commentsResult.data || []).map(normaliseComment);
+    const commentIds = tournamentComments.map((comment) => comment.id);
+    let reportsResult = { data: [], error: null };
+
+    if (commentIds.length > 0) {
+      reportsResult = await supabase
+        .from('content_reports')
+        .select('id, content_type, content_id, reporter_id, reason, status, created_at, resolved_at, resolution_note')
+        .eq('content_type', 'match_comment')
+        .in('content_id', commentIds)
+        .order('created_at', { ascending: false });
+    }
 
     setLoading(false);
-    if (commentsResult.error) return setStatus('Could not load press conference contributions: ' + commentsResult.error.message);
     if (reportsResult.error) return setStatus('Could not load content reports: ' + reportsResult.error.message);
-    setComments((commentsResult.data || []).map(normaliseComment));
+    setComments(tournamentComments);
     setReports(reportsResult.data || []);
-    setStatus(`${commentsResult.data?.length || 0} contributions loaded · ${reportsResult.data?.filter((item) => item.status === 'unresolved').length || 0} unresolved reports.`);
+    setStatus(`${tournamentComments.length} contributions loaded · ${reportsResult.data?.filter((item) => item.status === 'unresolved').length || 0} unresolved reports.`);
   }
 
   async function updateComment(id, patch, message) {
@@ -85,11 +98,12 @@ export default function CommentsModeration({ selectedTournament }) {
     const { error } = await supabase.from('match_comments').update(patch).eq('id', id);
     setLoading(false);
     if (error) return setStatus('Update failed: ' + error.message);
-    setComments((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row).filter((row) => statusFilter === 'all' || row.status === statusFilter));
+    setComments((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
     setStatus(message || 'Contribution updated.');
   }
 
   async function moderate(item, nextStatus) {
+    if (!item?.id) return setStatus('Could not moderate this report because its contribution was not loaded. Refresh the moderation queue and try again.');
     const action = nextStatus === 'visible' ? 'restore' : nextStatus === 'hidden' ? 'hide' : 'permanently remove';
     const note = nextStatus === 'visible' ? null : window.prompt(`Reason to ${action} this contribution?`, '');
     if (nextStatus !== 'visible' && note === null) return;
@@ -147,15 +161,16 @@ export default function CommentsModeration({ selectedTournament }) {
       <div className="comment-moderation-list">
         {unresolvedReports.map((report) => {
           const item = comments.find((comment) => comment.id === report.content_id);
+          if (!item) return null;
           return <article className="comment-moderation-card" key={report.id}>
             <p className="eyebrow">Reported {formatDate(report.created_at)} · {report.content_type}</p>
-            <h3>{item ? fixtureTitle(item) : `Contribution #${report.content_id}`}</h3>
-            {item && <p className="comment-quote">“{item.comment}”</p>}
+            <h3>{fixtureTitle(item)}</h3>
+            <p className="comment-quote">“{item.comment}”</p>
             <p><strong>Reason:</strong> {report.reason}</p>
             <div className="button-row">
-              {item?.status === 'visible' && <button type="button" className="danger" onClick={() => moderate(item, 'hidden')} disabled={loading}>Hide content</button>}
-              {item?.status === 'hidden' && <button type="button" onClick={() => moderate(item, 'visible')} disabled={loading}>Restore content</button>}
-              {item?.status !== 'removed' && <button type="button" className="danger" onClick={() => moderate(item, 'removed')} disabled={loading}>Remove permanently</button>}
+              {item.status === 'visible' && <button type="button" className="danger" onClick={() => moderate(item, 'hidden')} disabled={loading}>Hide content</button>}
+              {item.status === 'hidden' && <button type="button" onClick={() => moderate(item, 'visible')} disabled={loading}>Restore content</button>}
+              {item.status !== 'removed' && <button type="button" className="danger" onClick={() => moderate(item, 'removed')} disabled={loading}>Remove permanently</button>}
               <button type="button" className="secondary" onClick={() => resolveReport(report, 'resolved')} disabled={loading}>Resolve report</button>
               <button type="button" className="secondary" onClick={() => resolveReport(report, 'dismissed')} disabled={loading}>Dismiss report</button>
             </div>
@@ -165,7 +180,7 @@ export default function CommentsModeration({ selectedTournament }) {
     </section>
 
     <div className="comment-moderation-list">
-      {comments.map((item) => {
+      {filteredComments.map((item) => {
         const itemReports = reportsByComment.get(item.id) || [];
         return <article className={item.is_pinned || item.editor_pick ? 'comment-moderation-card featured-moderation-card' : 'comment-moderation-card'} key={item.id}>
           <div className="card-header row">
@@ -193,7 +208,7 @@ export default function CommentsModeration({ selectedTournament }) {
           </div>
         </article>;
       })}
-      {!comments.length && <p className="muted">No press conference contributions in this filter.</p>}
+      {!filteredComments.length && <p className="muted">No press conference contributions in this filter.</p>}
     </div>
   </div>;
 }
