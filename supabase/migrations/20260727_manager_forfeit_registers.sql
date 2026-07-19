@@ -134,7 +134,8 @@ where m.status = 'forfeit'
 on conflict (match_id) where match_id is not null
   do update set
     forfeiting_entry_id = excluded.forfeiting_entry_id,
-    manager_id = excluded.manager_id;
+    manager_id = excluded.manager_id,
+    source = 'match_ruling';
 
 comment on column public.forfeits.manager_id is
   'Manager responsible at the time of the forfeit. This is a snapshot and does not change when a club appoints a replacement manager.';
