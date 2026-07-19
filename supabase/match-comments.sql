@@ -1,11 +1,13 @@
-create table if not exists match_comments (
+-- Press room base schema. Contributions publish immediately and are moderated by report.
+
+create table if not exists public.match_comments (
   id bigserial primary key,
-  match_id bigint not null references matches(id) on delete cascade,
-  tournament_id bigint references tournaments(id) on delete cascade,
+  match_id bigint not null references public.matches(id) on delete cascade,
+  tournament_id bigint references public.tournaments(id) on delete cascade,
   manager_name text not null,
   club_name text,
   comment text not null,
-  status text not null default 'pending' check (status in ('pending', 'approved', 'hidden')),
+  status text not null default 'visible' check (status in ('visible', 'hidden', 'removed')),
   comment_type text not null default 'pre_match' check (comment_type in ('pre_match', 'post_match', 'admin_preview', 'admin_report')),
   contribution_type text not null default 'statement' check (contribution_type in ('statement', 'question', 'comment')),
   prediction_score text,
@@ -20,38 +22,60 @@ create table if not exists match_comments (
   moderated_by uuid references auth.users(id)
 );
 
-alter table match_comments add column if not exists comment_type text not null default 'pre_match' check (comment_type in ('pre_match', 'post_match', 'admin_preview', 'admin_report'));
-alter table match_comments add column if not exists contribution_type text not null default 'statement';
-alter table match_comments drop constraint if exists match_comments_contribution_type_check;
-alter table match_comments add constraint match_comments_contribution_type_check check (contribution_type in ('statement', 'question', 'comment'));
-alter table match_comments add column if not exists prediction_score text;
-alter table match_comments add column if not exists player_to_watch text;
-alter table match_comments add column if not exists first_goalscorer text;
-alter table match_comments add column if not exists is_pinned boolean not null default false;
-alter table match_comments add column if not exists editor_pick boolean not null default false;
-alter table match_comments add column if not exists badge_label text;
-alter table match_comments add column if not exists reactions jsonb not null default '{"like":0,"laugh":0,"eyes":0,"fire":0}'::jsonb;
+alter table public.match_comments add column if not exists comment_type text not null default 'pre_match';
+alter table public.match_comments add column if not exists contribution_type text not null default 'statement';
+alter table public.match_comments add column if not exists prediction_score text;
+alter table public.match_comments add column if not exists player_to_watch text;
+alter table public.match_comments add column if not exists first_goalscorer text;
+alter table public.match_comments add column if not exists is_pinned boolean not null default false;
+alter table public.match_comments add column if not exists editor_pick boolean not null default false;
+alter table public.match_comments add column if not exists badge_label text;
+alter table public.match_comments add column if not exists reactions jsonb not null default '{"like":0,"laugh":0,"eyes":0,"fire":0}'::jsonb;
 
-create index if not exists match_comments_match_id_idx on match_comments(match_id);
-create index if not exists match_comments_tournament_status_idx on match_comments(tournament_id, status, created_at desc);
-create index if not exists match_comments_match_pinned_idx on match_comments(match_id, is_pinned desc, editor_pick desc, created_at asc);
+alter table public.match_comments drop constraint if exists match_comments_status_check;
+update public.match_comments set status = case when status in ('pending', 'approved') then 'visible' when status = 'hidden' then 'hidden' else 'visible' end;
+alter table public.match_comments alter column status set default 'visible';
+alter table public.match_comments add constraint match_comments_status_check check (status in ('visible', 'hidden', 'removed'));
 
-alter table match_comments enable row level security;
+alter table public.match_comments drop constraint if exists match_comments_comment_type_check;
+alter table public.match_comments add constraint match_comments_comment_type_check check (comment_type in ('pre_match', 'post_match', 'admin_preview', 'admin_report'));
+alter table public.match_comments drop constraint if exists match_comments_contribution_type_check;
+alter table public.match_comments add constraint match_comments_contribution_type_check check (contribution_type in ('statement', 'question', 'comment'));
 
-drop policy if exists "Public read approved match comments" on match_comments;
-create policy "Public read approved match comments"
-  on match_comments
-  for select
-  to anon, authenticated
-  using (status = 'approved');
+create index if not exists match_comments_match_id_idx on public.match_comments(match_id);
+create index if not exists match_comments_tournament_status_idx on public.match_comments(tournament_id, status, created_at desc);
+create index if not exists match_comments_match_pinned_idx on public.match_comments(match_id, is_pinned desc, editor_pick desc, created_at asc);
 
-drop policy if exists "Public submit pending match comments" on match_comments;
-create policy "Public submit pending match comments"
-  on match_comments
-  for insert
-  to anon, authenticated
+create table if not exists public.content_reports (
+  id bigint generated by default as identity primary key,
+  content_type text not null check (content_type in ('match_comment')),
+  content_id bigint not null,
+  reporter_id uuid not null references auth.users(id) on delete cascade,
+  reason text not null check (length(trim(reason)) between 3 and 500),
+  status text not null default 'unresolved' check (status in ('unresolved', 'resolved', 'dismissed')),
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz,
+  resolved_by uuid references auth.users(id) on delete set null,
+  resolution_note text,
+  unique (content_type, content_id, reporter_id)
+);
+
+create index if not exists content_reports_status_created_idx on public.content_reports(status, created_at desc);
+create index if not exists content_reports_content_idx on public.content_reports(content_type, content_id);
+
+alter table public.match_comments enable row level security;
+alter table public.content_reports enable row level security;
+
+drop policy if exists "Public read approved match comments" on public.match_comments;
+drop policy if exists "Public read visible match comments" on public.match_comments;
+create policy "Public read visible match comments" on public.match_comments for select to anon, authenticated using (status = 'visible');
+
+drop policy if exists "Public submit pending match comments" on public.match_comments;
+drop policy if exists "Public publish visible match comments" on public.match_comments;
+create policy "Public publish visible match comments"
+  on public.match_comments for insert to anon, authenticated
   with check (
-    status = 'pending'
+    status = 'visible'
     and coalesce(is_pinned, false) = false
     and coalesce(editor_pick, false) = false
     and comment_type in ('pre_match', 'post_match')
@@ -60,36 +84,80 @@ create policy "Public submit pending match comments"
     and length(trim(comment)) between 3 and 500
   );
 
-drop policy if exists "Admins manage match comments" on match_comments;
-create policy "Admins manage match comments"
-  on match_comments
-  for all
-  to authenticated
-  using (is_admin())
-  with check (is_admin());
+drop policy if exists "Admins manage match comments" on public.match_comments;
+create policy "Admins manage match comments" on public.match_comments for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
--- Lightweight public reaction RPC. This only increments allowed counters on approved comments.
-create or replace function react_to_match_comment(comment_id bigint, reaction_key text)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
+drop policy if exists "Signed-in users create reports" on public.content_reports;
+create policy "Signed-in users create reports" on public.content_reports for insert to authenticated with check (reporter_id = auth.uid() and status = 'unresolved');
+drop policy if exists "Users read own reports" on public.content_reports;
+create policy "Users read own reports" on public.content_reports for select to authenticated using (reporter_id = auth.uid() or public.is_admin());
+drop policy if exists "Admins manage reports" on public.content_reports;
+create policy "Admins manage reports" on public.content_reports for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+create or replace function public.prevent_repeated_match_comment_spam()
+returns trigger language plpgsql set search_path = public as $$
 begin
-  if reaction_key not in ('like', 'laugh', 'eyes', 'fire') then
-    raise exception 'Invalid reaction';
-  end if;
-
-  update match_comments
-  set reactions = jsonb_set(
-    coalesce(reactions, '{}'::jsonb),
-    array[reaction_key],
-    to_jsonb(coalesce((reactions ->> reaction_key)::int, 0) + 1),
-    true
-  )
-  where id = comment_id
-    and status = 'approved';
+  if exists (
+    select 1 from public.match_comments existing
+    where existing.match_id = new.match_id
+      and lower(trim(existing.manager_name)) = lower(trim(new.manager_name))
+      and lower(trim(existing.comment)) = lower(trim(new.comment))
+      and existing.created_at > now() - interval '10 minutes'
+      and existing.status <> 'removed'
+  ) then raise exception 'That contribution was already posted recently.'; end if;
+  return new;
 end;
 $$;
 
-grant execute on function react_to_match_comment(bigint, text) to anon, authenticated;
+drop trigger if exists prevent_repeated_match_comment_spam_trigger on public.match_comments;
+create trigger prevent_repeated_match_comment_spam_trigger before insert on public.match_comments for each row execute function public.prevent_repeated_match_comment_spam();
+
+create or replace function public.report_match_comment(target_comment_id bigint, report_reason text)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare report_id bigint;
+begin
+  if auth.uid() is null then raise exception 'Sign in to report content.'; end if;
+  if length(trim(coalesce(report_reason, ''))) not between 3 and 500 then raise exception 'Give a brief reason for the report.'; end if;
+  if not exists (select 1 from public.match_comments where id = target_comment_id and status <> 'removed') then raise exception 'Content not found.'; end if;
+  insert into public.content_reports(content_type, content_id, reporter_id, reason)
+  values ('match_comment', target_comment_id, auth.uid(), trim(report_reason)) returning id into report_id;
+  return report_id;
+exception when unique_violation then raise exception 'You have already reported this item.';
+end;
+$$;
+
+grant execute on function public.report_match_comment(bigint, text) to authenticated;
+
+create or replace function public.moderate_match_comment(target_comment_id bigint, target_status text, moderation_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'Admin access required'; end if;
+  if target_status not in ('visible', 'hidden', 'removed') then raise exception 'Invalid moderation state'; end if;
+  update public.match_comments
+  set status = target_status, moderated_at = now(), moderated_by = auth.uid(),
+      is_pinned = case when target_status = 'visible' then is_pinned else false end,
+      editor_pick = case when target_status = 'visible' then editor_pick else false end
+  where id = target_comment_id;
+  if not found then raise exception 'Contribution not found'; end if;
+  if target_status <> 'visible' then
+    update public.content_reports
+    set status = 'resolved', resolved_at = now(), resolved_by = auth.uid(),
+        resolution_note = coalesce(nullif(trim(moderation_note), ''), 'Content moderated by administrator.')
+    where content_type = 'match_comment' and content_id = target_comment_id and status = 'unresolved';
+  end if;
+end;
+$$;
+
+grant execute on function public.moderate_match_comment(bigint, text, text) to authenticated;
+
+create or replace function public.react_to_match_comment(comment_id bigint, reaction_key text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if reaction_key not in ('like', 'laugh', 'eyes', 'fire') then raise exception 'Invalid reaction'; end if;
+  update public.match_comments
+  set reactions = jsonb_set(coalesce(reactions, '{}'::jsonb), array[reaction_key], to_jsonb(coalesce((reactions ->> reaction_key)::int, 0) + 1), true)
+  where id = comment_id and status = 'visible';
+end;
+$$;
+
+grant execute on function public.react_to_match_comment(bigint, text) to anon, authenticated;
