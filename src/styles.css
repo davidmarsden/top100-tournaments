@@ -119,12 +119,29 @@ th { color: #44546f; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .pos-cell { min-width: 94px; }
 .pos-cell strong { display: inline-block !important; min-width: 22px; margin-right: 8px; color: #172033; }
 .standing-qual { display: inline-grid !important; place-items: center; min-width: 62px; border-radius: 999px; padding: 0.32rem 0.55rem; color: white !important; font-size: 0.68rem !important; font-weight: 950; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 !important; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2); }
+.standing-qual.cup, .standing-qual.shield { color: #172033 !important; }
 .standing-qual.out { background: #475569; }
 .form-cell { display: flex; justify-content: center; gap: 4px; }
 .form-badge { display: inline-grid !important; place-items: center; width: 24px; height: 24px; border-radius: 999px; color: white !important; font-weight: 900; margin: 0 !important; }
 .form-badge.W { background: #16a34a; }
 .form-badge.D { background: #94a3b8; }
 .form-badge.L { background: #dc2626; }
+.forfeit-count { font-weight: 950; color: #b45309; }
+.forfeit-count.ineligible { color: #b91c1c; background: #fee2e2; border-radius: 999px; }
+.manager-forfeit-register { display: grid; gap: 14px; }
+.forfeit-register-table { min-width: 980px; }
+.eligibility-pill { display: inline-grid !important; place-items: center; border-radius: 999px; padding: 0.35rem 0.65rem; font-size: 0.72rem !important; font-weight: 950; margin: 0 !important; }
+.eligibility-pill.eligible { background: #dcfce7; color: #166534 !important; }
+.eligibility-pill.warning { background: #fef3c7; color: #92400e !important; }
+.eligibility-pill.ineligible { background: #fee2e2; color: #b91c1c !important; }
+.forfeit-warning-row { background: #fffbeb; }
+.forfeit-ineligible-row { background: #fff1f2; }
+.forfeit-detail-list { display: grid; gap: 8px; margin: 10px 0 0; padding-left: 18px; text-align: left; }
+.forfeit-detail-list li span { display: block; color: #5f6f8e; font-size: 0.85rem; }
+.register-note { margin: 0; }
+.public-group-tables { margin: 18px 0 26px; }
+.public-manager-forfeit-register { scroll-margin-top: 18px; }
+.knockout-exclusions { margin-top: 12px; }
 .bracket-section { margin-bottom: 18px; }
 .round-block { margin-top: 14px; }
 .round-block h4 { margin: 0 0 10px; color: #44546f; }
