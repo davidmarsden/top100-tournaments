@@ -105,9 +105,10 @@ where t.id = d.id
 
 -- Dropping first is intentional: PostgreSQL will not allow CREATE OR REPLACE VIEW
 -- when a new column is inserted before existing columns.
-drop view if exists tournament_public_routes;
+drop view if exists public.tournament_public_routes;
 
-create view tournament_public_routes as
+create view public.tournament_public_routes
+with (security_invoker = true) as
 select
   t.id,
   t.name,
@@ -122,11 +123,15 @@ select
   gw.slug as game_world_slug,
   ct.name as competition_name,
   ct.slug as competition_slug,
-  '/' || gw.slug || '/' || ct.slug || case when t.public_slug is not null then '/' || t.public_slug else '' end as archive_path,
+  '/' || gw.slug || '/' || ct.slug ||
+    case
+      when t.public_slug is not null then '/' || t.public_slug
+      else ''
+    end as archive_path,
   '/' || gw.slug || '/' || ct.slug as live_path
-from tournaments t
-join game_worlds gw on gw.id = t.game_world_id
-join competition_types ct on ct.id = t.competition_type_id
+from public.tournaments t
+join public.game_worlds gw on gw.id = t.game_world_id
+join public.competition_types ct on ct.id = t.competition_type_id
 where t.is_public = true
   and (
     t.status not in ('archived', 'completed')
