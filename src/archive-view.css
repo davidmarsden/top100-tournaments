@@ -14,7 +14,6 @@
 .knockout-only-archive-route #knockout,
 .knockout-only-archive-route #rankings,
 .knockout-only-archive-route #statistics,
-.knockout-only-archive-route #fair-play,
 .knockout-only-archive-route #seedings {
   display: none;
 }
