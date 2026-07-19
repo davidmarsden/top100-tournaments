@@ -99,24 +99,43 @@ export default function PublicGroupTablesPortal({ tournamentId }) {
   const visibleTables = selectedGroup === 'all' ? tables : tables.filter((table) => table.groupCode === selectedGroup);
 
   useEffect(() => {
-    const groupsSection = document.getElementById('groups');
-    if (!groupsSection) return undefined;
+    let portalHost = null;
+    let select = null;
+    let observer = null;
 
-    const portalHost = document.createElement('div');
-    portalHost.className = 'public-group-tables-portal';
-    const toolbar = groupsSection.querySelector('.public-section-toolbar');
-    if (toolbar?.nextSibling) groupsSection.insertBefore(portalHost, toolbar.nextSibling);
-    else groupsSection.appendChild(portalHost);
-    setHost(portalHost);
-
-    const select = groupsSection.querySelector('.public-group-filter select');
     const syncSelection = () => setSelectedGroup(select?.value || 'all');
-    syncSelection();
-    select?.addEventListener('change', syncSelection);
+
+    const mountPortal = () => {
+      const groupsSection = document.getElementById('groups');
+      if (!groupsSection || portalHost) return false;
+
+      portalHost = document.createElement('div');
+      portalHost.className = 'public-group-tables-portal';
+      const toolbar = groupsSection.querySelector('.public-section-toolbar');
+      if (toolbar?.nextSibling) groupsSection.insertBefore(portalHost, toolbar.nextSibling);
+      else groupsSection.appendChild(portalHost);
+      setHost(portalHost);
+
+      select = groupsSection.querySelector('.public-group-filter select');
+      syncSelection();
+      select?.addEventListener('change', syncSelection);
+      return true;
+    };
+
+    if (!mountPortal()) {
+      observer = new MutationObserver(() => {
+        if (mountPortal()) {
+          observer?.disconnect();
+          observer = null;
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
 
     return () => {
+      observer?.disconnect();
       select?.removeEventListener('change', syncSelection);
-      portalHost.remove();
+      portalHost?.remove();
       setHost(null);
     };
   }, [tournamentId]);
