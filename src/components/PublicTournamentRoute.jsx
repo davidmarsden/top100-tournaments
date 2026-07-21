@@ -3,6 +3,7 @@ import PublicTournamentPage from './PublicTournamentPage.jsx';
 import PublicGroupTablesPortal from './PublicGroupTablesPortal.jsx';
 import PublicForfeitRegisterPortal from './PublicForfeitRegisterPortal.jsx';
 import SpotlightResultStatus from './SpotlightResultStatus.jsx';
+import EditorialStorylinesPortal from './EditorialStorylinesPortal.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { LIVE_STATUSES, parseTournamentPath, pickLiveTournament, routeTitle } from '../lib/publicTournamentRoutes';
 
@@ -104,6 +105,7 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
     <PublicGroupTablesPortal tournamentId={resolvedId} />
     <PublicForfeitRegisterPortal tournamentId={resolvedId} />
     <SpotlightResultStatus />
+    <EditorialStorylinesPortal tournamentId={resolvedId} />
   </>;
 
   return <main className="app-shell public-archive tournament-hub">
