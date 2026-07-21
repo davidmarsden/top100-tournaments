@@ -6,6 +6,7 @@ const isCompleted = (match) => match.status === 'played' || match.status === 'fo
 const teamName = (entry, fallback = 'TBC') => entry?.teams?.name || fallback;
 const managerName = (entry) => entry?.managers?.display_name || entry?.managers?.name || 'TBC';
 const groupCode = (match) => match.groups?.code || '—';
+const roundDateKey = (bracket, round) => `${bracket || 'Cup'}|${round || 'Round'}`;
 
 function parseDate(value) {
   if (!value) return null;
@@ -17,6 +18,19 @@ function parseDate(value) {
 function formatDate(value) {
   const date = parseDate(value);
   return date ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : '';
+}
+
+function applyRoundDates(matches, roundDates) {
+  const dateMap = new Map((roundDates || []).map((row) => [roundDateKey(row.bracket, row.round), row]));
+  return matches.map((match) => {
+    if (match.fixture_date || match.stage !== 'knockout') return match;
+    const preset = dateMap.get(roundDateKey(match.bracket || 'Cup', match.round));
+    if (!preset) return match;
+    const fixtureDate = Number(match.leg || 1) === 2
+      ? (preset.leg2_date || preset.leg1_date)
+      : preset.leg1_date;
+    return fixtureDate ? { ...match, fixture_date: fixtureDate } : match;
+  });
 }
 
 function tableSort(a, b) {
@@ -107,10 +121,9 @@ function bigWinsStory(recentResults) {
     .sort((a, b) => b.margin - a.margin);
   if (!wins.length) return null;
   const shown = wins.slice(0, 4);
-  const names = shown.map(({ match }) => {
-    const winner = Number(match.home_score) > Number(match.away_score) ? teamName(match.home_entry, match.home_placeholder) : teamName(match.away_entry, match.away_placeholder);
-    return winner;
-  });
+  const names = shown.map(({ match }) => Number(match.home_score) > Number(match.away_score)
+    ? teamName(match.home_entry, match.home_placeholder)
+    : teamName(match.away_entry, match.away_placeholder));
   const title = shown.length === 1 ? `${names[0]} lay down a marker` : `${shown.length} clubs lay down a marker`;
   return {
     id: 'roundup-big-wins',
@@ -190,7 +203,7 @@ function nextFixturesStory(fixtures, tables) {
     tag: '🔭 Next matchday',
     title: ranked.some((item) => item.pressure >= 10) ? 'Group leads go on the line' : 'The next set of tests',
     meta: `${formatDate(ranked[0].match.fixture_date)} · ${fixtures.length} fixture${fixtures.length === 1 ? '' : 's'}`,
-    story: ranked.map(({ match }) => `${teamName(match.home_entry, match.home_placeholder)} v ${teamName(match.away_entry, match.away_placeholder)}${match.stage === 'group' ? ` (Group ${groupCode(match)})` : ''}`).join(' · '),
+    story: ranked.map(({ match }) => `${teamName(match.home_entry, match.home_placeholder)} v ${teamName(match.away_entry, match.away_placeholder)}${match.stage === 'group' ? ` (Group ${groupCode(match)})` : ` (${match.bracket || 'Cup'} ${match.round || 'round'})`}`).join(' · '),
     note: 'The storylines will update again as soon as the next results are recorded.',
   };
 }
@@ -261,6 +274,7 @@ export default function EditorialStorylinesPortal({ tournamentId }) {
     const channel = supabase
       .channel(`editorial-storylines-${tournamentId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `tournament_id=eq.${tournamentId}` }, loadData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_round_dates', filter: `tournament_id=eq.${tournamentId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'match_comments', filter: `tournament_id=eq.${tournamentId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forfeits' }, loadData)
       .subscribe();
@@ -268,16 +282,17 @@ export default function EditorialStorylinesPortal({ tournamentId }) {
   }, [tournamentId]);
 
   async function loadData() {
-    const [matchesResult, entriesResult] = await Promise.all([
-      supabase.from('matches').select('id, stage, round, fixture_date, status, home_entry_id, away_entry_id, home_score, away_score, bracket, home_placeholder, away_placeholder, groups(code), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name), managers(name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name), managers(name, display_name))').eq('tournament_id', tournamentId),
+    const [matchesResult, entriesResult, roundDatesResult] = await Promise.all([
+      supabase.from('matches').select('id, stage, round, leg, fixture_date, status, home_entry_id, away_entry_id, home_score, away_score, bracket, home_placeholder, away_placeholder, groups(code), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name), managers(name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name), managers(name, display_name))').eq('tournament_id', tournamentId),
       supabase.from('tournament_entries').select('id, seed, group_code, teams(name), managers(name, display_name)').eq('tournament_id', tournamentId),
+      supabase.from('tournament_round_dates').select('id, bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
     ]);
-    if (matchesResult.error || entriesResult.error) {
-      setStatus(`Could not build storylines: ${matchesResult.error?.message || entriesResult.error?.message}`);
+    if (matchesResult.error || entriesResult.error || roundDatesResult.error) {
+      setStatus(`Could not build storylines: ${matchesResult.error?.message || entriesResult.error?.message || roundDatesResult.error?.message}`);
       return;
     }
 
-    const matchRows = matchesResult.data || [];
+    const matchRows = applyRoundDates(matchesResult.data || [], roundDatesResult.data || []);
     const matchIds = matchRows.map((match) => match.id);
     let commentRows = [];
     let forfeitRows = [];
