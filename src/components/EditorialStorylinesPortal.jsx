@@ -58,12 +58,30 @@ function reactionTotal(comment) {
   return Object.values(comment?.reactions || {}).reduce((total, value) => total + Number(value || 0), 0);
 }
 
-function quoteExcerpt(value, maxLength = 110) {
+function quoteExcerpt(value, maxLength = 160) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (text.length <= maxLength) return text;
+
+  const firstSentence = text.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim();
+  if (firstSentence && firstSentence.length >= 45 && firstSentence.length <= maxLength) return firstSentence;
+
+  const window = text.slice(0, maxLength + 1);
+  let cutAt = -1;
+  for (const punctuation of ['.', '!', '?', ';', ',']) {
+    const index = window.lastIndexOf(punctuation);
+    if (index >= 70) {
+      cutAt = Math.max(cutAt, index + 1);
+    }
+  }
+
+  if (cutAt >= 70) {
+    const excerpt = window.slice(0, cutAt).trim();
+    return /[.!?]$/.test(excerpt) ? excerpt : `${excerpt.replace(/[,;:]$/, '')}…`;
+  }
+
   const clipped = text.slice(0, maxLength - 1);
   const lastSpace = clipped.lastIndexOf(' ');
-  return `${clipped.slice(0, lastSpace > 70 ? lastSpace : clipped.length).replace(/[.,;:!?-]+$/, '')}…`;
+  return `${clipped.slice(0, lastSpace > 80 ? lastSpace : clipped.length).replace(/[.,;:!?-]+$/, '')}…`;
 }
 
 function resultLabel(match) {
@@ -149,7 +167,8 @@ const headlineStyle = { fontSize: 'clamp(1.55rem, 2.6vw, 2.25rem)', lineHeight: 
 const listStyle = { listStyle: 'none', padding: 0, margin: '14px 0 0', display: 'grid', gap: '9px' };
 
 function EditorialCard({ story }) {
-  return <article className={`featured-match-card spotlight-match-card editorial-story-card spotlight-${story.type}`} style={{ alignContent: 'start', gap: '10px', padding: '22px' }}>
+  const fullWidth = story.type === 'forfeit';
+  return <article className={`featured-match-card spotlight-match-card editorial-story-card spotlight-${story.type}`} style={{ alignContent: 'start', gap: '10px', padding: '22px', gridColumn: fullWidth ? '1 / -1' : undefined }}>
     <span>{story.tag}</span>
     <strong style={headlineStyle}>{story.title}</strong>
     {story.meta && <small>{story.meta}</small>}
