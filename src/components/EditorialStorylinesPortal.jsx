@@ -5,7 +5,6 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 const isCompleted = (match) => match.status === 'played' || match.status === 'forfeit';
 const fullTeamName = (entry, fallback = 'TBC') => entry?.teams?.name || fallback;
 const managerName = (entry) => entry?.managers?.display_name || entry?.managers?.name || 'Unknown manager';
-const groupCode = (match) => match.groups?.code || '—';
 const roundDateKey = (bracket, round) => `${bracket || 'Cup'}|${round || 'Round'}`;
 
 const SHORT_CLUB_NAMES = {
@@ -47,66 +46,6 @@ function applyRoundDates(matches, roundDates) {
   });
 }
 
-function tableSort(a, b) {
-  if (b.points !== a.points) return b.points - a.points;
-  if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference;
-  if (b.goals_for !== a.goals_for) return b.goals_for - a.goals_for;
-  return Number(a.seed || 9999) - Number(b.seed || 9999);
-}
-
-function buildTables(entries, matches) {
-  const groups = new Map();
-  entries.forEach((entry) => {
-    const code = entry.group_code || 'Ungrouped';
-    if (!groups.has(code)) groups.set(code, []);
-    groups.get(code).push(entry);
-  });
-
-  return [...groups.entries()].map(([code, groupEntries]) => {
-    const rows = new Map(groupEntries.map((entry) => [entry.id, {
-      entry_id: entry.id,
-      seed: entry.seed,
-      points: 0,
-      played: 0,
-      goals_for: 0,
-      goals_against: 0,
-      goal_difference: 0,
-      group_position: null,
-    }]));
-
-    matches.filter((match) => match.stage === 'group' && groupCode(match) === code && isCompleted(match)).forEach((match) => {
-      const home = rows.get(match.home_entry_id);
-      const away = rows.get(match.away_entry_id);
-      if (!home || !away) return;
-      const hs = Number(match.home_score || 0);
-      const as = Number(match.away_score || 0);
-      home.played += 1; away.played += 1;
-      home.goals_for += hs; home.goals_against += as;
-      away.goals_for += as; away.goals_against += hs;
-      if (hs > as) home.points += 3;
-      else if (as > hs) away.points += 3;
-      else { home.points += 1; away.points += 1; }
-    });
-
-    return [...rows.values()]
-      .map((row) => ({ ...row, goal_difference: row.goals_for - row.goals_against }))
-      .sort(tableSort)
-      .map((row, index) => ({ ...row, group_position: index + 1 }));
-  });
-}
-
-function reactionTotal(comment) {
-  return Object.values(comment?.reactions || {}).reduce((total, value) => total + Number(value || 0), 0);
-}
-
-function quoteExcerpt(value, maxLength = 112) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
-  if (text.length <= maxLength) return text;
-  const clipped = text.slice(0, maxLength - 1);
-  const lastSpace = clipped.lastIndexOf(' ');
-  return `${clipped.slice(0, lastSpace > 70 ? lastSpace : clipped.length).replace(/[.,;:!?-]+$/, '')}…`;
-}
-
 function latestCompletedMatchday(matches) {
   const completed = matches
     .filter((match) => isCompleted(match) && match.fixture_date)
@@ -115,14 +54,16 @@ function latestCompletedMatchday(matches) {
   return date ? completed.filter((match) => match.fixture_date === date) : [];
 }
 
-function nextMatchday(matches) {
-  const today = new Date();
-  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  const upcoming = matches
-    .filter((match) => !isCompleted(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date).getTime() >= todayUtc)
-    .sort((a, b) => parseDate(a.fixture_date) - parseDate(b.fixture_date));
-  const date = upcoming[0]?.fixture_date;
-  return date ? upcoming.filter((match) => match.fixture_date === date) : [];
+function reactionTotal(comment) {
+  return Object.values(comment?.reactions || {}).reduce((total, value) => total + Number(value || 0), 0);
+}
+
+function quoteExcerpt(value, maxLength = 110) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) return text;
+  const clipped = text.slice(0, maxLength - 1);
+  const lastSpace = clipped.lastIndexOf(' ');
+  return `${clipped.slice(0, lastSpace > 70 ? lastSpace : clipped.length).replace(/[.,;:!?-]+$/, '')}…`;
 }
 
 function resultLabel(match) {
@@ -147,8 +88,8 @@ function bigWinsStory(recentResults) {
   };
 }
 
-function pressRoomStory(comments, recentResults, nextFixtures) {
-  const relevantIds = new Set([...recentResults, ...nextFixtures].map((match) => match.id));
+function pressRoomStory(comments, recentResults) {
+  const relevantIds = new Set(recentResults.map((match) => match.id));
   const quotes = comments
     .filter((comment) => relevantIds.has(comment.match_id))
     .sort((a, b) => Number(Boolean(b.is_pinned || b.editor_pick)) - Number(Boolean(a.is_pinned || a.editor_pick)) || reactionTotal(b) - reactionTotal(a) || String(b.created_at || '').localeCompare(String(a.created_at || '')))
@@ -158,7 +99,7 @@ function pressRoomStory(comments, recentResults, nextFixtures) {
     id: 'press-room-roundup',
     type: 'press',
     tag: '🎙️ From the press room',
-    title: quotes.length === 1 ? 'One voice cuts through the noise' : 'Managers have their say',
+    title: 'Managers have their say',
     quotes: quotes.map((quote) => ({
       id: quote.id,
       text: quoteExcerpt(quote.comment),
@@ -195,46 +136,27 @@ function fairPlayStory(recentResults, forfeits, matches, entries) {
   };
 }
 
-function nextFixturesStory(fixtures, tables) {
-  if (!fixtures.length) return null;
-  const rowsById = new Map(tables.flat().map((row) => [row.entry_id, row]));
-  const ranked = fixtures.map((match) => {
-    const home = rowsById.get(match.home_entry_id);
-    const away = rowsById.get(match.away_entry_id);
-    const pressure = home && away ? Math.max(0, 6 - Math.abs(home.points - away.points)) + (home.group_position <= 2 && away.group_position <= 2 ? 10 : 0) : 0;
-    return { match, pressure };
-  }).sort((a, b) => b.pressure - a.pressure).slice(0, 3);
-  return {
-    id: 'next-matchday',
-    type: 'stakes',
-    tag: '🔭 Next matchday',
-    title: ranked.some((item) => item.pressure >= 10) ? 'Group leads go on the line' : 'The next set of tests',
-    meta: formatDate(ranked[0].match.fixture_date),
-    results: ranked.map(({ match }) => `${teamName(match.home_entry, match.home_placeholder)} v ${teamName(match.away_entry, match.away_placeholder)}`),
-  };
-}
-
 function buildEditorialStories(matches, entries, comments, forfeits) {
-  const tables = buildTables(entries, matches);
   const recentResults = latestCompletedMatchday(matches);
-  const nextFixtures = nextMatchday(matches);
   return [
     bigWinsStory(recentResults),
-    pressRoomStory(comments, recentResults, nextFixtures),
+    pressRoomStory(comments, recentResults),
     fairPlayStory(recentResults, forfeits, matches, entries),
-    nextFixturesStory(nextFixtures, tables),
-  ].filter(Boolean).slice(0, 4);
+  ].filter(Boolean);
 }
 
+const headlineStyle = { fontSize: 'clamp(1.55rem, 2.6vw, 2.25rem)', lineHeight: 1.08, marginTop: '6px' };
+const listStyle = { listStyle: 'none', padding: 0, margin: '14px 0 0', display: 'grid', gap: '9px' };
+
 function EditorialCard({ story }) {
-  return <article className={`featured-match-card spotlight-match-card editorial-story-card spotlight-${story.type}`}>
+  return <article className={`featured-match-card spotlight-match-card editorial-story-card spotlight-${story.type}`} style={{ alignContent: 'start', gap: '10px', padding: '22px' }}>
     <span>{story.tag}</span>
-    <strong className="editorial-story-headline">{story.title}</strong>
+    <strong style={headlineStyle}>{story.title}</strong>
     {story.meta && <small>{story.meta}</small>}
-    {story.results && <ul className="editorial-result-list">{story.results.map((result) => <li key={result}>{result}</li>)}</ul>}
-    {story.quotes && <div className="editorial-quote-list">{story.quotes.map((quote) => <blockquote key={quote.id}><p>“{quote.text}”</p><small>{quote.byline}</small></blockquote>)}</div>}
-    {story.forfeits && <ul className="editorial-forfeit-list">{story.forfeits.map((item) => <li key={item.id}><strong>{item.club}</strong><span>{item.manager}</span></li>)}</ul>}
-    {story.note && <p className="editorial-story-note">{story.note}</p>}
+    {story.results && <ul style={listStyle}>{story.results.map((result) => <li key={result} style={{ fontSize: '1.12rem', fontWeight: 850, color: '#334155' }}>{result}</li>)}</ul>}
+    {story.quotes && <div style={{ display: 'grid', gap: '12px', marginTop: '8px' }}>{story.quotes.map((quote) => <blockquote key={quote.id} style={{ margin: 0, padding: '10px 0', borderBottom: '1px solid #e4ebf7' }}><p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#334155' }}>“{quote.text}”</p><small>{quote.byline}</small></blockquote>)}</div>}
+    {story.forfeits && <ul style={listStyle}>{story.forfeits.map((item) => <li key={item.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '12px', paddingBottom: '8px', borderBottom: '1px solid #e4ebf7' }}><strong>{item.club}</strong><span style={{ color: '#5f6f8e', fontWeight: 750 }}>{item.manager}</span></li>)}</ul>}
+    {story.note && <p style={{ marginTop: '10px', color: '#5f6f8e', fontWeight: 750 }}>{story.note}</p>}
   </article>;
 }
 
@@ -257,6 +179,8 @@ export default function EditorialStorylinesPortal({ tournamentId }) {
       if (originalGrid) originalGrid.style.display = 'none';
       portalHost = document.createElement('div');
       portalHost.className = 'featured-match-grid editorial-story-grid';
+      portalHost.style.gridTemplateColumns = 'repeat(auto-fit, minmax(min(100%, 480px), 1fr))';
+      portalHost.style.gap = '18px';
       section.appendChild(portalHost);
       setHost(portalHost);
       return true;
