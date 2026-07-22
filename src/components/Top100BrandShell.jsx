@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 const LOGO_URL = '/top100-logo.svg';
+const DONATION_URL = 'https://donate.stripe.com/14A7sx289eLk9G4e6f5Rm00';
 
 const PUBLIC_STATUS_LABELS = {
   groups_approved: 'Group stage underway',
@@ -56,6 +57,7 @@ export default function Top100BrandShell({ children }) {
             <a href="https://archive.smtop100.blog/">Archive</a>
             <a className="is-current" href="https://youth-cup.smtop100.blog/">Tournaments</a>
             <a className="top100-brand-header__manager-link" href="https://youth-cup.smtop100.blog/manager">Manager portal</a>
+            <a href={DONATION_URL} target="_blank" rel="noreferrer">Support Top 100</a>
           </nav>
         </div>
       </header>
@@ -73,6 +75,7 @@ export default function Top100BrandShell({ children }) {
             <a href="https://archive.smtop100.blog/">Archive</a>
             <a href="https://youth-cup.smtop100.blog/">Tournament hub</a>
             <a href="https://youth-cup.smtop100.blog/manager">Manager portal</a>
+            <a href={DONATION_URL} target="_blank" rel="noreferrer">Support Top 100</a>
           </nav>
         </div>
       </footer>
