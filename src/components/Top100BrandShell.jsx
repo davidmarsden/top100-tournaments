@@ -1,4 +1,4 @@
-const LOGO_URL = 'https://anotherurl.wordpress.com/wp-content/uploads/2026/07/edited-photo.png';
+const LOGO_URL = '/top100-logo.svg';
 
 export default function Top100BrandShell({ children }) {
   return (
