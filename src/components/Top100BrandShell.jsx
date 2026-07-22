@@ -1,6 +1,41 @@
+import { useEffect } from 'react';
+
 const LOGO_URL = '/top100-logo.svg';
 
+const PUBLIC_STATUS_LABELS = {
+  groups_approved: 'Group stage underway',
+};
+
+function replaceInternalStatusLabels(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  textNodes.forEach((node) => {
+    let nextValue = node.nodeValue;
+
+    Object.entries(PUBLIC_STATUS_LABELS).forEach(([internalStatus, publicLabel]) => {
+      nextValue = nextValue.replaceAll(internalStatus, publicLabel);
+    });
+
+    if (nextValue !== node.nodeValue) node.nodeValue = nextValue;
+  });
+}
+
 export default function Top100BrandShell({ children }) {
+  useEffect(() => {
+    const shell = document.querySelector('.top100-site-shell');
+    if (!shell) return undefined;
+
+    replaceInternalStatusLabels(shell);
+
+    const observer = new MutationObserver(() => replaceInternalStatusLabels(shell));
+    observer.observe(shell, { childList: true, subtree: true, characterData: true });
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="top100-site-shell">
       <header className="top100-brand-header">
