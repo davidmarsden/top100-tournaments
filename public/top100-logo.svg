@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 180" role="img" aria-labelledby="title desc">
+  <title id="title">Top 100</title>
+  <desc id="desc">Top 100, Probably the best GW in SM</desc>
+  <rect width="560" height="180" fill="none"/>
+  <g transform="skewX(-8)">
+    <text x="92" y="100" fill="#17366f" font-family="Arial Black, Arial, sans-serif" font-size="78" font-style="italic" font-weight="900" letter-spacing="2">TOP 100</text>
+  </g>
+  <text x="92" y="142" fill="#e33b2f" font-family="Arial, sans-serif" font-size="25" font-style="italic" font-weight="700">Probably the best GW in SM</text>
+</svg>
