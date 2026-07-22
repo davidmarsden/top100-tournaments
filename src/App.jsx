@@ -3,6 +3,7 @@ import AdminGate from './components/AdminGate.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
 import ManagerPortal from './components/ManagerPortal.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
+import Top100BrandShell from './components/Top100BrandShell.jsx';
 import TournamentRouter, { isAdminPath } from './components/TournamentRouter.jsx';
 import { TournamentProvider } from './context/TournamentProvider.jsx';
 
@@ -22,6 +23,6 @@ export default function App() {
   if (isManagerPath()) return <ManagerPortal />;
   if (isManagerAccountsPath()) return <AdminGate><ManagerAccountsPage /></AdminGate>;
   if (isResultSubmissionsPath()) return <AdminGate><ResultSubmissionsPage /></AdminGate>;
-  if (!isAdminPath()) return <TournamentRouter />;
+  if (!isAdminPath()) return <Top100BrandShell><TournamentRouter /></Top100BrandShell>;
   return <AdminGate><TournamentProvider><AdminDashboard /></TournamentProvider></AdminGate>;
 }
