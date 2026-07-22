@@ -4,6 +4,17 @@ import { supabase } from '../lib/supabaseClient';
 const OPEN_STATUSES = ['pending_admin_check', 'opponent_confirmed', 'appealed'];
 const TERMINAL_MATCH_STATUSES = ['played', 'forfeit', 'voided'];
 
+function entryTeamName(entry, fallback = 'TBC') {
+  return entry?.teams?.name || fallback || 'TBC';
+}
+
+function opponentName(fixture, selectedEntryId) {
+  const isHome = fixture.home_entry_id === selectedEntryId;
+  return isHome
+    ? entryTeamName(fixture.away_entry, fixture.away_placeholder)
+    : entryTeamName(fixture.home_entry, fixture.home_placeholder);
+}
+
 export default function ManagerResultCentre({ selectedEntry, fixtures, onResultChanged }) {
   const [submissions, setSubmissions] = useState([]);
   const [scores, setScores] = useState({});
@@ -34,7 +45,7 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
   async function loadSubmissions() {
     const { data, error } = await supabase
       .from('manager_result_submissions')
-      .select('*, matches(id, tournament_id, round, fixture_date, match_order, status, home_entry_id, away_entry_id, home_placeholder, away_placeholder)')
+      .select('*, matches(id, tournament_id, round, fixture_date, match_order, status, home_entry_id, away_entry_id, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name)))')
       .or(`submitted_by_manager_id.eq.${selectedEntry.manager_id},opponent_manager_id.eq.${selectedEntry.manager_id}`)
       .in('status', [...OPEN_STATUSES, 'final']);
     if (error) setStatus('Could not load submitted results: ' + error.message);
@@ -48,7 +59,9 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
     const isHome = fixture.home_entry_id === selectedEntry.id;
     const homeScore = isHome ? mine : theirs;
     const awayScore = isHome ? theirs : mine;
-    if (!window.confirm(`Publish ${fixture.home_placeholder} ${homeScore}–${awayScore} ${fixture.away_placeholder} provisionally?`)) return;
+    const homeName = entryTeamName(fixture.home_entry, fixture.home_placeholder);
+    const awayName = entryTeamName(fixture.away_entry, fixture.away_placeholder);
+    if (!window.confirm(`Publish ${homeName} ${homeScore}–${awayScore} ${awayName} provisionally?`)) return;
     setLoading(true);
     const { error } = await supabase.rpc('submit_manager_result', { target_match_id: fixture.id, target_home_score: homeScore, target_away_score: awayScore });
     if (error) setStatus('Could not submit result: ' + error.message);
@@ -81,7 +94,7 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
     <div className="portal-fixtures">{visibleFixtures.map((fixture) => {
       const submission = byMatch.get(fixture.id);
       const isHome = fixture.home_entry_id === selectedEntry.id;
-      const opponent = isHome ? fixture.away_placeholder : fixture.home_placeholder;
+      const opponent = opponentName(fixture, selectedEntry.id);
       const mineSubmitted = submission ? (isHome ? submission.submitted_home_score : submission.submitted_away_score) : null;
       const theirsSubmitted = submission ? (isHome ? submission.submitted_away_score : submission.submitted_home_score) : null;
       const isOpponent = submission?.opponent_manager_id === selectedEntry.manager_id;
