@@ -6,6 +6,7 @@ function normalise(value) { return String(value || '').trim().toLowerCase().repl
 function isPlayed(match) { return match.status === 'played' || match.status === 'forfeit'; }
 function matchDate(match) { if (!match.fixture_date) return 'Date TBC'; const [year, month, day] = match.fixture_date.split('-').map(Number); return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }); }
 function ordinal(value) { if (!value) return 'TBC'; return `${value}${value === 1 ? 'st' : value === 2 ? 'nd' : value === 3 ? 'rd' : 'th'}`; }
+function entryTeamName(entry, fallback = 'TBC') { return entry?.teams?.name || fallback || 'TBC'; }
 function buildStandings(entries, matches) {
   const rows = new Map(entries.map((entry) => [entry.id, { id: entry.id, team: entry.teams?.name || 'Unknown team', played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, gd: 0, points: 0 }]));
   matches.filter(isPlayed).forEach((match) => {
@@ -76,7 +77,7 @@ export default function ManagerPortal() {
     const tournamentIds = [...new Set(orderedEntries.map((entry) => entry.tournament_id))]; let matchRows = [], peerEntries = [];
     if (tournamentIds.length) {
       const [matchResult, peerResult] = await Promise.all([
-        supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket').in('tournament_id', tournamentIds),
+        supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))').in('tournament_id', tournamentIds),
         supabase.from('tournament_entries').select('id, tournament_id, group_code, teams(name)').in('tournament_id', tournamentIds),
       ]);
       if (!matchResult.error) matchRows = matchResult.data || []; if (!peerResult.error) peerEntries = peerResult.data || [];
@@ -85,7 +86,10 @@ export default function ManagerPortal() {
   }
 
   async function logout() { await supabase.auth.signOut(); setMessage('Signed out.'); }
-  function opponent(match) { return match.home_entry_id === selectedEntry?.id ? match.away_placeholder : match.home_placeholder; }
+  function opponent(match) {
+    const isHome = match.home_entry_id === selectedEntry?.id;
+    return isHome ? entryTeamName(match.away_entry, match.away_placeholder) : entryTeamName(match.home_entry, match.home_placeholder);
+  }
   function venue(match) { return match.home_entry_id === selectedEntry?.id ? 'Home' : 'Away'; }
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Manager Portal unavailable.</strong><span>Supabase is not connected.</span></section></main>;
