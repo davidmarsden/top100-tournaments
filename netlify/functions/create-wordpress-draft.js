@@ -1,0 +1,141 @@
+const json = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json; charset=utf-8' },
+  body: JSON.stringify(body),
+});
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function inlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>');
+}
+
+function markdownToHtml(markdown) {
+  const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+  const output = [];
+  let listOpen = false;
+  let quoteOpen = false;
+
+  const closeList = () => { if (listOpen) { output.push('</ul>'); listOpen = false; } };
+  const closeQuote = () => { if (quoteOpen) { output.push('</blockquote>'); quoteOpen = false; } };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) { closeList(); closeQuote(); continue; }
+    if (line.startsWith('# ')) { closeList(); closeQuote(); continue; }
+    if (line.startsWith('## ')) { closeList(); closeQuote(); output.push(`<h2>${inlineMarkdown(line.slice(3))}</h2>`); continue; }
+    if (line.startsWith('### ')) { closeList(); closeQuote(); output.push(`<h3>${inlineMarkdown(line.slice(4))}</h3>`); continue; }
+    if (line.startsWith('- ')) {
+      closeQuote();
+      if (!listOpen) { output.push('<ul>'); listOpen = true; }
+      output.push(`<li>${inlineMarkdown(line.slice(2))}</li>`);
+      continue;
+    }
+    if (line.startsWith('> ')) {
+      closeList();
+      if (!quoteOpen) { output.push('<blockquote>'); quoteOpen = true; }
+      output.push(`<p>${inlineMarkdown(line.slice(2))}</p>`);
+      continue;
+    }
+    closeList();
+    closeQuote();
+    output.push(`<p>${inlineMarkdown(line)}</p>`);
+  }
+
+  closeList();
+  closeQuote();
+  return output.join('\n');
+}
+
+async function verifyAdminToken(token) {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase server credentials are not configured.');
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
+    headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) return null;
+  return response.json();
+}
+
+async function wordpressRequest(path, options = {}) {
+  const siteUrl = String(process.env.WORDPRESS_SITE_URL || '').replace(/\/$/, '');
+  const username = process.env.WORDPRESS_USERNAME;
+  const password = process.env.WORDPRESS_APP_PASSWORD;
+  if (!siteUrl || !username || !password) throw new Error('WordPress credentials are not configured.');
+  const auth = Buffer.from(`${username}:${password}`).toString('base64');
+  const response = await fetch(`${siteUrl}/wp-json/wp/v2${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || `WordPress request failed (${response.status}).`);
+  return payload;
+}
+
+async function ensureTerm(type, name) {
+  const cleanName = String(name || '').trim();
+  if (!cleanName) return null;
+  const found = await wordpressRequest(`/${type}?search=${encodeURIComponent(cleanName)}&per_page=100`);
+  const exact = found.find((item) => String(item.name).toLowerCase() === cleanName.toLowerCase());
+  if (exact) return exact.id;
+  const created = await wordpressRequest(`/${type}`, { method: 'POST', body: JSON.stringify({ name: cleanName }) });
+  return created.id;
+}
+
+exports.handler = async (event) => {
+  if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed.' });
+  try {
+    const token = String(event.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!token) return json(401, { error: 'Admin authentication is required.' });
+    const user = await verifyAdminToken(token);
+    if (!user) return json(401, { error: 'Your admin session is invalid or expired.' });
+
+    const body = JSON.parse(event.body || '{}');
+    const title = String(body.title || '').trim();
+    const markdown = String(body.markdown || '').trim();
+    if (!title || !markdown) return json(400, { error: 'A title and report body are required.' });
+    if (title.length > 200 || markdown.length > 100000) return json(400, { error: 'The report is too large to publish.' });
+
+    const categoryNames = Array.isArray(body.categories) ? body.categories.slice(0, 5) : [];
+    const tagNames = Array.isArray(body.tags) ? body.tags.slice(0, 10) : [];
+    const categoryIds = (await Promise.all(categoryNames.map((name) => ensureTerm('categories', name)))).filter(Boolean);
+    const tagIds = (await Promise.all(tagNames.map((name) => ensureTerm('tags', name)))).filter(Boolean);
+
+    const post = await wordpressRequest('/posts', {
+      method: 'POST',
+      body: JSON.stringify({
+        title,
+        content: markdownToHtml(markdown),
+        status: 'draft',
+        categories: categoryIds,
+        tags: tagIds,
+      }),
+    });
+
+    const siteUrl = String(process.env.WORDPRESS_SITE_URL || '').replace(/\/$/, '');
+    return json(200, {
+      id: post.id,
+      status: post.status,
+      url: post.link || null,
+      edit_url: post.id ? `${siteUrl}/wp-admin/post.php?post=${post.id}&action=edit` : null,
+    });
+  } catch (error) {
+    console.error('WordPress draft creation failed:', error);
+    return json(500, { error: error.message || 'Could not create WordPress draft.' });
+  }
+};
