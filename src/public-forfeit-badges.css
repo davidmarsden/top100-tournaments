@@ -2,13 +2,39 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.42rem;
+}
+
+.forfeit-score-layout {
+  display: inline-grid;
+  grid-template-columns: minmax(1.2rem, auto) auto minmax(1.2rem, auto);
+  align-items: center;
+  column-gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.forfeit-score-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.forfeit-score-home {
+  justify-content: flex-end;
+}
+
+.forfeit-score-away {
+  justify-content: flex-start;
+}
+
+.forfeit-score-separator {
+  opacity: 0.75;
 }
 
 .forfeit-result-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   width: 1.35rem;
   height: 1.35rem;
   border: 1px solid rgba(153, 27, 27, 0.28);
