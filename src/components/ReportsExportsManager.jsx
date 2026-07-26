@@ -72,7 +72,9 @@ export default function ReportsExportsManager({ selectedTournament }) {
         if (forfeitResult.error) throw new Error(`Could not load forfeits: ${forfeitResult.error.message}`);
         if (commentsResult.error) throw new Error(`Could not load press conferences: ${commentsResult.error.message}`);
         forfeits = forfeitResult.data || [];
-        comments = commentsResult.data || [];
+        comments = (commentsResult.data || []).map((comment) => comment.comment_type === 'admin_report'
+          ? { ...comment, comment_type: 'post_match' }
+          : comment);
       }
 
       if (String(currentTournamentId.current) !== String(tournamentId)) return;
