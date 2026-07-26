@@ -18,10 +18,19 @@ const formatDate = (dateString) => {
   });
 };
 
-function cardKey(card) {
-  const teams = [...card.querySelectorAll('.fixture-teams > strong')].map((node) => normalise(node.textContent));
+const roundDateKey = (bracket, round) => `${bracket || 'Cup'}|${round || 'Round'}`;
+
+function renderedCardKey(card) {
+  const teams = [...card.querySelectorAll('.fixture-teams > strong')]
+    .map((node) => normalise(node.textContent));
   const date = normalise(card.querySelector('.public-fixture-date')?.textContent);
   return teams.length === 2 ? `${date}|${teams[0]}|${teams[1]}` : '';
+}
+
+function matchRenderKey(match) {
+  const homeName = match.home_entry?.teams?.name || '';
+  const awayName = match.away_entry?.teams?.name || '';
+  return `${normalise(formatDate(match.rendered_fixture_date))}|${normalise(homeName)}|${normalise(awayName)}`;
 }
 
 function addBadge(card, forfeitingTeam) {
@@ -36,51 +45,129 @@ function addBadge(card, forfeitingTeam) {
   score.appendChild(pill);
 }
 
+async function resolveDisplayedTournamentId() {
+  const heroName = document.querySelector('.tournament-hub .tournament-hero h1')?.textContent?.trim();
+  const pathSlug = decodeURIComponent(window.location.pathname.split('/').filter(Boolean).pop() || '');
+
+  const result = await supabase
+    .from('tournaments')
+    .select('id, name, public_slug, slug, is_public');
+
+  if (result.error) return null;
+  const rows = result.data || [];
+
+  const slugMatch = pathSlug
+    ? rows.find((row) => row.public_slug === pathSlug || row.slug === pathSlug)
+    : null;
+  if (slugMatch) return slugMatch.id;
+
+  const nameMatches = rows.filter((row) => row.name === heroName);
+  return (nameMatches.find((row) => row.is_public) || nameMatches[0])?.id || null;
+}
+
 async function loadForfeitMatches() {
-  if (!hasSupabaseConfig || !supabase) return [];
+  if (!hasSupabaseConfig || !supabase) return null;
+
+  const tournamentId = await resolveDisplayedTournamentId();
+  if (!tournamentId) return null;
+
+  const [matchesResult, roundDatesResult] = await Promise.all([
+    supabase
+      .from('matches')
+      .select('id, stage, round, bracket, leg, fixture_date, home_entry_id, away_entry_id, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))')
+      .eq('tournament_id', tournamentId),
+    supabase
+      .from('tournament_round_dates')
+      .select('bracket, round, leg1_date, leg2_date')
+      .eq('tournament_id', tournamentId),
+  ]);
+
+  if (matchesResult.error) return { tournamentId, matches: [], forfeitsByMatch: new Map() };
+
+  const roundDates = new Map((roundDatesResult.data || []).map((row) => [
+    roundDateKey(row.bracket, row.round),
+    row,
+  ]));
+
+  const matches = (matchesResult.data || []).map((match) => {
+    let renderedFixtureDate = match.fixture_date;
+    if (!renderedFixtureDate && match.stage === 'knockout') {
+      const row = roundDates.get(roundDateKey(match.bracket, match.round));
+      renderedFixtureDate = Number(match.leg || 1) === 2
+        ? (row?.leg2_date || row?.leg1_date)
+        : row?.leg1_date;
+    }
+    return { ...match, rendered_fixture_date: renderedFixtureDate || null };
+  });
+
+  const matchIds = matches.map((match) => match.id).filter(Boolean);
+  if (!matchIds.length) return { tournamentId, matches, forfeitsByMatch: new Map() };
 
   const forfeitsResult = await supabase
     .from('forfeits')
-    .select('match_id, forfeiting_entry_id');
+    .select('match_id, forfeiting_entry_id')
+    .in('match_id', matchIds);
 
-  if (forfeitsResult.error || !forfeitsResult.data?.length) return [];
+  const matchById = new Map(matches.map((match) => [String(match.id), match]));
+  const forfeitsByMatch = new Map();
 
-  const forfeits = forfeitsResult.data;
-  const matchIds = [...new Set(forfeits.map((row) => row.match_id).filter(Boolean))];
-  if (!matchIds.length) return [];
+  if (!forfeitsResult.error) {
+    (forfeitsResult.data || []).forEach((row) => {
+      const match = matchById.get(String(row.match_id));
+      if (!match || row.forfeiting_entry_id === null || row.forfeiting_entry_id === undefined) return;
 
-  const matchesResult = await supabase
-    .from('matches')
-    .select('id, fixture_date, home_entry_id, away_entry_id, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))')
-    .in('id', matchIds);
+      const forfeitingId = String(row.forfeiting_entry_id);
+      let forfeitingTeam = '';
+      if (forfeitingId === String(match.home_entry_id)) {
+        forfeitingTeam = match.home_entry?.teams?.name || '';
+      } else if (forfeitingId === String(match.away_entry_id)) {
+        forfeitingTeam = match.away_entry?.teams?.name || '';
+      } else {
+        return;
+      }
 
-  if (matchesResult.error) return [];
+      if (forfeitingTeam) forfeitsByMatch.set(String(match.id), forfeitingTeam);
+    });
+  }
 
-  const forfeitByMatch = new Map(forfeits.map((row) => [String(row.match_id), row.forfeiting_entry_id]));
-  return (matchesResult.data || []).map((match) => {
-    const forfeitingEntryId = forfeitByMatch.get(String(match.id));
-    const homeName = match.home_entry?.teams?.name || '';
-    const awayName = match.away_entry?.teams?.name || '';
-    const forfeitingTeam = String(forfeitingEntryId) === String(match.home_entry_id) ? homeName : awayName;
-    return {
-      key: `${normalise(formatDate(match.fixture_date))}|${normalise(homeName)}|${normalise(awayName)}`,
-      forfeitingTeam,
-    };
-  }).filter((row) => row.key && row.forfeitingTeam);
+  return { tournamentId, matches, forfeitsByMatch };
 }
 
-let cachedRows = null;
+let cachedPayload = null;
+let cachedHeroName = '';
 let applying = false;
 
 async function applyForfeitBadges() {
-  if (applying || !document.querySelector('.tournament-hub')) return;
+  const hub = document.querySelector('.tournament-hub');
+  if (applying || !hub) return;
+
   applying = true;
   try {
-    cachedRows ||= await loadForfeitMatches();
-    if (!cachedRows.length) return;
-    const lookup = new Map(cachedRows.map((row) => [row.key, row.forfeitingTeam]));
-    document.querySelectorAll('.tournament-hub .fixture-card').forEach((card) => {
-      const forfeitingTeam = lookup.get(cardKey(card));
+    const heroName = hub.querySelector('.tournament-hero h1')?.textContent?.trim() || '';
+    if (!cachedPayload || cachedHeroName !== heroName) {
+      cachedPayload = await loadForfeitMatches();
+      cachedHeroName = heroName;
+    }
+    if (!cachedPayload) return;
+
+    const matchesByRenderKey = new Map();
+    cachedPayload.matches.forEach((match) => {
+      const key = matchRenderKey(match);
+      if (!key) return;
+      if (!matchesByRenderKey.has(key)) matchesByRenderKey.set(key, []);
+      matchesByRenderKey.get(key).push(String(match.id));
+    });
+
+    hub.querySelectorAll('.fixture-card').forEach((card) => {
+      card.querySelector('.forfeit-result-pill')?.remove();
+      card.removeAttribute('data-match-id');
+
+      const candidates = matchesByRenderKey.get(renderedCardKey(card));
+      const matchId = candidates?.shift();
+      if (!matchId) return;
+
+      card.dataset.matchId = matchId;
+      const forfeitingTeam = cachedPayload.forfeitsByMatch.get(matchId);
       if (forfeitingTeam) addBadge(card, forfeitingTeam);
     });
   } finally {
