@@ -69,37 +69,59 @@ async function verifyAdminToken(token) {
     headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
   });
   if (!userResponse.ok) return false;
-
   const adminResponse = await fetch(`${url}/rest/v1/rpc/is_admin`, {
     method: 'POST',
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: '{}',
   });
   if (!adminResponse.ok) return false;
   return Boolean(await adminResponse.json());
 }
 
-async function wordpressRequest(path, options = {}) {
+function wordpressConfig() {
   const siteUrl = String(process.env.WORDPRESS_SITE_URL || '').replace(/\/$/, '');
+  const site = String(process.env.WORDPRESS_SITE_ID || '').trim()
+    || (() => { try { return new URL(siteUrl).hostname; } catch { return ''; } })();
+  if (!site) throw new Error('WORDPRESS_SITE_ID or WORDPRESS_SITE_URL is not configured.');
+  return { siteUrl, site };
+}
+
+async function wordpressAccessToken() {
+  if (process.env.WORDPRESS_ACCESS_TOKEN) return process.env.WORDPRESS_ACCESS_TOKEN;
   const username = process.env.WORDPRESS_USERNAME;
   const password = process.env.WORDPRESS_APP_PASSWORD;
-  if (!siteUrl || !username || !password) throw new Error('WordPress credentials are not configured.');
-  const auth = Buffer.from(`${username}:${password}`).toString('base64');
-  const response = await fetch(`${siteUrl}/wp-json/wp/v2${path}`, {
+  const clientId = process.env.WORDPRESS_CLIENT_ID;
+  const clientSecret = process.env.WORDPRESS_CLIENT_SECRET;
+  if (!username || !password || !clientId || !clientSecret) {
+    throw new Error('WordPress.com OAuth credentials are incomplete. Add WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET as well as the username and application password.');
+  }
+  const form = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: 'password',
+    username,
+    password,
+  });
+  const response = await fetch('https://public-api.wordpress.com/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) throw new Error(payload.error_description || payload.error || `WordPress.com authentication failed (${response.status}).`);
+  return payload.access_token;
+}
+
+async function wordpressRequest(path, options = {}) {
+  const { site } = wordpressConfig();
+  const token = await wordpressAccessToken();
+  const response = await fetch(`https://public-api.wordpress.com/wp/v2/sites/${encodeURIComponent(site)}${path}`, {
     ...options,
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload.message || `WordPress request failed (${response.status}).`);
+    const error = new Error(payload.message || payload.error || `WordPress.com request failed (${response.status}).`);
     error.wordpressPayload = payload;
     throw error;
   }
@@ -142,8 +164,7 @@ exports.handler = async (event) => {
   try {
     const token = String(event.headers.authorization || '').replace(/^Bearer\s+/i, '');
     if (!token) return json(401, { error: 'Admin authentication is required.' });
-    const isAdmin = await verifyAdminToken(token);
-    if (!isAdmin) return json(403, { error: 'Verified tournament administrator access is required.' });
+    if (!(await verifyAdminToken(token))) return json(403, { error: 'Verified tournament administrator access is required.' });
 
     const body = JSON.parse(event.body || '{}');
     const title = String(body.title || '').trim();
@@ -151,28 +172,19 @@ exports.handler = async (event) => {
     if (!title || !markdown) return json(400, { error: 'A title and report body are required.' });
     if (title.length > 200 || markdown.length > 100000) return json(400, { error: 'The report is too large to publish.' });
 
-    const categoryNames = uniqueTermNames(body.categories, 5);
-    const tagNames = uniqueTermNames(body.tags, 10);
-    const categoryIds = (await Promise.all(categoryNames.map((name) => ensureTerm('categories', name)))).filter(Boolean);
-    const tagIds = (await Promise.all(tagNames.map((name) => ensureTerm('tags', name)))).filter(Boolean);
-
+    const categoryIds = (await Promise.all(uniqueTermNames(body.categories, 5).map((name) => ensureTerm('categories', name)))).filter(Boolean);
+    const tagIds = (await Promise.all(uniqueTermNames(body.tags, 10).map((name) => ensureTerm('tags', name)))).filter(Boolean);
     const post = await wordpressRequest('/posts', {
       method: 'POST',
-      body: JSON.stringify({
-        title,
-        content: markdownToHtml(markdown),
-        status: 'draft',
-        categories: categoryIds,
-        tags: tagIds,
-      }),
+      body: JSON.stringify({ title, content: markdownToHtml(markdown), status: 'draft', categories: categoryIds, tags: tagIds }),
     });
 
-    const siteUrl = String(process.env.WORDPRESS_SITE_URL || '').replace(/\/$/, '');
+    const { site, siteUrl } = wordpressConfig();
     return json(200, {
       id: post.id,
       status: post.status,
       url: post.link || null,
-      edit_url: post.id ? `${siteUrl}/wp-admin/post.php?post=${post.id}&action=edit` : null,
+      edit_url: post.id ? `https://wordpress.com/post/${encodeURIComponent(site)}/${post.id}` : (siteUrl || null),
     });
   } catch (error) {
     console.error('WordPress draft creation failed:', error);
