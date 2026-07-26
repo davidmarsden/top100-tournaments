@@ -1,0 +1,103 @@
+/* Shared fixture presentation for the admin and public tournament pages. */
+
+.fixture-section {
+  border: 1px solid #dce5f5;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(21, 39, 75, 0.06);
+}
+
+.fixture-section + .fixture-section {
+  margin-top: 20px;
+}
+
+.fixture-section-header {
+  border-left: 5px solid #2563eb;
+  background: linear-gradient(135deg, #f6f9ff, #eef3fb);
+}
+
+.fixture-section-header h3 {
+  font-size: clamp(1.15rem, 1.6vw, 1.42rem);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.fixture-card-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+/* Use two columns only when a matchday/group actually contains multiple fixtures. */
+.fixture-card-list:has(.fixture-card:nth-child(2)) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fixture-card {
+  min-width: 0;
+  align-content: start;
+}
+
+.fixture-teams {
+  gap: 12px;
+}
+
+.fixture-teams > strong {
+  display: flex;
+  align-items: center;
+  min-height: 3.1rem;
+  padding: 0.62rem 0.72rem;
+  font-size: clamp(1.12rem, 1.35vw, 1.38rem);
+  font-weight: 950;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.fixture-teams > strong:first-child {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.fixture-teams > strong:last-child {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.fixture-score,
+.score-pill {
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+/* Give editors and opened press rooms the room they need. */
+.fixture-card:has(.result-editor),
+.fixture-card:has(.match-comments-body) {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1120px) {
+  .fixture-card-list:has(.fixture-card:nth-child(2)) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .fixture-section {
+    border-radius: 18px;
+  }
+
+  .fixture-section-header {
+    border-left-width: 4px;
+  }
+
+  .fixture-teams > strong,
+  .fixture-teams > strong:first-child,
+  .fixture-teams > strong:last-child {
+    justify-content: flex-start;
+    min-height: auto;
+    padding: 0.5rem 0;
+    text-align: left;
+  }
+}
