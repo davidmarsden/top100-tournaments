@@ -70,11 +70,31 @@ export function applyRoundDates(matches, roundDates) {
   });
 }
 
+function historicalManagerName(forfeit) {
+  return forfeit?.responsible_manager?.display_name || forfeit?.responsible_manager?.name || null;
+}
+
+function normaliseForfeit(row) {
+  return {
+    id: row.id,
+    match_id: row.match_id,
+    forfeiting_entry_id: row.forfeiting_entry_id || row.forfeiting_entry?.id || null,
+    forfeiting_team: row.forfeiting_entry?.teams?.name || null,
+    manager_id: row.manager_id || row.responsible_manager?.id || null,
+    responsible_manager: historicalManagerName(row),
+    source: row.source || null,
+    reason: row.reason || null,
+    penalty: row.penalty || null,
+    affects_prize_draw: row.affects_prize_draw ?? null,
+  };
+}
+
 export function buildSnapshot({ tournament, entries, matches, groups, forfeits, roundDates, honours }) {
   const datedMatches = applyRoundDates(matches, roundDates);
   const tables = buildTables(entries, datedMatches);
   const entryById = new Map(entries.map((entry) => [String(entry.id), entry]));
-  const forfeitByMatch = new Map((forfeits || []).map((row) => [String(row.match_id), row]));
+  const normalisedForfeits = (forfeits || []).map(normaliseForfeit);
+  const forfeitByMatch = new Map(normalisedForfeits.map((row) => [String(row.match_id), row]));
 
   const fixtures = datedMatches.map((match) => {
     const home = match.home_entry || entryById.get(String(match.home_entry_id));
@@ -97,19 +117,26 @@ export function buildSnapshot({ tournament, entries, matches, groups, forfeits, 
       away_manager: managerName(away),
       home_score: number(match.home_score),
       away_score: number(match.away_score),
+      home_extra_time_score: number(match.home_extra_time_score),
+      away_extra_time_score: number(match.away_extra_time_score),
+      home_penalty_score: number(match.home_penalty_score),
+      away_penalty_score: number(match.away_penalty_score),
       status: match.status,
       winner_entry_id: match.winner_entry_id || null,
       loser_entry_id: match.loser_entry_id || null,
       decided_by: match.decided_by || null,
-      forfeiting_entry_id: forfeit?.forfeiting_entry_id || forfeit?.forfeiting_entry?.id || null,
-      forfeiting_team: forfeit?.forfeiting_entry?.teams?.name || null,
+      forfeiting_entry_id: forfeit?.forfeiting_entry_id || null,
+      forfeiting_team: forfeit?.forfeiting_team || null,
+      forfeit_manager_id: forfeit?.manager_id || null,
+      forfeit_responsible_manager: forfeit?.responsible_manager || null,
+      forfeit_source: forfeit?.source || null,
       forfeit_reason: forfeit?.reason || null,
       affects_prize_draw: forfeit?.affects_prize_draw ?? null,
     };
   });
 
   return {
-    schema_version: 1,
+    schema_version: 2,
     generated_at: new Date().toISOString(),
     tournament: {
       id: tournament.id,
@@ -143,14 +170,14 @@ export function buildSnapshot({ tournament, entries, matches, groups, forfeits, 
     results: fixtures.filter((fixture) => ['played', 'forfeit'].includes(fixture.status)),
     tables: tables.flatMap((table) => table.rows),
     round_dates: roundDates || [],
-    forfeits: forfeits || [],
+    forfeits: normalisedForfeits,
     honours: honours || [],
   };
 }
 
 export function analyseMatchday(snapshot, round) {
   const selectedRound = round || latestCompletedRound(snapshot.fixtures);
-  const matchesToRound = snapshot.fixtures.filter((fixture) => fixture.stage === 'group' && roundNumber(fixture.round) <= roundNumber(selectedRound));
+  const matchesToRound = snapshot.fixtures.filter((fixture) => fixture.stage === 'group' && compareRounds(fixture.round, selectedRound) <= 0);
   const completedToRound = matchesToRound.filter((fixture) => ['played', 'forfeit'].includes(fixture.status));
   const tables = buildTablesFromSnapshot(snapshot.entrants, completedToRound);
   const allRows = tables.flatMap((table) => table.rows);
@@ -185,14 +212,23 @@ function expectedGroupPositions(entrants) {
   return result;
 }
 
-export function groupRounds(snapshot) {
-  return [...new Set(snapshot.fixtures.filter((fixture) => fixture.stage === 'group').map((fixture) => fixture.round).filter(Boolean))]
-    .sort((a, b) => roundNumber(a) - roundNumber(b));
+function roundParts(round) {
+  const text = String(round || '').trim();
+  const match = text.match(/^MD(\d+)(?:L(\d+))?$/i);
+  if (match) return [Number(match[1]), match[2] ? Number(match[2]) : 0, text.toLowerCase()];
+  const numberMatch = text.match(/\d+/);
+  return [numberMatch ? Number(numberMatch[0]) : 999, 999, text.toLowerCase()];
 }
 
-function roundNumber(round) {
-  const match = String(round || '').match(/\d+/);
-  return match ? Number(match[0]) : 999;
+function compareRounds(a, b) {
+  const left = roundParts(a);
+  const right = roundParts(b);
+  return left[0] - right[0] || left[1] - right[1] || left[2].localeCompare(right[2]);
+}
+
+export function groupRounds(snapshot) {
+  return [...new Set(snapshot.fixtures.filter((fixture) => fixture.stage === 'group').map((fixture) => fixture.round).filter(Boolean))]
+    .sort(compareRounds);
 }
 
 function latestCompletedRound(fixtures) {
@@ -254,7 +290,7 @@ export function csvFiles(snapshot) {
     'results.csv': toCsv(snapshot.results),
     'tables.csv': toCsv(snapshot.tables),
     'round-dates.csv': toCsv(snapshot.round_dates),
-    'forfeits.csv': toCsv(snapshot.forfeits.map((row) => ({ id: row.id, match_id: row.match_id, forfeiting_entry_id: row.forfeiting_entry_id || row.forfeiting_entry?.id || null, forfeiting_team: row.forfeiting_entry?.teams?.name || null, reason: row.reason || null, penalty: row.penalty || null, affects_prize_draw: row.affects_prize_draw ?? null }))),
+    'forfeits.csv': toCsv(snapshot.forfeits),
     'honours.csv': toCsv(snapshot.honours.map((row) => ({ id: row.id, honour: row.honour, position: row.position, tournament_id: row.tournament_id, team: row.entry?.teams?.name || null, manager: row.entry?.managers?.display_name || row.entry?.managers?.name || null }))),
   };
 }
