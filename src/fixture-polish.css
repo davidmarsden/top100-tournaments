@@ -77,9 +77,59 @@
   grid-column: 1 / -1;
 }
 
+/* Public page: completed matches sit on a clearly distinct soft-green surface. */
+.tournament-hub .fixture-card:has(.result-side.winner),
+.tournament-hub .fixture-card:has(.result-side.draw) {
+  background: linear-gradient(135deg, rgba(232, 249, 239, 0.95), rgba(246, 252, 248, 0.96));
+}
+
+/* Public page: a strong full-width blue rule marks the start of every new matchday row. */
+.tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3) {
+  position: relative;
+  margin-top: 18px;
+  padding-top: 32px;
+  border-top: 8px solid #2563eb;
+  box-shadow: 0 -1px 0 rgba(37, 99, 235, 0.18);
+}
+
+.tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 4) {
+  margin-top: 18px;
+  padding-top: 32px;
+  border-top: 8px solid #2563eb;
+  box-shadow: 0 -1px 0 rgba(37, 99, 235, 0.18);
+}
+
+/* Bridge the grid gap so the divider reads as one continuous matchday band. */
+.tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3)::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: -14px;
+  width: 14px;
+  height: 8px;
+  background: #2563eb;
+}
+
+/* Alternate upcoming matchday rows very subtly to help the eye track across columns. */
+.tournament-hub .fixture-card-list .fixture-card:nth-child(4n + 3):not(:has(.result-side.winner, .result-side.draw)),
+.tournament-hub .fixture-card-list .fixture-card:nth-child(4n + 4):not(:has(.result-side.winner, .result-side.draw)) {
+  background: linear-gradient(135deg, rgba(239, 245, 255, 0.88), rgba(250, 252, 255, 0.96));
+}
+
 @media (max-width: 1120px) {
   .fixture-card-list:has(.fixture-card:nth-child(2)) {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tournament-hub .fixture-card-list:has(.fixture-card:nth-child(2)) .fixture-card:nth-child(n + 2) {
+    position: relative;
+    margin-top: 18px;
+    padding-top: 28px;
+    border-top: 6px solid #2563eb;
+  }
+
+  .tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3)::before {
+    display: none;
   }
 }
 
