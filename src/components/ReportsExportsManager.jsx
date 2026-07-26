@@ -16,6 +16,8 @@ export default function ReportsExportsManager({ selectedTournament }) {
   const [markdown, setMarkdown] = useState('');
   const [status, setStatus] = useState('Load the current tournament snapshot to begin.');
   const [loading, setLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [wordpressDraftUrl, setWordpressDraftUrl] = useState('');
   const currentTournamentId = useRef(selectedTournament?.id || null);
 
   useEffect(() => {
@@ -23,6 +25,7 @@ export default function ReportsExportsManager({ selectedTournament }) {
     setSnapshot(null);
     setSelectedRound('');
     setMarkdown('');
+    setWordpressDraftUrl('');
     setStatus(selectedTournament ? 'Load the current tournament snapshot to begin.' : 'Select a tournament first.');
   }, [selectedTournament?.id]);
 
@@ -37,6 +40,7 @@ export default function ReportsExportsManager({ selectedTournament }) {
     setSnapshot(null);
     setSelectedRound('');
     setMarkdown('');
+    setWordpressDraftUrl('');
     setStatus('Building tournament snapshot...');
     try {
       const [entriesResult, groupsResult, matchesResult, roundDatesResult, honoursResult] = await Promise.all([
@@ -59,10 +63,16 @@ export default function ReportsExportsManager({ selectedTournament }) {
 
       const matchIds = (matchesResult.data || []).map((match) => match.id);
       let forfeits = [];
+      let comments = [];
       if (matchIds.length) {
-        const forfeitResult = await supabase.from('forfeits').select('id, match_id, forfeiting_entry_id, manager_id, source, reason, penalty, affects_prize_draw, responsible_manager:managers!forfeits_manager_id_fkey(id, name, display_name), forfeiting_entry:tournament_entries!forfeits_forfeiting_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))').in('match_id', matchIds);
+        const [forfeitResult, commentsResult] = await Promise.all([
+          supabase.from('forfeits').select('id, match_id, forfeiting_entry_id, manager_id, source, reason, penalty, affects_prize_draw, responsible_manager:managers!forfeits_manager_id_fkey(id, name, display_name), forfeiting_entry:tournament_entries!forfeits_forfeiting_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))').in('match_id', matchIds),
+          supabase.from('match_comments').select('id, match_id, manager_name, club_name, comment, comment_type, contribution_type, prediction_score, player_to_watch, first_goalscorer, is_pinned, editor_pick, reactions, created_at').in('match_id', matchIds).eq('status', 'visible').order('created_at', { ascending: true }),
+        ]);
         if (forfeitResult.error) throw new Error(`Could not load forfeits: ${forfeitResult.error.message}`);
+        if (commentsResult.error) throw new Error(`Could not load press conferences: ${commentsResult.error.message}`);
         forfeits = forfeitResult.data || [];
+        comments = commentsResult.data || [];
       }
 
       if (String(currentTournamentId.current) !== String(tournamentId)) return;
@@ -75,11 +85,12 @@ export default function ReportsExportsManager({ selectedTournament }) {
         roundDates: roundDatesResult.data || [],
         honours: honoursResult.data || [],
         forfeits,
+        comments,
       });
       setSnapshot(nextSnapshot);
       const availableRounds = groupRounds(nextSnapshot);
       setSelectedRound(availableRounds[0] || '');
-      setStatus(`Snapshot ready: ${nextSnapshot.entrants.length} entrants, ${nextSnapshot.fixtures.length} fixtures and ${nextSnapshot.results.length} results.`);
+      setStatus(`Snapshot ready: ${nextSnapshot.entrants.length} entrants, ${nextSnapshot.fixtures.length} fixtures, ${nextSnapshot.results.length} results and ${nextSnapshot.press_conferences.length} press comments.`);
     } catch (error) {
       if (String(currentTournamentId.current) === String(tournamentId)) {
         setSnapshot(null);
@@ -107,15 +118,46 @@ export default function ReportsExportsManager({ selectedTournament }) {
   function generateReport() {
     if (!snapshotIsCurrent || !selectedRound) return;
     const analysis = analyseMatchday(snapshot, selectedRound);
-    const nextMarkdown = generateMatchdayMarkdown(snapshot, analysis);
-    setMarkdown(nextMarkdown);
-    setStatus(`${selectedRound} blog draft generated from ${analysis.matches.length} completed group results.`);
+    setMarkdown(generateMatchdayMarkdown(snapshot, analysis));
+    setWordpressDraftUrl('');
+    setStatus(`${selectedRound} blog draft generated from ${analysis.matches.length} completed group results and ${analysis.pressComments.length} selected press comments.`);
   }
 
   async function copyMarkdown() {
     if (!markdown) return;
     await navigator.clipboard.writeText(markdown);
     setStatus('Markdown copied to the clipboard.');
+  }
+
+  async function createWordpressDraft() {
+    if (!markdown || !snapshotIsCurrent || publishing) return;
+    setPublishing(true);
+    setWordpressDraftUrl('');
+    setStatus('Creating WordPress draft...');
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error('Your admin session has expired. Please sign in again.');
+      const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || `${snapshot.tournament.name} ${selectedRound} report`;
+      const response = await fetch('/.netlify/functions/create-wordpress-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title,
+          markdown,
+          categories: ['Tournament Reports', `${snapshot.tournament.competition} Reports`],
+          tags: [snapshot.tournament.name, selectedRound, snapshot.tournament.competition],
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `WordPress returned ${response.status}.`);
+      setWordpressDraftUrl(payload.edit_url || payload.url || '');
+      setStatus('WordPress draft created. Review it on WordPress.com before publishing.');
+    } catch (error) {
+      setStatus(`Could not create WordPress draft: ${error.message}`);
+    } finally {
+      setPublishing(false);
+    }
   }
 
   if (!selectedTournament) return <p className="muted">Create or select a tournament first.</p>;
@@ -126,7 +168,7 @@ export default function ReportsExportsManager({ selectedTournament }) {
       <div>
         <p className="eyebrow">Canonical archive</p>
         <h3>Download tournament data</h3>
-        <p className="muted">JSON preserves the complete tournament snapshot. The CSV package supplies separate spreadsheet-ready files for entrants, groups, fixtures, results, tables, forfeits, round dates and honours. Downloads remain disabled if any required dataset fails to load.</p>
+        <p className="muted">JSON preserves the complete tournament snapshot, including press conferences. The CSV package supplies separate spreadsheet-ready files. Downloads remain disabled if any required dataset fails to load.</p>
       </div>
       <div className="button-row">
         <button type="button" onClick={loadSnapshot} disabled={loading}>{loading ? 'Building snapshot...' : snapshotIsCurrent ? 'Refresh snapshot' : 'Build snapshot'}</button>
@@ -139,7 +181,7 @@ export default function ReportsExportsManager({ selectedTournament }) {
       <div>
         <p className="eyebrow">Matchday story generator</p>
         <h3>What is the story of the group stage?</h3>
-        <p className="muted">The draft compares current group positions with original seed expectations and identifies perfect starts, surprise packages, under-achievers, teams with a mountain to climb, statement wins and tight groups.</p>
+        <p className="muted">The focused draft covers the strongest starters, surprise packages, under-achievers and teams with a mountain to climb, then adds selected comments from the press room. Full results and tables stay on the tournament hub.</p>
       </div>
       <div className="report-controls">
         <label>Report through
@@ -155,6 +197,8 @@ export default function ReportsExportsManager({ selectedTournament }) {
           <button type="button" className="secondary" onClick={copyMarkdown}>Copy markdown</button>
           <button type="button" className="secondary" onClick={() => downloadText(`${baseName}-${selectedRound.toLowerCase()}-report.md`, markdown, 'text/markdown;charset=utf-8')}>Download .md</button>
           <button type="button" className="secondary" onClick={() => downloadText(`${baseName}-${selectedRound.toLowerCase()}-analysis.json`, JSON.stringify(analyseMatchday(snapshot, selectedRound), null, 2), 'application/json;charset=utf-8')}>Download analysis JSON</button>
+          <button type="button" onClick={createWordpressDraft} disabled={publishing}>{publishing ? 'Creating WordPress draft...' : 'Create WordPress draft'}</button>
+          {wordpressDraftUrl && <a className="button secondary" href={wordpressDraftUrl} target="_blank" rel="noreferrer">Open WordPress draft</a>}
         </div>
         <textarea className="report-markdown" value={markdown} onChange={(event) => setMarkdown(event.target.value)} aria-label="Generated matchday blog draft" />
       </>}
