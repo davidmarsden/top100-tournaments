@@ -12,6 +12,7 @@ import './brand-system.css';
 import './public-page-overrides.css';
 import './fixture-polish.css';
 import './public-forfeit-badges.css';
+import './reports-exports.css';
 import './public-matchday-boundaries.js';
 import './public-forfeit-badges.js';
 

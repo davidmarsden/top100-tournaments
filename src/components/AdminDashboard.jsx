@@ -8,6 +8,7 @@ import ManagerForfeitRegister from './ManagerForfeitRegister.jsx';
 import ProgressBar, { isStepDone } from './ProgressBar.jsx';
 import PublicPageManager from './PublicPageManager.jsx';
 import RegistrationManager from './RegistrationManager.jsx';
+import ReportsExportsManager from './ReportsExportsManager.jsx';
 import ResultsTestControls from './ResultsTestControls.jsx';
 import TablesManager from './TablesManager.jsx';
 import TournamentBuilder from './TournamentBuilder.jsx';
@@ -17,7 +18,7 @@ import { publicTournamentPath } from '../lib/tournamentSlugs';
 import { deleteTournamentsOnServer } from '../lib/deleteTournaments.js';
 import { supabase } from '../lib/supabaseClient';
 
-const modules = ['Overview', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Challonge', 'Public Page'];
+const modules = ['Overview', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Reports & Exports', 'Challonge', 'Public Page'];
 const workflowSteps = ['Tournament', 'Registration', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Publish', 'Archive'];
 
 export default function AdminDashboard() {
@@ -36,7 +37,7 @@ export default function AdminDashboard() {
       <section className="workspace">
         <section className="grid two-columns compact"><TournamentCreateForm onDemoPreview={onDemoPreview} /><WorkflowCard selectedTournament={selectedTournament} preview={preview} progressStats={progressStats} /></section>
         {canUseDatabase && selectedTournament && <TournamentBuilder selectedTournament={selectedTournament} preview={preview} buildPreview={buildPreview} onNavigate={setActiveModule} onRefresh={refreshTournamentData} />}
-        <section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div>{activeModule !== 'Result Approvals' && <button type="button" className="secondary" onClick={refreshTournamentData} disabled={loading || !canUseDatabase}>Refresh tournament data</button>}</div><ModuleContent activeModule={activeModule} /></section>
+        <section className="card module-card"><div className="card-header row"><div><p className="eyebrow">{activeModule}</p><h2>{moduleHeading(activeModule)}</h2></div>{!['Result Approvals', 'Reports & Exports'].includes(activeModule) && <button type="button" className="secondary" onClick={refreshTournamentData} disabled={loading || !canUseDatabase}>Refresh tournament data</button>}</div><ModuleContent activeModule={activeModule} /></section>
       </section>
     </section>
   </main>;
@@ -47,7 +48,7 @@ function WorkflowCard({ selectedTournament, preview, progressStats }) {
 }
 
 function moduleHeading(activeModule) {
-  const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: 'Results archive and editing', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: 'Cup and Shield draw', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
+  const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: 'Results archive and editing', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: 'Cup and Shield draw', 'Reports & Exports': 'Download data and generate matchday stories', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
   return headings[activeModule] || activeModule;
 }
 
@@ -79,6 +80,7 @@ function ModuleContent({ activeModule }) {
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Forfeits') return <ManagerForfeitRegister selectedTournament={selectedTournament} admin />;
   if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />;
+  if (activeModule === 'Reports & Exports') return <ReportsExportsManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Challonge') return <ChallongeImportManager onTournamentUpdated={refreshTournamentData} />;
   if (activeModule === 'Public Page') return <PublicPageManager selectedTournament={selectedTournament} onTournamentUpdated={refreshTournamentData} />;
   return <p className="muted">Module coming next.</p>;
