@@ -47,7 +47,6 @@ The access token can be generated on a phone or tablet without a terminal. Befor
 ```env
 WORDPRESS_CLIENT_ID=your_wordpress_com_app_client_id
 WORDPRESS_CLIENT_SECRET=your_wordpress_com_app_client_secret
-WORDPRESS_OAUTH_STATE=a_long_private_random_value
 ```
 
 Set the WordPress.com application's redirect URL to:
@@ -56,9 +55,9 @@ Set the WordPress.com application's redirect URL to:
 https://youth-cup.smtop100.blog/.netlify/functions/wordpress-oauth-setup
 ```
 
-After deploying, open that same URL in a browser and tap **Authorise with WordPress.com**. The callback exchanges the temporary authorization code server-side and displays the resulting `WORDPRESS_ACCESS_TOKEN` and numeric `WORDPRESS_SITE_ID` for copying into Netlify. The page uses no-store headers and verifies the configured OAuth state value.
+After deploying, open that same URL in a browser and tap **Authorise with WordPress.com**. The helper generates a fresh random OAuth state for that attempt and stores it in a short-lived Secure, HttpOnly, SameSite cookie. The callback is accepted only in the browser that initiated the flow, then exchanges the temporary authorization code server-side and displays the resulting `WORDPRESS_ACCESS_TOKEN` and numeric `WORDPRESS_SITE_ID` for copying into Netlify.
 
-After the token is saved and a fresh deploy succeeds, remove `WORDPRESS_CLIENT_SECRET` and `WORDPRESS_OAUTH_STATE` if the setup helper is no longer needed. Keep `WORDPRESS_ACCESS_TOKEN` private.
+After the token is saved and a fresh deploy succeeds, remove `WORDPRESS_CLIENT_SECRET` if the setup helper is no longer needed. Keep `WORDPRESS_ACCESS_TOKEN` private.
 
 The draft-publishing function verifies the caller through Supabase's `is_admin` RPC before using the stored WordPress.com token. Posts are always created as drafts, with the relevant report categories and tags created or reused automatically.
 
