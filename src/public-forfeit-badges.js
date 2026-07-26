@@ -33,16 +33,53 @@ function matchRenderKey(match) {
   return `${normalise(formatDate(match.rendered_fixture_date))}|${normalise(homeName)}|${normalise(awayName)}`;
 }
 
-function addBadge(card, forfeitingTeam) {
+function restoreScore(score) {
+  const original = score.dataset.originalScore;
+  if (original !== undefined && score.querySelector('.forfeit-score-layout')) {
+    score.textContent = original;
+  }
+}
+
+function addBadge(card, forfeit) {
   const score = card.querySelector('.fixture-score');
-  if (!score || score.querySelector('.forfeit-result-pill')) return;
+  if (!score || !forfeit) return;
+
+  const rawScore = score.dataset.originalScore || score.textContent.trim();
+  const scoreMatch = rawScore.match(/^\s*(-?\d+)\s*-\s*(-?\d+)\s*$/);
+  if (!scoreMatch) return;
+
+  score.dataset.originalScore = rawScore;
+  score.textContent = '';
+
+  const layout = document.createElement('span');
+  layout.className = 'forfeit-score-layout';
+
+  const home = document.createElement('span');
+  home.className = 'forfeit-score-side forfeit-score-home';
+  home.textContent = scoreMatch[1];
+
+  const separator = document.createElement('span');
+  separator.className = 'forfeit-score-separator';
+  separator.textContent = '–';
+
+  const away = document.createElement('span');
+  away.className = 'forfeit-score-side forfeit-score-away';
+  away.textContent = scoreMatch[2];
 
   const pill = document.createElement('span');
   pill.className = 'forfeit-result-pill';
   pill.textContent = 'F';
-  pill.title = `Forfeit by ${forfeitingTeam}`;
-  pill.setAttribute('aria-label', `Forfeit by ${forfeitingTeam}`);
-  score.appendChild(pill);
+  pill.title = `Forfeit by ${forfeit.team}`;
+  pill.setAttribute('aria-label', `Forfeit by ${forfeit.team}`);
+
+  if (forfeit.side === 'home') {
+    home.appendChild(pill);
+  } else {
+    away.appendChild(pill);
+  }
+
+  layout.append(home, separator, away);
+  score.appendChild(layout);
 }
 
 async function resolveDisplayedTournamentId() {
@@ -117,16 +154,14 @@ async function loadForfeitMatches() {
       if (!match || row.forfeiting_entry_id === null || row.forfeiting_entry_id === undefined) return;
 
       const forfeitingId = String(row.forfeiting_entry_id);
-      let forfeitingTeam = '';
+      let forfeit = null;
       if (forfeitingId === String(match.home_entry_id)) {
-        forfeitingTeam = match.home_entry?.teams?.name || '';
+        forfeit = { side: 'home', team: match.home_entry?.teams?.name || '' };
       } else if (forfeitingId === String(match.away_entry_id)) {
-        forfeitingTeam = match.away_entry?.teams?.name || '';
-      } else {
-        return;
+        forfeit = { side: 'away', team: match.away_entry?.teams?.name || '' };
       }
 
-      if (forfeitingTeam) forfeitsByMatch.set(String(match.id), forfeitingTeam);
+      if (forfeit?.team) forfeitsByMatch.set(String(match.id), forfeit);
     });
   }
 
@@ -136,12 +171,15 @@ async function loadForfeitMatches() {
 let cachedPayload = null;
 let cachedHeroName = '';
 let applying = false;
+let observer = null;
 
 async function applyForfeitBadges() {
   const hub = document.querySelector('.tournament-hub');
   if (applying || !hub) return;
 
   applying = true;
+  observer?.disconnect();
+
   try {
     const heroName = hub.querySelector('.tournament-hero h1')?.textContent?.trim() || '';
     if (!cachedPayload || cachedHeroName !== heroName) {
@@ -159,7 +197,8 @@ async function applyForfeitBadges() {
     });
 
     hub.querySelectorAll('.fixture-card').forEach((card) => {
-      card.querySelector('.forfeit-result-pill')?.remove();
+      const score = card.querySelector('.fixture-score');
+      if (score) restoreScore(score);
       card.removeAttribute('data-match-id');
 
       const candidates = matchesByRenderKey.get(renderedCardKey(card));
@@ -167,16 +206,17 @@ async function applyForfeitBadges() {
       if (!matchId) return;
 
       card.dataset.matchId = matchId;
-      const forfeitingTeam = cachedPayload.forfeitsByMatch.get(matchId);
-      if (forfeitingTeam) addBadge(card, forfeitingTeam);
+      const forfeit = cachedPayload.forfeitsByMatch.get(matchId);
+      if (forfeit) addBadge(card, forfeit);
     });
   } finally {
     applying = false;
+    observer?.observe(document.documentElement, { childList: true, subtree: true });
   }
 }
 
 if (typeof window !== 'undefined') {
   window.addEventListener('DOMContentLoaded', applyForfeitBadges, { once: true });
-  const observer = new MutationObserver(() => window.requestAnimationFrame(applyForfeitBadges));
+  observer = new MutationObserver(() => window.requestAnimationFrame(applyForfeitBadges));
   observer.observe(document.documentElement, { childList: true, subtree: true });
 }
