@@ -86,13 +86,45 @@
   background: linear-gradient(135deg, rgba(239, 245, 255, 0.88), rgba(250, 252, 255, 0.96));
 }
 
+/* Force every new matchday to begin in column one. This guarantees a new grid
+   row even when an earlier press room or editor spans both columns. */
 #groups .fixture-card.matchday-start {
   position: relative;
-  grid-column: 1 / -1;
+  grid-column: 1;
   margin-top: 18px;
   padding-top: 32px;
-  border-top: 8px solid #2563eb;
+}
+
+#groups .fixture-card.matchday-start::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: calc(200% + 14px);
+  height: 8px;
+  background: #2563eb;
   box-shadow: 0 -1px 0 rgba(37, 99, 235, 0.18);
+  pointer-events: none;
+}
+
+/* An opened press room on the first fixture may still span the grid; in that
+   state its divider should use the card's full width rather than double it. */
+#groups .fixture-card.matchday-start:has(.result-editor),
+#groups .fixture-card.matchday-start:has(.match-comments-body) {
+  grid-column: 1 / -1;
+}
+
+#groups .fixture-card.matchday-start:has(.result-editor)::before,
+#groups .fixture-card.matchday-start:has(.match-comments-body)::before {
+  width: 100%;
+}
+
+/* The second fixture in the same desktop matchday receives matching vertical
+   spacing so both cards remain aligned on the same grid row. */
+#groups .fixture-card.matchday-start + .fixture-card {
+  margin-top: 18px;
+  padding-top: 32px;
 }
 
 @media (max-width: 1120px) {
@@ -100,10 +132,24 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  #groups .fixture-card.matchday-start {
+  #groups .fixture-card.matchday-start,
+  #groups .fixture-card.matchday-start:has(.result-editor),
+  #groups .fixture-card.matchday-start:has(.match-comments-body) {
+    grid-column: auto;
     margin-top: 18px;
     padding-top: 28px;
-    border-top-width: 6px;
+  }
+
+  #groups .fixture-card.matchday-start::before {
+    width: 100%;
+    height: 6px;
+  }
+
+  /* In one column, the following fixture belongs underneath the same divider
+     and should not inherit desktop row-alignment spacing. */
+  #groups .fixture-card.matchday-start + .fixture-card {
+    margin-top: 0;
+    padding-top: 0;
   }
 }
 
