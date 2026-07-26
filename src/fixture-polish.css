@@ -86,10 +86,11 @@
   background: linear-gradient(135deg, rgba(239, 245, 255, 0.88), rgba(250, 252, 255, 0.96));
 }
 
-/* Keep the first fixture in its normal column. The divider is drawn across both
-   columns with a pseudo-element instead of making the card span the grid. */
+/* Force every new matchday to begin in column one. This guarantees a new grid
+   row even when an earlier press room or editor spans both columns. */
 #groups .fixture-card.matchday-start {
   position: relative;
+  grid-column: 1;
   margin-top: 18px;
   padding-top: 32px;
 }
@@ -107,6 +108,18 @@
   pointer-events: none;
 }
 
+/* An opened press room on the first fixture may still span the grid; in that
+   state its divider should use the card's full width rather than double it. */
+#groups .fixture-card.matchday-start:has(.result-editor),
+#groups .fixture-card.matchday-start:has(.match-comments-body) {
+  grid-column: 1 / -1;
+}
+
+#groups .fixture-card.matchday-start:has(.result-editor)::before,
+#groups .fixture-card.matchday-start:has(.match-comments-body)::before {
+  width: 100%;
+}
+
 /* The second fixture in the same desktop matchday receives matching vertical
    spacing so both cards remain aligned on the same grid row. */
 #groups .fixture-card.matchday-start + .fixture-card {
@@ -119,7 +132,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  #groups .fixture-card.matchday-start {
+  #groups .fixture-card.matchday-start,
+  #groups .fixture-card.matchday-start:has(.result-editor),
+  #groups .fixture-card.matchday-start:has(.match-comments-body) {
+    grid-column: auto;
     margin-top: 18px;
     padding-top: 28px;
   }
