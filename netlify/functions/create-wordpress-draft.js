@@ -98,7 +98,11 @@ async function wordpressRequest(path, options = {}) {
     },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || `WordPress request failed (${response.status}).`);
+  if (!response.ok) {
+    const error = new Error(payload.message || `WordPress request failed (${response.status}).`);
+    error.wordpressPayload = payload;
+    throw error;
+  }
   return payload;
 }
 
@@ -108,8 +112,29 @@ async function ensureTerm(type, name) {
   const found = await wordpressRequest(`/${type}?search=${encodeURIComponent(cleanName)}&per_page=100`);
   const exact = found.find((item) => String(item.name).toLowerCase() === cleanName.toLowerCase());
   if (exact) return exact.id;
-  const created = await wordpressRequest(`/${type}`, { method: 'POST', body: JSON.stringify({ name: cleanName }) });
-  return created.id;
+  try {
+    const created = await wordpressRequest(`/${type}`, { method: 'POST', body: JSON.stringify({ name: cleanName }) });
+    return created.id;
+  } catch (error) {
+    const payload = error.wordpressPayload || {};
+    const existingId = payload.code === 'term_exists' ? payload.data?.term_id : null;
+    if (existingId) return existingId;
+    throw error;
+  }
+}
+
+function uniqueTermNames(values, limit) {
+  const seen = new Set();
+  const names = [];
+  for (const value of Array.isArray(values) ? values : []) {
+    const cleanName = String(value || '').trim();
+    const key = cleanName.toLocaleLowerCase('en-GB');
+    if (!cleanName || seen.has(key)) continue;
+    seen.add(key);
+    names.push(cleanName);
+    if (names.length === limit) break;
+  }
+  return names;
 }
 
 exports.handler = async (event) => {
@@ -126,8 +151,8 @@ exports.handler = async (event) => {
     if (!title || !markdown) return json(400, { error: 'A title and report body are required.' });
     if (title.length > 200 || markdown.length > 100000) return json(400, { error: 'The report is too large to publish.' });
 
-    const categoryNames = Array.isArray(body.categories) ? body.categories.slice(0, 5) : [];
-    const tagNames = Array.isArray(body.tags) ? body.tags.slice(0, 10) : [];
+    const categoryNames = uniqueTermNames(body.categories, 5);
+    const tagNames = uniqueTermNames(body.tags, 10);
     const categoryIds = (await Promise.all(categoryNames.map((name) => ensureTerm('categories', name)))).filter(Boolean);
     const tagIds = (await Promise.all(tagNames.map((name) => ensureTerm('tags', name)))).filter(Boolean);
 
