@@ -38,9 +38,29 @@ WORDPRESS_SITE_ID=smtop100.blog
 WORDPRESS_ACCESS_TOKEN=your_wordpress_com_oauth_access_token
 ```
 
-`WORDPRESS_SITE_ID` may be the WordPress.com numeric site ID or its domain. Generate `WORDPRESS_ACCESS_TOKEN` through WordPress.com's supported OAuth authorization-code flow and store the resulting token in Netlify. Application passwords and the OAuth password grant are not supported for this integration.
+`WORDPRESS_SITE_ID` may be the WordPress.com numeric site ID or its domain. Application passwords and the OAuth password grant are not supported for this integration.
 
-The server function verifies the caller through Supabase's `is_admin` RPC before using the stored WordPress.com token. Posts are always created as drafts, with the relevant report categories and tags created or reused automatically.
+### Browser-only OAuth setup
+
+The access token can be generated on a phone or tablet without a terminal. Before the one-time setup, add these server-only Netlify variables:
+
+```env
+WORDPRESS_CLIENT_ID=your_wordpress_com_app_client_id
+WORDPRESS_CLIENT_SECRET=your_wordpress_com_app_client_secret
+WORDPRESS_OAUTH_STATE=a_long_private_random_value
+```
+
+Set the WordPress.com application's redirect URL to:
+
+```text
+https://youth-cup.smtop100.blog/.netlify/functions/wordpress-oauth-setup
+```
+
+After deploying, open that same URL in a browser and tap **Authorise with WordPress.com**. The callback exchanges the temporary authorization code server-side and displays the resulting `WORDPRESS_ACCESS_TOKEN` and numeric `WORDPRESS_SITE_ID` for copying into Netlify. The page uses no-store headers and verifies the configured OAuth state value.
+
+After the token is saved and a fresh deploy succeeds, remove `WORDPRESS_CLIENT_SECRET` and `WORDPRESS_OAUTH_STATE` if the setup helper is no longer needed. Keep `WORDPRESS_ACCESS_TOKEN` private.
+
+The draft-publishing function verifies the caller through Supabase's `is_admin` RPC before using the stored WordPress.com token. Posts are always created as drafts, with the relevant report categories and tags created or reused automatically.
 
 ## Netlify build settings
 
