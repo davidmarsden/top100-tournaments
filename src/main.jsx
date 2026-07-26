@@ -11,7 +11,9 @@ import './manager-portal.css';
 import './brand-system.css';
 import './public-page-overrides.css';
 import './fixture-polish.css';
+import './public-forfeit-badges.css';
 import './public-matchday-boundaries.js';
+import './public-forfeit-badges.js';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
