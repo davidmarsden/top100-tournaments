@@ -48,7 +48,7 @@ function WorkflowCard({ selectedTournament, preview, progressStats }) {
 }
 
 function moduleHeading(activeModule) {
-  const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: 'Results archive and editing', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: 'Cup and Shield draw', 'Reports & Exports': 'Download data and generate matchday stories', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
+  const headings = { Overview: 'Tournament dashboard', Registration: 'Registration window and approvals', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: 'Enter, review and edit results', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: 'Cup and Shield draw', 'Reports & Exports': 'Download data and generate matchday stories', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
   return headings[activeModule] || activeModule;
 }
 
@@ -58,13 +58,13 @@ function ModuleContent({ activeModule }) {
   async function deleteSelected(ids, label = 'selected') {
     if (!ids.length) return;
     if (!window.confirm(`Delete ${ids.length} ${label} tournament(s) and all linked data? This cannot be undone.`)) return;
-    setStatus(`Deleting ${ids.length} tournament(s)...`);
+    setStatus(`Deleting ${ids.length} ${label} tournament(s)...`);
     try {
       await deleteTournamentsOnServer(ids);
       setBulkSelectedIds([]);
       setSelectedTournamentId((current) => ids.includes(current) ? null : current);
       await refreshTournamentData();
-      setStatus(`Deleted ${ids.length} tournament(s).`);
+      setStatus(`Deleted ${ids.length} ${label} tournament(s).`);
     } catch (error) {
       setStatus('Delete failed: ' + error.message);
     }
@@ -76,7 +76,7 @@ function ModuleContent({ activeModule }) {
   if (activeModule === 'Groups') return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} onDataChanged={refreshTournamentData} />;
   if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyOutstanding onDataChanged={refreshTournamentData} />;
   if (activeModule === 'Result Approvals') return <div className="overview-actions"><p>Manager-submitted scores are reviewed in the dedicated approval queue.</p><div className="button-row"><a className="button" href="/admin/result-submissions">Open result approval queue</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div>;
-  if (activeModule === 'Results') return <><ResultsTestControls selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} /><FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onlyCompleted onDataChanged={refreshTournamentData} /></>;
+  if (activeModule === 'Results') return <><ResultsTestControls selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} /><FixturesManager selectedTournament={selectedTournament} preview={preview} stage="group" onDataChanged={refreshTournamentData} /></>;
   if (activeModule === 'Tables') return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Forfeits') return <ManagerForfeitRegister selectedTournament={selectedTournament} admin />;
   if (activeModule === 'Knockout') return <KnockoutManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />;

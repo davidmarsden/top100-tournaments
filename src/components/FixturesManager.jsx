@@ -188,6 +188,7 @@ export default function FixturesManager({
   }, [tournamentId, stage]);
 
   const filteredFixtures = useMemo(() => fixtures
+    .filter((fixture) => fixture.status !== 'voided')
     .filter((fixture) => !onlyOutstanding || !isCompleted(fixture))
     .filter((fixture) => !onlyCompleted || isCompleted(fixture))
     .filter((fixture) => groupFilter === 'all' || fixtureGroupLabel(fixture) === groupFilter)
@@ -197,8 +198,8 @@ export default function FixturesManager({
   const sections = useMemo(() => Object.values(groupFixtures(filteredFixtures)), [filteredFixtures]);
   const tieSummaries = useMemo(() => buildTieSummaries(fixtures), [fixtures]);
   const playedCount = fixtures.filter(isCompleted).length;
-  const groupOptions = useMemo(() => [...new Set(fixtures.map(fixtureGroupLabel))].sort(), [fixtures]);
-  const roundOptions = useMemo(() => [...new Set(fixtures.map(roundLabel))]
+  const groupOptions = useMemo(() => [...new Set(fixtures.filter((fixture) => fixture.status !== 'voided').map(fixtureGroupLabel))].sort(), [fixtures]);
+  const roundOptions = useMemo(() => [...new Set(fixtures.filter((fixture) => fixture.status !== 'voided').map(roundLabel))]
     .sort((a, b) => roundSortValue(a) - roundSortValue(b)
       || a.localeCompare(b, undefined, { numeric: true })), [fixtures]);
 
