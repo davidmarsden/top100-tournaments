@@ -89,7 +89,26 @@ function normaliseForfeit(row) {
   };
 }
 
-export function buildSnapshot({ tournament, entries, matches, groups, forfeits, roundDates, honours }) {
+function normaliseComment(row) {
+  return {
+    id: row.id,
+    match_id: row.match_id,
+    manager_name: row.manager_name || 'Unknown manager',
+    club_name: row.club_name || null,
+    comment: String(row.comment || '').trim(),
+    comment_type: row.comment_type || 'pre_match',
+    contribution_type: row.contribution_type || 'statement',
+    prediction_score: row.prediction_score || null,
+    player_to_watch: row.player_to_watch || null,
+    first_goalscorer: row.first_goalscorer || null,
+    is_pinned: Boolean(row.is_pinned),
+    editor_pick: Boolean(row.editor_pick),
+    reactions: row.reactions || {},
+    created_at: row.created_at || null,
+  };
+}
+
+export function buildSnapshot({ tournament, entries, matches, groups, forfeits, roundDates, honours, comments = [] }) {
   const datedMatches = applyRoundDates(matches, roundDates);
   const tables = buildTables(entries, datedMatches);
   const entryById = new Map(entries.map((entry) => [String(entry.id), entry]));
@@ -136,7 +155,7 @@ export function buildSnapshot({ tournament, entries, matches, groups, forfeits, 
   });
 
   return {
-    schema_version: 2,
+    schema_version: 3,
     generated_at: new Date().toISOString(),
     tournament: {
       id: tournament.id,
@@ -172,6 +191,7 @@ export function buildSnapshot({ tournament, entries, matches, groups, forfeits, 
     round_dates: roundDates || [],
     forfeits: normalisedForfeits,
     honours: honours || [],
+    press_conferences: (comments || []).map(normaliseComment).filter((row) => row.comment),
   };
 }
 
@@ -193,10 +213,33 @@ export function analyseMatchday(snapshot, round) {
   const overachievers = rows.filter((row) => row.overachievement >= 2).sort((a, b) => b.overachievement - a.overachievement || b.points - a.points);
   const underachievers = rows.filter((row) => row.overachievement <= -2).sort((a, b) => a.overachievement - b.overachievement || a.points - b.points);
   const mountain = rows.filter((row) => row.played >= 2 && (row.points <= 1 || row.goal_difference <= -4)).sort((a, b) => a.points - b.points || a.goal_difference - b.goal_difference);
-  const biggestWins = completedToRound.map((fixture) => ({ ...fixture, margin: Math.abs(Number(fixture.home_score) - Number(fixture.away_score)) })).sort((a, b) => b.margin - a.margin || (Number(b.home_score) + Number(b.away_score)) - (Number(a.home_score) + Number(a.away_score))).slice(0, 5);
-  const tightGroups = tables.map((table) => ({ group_code: table.group_code, spread: (table.rows[0]?.points || 0) - (table.rows[table.rows.length - 1]?.points || 0), top_gap: (table.rows[0]?.points || 0) - (table.rows[1]?.points || 0) })).sort((a, b) => a.spread - b.spread || a.top_gap - b.top_gap).slice(0, 5);
+  const includedMatchIds = new Set(completedToRound.map((fixture) => String(fixture.match_id)));
+  const matchById = new Map(completedToRound.map((fixture) => [String(fixture.match_id), fixture]));
+  const pressComments = selectPressComments(snapshot.press_conferences || [], includedMatchIds, matchById);
 
-  return { round: selectedRound, matches: completedToRound, tables, rows, perfect, overachievers, underachievers, mountain, biggestWins, tightGroups };
+  return { round: selectedRound, matches: completedToRound, tables, rows, perfect, overachievers, underachievers, mountain, pressComments };
+}
+
+function selectPressComments(comments, includedMatchIds, matchById) {
+  const scored = comments
+    .filter((comment) => includedMatchIds.has(String(comment.match_id)) && comment.comment)
+    .map((comment) => {
+      const reactionScore = Object.values(comment.reactions || {}).reduce((total, value) => total + Number(value || 0), 0);
+      const score = (comment.is_pinned ? 100 : 0) + (comment.editor_pick ? 80 : 0) + (comment.comment_type === 'post_match' ? 20 : 0) + reactionScore;
+      return { ...comment, match: matchById.get(String(comment.match_id)) || null, editorial_score: score };
+    })
+    .sort((a, b) => b.editorial_score - a.editorial_score || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+
+  const selected = [];
+  const seenManagers = new Set();
+  for (const comment of scored) {
+    const managerKey = `${comment.manager_name}|${comment.club_name || ''}`.toLowerCase();
+    if (seenManagers.has(managerKey) && selected.length < 4) continue;
+    selected.push(comment);
+    seenManagers.add(managerKey);
+    if (selected.length === 6) break;
+  }
+  return selected;
 }
 
 function buildTablesFromSnapshot(entrants, fixtures) {
@@ -265,20 +308,17 @@ export function generateMatchdayMarkdown(snapshot, analysis) {
   if (analysis.mountain.length) analysis.mountain.slice(0, 10).forEach((row) => lines.push(`- **${row.team_name}** have ${row.points} point${row.points === 1 ? '' : 's'} and a ${signed(row.goal_difference)} goal difference in Group ${row.group_code}.`));
   else lines.push('Nobody is cut adrift yet.');
 
-  lines.push('', '## Statement results', '');
-  analysis.biggestWins.forEach((match) => lines.push(`- **${match.home_team} ${match.home_score}–${match.away_score} ${match.away_team}**${match.status === 'forfeit' ? ' *(forfeit)*' : ''}`));
+  if (analysis.pressComments.length) {
+    lines.push('', '## From the press room', '');
+    analysis.pressComments.forEach((comment) => {
+      const fixture = comment.match ? `${comment.match.home_team} v ${comment.match.away_team}` : 'the group stage';
+      const timing = comment.comment_type === 'post_match' ? 'post-match' : 'pre-match';
+      const attribution = comment.club_name ? `${comment.manager_name}, ${comment.club_name}` : comment.manager_name;
+      lines.push(`> “${cleanQuote(comment.comment)}”`, '', `— **${attribution}**, ${timing} before/after ${fixture}`, '');
+    });
+  }
 
-  lines.push('', '## Groups going to the wire', '');
-  analysis.tightGroups.forEach((group) => lines.push(`- **Group ${group.group_code}** has only ${group.spread} point${group.spread === 1 ? '' : 's'} separating first and last.`));
-
-  lines.push('', '## Current tables', '');
-  analysis.tables.forEach((table) => {
-    lines.push(`### Group ${table.group_code}`, '', '| Pos | Team | P | W | D | L | GF | GA | GD | Pts |', '|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|');
-    table.rows.forEach((row) => lines.push(`| ${row.group_position} | ${row.team_name} | ${row.played} | ${row.wins} | ${row.draws} | ${row.losses} | ${row.goals_for} | ${row.goals_against} | ${signed(row.goal_difference)} | **${row.points}** |`));
-    lines.push('');
-  });
-
-  lines.push('## What to watch next', '', 'The next matchday should tell us whether the surprise leaders can maintain their momentum, whether the strongest seeds can reassert themselves, and which struggling sides can keep their qualification hopes alive.', '', `[Follow the tournament on the Top 100 Tournament Hub](https://youth-cup.smtop100.blog/)`);
+  lines.push('## What to watch next', '', 'The next matchday should tell us whether the surprise leaders can maintain their momentum, whether the strongest seeds can reassert themselves, and which struggling sides can keep their qualification hopes alive.', '', `[View every group table, fixture and result on the Top 100 Tournament Hub](https://youth-cup.smtop100.blog/#groups)`);
   return lines.join('\n');
 }
 
@@ -291,6 +331,7 @@ export function csvFiles(snapshot) {
     'tables.csv': toCsv(snapshot.tables),
     'round-dates.csv': toCsv(snapshot.round_dates),
     'forfeits.csv': toCsv(snapshot.forfeits),
+    'press-conferences.csv': toCsv(snapshot.press_conferences),
     'honours.csv': toCsv(snapshot.honours.map((row) => ({ id: row.id, honour: row.honour, position: row.position, tournament_id: row.tournament_id, team: row.entry?.teams?.name || null, manager: row.entry?.managers?.display_name || row.entry?.managers?.name || null }))),
   };
 }
@@ -318,5 +359,6 @@ export function downloadText(filename, text, type = 'text/plain;charset=utf-8') 
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const cleanQuote = (value) => String(value || '').replace(/\s+/g, ' ').replace(/[“”]/g, '"').trim();
 const signed = (value) => Number(value) > 0 ? `+${value}` : String(value);
 const ordinal = (value) => value === 1 ? '1st' : value === 2 ? '2nd' : value === 3 ? '3rd' : `${value}th`;
