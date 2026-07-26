@@ -83,8 +83,11 @@
   background: linear-gradient(135deg, rgba(232, 249, 239, 0.95), rgba(246, 252, 248, 0.96));
 }
 
-/* Public page: a strong full-width blue rule marks the start of every new matchday row. */
-.tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3) {
+/*
+ * Group-stage matchdays contain two fixtures. Scope the visual bands to #groups
+ * so knockout rounds are never split into arbitrary pairs.
+ */
+#groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3) {
   position: relative;
   margin-top: 18px;
   padding-top: 32px;
@@ -92,7 +95,7 @@
   box-shadow: 0 -1px 0 rgba(37, 99, 235, 0.18);
 }
 
-.tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 4) {
+#groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 4) {
   margin-top: 18px;
   padding-top: 32px;
   border-top: 8px solid #2563eb;
@@ -100,7 +103,7 @@
 }
 
 /* Bridge the grid gap so the divider reads as one continuous matchday band. */
-.tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3)::before {
+#groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3)::before {
   content: '';
   position: absolute;
   top: -8px;
@@ -110,9 +113,9 @@
   background: #2563eb;
 }
 
-/* Alternate upcoming matchday rows very subtly to help the eye track across columns. */
-.tournament-hub .fixture-card-list .fixture-card:nth-child(4n + 3):not(:has(.result-side.winner, .result-side.draw)),
-.tournament-hub .fixture-card-list .fixture-card:nth-child(4n + 4):not(:has(.result-side.winner, .result-side.draw)) {
+/* Alternate upcoming group-stage matchday rows to help the eye track across columns. */
+#groups .fixture-card-list .fixture-card:nth-child(4n + 3):not(:has(.result-side.winner, .result-side.draw)),
+#groups .fixture-card-list .fixture-card:nth-child(4n + 4):not(:has(.result-side.winner, .result-side.draw)) {
   background: linear-gradient(135deg, rgba(239, 245, 255, 0.88), rgba(250, 252, 255, 0.96));
 }
 
@@ -121,14 +124,22 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .tournament-hub .fixture-card-list:has(.fixture-card:nth-child(2)) .fixture-card:nth-child(n + 2) {
+  /* Keep each two-fixture group matchday together when the grid collapses. */
+  #groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3) {
     position: relative;
     margin-top: 18px;
     padding-top: 28px;
     border-top: 6px solid #2563eb;
   }
 
-  .tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3)::before {
+  #groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 4) {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+    box-shadow: none;
+  }
+
+  #groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3)::before {
     display: none;
   }
 }
