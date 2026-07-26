@@ -77,46 +77,22 @@
   grid-column: 1 / -1;
 }
 
-/* Public page: completed matches sit on a clearly distinct soft-green surface. */
-.tournament-hub .fixture-card:has(.result-side.winner),
-.tournament-hub .fixture-card:has(.result-side.draw) {
+/* Public group-stage cards are decorated from their actual round/date boundary. */
+#groups .fixture-card.matchday-complete {
   background: linear-gradient(135deg, rgba(232, 249, 239, 0.95), rgba(246, 252, 248, 0.96));
 }
 
-/*
- * Group-stage matchdays contain two fixtures. Scope the visual bands to #groups
- * so knockout rounds are never split into arbitrary pairs.
- */
-#groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3) {
-  position: relative;
-  margin-top: 18px;
-  padding-top: 32px;
-  border-top: 8px solid #2563eb;
-  box-shadow: 0 -1px 0 rgba(37, 99, 235, 0.18);
-}
-
-#groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 4) {
-  margin-top: 18px;
-  padding-top: 32px;
-  border-top: 8px solid #2563eb;
-  box-shadow: 0 -1px 0 rgba(37, 99, 235, 0.18);
-}
-
-/* Bridge the grid gap so the divider reads as one continuous matchday band. */
-#groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3)::before {
-  content: '';
-  position: absolute;
-  top: -8px;
-  right: -14px;
-  width: 14px;
-  height: 8px;
-  background: #2563eb;
-}
-
-/* Alternate upcoming group-stage matchday rows to help the eye track across columns. */
-#groups .fixture-card-list .fixture-card:nth-child(4n + 3):not(:has(.result-side.winner, .result-side.draw)),
-#groups .fixture-card-list .fixture-card:nth-child(4n + 4):not(:has(.result-side.winner, .result-side.draw)) {
+#groups .fixture-card.matchday-upcoming-alt {
   background: linear-gradient(135deg, rgba(239, 245, 255, 0.88), rgba(250, 252, 255, 0.96));
+}
+
+#groups .fixture-card.matchday-start {
+  position: relative;
+  grid-column: 1 / -1;
+  margin-top: 18px;
+  padding-top: 32px;
+  border-top: 8px solid #2563eb;
+  box-shadow: 0 -1px 0 rgba(37, 99, 235, 0.18);
 }
 
 @media (max-width: 1120px) {
@@ -124,23 +100,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* Keep each two-fixture group matchday together when the grid collapses. */
-  #groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3) {
-    position: relative;
+  #groups .fixture-card.matchday-start {
     margin-top: 18px;
     padding-top: 28px;
-    border-top: 6px solid #2563eb;
-  }
-
-  #groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 4) {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: 0;
-    box-shadow: none;
-  }
-
-  #groups .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(2n + 3)::before {
-    display: none;
+    border-top-width: 6px;
   }
 }
 
