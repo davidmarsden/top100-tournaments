@@ -82,42 +82,17 @@ function wordpressConfig() {
   const siteUrl = String(process.env.WORDPRESS_SITE_URL || '').replace(/\/$/, '');
   const site = String(process.env.WORDPRESS_SITE_ID || '').trim()
     || (() => { try { return new URL(siteUrl).hostname; } catch { return ''; } })();
+  const accessToken = String(process.env.WORDPRESS_ACCESS_TOKEN || '').trim();
   if (!site) throw new Error('WORDPRESS_SITE_ID or WORDPRESS_SITE_URL is not configured.');
-  return { siteUrl, site };
-}
-
-async function wordpressAccessToken() {
-  if (process.env.WORDPRESS_ACCESS_TOKEN) return process.env.WORDPRESS_ACCESS_TOKEN;
-  const username = process.env.WORDPRESS_USERNAME;
-  const password = process.env.WORDPRESS_APP_PASSWORD;
-  const clientId = process.env.WORDPRESS_CLIENT_ID;
-  const clientSecret = process.env.WORDPRESS_CLIENT_SECRET;
-  if (!username || !password || !clientId || !clientSecret) {
-    throw new Error('WordPress.com OAuth credentials are incomplete. Add WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET as well as the username and application password.');
-  }
-  const form = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    grant_type: 'password',
-    username,
-    password,
-  });
-  const response = await fetch('https://public-api.wordpress.com/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: form.toString(),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload.access_token) throw new Error(payload.error_description || payload.error || `WordPress.com authentication failed (${response.status}).`);
-  return payload.access_token;
+  if (!accessToken) throw new Error('WORDPRESS_ACCESS_TOKEN is not configured. Generate a WordPress.com OAuth access token using the supported authorization-code flow and store it in Netlify.');
+  return { siteUrl, site, accessToken };
 }
 
 async function wordpressRequest(path, options = {}) {
-  const { site } = wordpressConfig();
-  const token = await wordpressAccessToken();
+  const { site, accessToken } = wordpressConfig();
   const response = await fetch(`https://public-api.wordpress.com/wp/v2/sites/${encodeURIComponent(site)}${path}`, {
     ...options,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
