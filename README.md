@@ -28,15 +28,20 @@ VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-The Reports & Exports module can also create reviewable WordPress drafts. Add a WordPress application password to Netlify only; never expose it through a `VITE_` variable:
+The Reports & Exports module can also create reviewable drafts on WordPress.com. WordPress.com does not expose the normal `/wp-json/wp/v2` route on a custom domain, and application passwords cannot be sent directly to its public API. Configure the WordPress.com site identifier and OAuth application credentials in Netlify only; never expose them through `VITE_` variables:
 
 ```env
 WORDPRESS_SITE_URL=https://smtop100.blog
-WORDPRESS_USERNAME=your_wordpress_username
+WORDPRESS_SITE_ID=smtop100.blog
+WORDPRESS_USERNAME=your_wordpress_com_username
 WORDPRESS_APP_PASSWORD=your_wordpress_application_password
+WORDPRESS_CLIENT_ID=your_wordpress_com_app_client_id
+WORDPRESS_CLIENT_SECRET=your_wordpress_com_app_client_secret
 ```
 
-The server function verifies the caller through Supabase's `is_admin` RPC before using the WordPress credentials. It creates posts as drafts and automatically creates or reuses the `Tournament Reports` and competition report categories.
+`WORDPRESS_SITE_ID` may be the WordPress.com numeric site ID or its domain. As an alternative to the four login/OAuth variables, a pre-generated token can be stored as `WORDPRESS_ACCESS_TOKEN`.
+
+The server function verifies the caller through Supabase's `is_admin` RPC, exchanges the application password for a WordPress.com OAuth token, and calls the WordPress.com public REST API. Posts are always created as drafts, with the relevant report categories and tags created or reused automatically.
 
 ## Netlify build settings
 
