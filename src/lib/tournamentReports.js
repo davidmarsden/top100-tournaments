@@ -312,9 +312,11 @@ export function generateMatchdayMarkdown(snapshot, analysis) {
     lines.push('', '## From the press room', '');
     analysis.pressComments.forEach((comment) => {
       const fixture = comment.match ? `${comment.match.home_team} v ${comment.match.away_team}` : 'the group stage';
-      const timing = comment.comment_type === 'post_match' ? 'post-match' : 'pre-match';
+      const isPostMatch = comment.comment_type === 'post_match';
+      const timing = isPostMatch ? 'post-match' : 'pre-match';
+      const relation = isPostMatch ? 'after' : 'before';
       const attribution = comment.club_name ? `${comment.manager_name}, ${comment.club_name}` : comment.manager_name;
-      lines.push(`> “${cleanQuote(comment.comment)}”`, '', `— **${attribution}**, ${timing} before/after ${fixture}`, '');
+      lines.push(`> “${cleanQuote(comment.comment)}”`, '', `— **${attribution}**, ${timing} ${relation} ${fixture}`, '');
     });
   }
 
