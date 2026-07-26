@@ -25,7 +25,6 @@ function markdownToHtml(markdown) {
   const output = [];
   let listOpen = false;
   let quoteOpen = false;
-
   const closeList = () => { if (listOpen) { output.push('</ul>'); listOpen = false; } };
   const closeQuote = () => { if (quoteOpen) { output.push('</blockquote>'); quoteOpen = false; } };
 
@@ -57,15 +56,31 @@ function markdownToHtml(markdown) {
   return output.join('\n');
 }
 
+function supabaseConfig() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) throw new Error('Supabase server credentials are not configured.');
+  return { url: url.replace(/\/$/, ''), anonKey };
+}
+
 async function verifyAdminToken(token) {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase server credentials are not configured.');
-  const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
-    headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` },
+  const { url, anonKey } = supabaseConfig();
+  const userResponse = await fetch(`${url}/auth/v1/user`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
   });
-  if (!response.ok) return null;
-  return response.json();
+  if (!userResponse.ok) return false;
+
+  const adminResponse = await fetch(`${url}/rest/v1/rpc/is_admin`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: '{}',
+  });
+  if (!adminResponse.ok) return false;
+  return Boolean(await adminResponse.json());
 }
 
 async function wordpressRequest(path, options = {}) {
@@ -102,8 +117,8 @@ exports.handler = async (event) => {
   try {
     const token = String(event.headers.authorization || '').replace(/^Bearer\s+/i, '');
     if (!token) return json(401, { error: 'Admin authentication is required.' });
-    const user = await verifyAdminToken(token);
-    if (!user) return json(401, { error: 'Your admin session is invalid or expired.' });
+    const isAdmin = await verifyAdminToken(token);
+    if (!isAdmin) return json(403, { error: 'Verified tournament administrator access is required.' });
 
     const body = JSON.parse(event.body || '{}');
     const title = String(body.title || '').trim();
