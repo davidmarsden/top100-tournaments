@@ -1,10 +1,17 @@
-const html = (statusCode, body) => ({
+const crypto = require('crypto');
+
+const COOKIE_NAME = 'top100_wp_oauth_state';
+const COOKIE_PATH = '/.netlify/functions/wordpress-oauth-setup';
+const COOKIE_MAX_AGE_SECONDS = 600;
+
+const html = (statusCode, body, extraHeaders = {}) => ({
   statusCode,
   headers: {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store, max-age=0',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
+    ...extraHeaders,
   },
   body,
 });
@@ -41,29 +48,55 @@ function page(title, content) {
 function config(event) {
   const clientId = String(process.env.WORDPRESS_CLIENT_ID || '').trim();
   const clientSecret = String(process.env.WORDPRESS_CLIENT_SECRET || '').trim();
-  const state = String(process.env.WORDPRESS_OAUTH_STATE || '').trim();
   const site = String(process.env.WORDPRESS_SITE_ID || 'smtop100.blog').trim();
-  const origin = `https://${event.headers.host}`;
-  const redirectUri = `${origin}/.netlify/functions/wordpress-oauth-setup`;
-  if (!clientId || !clientSecret || !state) {
-    throw new Error('Add WORDPRESS_CLIENT_ID, WORDPRESS_CLIENT_SECRET and WORDPRESS_OAUTH_STATE in Netlify before starting OAuth setup.');
+  const host = String(event.headers.host || '').trim();
+  if (!clientId || !clientSecret || !host) {
+    throw new Error('Add WORDPRESS_CLIENT_ID and WORDPRESS_CLIENT_SECRET in Netlify before starting OAuth setup.');
   }
-  return { clientId, clientSecret, state, site, redirectUri };
+  const redirectUri = `https://${host}${COOKIE_PATH}`;
+  return { clientId, clientSecret, site, redirectUri };
+}
+
+function cookiesFrom(event) {
+  const raw = String(event.headers.cookie || event.headers.Cookie || '');
+  return raw.split(';').reduce((cookies, part) => {
+    const index = part.indexOf('=');
+    if (index < 0) return cookies;
+    const name = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (name) cookies[name] = decodeURIComponent(value);
+    return cookies;
+  }, {});
+}
+
+function stateCookie(value, maxAge = COOKIE_MAX_AGE_SECONDS) {
+  return `${COOKIE_NAME}=${encodeURIComponent(value)}; Path=${COOKIE_PATH}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+function statesMatch(returnedState, cookieState) {
+  if (!returnedState || !cookieState) return false;
+  const returned = Buffer.from(returnedState);
+  const stored = Buffer.from(cookieState);
+  return returned.length === stored.length && crypto.timingSafeEqual(returned, stored);
 }
 
 exports.handler = async (event) => {
   try {
-    const { clientId, clientSecret, state, site, redirectUri } = config(event);
+    const { clientId, clientSecret, site, redirectUri } = config(event);
     const params = event.queryStringParameters || {};
     const code = String(params.code || '');
     const returnedState = String(params.state || '');
     const oauthError = String(params.error || '');
+    const cookieState = cookiesFrom(event)[COOKIE_NAME] || '';
 
     if (oauthError) {
-      return html(400, page('WordPress connection failed', `<h1>WordPress connection failed</h1><p>${escapeHtml(params.error_description || oauthError)}</p>`));
+      return html(400, page('WordPress connection failed', `<h1>WordPress connection failed</h1><p>${escapeHtml(params.error_description || oauthError)}</p>`), {
+        'Set-Cookie': stateCookie('', 0),
+      });
     }
 
     if (!code) {
+      const state = crypto.randomBytes(32).toString('base64url');
       const authorize = new URL('https://public-api.wordpress.com/oauth2/authorize');
       authorize.searchParams.set('client_id', clientId);
       authorize.searchParams.set('redirect_uri', redirectUri);
@@ -75,11 +108,15 @@ exports.handler = async (event) => {
         <p>This one-time setup authorises the Top 100 Tournament App to create draft posts on <strong>${escapeHtml(site)}</strong>.</p>
         <p><a class="button" href="${escapeHtml(authorize.toString())}">Authorise with WordPress.com</a></p>
         <p class="warning">Only continue if this page is on your own Tournament Hub domain.</p>
-      `));
+      `), {
+        'Set-Cookie': stateCookie(state),
+      });
     }
 
-    if (!returnedState || returnedState !== state) {
-      return html(403, page('Invalid OAuth state', '<h1>Invalid OAuth state</h1><p>The security value returned by WordPress.com did not match. Restart the setup from the beginning.</p>'));
+    if (!statesMatch(returnedState, cookieState)) {
+      return html(403, page('Invalid OAuth state', '<h1>Invalid OAuth state</h1><p>This callback was not initiated by this browser, or the setup session expired. Restart the setup from the beginning.</p>'), {
+        'Set-Cookie': stateCookie('', 0),
+      });
     }
 
     const form = new URLSearchParams({
@@ -107,9 +144,13 @@ exports.handler = async (event) => {
       <h2>WORDPRESS_SITE_ID</h2>
       <pre>${escapeHtml(payload.blog_id || site)}</pre>
       <p class="warning">Treat the access token like a password. Do not share it or leave this page open after copying it.</p>
-    `));
+    `), {
+      'Set-Cookie': stateCookie('', 0),
+    });
   } catch (error) {
     console.error('WordPress OAuth setup failed:', error.message);
-    return html(500, page('WordPress setup error', `<h1>WordPress setup error</h1><p>${escapeHtml(error.message || 'Setup failed.')}</p>`));
+    return html(500, page('WordPress setup error', `<h1>WordPress setup error</h1><p>${escapeHtml(error.message || 'Setup failed.')}</p>`), {
+      'Set-Cookie': stateCookie('', 0),
+    });
   }
 };
