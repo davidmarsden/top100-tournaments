@@ -77,9 +77,39 @@
   grid-column: 1 / -1;
 }
 
+/* Public match lists need a clearer break between successive matchdays. */
+.tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(n + 3) {
+  position: relative;
+  margin-top: 10px;
+  padding-top: 24px;
+  border-top: 4px solid #cbd7ec;
+  background: linear-gradient(180deg, rgba(238, 243, 251, 0.72), rgba(255, 255, 255, 0) 52px);
+}
+
+.tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(odd):not(:first-child)::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -14px;
+  width: 14px;
+  height: 4px;
+  background: #cbd7ec;
+}
+
 @media (max-width: 1120px) {
   .fixture-card-list:has(.fixture-card:nth-child(2)) {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(n + 2) {
+    margin-top: 10px;
+    padding-top: 24px;
+    border-top: 4px solid #cbd7ec;
+    background: linear-gradient(180deg, rgba(238, 243, 251, 0.72), rgba(255, 255, 255, 0) 52px);
+  }
+
+  .tournament-hub .fixture-card-list:has(.fixture-card:nth-child(3)) .fixture-card:nth-child(odd):not(:first-child)::before {
+    display: none;
   }
 }
 
