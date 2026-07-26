@@ -28,20 +28,19 @@ VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-The Reports & Exports module can also create reviewable drafts on WordPress.com. WordPress.com does not expose the normal `/wp-json/wp/v2` route on a custom domain, and application passwords cannot be sent directly to its public API. Configure the WordPress.com site identifier and OAuth application credentials in Netlify only; never expose them through `VITE_` variables:
+The Reports & Exports module can also create reviewable drafts on WordPress.com. WordPress.com does not expose the normal `/wp-json/wp/v2` route on a custom domain, so the server function calls the WordPress.com public REST API using a pre-generated OAuth access token.
+
+Configure these values in Netlify only; never expose the token through a `VITE_` variable:
 
 ```env
 WORDPRESS_SITE_URL=https://smtop100.blog
 WORDPRESS_SITE_ID=smtop100.blog
-WORDPRESS_USERNAME=your_wordpress_com_username
-WORDPRESS_APP_PASSWORD=your_wordpress_application_password
-WORDPRESS_CLIENT_ID=your_wordpress_com_app_client_id
-WORDPRESS_CLIENT_SECRET=your_wordpress_com_app_client_secret
+WORDPRESS_ACCESS_TOKEN=your_wordpress_com_oauth_access_token
 ```
 
-`WORDPRESS_SITE_ID` may be the WordPress.com numeric site ID or its domain. As an alternative to the four login/OAuth variables, a pre-generated token can be stored as `WORDPRESS_ACCESS_TOKEN`.
+`WORDPRESS_SITE_ID` may be the WordPress.com numeric site ID or its domain. Generate `WORDPRESS_ACCESS_TOKEN` through WordPress.com's supported OAuth authorization-code flow and store the resulting token in Netlify. Application passwords and the OAuth password grant are not supported for this integration.
 
-The server function verifies the caller through Supabase's `is_admin` RPC, exchanges the application password for a WordPress.com OAuth token, and calls the WordPress.com public REST API. Posts are always created as drafts, with the relevant report categories and tags created or reused automatically.
+The server function verifies the caller through Supabase's `is_admin` RPC before using the stored WordPress.com token. Posts are always created as drafts, with the relevant report categories and tags created or reused automatically.
 
 ## Netlify build settings
 
