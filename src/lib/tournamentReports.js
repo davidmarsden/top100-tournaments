@@ -1,4 +1,5 @@
 const completed = (match) => ['played', 'forfeit'].includes(match.status);
+const doubleForfeit = (match) => match.status === 'forfeit' && Number(match.home_score) === 0 && Number(match.away_score) === 0 && !match.winner_entry_id && !match.loser_entry_id;
 const teamName = (entry, fallback = 'TBC') => entry?.teams?.name || fallback || 'TBC';
 const managerName = (entry) => entry?.managers?.display_name || entry?.managers?.name || 'TBC';
 const number = (value) => value === null || value === undefined || value === '' ? null : Number(value);
@@ -45,7 +46,8 @@ export function buildTables(entries, matches) {
           home.played += 1; away.played += 1;
           home.goals_for += hs; home.goals_against += as;
           away.goals_for += as; away.goals_against += hs;
-          if (hs > as) { home.wins += 1; home.points += 3; away.losses += 1; }
+          if (doubleForfeit(match)) { home.losses += 1; away.losses += 1; }
+          else if (hs > as) { home.wins += 1; home.points += 3; away.losses += 1; }
           else if (as > hs) { away.wins += 1; away.points += 3; home.losses += 1; }
           else { home.draws += 1; away.draws += 1; home.points += 1; away.points += 1; }
         });
@@ -113,12 +115,18 @@ export function buildSnapshot({ tournament, entries, matches, groups, forfeits, 
   const tables = buildTables(entries, datedMatches);
   const entryById = new Map(entries.map((entry) => [String(entry.id), entry]));
   const normalisedForfeits = (forfeits || []).map(normaliseForfeit);
-  const forfeitByMatch = new Map(normalisedForfeits.map((row) => [String(row.match_id), row]));
+  const forfeitsByMatch = normalisedForfeits.reduce((map, row) => {
+    const key = String(row.match_id);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+    return map;
+  }, new Map());
 
   const fixtures = datedMatches.map((match) => {
     const home = match.home_entry || entryById.get(String(match.home_entry_id));
     const away = match.away_entry || entryById.get(String(match.away_entry_id));
-    const forfeit = forfeitByMatch.get(String(match.id));
+    const matchForfeits = forfeitsByMatch.get(String(match.id)) || [];
+    const forfeit = matchForfeits[0];
     return {
       match_id: match.id,
       stage: match.stage,
@@ -144,6 +152,8 @@ export function buildSnapshot({ tournament, entries, matches, groups, forfeits, 
       winner_entry_id: match.winner_entry_id || null,
       loser_entry_id: match.loser_entry_id || null,
       decided_by: match.decided_by || null,
+      double_forfeit: doubleForfeit(match),
+      forfeiting_entry_ids: matchForfeits.map((row) => row.forfeiting_entry_id).filter(Boolean),
       forfeiting_entry_id: forfeit?.forfeiting_entry_id || null,
       forfeiting_team: forfeit?.forfeiting_team || null,
       forfeit_manager_id: forfeit?.manager_id || null,
@@ -155,7 +165,7 @@ export function buildSnapshot({ tournament, entries, matches, groups, forfeits, 
   });
 
   return {
-    schema_version: 3,
+    schema_version: 4,
     generated_at: new Date().toISOString(),
     tournament: {
       id: tournament.id,
