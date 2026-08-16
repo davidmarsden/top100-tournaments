@@ -11,6 +11,14 @@ function isCompleted(fixture) {
   return fixture.status === 'played' || fixture.status === 'forfeit';
 }
 
+function isDoubleForfeit(fixture) {
+  return fixture.status === 'forfeit'
+    && Number(fixture.home_score) === 0
+    && Number(fixture.away_score) === 0
+    && !fixture.winner_entry_id
+    && !fixture.loser_entry_id;
+}
+
 function fixtureGroupLabel(fixture) {
   return fixture.stage === 'knockout'
     ? fixture.bracket || 'Knockout'
@@ -161,6 +169,7 @@ function buildTieSummaries(fixtures) {
 function rulingLabel(ruling) {
   if (ruling === 'away_forfeited') return 'Away team forfeited — home win';
   if (ruling === 'home_forfeited') return 'Home team forfeited — away win';
+  if (ruling === 'double_forfeit') return 'Both teams forfeited — 0-0, zero points each';
   return 'Played normally';
 }
 
@@ -178,6 +187,8 @@ export default function FixturesManager({
   const [editingId, setEditingId] = useState(null);
   const [scores, setScores] = useState({ home_score: '', away_score: '' });
   const [ruling, setRuling] = useState('played');
+  const [resultNote, setResultNote] = useState('');
+  const [rescheduleDates, setRescheduleDates] = useState({});
   const [groupFilter, setGroupFilter] = useState('all');
   const [roundFilter, setRoundFilter] = useState('all');
   const [roundDate, setRoundDate] = useState('');
@@ -234,7 +245,10 @@ export default function FixturesManager({
       home_score: fixture.home_score ?? '',
       away_score: fixture.away_score ?? '',
     });
-    if (fixture.status === 'forfeit') {
+    setResultNote('');
+    if (isDoubleForfeit(fixture)) {
+      setRuling('double_forfeit');
+    } else if (fixture.status === 'forfeit') {
       setRuling(Number(fixture.home_score) > Number(fixture.away_score) ? 'away_forfeited' : 'home_forfeited');
     } else {
       setRuling('played');
@@ -245,6 +259,12 @@ export default function FixturesManager({
     setEditingId(null);
     setScores({ home_score: '', away_score: '' });
     setRuling('played');
+    setResultNote('');
+  }
+
+  function changeRuling(nextRuling) {
+    setRuling(nextRuling);
+    if (nextRuling === 'double_forfeit') setScores({ home_score: 0, away_score: 0 });
   }
 
   async function updateResult(fixture, homeScore, awayScore, resultStatus = 'played') {
@@ -272,8 +292,8 @@ export default function FixturesManager({
   }
 
   async function saveOfficialResult(fixture) {
-    const homeScore = Number(scores.home_score);
-    const awayScore = Number(scores.away_score);
+    const homeScore = ruling === 'double_forfeit' ? 0 : Number(scores.home_score);
+    const awayScore = ruling === 'double_forfeit' ? 0 : Number(scores.away_score);
     if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
       return setStatus('Enter valid whole-number scores before saving.');
     }
@@ -283,24 +303,44 @@ export default function FixturesManager({
     if (ruling === 'home_forfeited' && awayScore - homeScore < 3) {
       return setStatus('A home-team forfeit must give the away team at least a three-goal advantage.');
     }
+    if (ruling === 'double_forfeit' && !resultNote.trim()) {
+      return setStatus('Add a reason before recording a double forfeit.');
+    }
 
     const homeName = teamNameFromEntry(fixture.home_entry, fixture.home_placeholder);
     const awayName = teamNameFromEntry(fixture.away_entry, fixture.away_placeholder);
-    if (!window.confirm(`Save ${homeName} ${homeScore}–${awayScore} ${awayName}\n\nRuling: ${rulingLabel(ruling)}?`)) return;
+    if (!window.confirm(`Save ${homeName} ${homeScore}–${awayScore} ${awayName}\n\nRuling: ${rulingLabel(ruling)}${resultNote.trim() ? `\nReason: ${resultNote.trim()}` : ''}?`)) return;
 
     setLoading(true);
     setStatus('Saving official result...');
-    const { error } = await updateResult(
-      fixture,
-      homeScore,
-      awayScore,
-      ruling === 'played' ? 'played' : 'forfeit',
-    );
+    const result = ruling === 'double_forfeit'
+      ? await supabase.rpc('admin_record_double_forfeit', { target_match_id: fixture.id, note: resultNote.trim() })
+      : await updateResult(fixture, homeScore, awayScore, ruling === 'played' ? 'played' : 'forfeit');
+    const { error } = result;
     if (error) {
       setStatus(`Save failed: ${error.message}`);
     } else {
       setStatus(`Official result saved as ${homeScore}–${awayScore} · ${rulingLabel(ruling)}.`);
       cancelEdit();
+      await loadFixtures();
+      await onDataChanged?.();
+    }
+    setLoading(false);
+  }
+
+  async function rescheduleFixture(fixture) {
+    const date = rescheduleDates[fixture.id];
+    if (!date) return setStatus('Choose the new fixture date first.');
+    if (isCompleted(fixture)) return setStatus('Reset the completed result before rescheduling this fixture.');
+    setLoading(true);
+    setStatus('Rescheduling fixture...');
+    const { error } = await supabase
+      .from('matches')
+      .update({ fixture_date: date, status: 'postponed' })
+      .eq('id', fixture.id);
+    if (error) setStatus(`Reschedule failed: ${error.message}`);
+    else {
+      setStatus(`${fixture.round} fixture rescheduled to ${formatDate(date)}; it remains part of ${fixture.round}.`);
       await loadFixtures();
       await onDataChanged?.();
     }
@@ -406,7 +446,7 @@ export default function FixturesManager({
       ? stage === 'knockout'
         ? 'Only unplayed knockout fixtures are shown here. R32 is one leg; two-legged rounds use the chosen date for 1st legs and seven days later for 2nd legs.'
         : 'Only unplayed fixtures are shown here. Results move to the Results page once saved.'
-      : 'Load saved fixtures, enter official results and record forfeits without losing a better played scoreline.';
+      : 'Load saved fixtures, enter official results, record single or double forfeits, and reschedule delayed fixtures without changing their matchday.';
 
   return (
     <div className="fixtures-manager">
@@ -470,6 +510,7 @@ export default function FixturesManager({
                   const awayName = teamNameFromEntry(fixture.away_entry, fixture.away_placeholder);
                   const isEditing = editingId === fixture.id;
                   const completed = isCompleted(fixture);
+                  const doubleForfeit = isDoubleForfeit(fixture);
                   const tieSummary = stage === 'knockout' ? tieSummaries.get(knockoutTieKey(fixture)) : null;
 
                   return (
@@ -480,27 +521,33 @@ export default function FixturesManager({
                         <strong>{awayName}</strong>
                       </div>
                       <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {legLabel(fixture.leg || 1)}</p>
-                      {fixture.status === 'forfeit' && <p className="muted">Forfeit ruling recorded.</p>}
+                      {doubleForfeit && <p className="muted">Double forfeit: 0–0, both teams receive a loss and zero points.</p>}
+                      {fixture.status === 'forfeit' && !doubleForfeit && <p className="muted">Forfeit ruling recorded.</p>}
+                      {fixture.status === 'postponed' && <p className="muted">Rescheduled fixture — still counts as {fixture.round} when played.</p>}
                       {tieSummary && <p className="status">{tieSummary}</p>}
 
                       {isEditing ? (
                         <div className="result-editor">
                           <div className="mini-grid">
                             <label>Home score
-                              <input type="number" min="0" value={scores.home_score} onChange={(event) => setScores((current) => ({ ...current, home_score: event.target.value }))} />
+                              <input type="number" min="0" disabled={ruling === 'double_forfeit'} value={ruling === 'double_forfeit' ? 0 : scores.home_score} onChange={(event) => setScores((current) => ({ ...current, home_score: event.target.value }))} />
                             </label>
                             <label>Away score
-                              <input type="number" min="0" value={scores.away_score} onChange={(event) => setScores((current) => ({ ...current, away_score: event.target.value }))} />
+                              <input type="number" min="0" disabled={ruling === 'double_forfeit'} value={ruling === 'double_forfeit' ? 0 : scores.away_score} onChange={(event) => setScores((current) => ({ ...current, away_score: event.target.value }))} />
                             </label>
                             <label>Official ruling
-                              <select value={ruling} onChange={(event) => setRuling(event.target.value)}>
+                              <select value={ruling} onChange={(event) => changeRuling(event.target.value)}>
                                 <option value="played">Played normally</option>
                                 <option value="away_forfeited">Away team forfeited — home win</option>
                                 <option value="home_forfeited">Home team forfeited — away win</option>
+                                {stage === 'group' && <option value="double_forfeit">Both teams forfeited — 0-0, zero points</option>}
                               </select>
                             </label>
+                            {ruling === 'double_forfeit' && <label>Double-forfeit reason
+                              <input value={resultNote} onChange={(event) => setResultNote(event.target.value)} placeholder="Required — why neither team fulfilled the fixture" />
+                            </label>}
                           </div>
-                          <p className="muted">Keep a better played scoreline. For example, save 5–0 and select “Away team forfeited — home win”. Forfeit results must give the non-forfeiting team at least a three-goal advantage.</p>
+                          <p className="muted">Single forfeits use the normal 3–0 minimum (or a better played scoreline). A double forfeit is always recorded 0–0, gives both teams a loss and zero points, and records both managers in the Forfeits register.</p>
                           <div className="button-row">
                             <button type="button" onClick={() => saveOfficialResult(fixture)} disabled={loading}>Save official result</button>
                             <button type="button" className="secondary" onClick={cancelEdit} disabled={loading}>Cancel</button>
@@ -510,6 +557,8 @@ export default function FixturesManager({
                         <div className="button-row">
                           <button type="button" className="secondary" onClick={() => startEdit(fixture)} disabled={loading}>{completed ? 'Edit official result' : 'Enter official result'}</button>
                           {completed && <button type="button" className="danger" onClick={() => resetResult(fixture)} disabled={loading}>Reset result</button>}
+                          {!completed && stage === 'group' && <label className="inline-date-control">New date<input type="date" value={rescheduleDates[fixture.id] || fixture.fixture_date || ''} onChange={(event) => setRescheduleDates((current) => ({ ...current, [fixture.id]: event.target.value }))} /></label>}
+                          {!completed && stage === 'group' && <button type="button" className="secondary" onClick={() => rescheduleFixture(fixture)} disabled={loading}>Reschedule</button>}
                         </div>
                       )}
                     </article>
