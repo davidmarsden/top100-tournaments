@@ -25,6 +25,13 @@ function blankRow(entry, teamForfeits = 0) {
 }
 
 function isCompleted(match) { return match.status === 'played' || match.status === 'forfeit'; }
+function isDoubleForfeit(match) {
+  return match.status === 'forfeit'
+    && Number(match.home_score) === 0
+    && Number(match.away_score) === 0
+    && !match.winner_entry_id
+    && !match.loser_entry_id;
+}
 function sortRows(a, b) {
   return b.points - a.points
     || b.goal_difference - a.goal_difference
@@ -102,7 +109,7 @@ export default function TablesManager({ selectedTournament }) {
 
   const forfeitValue = (row) => row.team_forfeits === null ? '—' : row.team_forfeits;
   return <div className="tables-manager">
-    <div className="fixtures-toolbar"><div><p className="eyebrow">Live standings</p><h3>{playedCount} / {matches.length} group fixtures played</h3><p className="muted">Tables recalculate from official results. “F” is the number of group matches forfeited by that team; manager responsibility and sanctions are shown in the separate Forfeits register.</p></div><button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload tables</button></div>
+    <div className="fixtures-toolbar"><div><p className="eyebrow">Live standings</p><h3>{playedCount} / {matches.length} group fixtures played</h3><p className="muted">Tables recalculate from official results. “F” is the number of group matches forfeited by that team; a double forfeit is 0–0 with a loss and zero points for both teams. Manager responsibility and sanctions are shown in the separate Forfeits register.</p></div><button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload tables</button></div>
     <p className="status">{status}</p>
     {forfeitError && <p className="warning-card"><strong>Team-forfeit totals could not be loaded.</strong><span>{forfeitError} The F column is shown as “—”.</span></p>}
     <section className="transparency-card"><div className="standings-header"><h3>Rating seedings and pots</h3><span>{orderedSeeds.length} entrants</span></div><div className="standings-wrap"><table className="standings-table seed-table"><thead><tr><th>Seed</th><th>Team</th><th>Manager</th><th>Rating</th><th>Pot</th><th>Group</th></tr></thead><tbody>{orderedSeeds.map((entry) => <tr key={entry.id}><td><strong>{entry.seed || '—'}</strong></td><td><strong>{entry.teams?.name || 'Unknown team'}</strong></td><td>{entry.managers?.display_name || entry.managers?.name || 'TBC'}</td><td>{entry.rating ?? '—'}</td><td>{entry.pot ?? '—'}</td><td>{entry.group_code || '—'}</td></tr>)}</tbody></table></div></section>
@@ -119,7 +126,8 @@ function buildTables(entries, matches, teamForfeitCounts, forfeitsAvailable) {
       const home = rowsById.get(match.home_entry_id); const away = rowsById.get(match.away_entry_id); if (!home || !away) return;
       const hs = Number(match.home_score || 0); const as = Number(match.away_score || 0);
       home.played += 1; away.played += 1; home.goals_for += hs; home.goals_against += as; away.goals_for += as; away.goals_against += hs;
-      if (hs > as) { home.wins += 1; home.points += 3; home.form.push('W'); away.losses += 1; away.form.push('L'); }
+      if (isDoubleForfeit(match)) { home.losses += 1; away.losses += 1; home.form.push('L'); away.form.push('L'); }
+      else if (hs > as) { home.wins += 1; home.points += 3; home.form.push('W'); away.losses += 1; away.form.push('L'); }
       else if (as > hs) { away.wins += 1; away.points += 3; away.form.push('W'); home.losses += 1; home.form.push('L'); }
       else { home.draws += 1; away.draws += 1; home.points += 1; away.points += 1; home.form.push('D'); away.form.push('D'); }
     });

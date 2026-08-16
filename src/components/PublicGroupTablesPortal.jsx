@@ -16,7 +16,9 @@ function buildTables(entries, matches, teamForfeitCounts) {
       const home = rowsById.get(match.home_entry_id); const away = rowsById.get(match.away_entry_id); if (!home || !away) return;
       const hs = Number(match.home_score || 0); const as = Number(match.away_score || 0);
       home.played += 1; away.played += 1; home.goals_for += hs; home.goals_against += as; away.goals_for += as; away.goals_against += hs;
-      if (hs > as) { home.wins += 1; home.points += 3; home.form.push('W'); away.losses += 1; away.form.push('L'); }
+      const doubleForfeit = match.status === 'forfeit' && hs === 0 && as === 0;
+      if (doubleForfeit) { home.losses += 1; away.losses += 1; home.form.push('L'); away.form.push('L'); }
+      else if (hs > as) { home.wins += 1; home.points += 3; home.form.push('W'); away.losses += 1; away.form.push('L'); }
       else if (as > hs) { away.wins += 1; away.points += 3; away.form.push('W'); home.losses += 1; home.form.push('L'); }
       else { home.draws += 1; away.draws += 1; home.points += 1; away.points += 1; home.form.push('D'); away.form.push('D'); }
     });
