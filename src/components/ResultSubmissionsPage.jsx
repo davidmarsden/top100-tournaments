@@ -24,7 +24,7 @@ function rulingFor(row, rulings) {
   if (row.matches?.status === 'forfeit') {
     const home = row.matches?.home_score ?? row.resolved_home_score;
     const away = row.matches?.away_score ?? row.resolved_away_score;
-    if (Number(home) === 0 && Number(away) === 0) return 'double_forfeit';
+    if (row.matches?.stage === 'group' && Number(home) === 0 && Number(away) === 0) return 'double_forfeit';
     return Number(home) > Number(away) ? 'home_forfeit_win' : 'away_forfeit_win';
   }
   return 'played';
@@ -73,7 +73,7 @@ export default function ResultSubmissionsPage() {
     setStatus('Loading result submissions...');
     const { data, error } = await supabase
       .from('manager_result_submissions')
-      .select('*, matches(id, home_placeholder, away_placeholder, home_score, away_score, round, fixture_date, status, tournaments(name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))), submitter:managers!manager_result_submissions_submitted_by_manager_id_fkey(name, display_name), opponent:managers!manager_result_submissions_opponent_manager_id_fkey(name, display_name)')
+      .select('*, matches(id, stage, home_placeholder, away_placeholder, home_score, away_score, round, fixture_date, status, tournaments(name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))), submitter:managers!manager_result_submissions_submitted_by_manager_id_fkey(name, display_name), opponent:managers!manager_result_submissions_opponent_manager_id_fkey(name, display_name)')
       .order('created_at', { ascending: false });
 
     if (error) setStatus('Could not load submissions: ' + error.message);
@@ -86,6 +86,7 @@ export default function ResultSubmissionsPage() {
 
   async function applyRuling(row, ruling, home, away, note, mode = 'approve') {
     if (ruling === 'double_forfeit') {
+      if (row.matches?.stage !== 'group') return { error: new Error('Double forfeits are only available for group-stage matches.') };
       return supabase.rpc('admin_record_double_forfeit', {
         target_match_id: row.match_id,
         note,
@@ -120,6 +121,7 @@ export default function ResultSubmissionsPage() {
     }
     const forfeitError = validateForfeitScore(ruling, home, away);
     if (forfeitError) return setStatus(forfeitError);
+    if (ruling === 'double_forfeit' && row.matches?.stage !== 'group') return setStatus('Double forfeits are only available for group-stage matches.');
     if (ruling === 'double_forfeit' && !(notes[row.id] || '').trim()) {
       return setStatus('Add a reason before recording both teams as forfeiting.');
     }
@@ -158,6 +160,7 @@ export default function ResultSubmissionsPage() {
     if (!scorelessRuling && (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0)) return setStatus('Enter valid scores for the amended result.');
     const forfeitError = validateForfeitScore(ruling, home, away);
     if (forfeitError) return setStatus(forfeitError);
+    if (ruling === 'double_forfeit' && row.matches?.stage !== 'group') return setStatus('Double forfeits are only available for group-stage matches.');
     const homeTeam = matchTeamName(row.matches, 'home');
     const awayTeam = matchTeamName(row.matches, 'away');
     const scoreLine = ruling === 'voided' ? `${homeTeam} vs ${awayTeam}` : `${homeTeam} ${home}–${away} ${awayTeam}`;
@@ -206,6 +209,7 @@ export default function ResultSubmissionsPage() {
         const homeTeam = matchTeamName(row.matches, 'home');
         const awayTeam = matchTeamName(row.matches, 'away');
         const scoresDisabled = ruling === 'voided' || ruling === 'double_forfeit';
+        const groupStage = row.matches?.stage === 'group';
 
         return <article className="entrant-row registration-row" key={row.id}>
           <div className="registration-details">
@@ -220,10 +224,10 @@ export default function ResultSubmissionsPage() {
             <div className="mini-grid">
               <label>Official home score<input type="number" min="0" disabled={scoresDisabled} value={ruling === 'voided' ? '' : ruling === 'double_forfeit' ? 0 : value.home ?? ''} onChange={(event) => setScores((current) => ({ ...current, [row.id]: { ...value, home: event.target.value } }))} /></label>
               <label>Official away score<input type="number" min="0" disabled={scoresDisabled} value={ruling === 'voided' ? '' : ruling === 'double_forfeit' ? 0 : value.away ?? ''} onChange={(event) => setScores((current) => ({ ...current, [row.id]: { ...value, away: event.target.value } }))} /></label>
-              <label>Official ruling<select value={ruling} onChange={(event) => setRulings((current) => ({ ...current, [row.id]: event.target.value }))}><option value="played">Played normally</option><option value="home_forfeit_win">Away team forfeited — home win</option><option value="away_forfeit_win">Home team forfeited — away win</option><option value="double_forfeit">Both teams forfeited — 0-0, zero points</option><option value="voided">Void match</option></select></label>
+              <label>Official ruling<select value={ruling} onChange={(event) => setRulings((current) => ({ ...current, [row.id]: event.target.value }))}><option value="played">Played normally</option><option value="home_forfeit_win">Away team forfeited — home win</option><option value="away_forfeit_win">Home team forfeited — away win</option>{groupStage && <option value="double_forfeit">Both teams forfeited — 0-0, zero points</option>}<option value="voided">Void match</option></select></label>
               <label>{isOpen ? 'Final-check note / rejection reason' : 'Reason for amendment'}<input value={notes[row.id] || ''} onChange={(event) => setNotes((current) => ({ ...current, [row.id]: event.target.value }))} placeholder={ruling === 'double_forfeit' ? 'Required for a double forfeit' : isOpen ? 'Optional for approval; required for rejection' : 'Required — e.g. ineligible player'} /></label>
             </div>
-            {isOpen && <p className="muted">Edit the score and select the ruling together. A double forfeit records 0–0, one loss and zero points for each team, and a forfeit against both managers.</p>}
+            {isOpen && <p className="muted">Edit the score and select the ruling together. {groupStage ? 'A double forfeit records 0–0, one loss and zero points for each team, and a forfeit against both managers.' : 'For knockout matches, use a single-team forfeit or void ruling as appropriate.'}</p>}
           </div>
 
           {isOpen ? <div className="button-row"><button type="button" onClick={() => approve(row)} disabled={disabled}>Approve official result</button><button type="button" className="danger" onClick={() => reject(row)} disabled={disabled}>Reject submission</button></div> : <div className="button-row"><button type="button" className="secondary" onClick={() => amend(row)} disabled={disabled}>Amend official result</button></div>}
