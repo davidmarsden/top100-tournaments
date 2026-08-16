@@ -29,6 +29,14 @@ function isCompleted(match) {
   return match.status === 'played' || match.status === 'forfeit';
 }
 
+function isDoubleForfeit(match) {
+  return match.status === 'forfeit'
+    && Number(match.home_score) === 0
+    && Number(match.away_score) === 0
+    && !match.winner_entry_id
+    && !match.loser_entry_id;
+}
+
 function roundKey(round) {
   return round.round_name || round.name || round.round;
 }
@@ -94,7 +102,10 @@ function buildTables(entries, matches) {
         home.goals_against += awayScore;
         away.goals_for += awayScore;
         away.goals_against += homeScore;
-        if (homeScore > awayScore) {
+        if (isDoubleForfeit(match)) {
+          home.losses += 1;
+          away.losses += 1;
+        } else if (homeScore > awayScore) {
           home.wins += 1;
           home.points += 3;
           away.losses += 1;
@@ -531,7 +542,7 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
         <div>
           <p className="eyebrow">Knockout generator</p>
           <h3>{playedGroupMatches.length} / {groupMatches.length} group fixtures played</h3>
-          <p className="muted">Knockout rounds, legs, byes and qualification sources now come from database templates and rules.</p>
+          <p className="muted">Knockout rounds, legs, byes and qualification sources now come from database templates and rules. Double forfeits count as played losses for both teams with zero points.</p>
         </div>
         <div className="button-row">
           <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload knockout data</button>
