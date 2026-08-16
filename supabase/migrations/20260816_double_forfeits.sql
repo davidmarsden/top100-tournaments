@@ -142,6 +142,19 @@ begin
     'forfeit', 0, 0, trim(note)
   );
 
+  -- Finalise any open manager submission before changing the match. This means
+  -- the match trigger sees the admin ruling, not an open provisional allegation,
+  -- and can safely create both permanent forfeit rows in the same transaction.
+  update public.manager_result_submissions
+  set status = 'final',
+      resolved_by = auth.uid(),
+      resolved_home_score = 0,
+      resolved_away_score = 0,
+      resolution_note = trim(note),
+      resolved_at = now(),
+      updated_at = now()
+  where match_id = target_match_id;
+
   update public.matches
   set home_score = 0,
       away_score = 0,
@@ -156,16 +169,6 @@ begin
       penalty = 'Double forfeit — 0 points',
       affects_prize_draw = true,
       source = 'admin'
-  where match_id = target_match_id;
-
-  update public.manager_result_submissions
-  set status = 'final',
-      resolved_by = auth.uid(),
-      resolved_home_score = 0,
-      resolved_away_score = 0,
-      resolution_note = trim(note),
-      resolved_at = now(),
-      updated_at = now()
   where match_id = target_match_id;
 end;
 $$;
