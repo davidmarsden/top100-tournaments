@@ -40,11 +40,10 @@ begin
       return new;
     end if;
 
-    -- Rebuild automatically generated rows for this match. Admin-maintained rows
-    -- are replaced by the calling admin RPC after the match update completes.
+    -- A non-provisional match ruling is authoritative. Clear any previous
+    -- single/double-forfeit rows before rebuilding the register from the match.
     delete from public.forfeits
-    where match_id = new.id
-      and source = 'match_ruling';
+    where match_id = new.id;
 
     if new.home_score = 0 and new.away_score = 0 and new.winner_entry_id is null and new.loser_entry_id is null then
       if new.home_entry_id is null or new.away_entry_id is null then
@@ -62,14 +61,7 @@ begin
         penalty, affects_prize_draw, source
       ) values
         (new.id, new.home_entry_id, home_manager, 'Both teams forfeited', 'Double forfeit — 0 points', true, 'match_ruling'),
-        (new.id, new.away_entry_id, away_manager, 'Both teams forfeited', 'Double forfeit — 0 points', true, 'match_ruling')
-      on conflict (match_id, forfeiting_entry_id) where match_id is not null and forfeiting_entry_id is not null
-      do update set
-        manager_id = excluded.manager_id,
-        reason = excluded.reason,
-        penalty = excluded.penalty,
-        affects_prize_draw = excluded.affects_prize_draw,
-        source = excluded.source;
+        (new.id, new.away_entry_id, away_manager, 'Both teams forfeited', 'Double forfeit — 0 points', true, 'match_ruling');
 
       return new;
     end if;
@@ -104,15 +96,13 @@ begin
     ) values (
       new.id, forfeiting_entry, responsible_manager,
       'Match recorded as a forfeit', 'Match forfeiture', true, 'match_ruling'
-    )
-    on conflict (match_id, forfeiting_entry_id) where match_id is not null and forfeiting_entry_id is not null
-    do update set
-      manager_id = excluded.manager_id,
-      source = 'match_ruling';
+    );
   else
+    -- Once a forfeit ruling is reversed/reset, no permanent disciplinary row for
+    -- that match should survive regardless of whether it was created by trigger
+    -- synchronisation or subsequently labelled as an admin ruling.
     delete from public.forfeits
-    where match_id = new.id
-      and source = 'match_ruling';
+    where match_id = new.id;
   end if;
 
   return new;
