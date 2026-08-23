@@ -7,6 +7,8 @@ const escapeHtml = (value) => String(value ?? '')
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&#039;');
 
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 async function supabaseRequest(url, options = {}) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -17,6 +19,39 @@ async function supabaseRequest(url, options = {}) {
     throw new Error(message);
   }
   return data;
+}
+
+async function sendResendEmail(resendApiKey, body) {
+  const maxAttempts = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${resendApiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok) return;
+
+      const errorText = await response.text();
+      const error = new Error(`Resend rejected the notification: ${errorText.slice(0, 800)}`);
+      const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+      if (!retryable || attempt === maxAttempts) throw error;
+      lastError = error;
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) throw error;
+    }
+
+    await sleep(500 * (2 ** (attempt - 1)));
+  }
+
+  throw lastError || new Error('Resend delivery failed.');
 }
 
 export default async (request) => {
@@ -80,25 +115,13 @@ export default async (request) => {
     const claimantEmail = escapeHtml(claim.email);
     const reviewLink = escapeHtml(adminUrl);
 
-    const emailResponse = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${resendApiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: emailFrom,
-        to: [adminEmail],
-        subject: `Manager account awaiting approval: ${claim.claimed_manager_name}`,
-        html: `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;line-height:1.55;color:#172033"><h2>Manager account awaiting approval</h2><p>A manager has submitted a Top 100 account claim.</p><table><tr><td><strong>Manager</strong></td><td>${managerName}</td></tr><tr><td><strong>Club</strong></td><td>${clubName}</td></tr><tr><td><strong>Email</strong></td><td>${claimantEmail}</td></tr></table><p><a href="${reviewLink}">Review manager claims</a></p><p style="color:#5f6f8e;font-size:13px">Automatic notification from Top 100 Tournaments.</p></body></html>`,
-        text: `Manager account awaiting approval\n\nManager: ${claim.claimed_manager_name}\nClub: ${claim.claimed_club_name}\nEmail: ${claim.email}\n\nReview: ${adminUrl}`,
-      }),
+    await sendResendEmail(resendApiKey, {
+      from: emailFrom,
+      to: [adminEmail],
+      subject: `Manager account awaiting approval: ${claim.claimed_manager_name}`,
+      html: `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;line-height:1.55;color:#172033"><h2>Manager account awaiting approval</h2><p>A manager has submitted a Top 100 account claim.</p><table><tr><td><strong>Manager</strong></td><td>${managerName}</td></tr><tr><td><strong>Club</strong></td><td>${clubName}</td></tr><tr><td><strong>Email</strong></td><td>${claimantEmail}</td></tr></table><p><a href="${reviewLink}">Review manager claims</a></p><p style="color:#5f6f8e;font-size:13px">Automatic notification from Top 100 Tournaments.</p></body></html>`,
+      text: `Manager account awaiting approval\n\nManager: ${claim.claimed_manager_name}\nClub: ${claim.claimed_club_name}\nEmail: ${claim.email}\n\nReview: ${adminUrl}`,
     });
-
-    if (!emailResponse.ok) {
-      const errorText = await emailResponse.text();
-      throw new Error(`Resend rejected the notification: ${errorText.slice(0, 800)}`);
-    }
 
     return json({ sent: true });
   } catch (error) {
