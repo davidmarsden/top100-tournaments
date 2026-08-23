@@ -104,7 +104,7 @@ export default async (request) => {
 
   try {
     const rows = await supabaseRequest(
-      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&select=id,email,claimed_manager_name,claimed_club_name,status,admin_notified_at,admin_notification_key,created_at`,
+      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&select=id,status,admin_notified_at,admin_notification_key`,
       { headers: serviceHeaders },
     );
     const claim = rows?.[0];
@@ -115,28 +115,29 @@ export default async (request) => {
 
     reservedAt = new Date().toISOString();
     const reserved = await supabaseRequest(
-      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&status=eq.pending&admin_notified_at=is.null&select=id`,
+      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&status=eq.pending&admin_notified_at=is.null&admin_notification_key=eq.${encodeURIComponent(claim.admin_notification_key)}&select=id,email,claimed_manager_name,claimed_club_name,admin_notification_key`,
       {
         method: 'PATCH',
         headers: { ...serviceHeaders, prefer: 'return=representation' },
         body: JSON.stringify({ admin_notified_at: reservedAt, admin_notification_error: null }),
       },
     );
-    if (!reserved?.length) return json({ skipped: true, reason: 'Claim was reviewed or notification already reserved.' });
+    const reservedClaim = reserved?.[0];
+    if (!reservedClaim) return json({ skipped: true, reason: 'Claim review cycle changed, was reviewed, or notification already reserved.' });
     reservationMade = true;
 
-    const managerName = escapeHtml(claim.claimed_manager_name);
-    const clubName = escapeHtml(claim.claimed_club_name);
-    const claimantEmail = escapeHtml(claim.email);
+    const managerName = escapeHtml(reservedClaim.claimed_manager_name);
+    const clubName = escapeHtml(reservedClaim.claimed_club_name);
+    const claimantEmail = escapeHtml(reservedClaim.email);
     const reviewLink = escapeHtml(adminUrl);
-    const idempotencyKey = `manager-claim-${claim.id}-${claim.admin_notification_key}`;
+    const idempotencyKey = `manager-claim-${reservedClaim.id}-${reservedClaim.admin_notification_key}`;
 
     await sendResendEmail(resendApiKey, {
       from: emailFrom,
       to: [adminEmail],
-      subject: `Manager account awaiting approval: ${claim.claimed_manager_name}`,
+      subject: `Manager account awaiting approval: ${reservedClaim.claimed_manager_name}`,
       html: `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;line-height:1.55;color:#172033"><h2>Manager account awaiting approval</h2><p>A manager has submitted a Top 100 account claim.</p><table><tr><td><strong>Manager</strong></td><td>${managerName}</td></tr><tr><td><strong>Club</strong></td><td>${clubName}</td></tr><tr><td><strong>Email</strong></td><td>${claimantEmail}</td></tr></table><p><a href="${reviewLink}">Review manager claims</a></p><p style="color:#5f6f8e;font-size:13px">Automatic notification from Top 100 Tournaments.</p></body></html>`,
-      text: `Manager account awaiting approval\n\nManager: ${claim.claimed_manager_name}\nClub: ${claim.claimed_club_name}\nEmail: ${claim.email}\n\nReview: ${adminUrl}`,
+      text: `Manager account awaiting approval\n\nManager: ${reservedClaim.claimed_manager_name}\nClub: ${reservedClaim.claimed_club_name}\nEmail: ${reservedClaim.email}\n\nReview: ${adminUrl}`,
     }, idempotencyKey);
 
     return json({ sent: true });
