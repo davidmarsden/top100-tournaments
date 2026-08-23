@@ -28,6 +28,39 @@ VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
+### Manager claim email notifications
+
+Pending manager account claims can notify the tournament administrator by email. The database trigger uses `pg_net` after the claim transaction commits, so notification failures never block claim submission.
+
+Server-only Netlify variables:
+
+```env
+SUPABASE_SERVICE_ROLE_KEY=your_server_only_service_role_key
+RESEND_API_KEY=your_resend_sending_key
+MANAGER_CLAIM_ADMIN_EMAIL=admin@smtop100.blog
+MANAGER_CLAIM_WEBHOOK_SECRET=a-long-random-secret
+MANAGER_CLAIM_EMAIL_FROM=Top 100 Tournaments <notifications@smtop100.blog>
+MANAGER_ACCOUNTS_ADMIN_URL=https://youth-cup.smtop100.blog/admin/manager-accounts
+```
+
+Never prefix the service-role, Resend or webhook secrets with `VITE_`.
+
+After applying `supabase/migrations/20260720_manager_claim_email_notifications.sql`, store the webhook URL and the same webhook secret in Supabase Vault:
+
+```sql
+select vault.create_secret(
+  'https://youth-cup.smtop100.blog/.netlify/functions/notify-manager-claim',
+  'manager_claim_notification_url'
+);
+
+select vault.create_secret(
+  'the-same-long-random-secret-used-in-netlify',
+  'manager_claim_webhook_secret'
+);
+```
+
+A pending claim is emailed once per review cycle. If a claim is rejected, corrected and resubmitted, its notification state is reset so the administrator receives a fresh alert.
+
 The Reports & Exports module can also create reviewable drafts on WordPress.com. WordPress.com does not expose the normal `/wp-json/wp/v2` route on a custom domain, so the server function calls the WordPress.com public REST API using a pre-generated OAuth access token.
 
 Configure these values in Netlify only; never expose the token through a `VITE_` variable:
