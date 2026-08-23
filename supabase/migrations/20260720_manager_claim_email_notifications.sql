@@ -9,28 +9,38 @@ alter table public.manager_portal_claims
   add column if not exists admin_notified_at timestamptz,
   add column if not exists admin_notification_error text;
 
-create or replace function public.reset_manager_claim_notification_on_resubmit()
+create or replace function public.protect_manager_claim_notification_state()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
 begin
+  if tg_op = 'INSERT' then
+    new.admin_notified_at := null;
+    new.admin_notification_error := null;
+    return new;
+  end if;
+
   if old.status = 'rejected' and new.status = 'pending' then
     new.admin_notified_at := null;
     new.admin_notification_error := null;
+  else
+    new.admin_notified_at := old.admin_notified_at;
+    new.admin_notification_error := old.admin_notification_error;
   end if;
+
   return new;
 end;
 $$;
 
-drop trigger if exists reset_manager_claim_notification_on_resubmit
+drop trigger if exists protect_manager_claim_notification_state
   on public.manager_portal_claims;
 
-create trigger reset_manager_claim_notification_on_resubmit
-before update of status
+create trigger protect_manager_claim_notification_state
+before insert or update of status, claimed_manager_name, claimed_club_name
 on public.manager_portal_claims
 for each row
-execute function public.reset_manager_claim_notification_on_resubmit();
+execute function public.protect_manager_claim_notification_state();
 
 create or replace function public.notify_admin_of_pending_manager_claim()
 returns trigger
