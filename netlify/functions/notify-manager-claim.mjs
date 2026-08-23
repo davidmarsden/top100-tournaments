@@ -51,6 +51,7 @@ export default async (request) => {
     'content-type': 'application/json',
   };
   let reservationMade = false;
+  let reservedAt = null;
 
   try {
     const rows = await supabaseRequest(
@@ -62,16 +63,16 @@ export default async (request) => {
     if (claim.status !== 'pending') return json({ skipped: true, reason: 'Claim is not pending.' });
     if (claim.admin_notified_at) return json({ skipped: true, reason: 'Administrator already notified.' });
 
-    const reservedAt = new Date().toISOString();
+    reservedAt = new Date().toISOString();
     const reserved = await supabaseRequest(
-      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&admin_notified_at=is.null&select=id`,
+      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&status=eq.pending&admin_notified_at=is.null&select=id`,
       {
         method: 'PATCH',
         headers: { ...serviceHeaders, prefer: 'return=representation' },
         body: JSON.stringify({ admin_notified_at: reservedAt, admin_notification_error: null }),
       },
     );
-    if (!reserved?.length) return json({ skipped: true, reason: 'Notification already reserved.' });
+    if (!reserved?.length) return json({ skipped: true, reason: 'Claim was reviewed or notification already reserved.' });
     reservationMade = true;
 
     const managerName = escapeHtml(claim.claimed_manager_name);
@@ -101,8 +102,9 @@ export default async (request) => {
 
     return json({ sent: true });
   } catch (error) {
-    if (reservationMade) {
-      await fetch(`${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}`, {
+    if (reservationMade && reservedAt) {
+      const encodedReservedAt = encodeURIComponent(reservedAt);
+      await fetch(`${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&status=eq.pending&admin_notified_at=eq.${encodedReservedAt}`, {
         method: 'PATCH',
         headers: serviceHeaders,
         body: JSON.stringify({
