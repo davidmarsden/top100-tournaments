@@ -7,8 +7,7 @@ create extension if not exists pg_net;
 
 alter table public.manager_portal_claims
   add column if not exists admin_notified_at timestamptz,
-  add column if not exists admin_notification_error text,
-  add column if not exists admin_notification_key uuid not null default gen_random_uuid();
+  add column if not exists admin_notification_error text;
 
 create or replace function public.protect_manager_claim_notification_state()
 returns trigger
@@ -29,18 +28,15 @@ begin
   if tg_op = 'INSERT' then
     new.admin_notified_at := null;
     new.admin_notification_error := null;
-    new.admin_notification_key := gen_random_uuid();
     return new;
   end if;
 
   if old.status = 'rejected' and new.status = 'pending' then
     new.admin_notified_at := null;
     new.admin_notification_error := null;
-    new.admin_notification_key := gen_random_uuid();
   else
     new.admin_notified_at := old.admin_notified_at;
     new.admin_notification_error := old.admin_notification_error;
-    new.admin_notification_key := old.admin_notification_key;
   end if;
 
   return new;
@@ -119,6 +115,3 @@ comment on column public.manager_portal_claims.admin_notified_at is
 
 comment on column public.manager_portal_claims.admin_notification_error is
   'Most recent best-effort administrator notification failure, retained for diagnostics.';
-
-comment on column public.manager_portal_claims.admin_notification_key is
-  'Stable idempotency key for the current pending review cycle; replaced only when a rejected claim is resubmitted.';
