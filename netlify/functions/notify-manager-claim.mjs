@@ -21,6 +21,14 @@ async function supabaseRequest(url, options = {}) {
   return data;
 }
 
+async function readResponseText(response) {
+  try {
+    return await response.text();
+  } catch (error) {
+    return `[response body unavailable: ${String(error?.message || error)}]`;
+  }
+}
+
 async function sendResendEmail(resendApiKey, body, idempotencyKey) {
   const maxAttempts = 3;
   let lastError;
@@ -47,9 +55,9 @@ async function sendResendEmail(resendApiKey, body, idempotencyKey) {
 
     if (response.ok) return;
 
-    const errorText = await response.text();
-    const error = new Error(`Resend rejected the notification: ${errorText.slice(0, 800)}`);
     const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+    const errorText = await readResponseText(response);
+    const error = new Error(`Resend rejected the notification (HTTP ${response.status}): ${errorText.slice(0, 800)}`);
 
     if (!retryable || attempt === maxAttempts) throw error;
 
@@ -96,13 +104,14 @@ export default async (request) => {
 
   try {
     const rows = await supabaseRequest(
-      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&select=id,email,claimed_manager_name,claimed_club_name,status,admin_notified_at,created_at`,
+      `${supabaseUrl}/rest/v1/manager_portal_claims?id=eq.${claimId}&select=id,email,claimed_manager_name,claimed_club_name,status,admin_notified_at,admin_notification_key,created_at`,
       { headers: serviceHeaders },
     );
     const claim = rows?.[0];
     if (!claim) return json({ error: 'Manager claim not found.' }, 404);
     if (claim.status !== 'pending') return json({ skipped: true, reason: 'Claim is not pending.' });
     if (claim.admin_notified_at) return json({ skipped: true, reason: 'Administrator already notified.' });
+    if (!claim.admin_notification_key) return json({ error: 'Manager claim notification key is missing.' }, 500);
 
     reservedAt = new Date().toISOString();
     const reserved = await supabaseRequest(
@@ -120,7 +129,7 @@ export default async (request) => {
     const clubName = escapeHtml(claim.claimed_club_name);
     const claimantEmail = escapeHtml(claim.email);
     const reviewLink = escapeHtml(adminUrl);
-    const idempotencyKey = `manager-claim-${claimId}-${reservedAt}`;
+    const idempotencyKey = `manager-claim-${claim.id}-${claim.admin_notification_key}`;
 
     await sendResendEmail(resendApiKey, {
       from: emailFrom,
