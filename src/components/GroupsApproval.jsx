@@ -49,13 +49,14 @@ export default function GroupsApproval({ selectedTournament, preview, setPreview
 
       const { error: tournamentError } = await supabase.from('tournaments').update({
         status: 'groups_approved',
+        is_public: true,
         actual_entries: preview.groups.reduce((total, group) => total + group.entries.length, 0),
       }).eq('id', tournamentId);
       if (tournamentError) throw tournamentError;
 
       await onDataChanged?.();
       setApproved(true);
-      setStatus('Groups approved. Reloading the Tournament Builder for fixture generation...');
+      setStatus('Groups approved and tournament published. Reloading the Tournament Builder for fixture generation...');
       window.setTimeout(() => window.location.reload(), 700);
     } catch (error) {
       setStatus('Approval failed: ' + error.message);
@@ -71,7 +72,7 @@ export default function GroupsApproval({ selectedTournament, preview, setPreview
       <div>
         <p className="eyebrow">Draw room</p>
         <h3>{preview.groups.length} groups · {preview.groups.reduce((total, group) => total + group.entries.length, 0)} entrants</h3>
-        <p className="muted">Review the seeded draw, then approve the groups and team assignments. Fixtures are generated separately in the next builder step.</p>
+        <p className="muted">Review the seeded draw, then approve the groups and team assignments. Approval also publishes the tournament; fixtures are generated separately in the next builder step.</p>
       </div>
       <div className="button-row">
         <button type="button" onClick={approveDraw} disabled={saving || approved}>{saving ? 'Saving...' : approved ? 'Groups approved' : 'Approve groups'}</button>
