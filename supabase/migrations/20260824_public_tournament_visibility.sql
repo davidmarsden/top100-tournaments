@@ -134,6 +134,11 @@ using (
 
 -- Match comments: visible content is public only for public tournaments -------
 
+-- Drop both the original press-room policies and the later hardened variants.
+-- Postgres combines permissive policies with OR, so leaving either generation
+-- in place would bypass the tournament publication boundary.
+drop policy if exists "Public read visible match comments" on public.match_comments;
+drop policy if exists "Public publish visible match comments" on public.match_comments;
 drop policy if exists "Anonymous read visible match comments" on public.match_comments;
 drop policy if exists "Authenticated read visible comments and admins read all" on public.match_comments;
 drop policy if exists "Anonymous publish visible match comments" on public.match_comments;
