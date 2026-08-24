@@ -1,4 +1,4 @@
-export const LIVE_STATUSES = ['published', 'groups_approved', 'draft', 'completed'];
+export const LIVE_STATUSES = ['published', 'groups_approved', 'completed'];
 
 export function parseTournamentPath(pathname = window.location.pathname) {
   const parts = pathname.split('/').map((part) => part.trim()).filter(Boolean);
