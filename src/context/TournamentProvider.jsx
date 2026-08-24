@@ -135,6 +135,8 @@ export function TournamentProvider({ children }) {
     if (!canUseDatabase || !ids.length) return;
     setLoading(true); setStatus(`Marking ${ids.length} tournament(s) as ${nextStatus}...`);
     const patch = { status: nextStatus };
+    if (nextStatus === 'draft') patch.is_public = false;
+    if (nextStatus === 'groups_approved' || nextStatus === 'published') patch.is_public = true;
     if (nextStatus === 'archived' || nextStatus === 'completed') patch.archived_at = new Date().toISOString();
     const { error } = await supabase.from('tournaments').update(patch).in('id', ids);
     if (error) setStatus('Status update failed: ' + error.message); else { await loadTournaments(); setStatus(`Marked ${ids.length} tournament(s) as ${nextStatus}.`); }
@@ -165,12 +167,12 @@ export function TournamentProvider({ children }) {
         competitionTypeId = await findOrCreate('competition_types', { slug: competitionSlug }, { name: form.competitionName, slug: competitionSlug, default_max_entries: Number(form.maxEntries), default_group_count: Number(form.groupCount), default_teams_per_group: Number(form.teamsPerGroup), default_knockout_teams: Number(form.knockoutTeams), default_secondary_bracket_name: form.secondaryBracketName || null });
       } catch { gameWorldId = null; competitionTypeId = null; }
       const basePayload = { season_id: seasonId, competition_id: competitionId, name: form.tournamentName, status: 'draft', format: 'groups_then_knockout', source: 'app', max_entries: Number(form.maxEntries), actual_entries: 0, group_count: Number(form.groupCount), teams_per_group: Number(form.teamsPerGroup), knockout_teams: Number(form.knockoutTeams), secondary_bracket_name: form.secondaryBracketName || null, rules_notes: 'Created from Top 100 tournament app dashboard' };
-      const v2Payload = { ...basePayload, game_world_id: gameWorldId, competition_type_id: competitionTypeId, season_number: seasonNumber, slug: slugify(form.tournamentName), public_slug: seasonSlugFromCode(form.seasonCode), is_public: true, archive_quality: 'unknown', registration_status: form.registrationStatus || 'closed' };
+      const v2Payload = { ...basePayload, game_world_id: gameWorldId, competition_type_id: competitionTypeId, season_number: seasonNumber, slug: slugify(form.tournamentName), public_slug: seasonSlugFromCode(form.seasonCode), is_public: false, archive_quality: 'unknown', registration_status: form.registrationStatus || 'closed' };
       let result = await supabase.from('tournaments').insert(v2Payload).select('id').single();
       if (result.error) result = await supabase.from('tournaments').insert(basePayload).select('id').single();
       const { data, error } = result;
       if (error) throw error;
-      setSelectedTournamentId(data.id); setStatus(form.tournamentName + ' created successfully.'); await loadTournaments();
+      setSelectedTournamentId(data.id); setStatus(form.tournamentName + ' created successfully as a private draft.'); await loadTournaments();
     } catch (error) { setStatus('Create failed: ' + error.message); }
     setLoading(false);
   }
