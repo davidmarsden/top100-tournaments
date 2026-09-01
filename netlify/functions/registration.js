@@ -1,11 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const headers = {
-  'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-};
+const headers = { 'Content-Type': 'application/json' };
 
 function reply(statusCode, body) {
   return { statusCode, headers, body: JSON.stringify(body) };
@@ -18,19 +13,23 @@ function database() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-const keyOf = (value = '') => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+const keyOf = (value = '') => String(value)
+  .normalize('NFKD')
+  .replace(/\p{Diacritic}/gu, '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, '');
 
 async function resolveTournament(db, input) {
+  const fields = 'id, name, status, max_entries, actual_entries, registration_status, registration_opens_at, registration_closes_at, season_number, public_slug, game_world_id, game_worlds(name, slug), competition_types(name, slug)';
   if (input.tournamentId) {
-    const result = await db.from('tournaments')
-      .select('id, name, status, max_entries, actual_entries, registration_status, registration_opens_at, registration_closes_at, season_number, public_slug, game_worlds(name, slug), competition_types(name, slug)')
-      .eq('id', Number(input.tournamentId)).maybeSingle();
+    const result = await db.from('tournaments').select(fields).eq('id', Number(input.tournamentId)).maybeSingle();
     if (result.error) throw result.error;
     return result.data;
   }
 
   let query = db.from('tournaments')
-    .select('id, name, status, max_entries, actual_entries, registration_status, registration_opens_at, registration_closes_at, season_number, public_slug, game_worlds!inner(name, slug), competition_types!inner(name, slug)')
+    .select('id, name, status, max_entries, actual_entries, registration_status, registration_opens_at, registration_closes_at, season_number, public_slug, game_world_id, game_worlds!inner(name, slug), competition_types!inner(name, slug)')
     .eq('game_worlds.slug', input.worldSlug)
     .eq('competition_types.slug', input.competitionSlug)
     .eq('is_public', true);
@@ -61,19 +60,46 @@ function windowState(tournament) {
 }
 
 async function config(db, tournament) {
-  const countResult = await db.from('tournament_registrations')
-    .select('id', { count: 'exact', head: true })
-    .eq('tournament_id', tournament.id)
-    .in('status', ['pending', 'approved']);
-  if (countResult.error) throw countResult.error;
+  const [clubsResult, registrationsResult] = await Promise.all([
+    db.from('game_world_clubs')
+      .select('id, club_name, current_manager_name')
+      .eq('game_world_id', tournament.game_world_id)
+      .eq('active', true)
+      .eq('occupied', true)
+      .order('club_name'),
+    db.from('tournament_registrations')
+      .select('id, manager_name, club_name, rating, status, submitted_at, promoted_entry_id')
+      .eq('tournament_id', tournament.id)
+      .in('status', ['pending', 'approved'])
+      .order('submitted_at', { ascending: true }),
+  ]);
+  if (clubsResult.error) throw clubsResult.error;
+  if (registrationsResult.error) throw registrationsResult.error;
+
+  const registrations = registrationsResult.data || [];
   const maxEntries = capacity(tournament);
   return {
     tournament,
     window: windowState(tournament),
-    registrationsReceived: countResult.count || 0,
-    placesRemaining: maxEntries ? Math.max(0, maxEntries - Number(tournament.actual_entries || 0)) : null,
+    clubs: clubsResult.data || [],
+    registrations,
+    registrationsReceived: registrations.length,
+    placesRemaining: maxEntries ? Math.max(0, maxEntries - registrations.length) : null,
     capacityDecided: Boolean(maxEntries),
   };
+}
+
+async function resolveClub(db, tournament, body) {
+  let query = db.from('game_world_clubs')
+    .select('id, club_name, club_key, current_manager_name, manager_key, occupied, active')
+    .eq('game_world_id', tournament.game_world_id)
+    .eq('active', true)
+    .eq('occupied', true);
+  if (body.clubId) query = query.eq('id', Number(body.clubId));
+  else query = query.eq('club_key', keyOf(body.clubName || ''));
+  const result = await query.maybeSingle();
+  if (result.error) throw result.error;
+  return result.data;
 }
 
 async function submit(db, tournament, body) {
@@ -81,46 +107,61 @@ async function submit(db, tournament, body) {
   if (!availability.open) return reply(409, { ok: false, error: availability.reason });
 
   const managerName = String(body.managerName || '').trim();
-  const clubName = String(body.clubName || '').trim();
   const rating = Number(body.rating);
-
   if (managerName.length < 2) return reply(400, { ok: false, error: 'Enter your manager name.' });
-  if (clubName.length < 2) return reply(400, { ok: false, error: 'Enter your club name.' });
-  if (!Number.isInteger(rating) || rating < 70 || rating > 95) return reply(400, { ok: false, error: 'Choose a team rating from 70 to 95.' });
+  if (!Number.isInteger(rating) || rating < 65 || rating > 90) return reply(400, { ok: false, error: 'Choose an average team rating from 65 to 90.' });
 
-  const managerKey = keyOf(managerName);
-  const clubKey = keyOf(clubName);
+  const club = await resolveClub(db, tournament, body);
+  if (!club) return reply(400, { ok: false, error: 'Choose a currently managed club from this game world.' });
+  if (!club.current_manager_name || keyOf(club.current_manager_name) !== keyOf(managerName)) {
+    return reply(409, {
+      ok: false,
+      managerMismatch: true,
+      expectedManager: club.current_manager_name,
+      error: `${club.club_name} is currently listed as managed by ${club.current_manager_name || 'another manager'}. Check your manager name and club selection.`,
+    });
+  }
+
+  const managerKey = club.manager_key || keyOf(managerName);
   const duplicateResult = await db.from('tournament_registrations')
-    .select('manager_key, club_key')
+    .select('id, manager_name, club_name')
     .eq('tournament_id', tournament.id)
     .in('status', ['pending', 'approved'])
-    .or(`manager_key.eq.${managerKey},club_key.eq.${clubKey}`);
+    .or(`manager_key.eq.${managerKey},club_key.eq.${club.club_key}`);
   if (duplicateResult.error) throw duplicateResult.error;
-  if (duplicateResult.data?.length) return reply(409, { ok: false, duplicate: true, error: 'This manager or club is already registered.' });
+  if (duplicateResult.data?.length) {
+    const duplicate = duplicateResult.data[0];
+    return reply(409, { ok: false, duplicate: true, existingRegistration: duplicate, error: `${duplicate.club_name} is already registered for this tournament.` });
+  }
 
   const result = await db.from('tournament_registrations').insert({
     tournament_id: tournament.id,
-    manager_name: managerName,
+    manager_name: club.current_manager_name,
     manager_email: null,
-    club_name: clubName,
+    club_name: club.club_name,
     rating,
     notes: null,
     status: 'pending',
     manager_key: managerKey,
     email_key: '',
-    club_key: clubKey,
-  }).select('id, submitted_at').single();
+    club_key: club.club_key,
+  }).select('id, manager_name, club_name, rating, status, submitted_at').single();
 
   if (result.error) {
     if (result.error.code === '23505') return reply(409, { ok: false, duplicate: true, error: 'This manager or club is already registered.' });
     throw result.error;
   }
 
-  return reply(201, { ok: true, registrationId: result.data.id, submittedAt: result.data.submitted_at, message: 'Registration received and awaiting admin approval.' });
+  return reply(201, {
+    ok: true,
+    registration: result.data,
+    registrationId: result.data.id,
+    submittedAt: result.data.submitted_at,
+    message: 'Registration received.',
+  });
 }
 
 export async function handler(event) {
-  if (event.httpMethod === 'OPTIONS') return reply(200, { ok: true });
   try {
     const body = event.httpMethod === 'POST' ? JSON.parse(event.body || '{}') : {};
     const query = event.queryStringParameters || {};
