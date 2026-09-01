@@ -118,3 +118,6 @@ $$;
 
 revoke all on function public.submit_manager_tournament_registration(bigint,text,numeric,text) from public, anon;
 grant execute on function public.submit_manager_tournament_registration(bigint,text,numeric,text) to authenticated, service_role;
+
+-- The first migration briefly introduced a team-id overload. The club-name flow supersedes it.
+drop function if exists public.submit_manager_tournament_registration(bigint,bigint,numeric,text);
