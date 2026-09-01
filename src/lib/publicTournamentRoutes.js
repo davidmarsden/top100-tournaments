@@ -14,6 +14,10 @@ export function normalStatus(row) {
   return String(row?.status || '').toLowerCase();
 }
 
+export function isLiveTournament(row) {
+  return String(row?.registration_status || '').toLowerCase() === 'open' || LIVE_STATUSES.includes(normalStatus(row));
+}
+
 export function routeTitle(parts) {
   if (!parts || parts.mode === 'home') return 'Tournament Centre';
   if (parts.mode === 'id') return `Tournament ${parts.tournamentId}`;
@@ -21,7 +25,10 @@ export function routeTitle(parts) {
 }
 
 export function pickLiveTournament(rows = []) {
-  const ranked = [...rows].sort((a, b) => {
+  const ranked = [...rows].filter(isLiveTournament).sort((a, b) => {
+    const aRegistrationRank = String(a?.registration_status || '').toLowerCase() === 'open' ? 0 : 1;
+    const bRegistrationRank = String(b?.registration_status || '').toLowerCase() === 'open' ? 0 : 1;
+    if (aRegistrationRank !== bRegistrationRank) return aRegistrationRank - bRegistrationRank;
     const aRank = LIVE_STATUSES.indexOf(normalStatus(a));
     const bRank = LIVE_STATUSES.indexOf(normalStatus(b));
     const ar = aRank === -1 ? 99 : aRank;
