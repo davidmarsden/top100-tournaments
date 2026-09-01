@@ -106,7 +106,7 @@ async function resolveClub(db, tournament, body) {
   return result.data;
 }
 
-async function signedInAccount(db, event, tournament, club) {
+async function signedInAccount(db, event, club) {
   const authorization = String(event.headers?.authorization || event.headers?.Authorization || '');
   const token = authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : '';
   if (!token) return null;
@@ -118,7 +118,6 @@ async function signedInAccount(db, event, tournament, club) {
     .eq('active', true)
     .maybeSingle();
   if (accountResult.error || !accountResult.data) return null;
-  if (Number(accountResult.data.game_world_id) !== Number(tournament.game_world_id)) return null;
 
   const accountManagerKey = keyOf(accountResult.data.managers?.display_name || accountResult.data.managers?.name || '');
   if (!club.manager_key || accountManagerKey !== club.manager_key) return null;
@@ -157,7 +156,7 @@ async function submit(db, tournament, body, event) {
     return reply(409, { ok: false, duplicate: true, existingRegistration: duplicate, error: `${duplicate.club_name} is already registered for this tournament.` });
   }
 
-  const account = await signedInAccount(db, event, tournament, club);
+  const account = await signedInAccount(db, event, club);
   const result = await db.from('tournament_registrations').insert({
     tournament_id: tournament.id,
     manager_name: club.current_manager_name,
