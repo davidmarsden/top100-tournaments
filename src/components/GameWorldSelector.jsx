@@ -6,6 +6,7 @@ const presets = [
 const competitions = [
   { name: 'Youth Cup', slug: 'youth-cup', secondary: 'Shield' },
   { name: 'World Club Cup', slug: 'world-club-cup', secondary: '' },
+  { name: 'Regen Tournament', slug: 'regen', secondary: '' },
 ];
 
 export default function GameWorldSelector({ form, updateField }) {
@@ -14,6 +15,16 @@ export default function GameWorldSelector({ form, updateField }) {
     if (!preset) return;
     updateField('gameWorldName', preset.name);
     updateField('gameWorldSlug', preset.slug);
+    if (preset.slug === 'regen') {
+      updateField('competitionName', 'Regen Tournament');
+      updateField('competitionSlug', 'regen');
+      updateField('tournamentName', `${form.seasonCode || 'S4'} Regen`);
+      updateField('maxEntries', '');
+      updateField('groupCount', '');
+      updateField('teamsPerGroup', '');
+      updateField('knockoutTeams', '');
+      updateField('secondaryBracketName', '');
+    }
   }
   function applyCompetition(event) {
     const preset = competitions.find((item) => item.slug === event.target.value);
@@ -21,6 +32,12 @@ export default function GameWorldSelector({ form, updateField }) {
     updateField('competitionName', preset.name);
     updateField('competitionSlug', preset.slug);
     if (preset.secondary !== undefined) updateField('secondaryBracketName', preset.secondary);
+    if (preset.slug === 'regen') {
+      updateField('maxEntries', '');
+      updateField('groupCount', '');
+      updateField('teamsPerGroup', '');
+      updateField('knockoutTeams', '');
+    }
   }
 
   return <>

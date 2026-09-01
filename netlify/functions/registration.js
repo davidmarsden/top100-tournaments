@@ -43,14 +43,20 @@ async function resolveTournament(db, input) {
   return result.data?.[0] || null;
 }
 
+function capacity(tournament) {
+  const maxEntries = Number(tournament.max_entries || 0);
+  return Number.isFinite(maxEntries) && maxEntries > 0 ? maxEntries : null;
+}
+
 function windowState(tournament) {
   const now = Date.now();
   const opens = tournament.registration_opens_at ? Date.parse(tournament.registration_opens_at) : null;
   const closes = tournament.registration_closes_at ? Date.parse(tournament.registration_closes_at) : null;
+  const maxEntries = capacity(tournament);
   if (tournament.registration_status !== 'open') return { open: false, reason: tournament.registration_status === 'full' ? 'Registration is full.' : 'Registration is not open.' };
   if (opens && now < opens) return { open: false, reason: 'Registration has not opened yet.' };
   if (closes && now >= closes) return { open: false, reason: 'Registration has closed.' };
-  if (Number(tournament.actual_entries || 0) >= Number(tournament.max_entries || Infinity)) return { open: false, reason: 'Registration is full.' };
+  if (maxEntries && Number(tournament.actual_entries || 0) >= maxEntries) return { open: false, reason: 'Registration is full.' };
   return { open: true, reason: '' };
 }
 
@@ -60,11 +66,13 @@ async function config(db, tournament) {
     .eq('tournament_id', tournament.id)
     .in('status', ['pending', 'approved']);
   if (countResult.error) throw countResult.error;
+  const maxEntries = capacity(tournament);
   return {
     tournament,
     window: windowState(tournament),
     registrationsReceived: countResult.count || 0,
-    placesRemaining: Math.max(0, Number(tournament.max_entries || 0) - Number(tournament.actual_entries || 0)),
+    placesRemaining: maxEntries ? Math.max(0, maxEntries - Number(tournament.actual_entries || 0)) : null,
+    capacityDecided: Boolean(maxEntries),
   };
 }
 
