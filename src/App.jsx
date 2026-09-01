@@ -28,7 +28,7 @@ export default function App() {
   if (isManagerPath()) return <ManagerPortal />;
   if (isManagerRegistrationPath()) return <ManagerRegistrationPortal />;
   if (isManagerAccountsPath()) return <AdminGate requireGlobal><ManagerAccountsPage /></AdminGate>;
-  if (isResultSubmissionsPath()) return <AdminGate><ResultSubmissionsPage /></AdminGate>;
+  if (isResultSubmissionsPath()) return <AdminGate requireGlobal><ResultSubmissionsPage /></AdminGate>;
   if (!isAdminPath()) return <Top100BrandShell><TournamentRouter /></Top100BrandShell>;
   return <AdminGate><TournamentProvider><AdminDashboard /></TournamentProvider></AdminGate>;
 }
