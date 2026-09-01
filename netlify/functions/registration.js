@@ -102,7 +102,22 @@ async function resolveClub(db, tournament, body) {
   return result.data;
 }
 
-async function submit(db, tournament, body) {
+async function signedInAccount(db, event, tournament) {
+  const authorization = String(event.headers?.authorization || event.headers?.Authorization || '');
+  const token = authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : '';
+  if (!token) return null;
+  const { data: userData, error: userError } = await db.auth.getUser(token);
+  if (userError || !userData?.user?.id) return null;
+  const accountResult = await db.from('manager_portal_accounts')
+    .select('auth_user_id, manager_id, game_world_id, active')
+    .eq('auth_user_id', userData.user.id)
+    .eq('active', true)
+    .maybeSingle();
+  if (accountResult.error || !accountResult.data || Number(accountResult.data.game_world_id) !== Number(tournament.game_world_id)) return null;
+  return accountResult.data;
+}
+
+async function submit(db, tournament, body, event) {
   const availability = windowState(tournament);
   if (!availability.open) return reply(409, { ok: false, error: availability.reason });
 
@@ -134,6 +149,7 @@ async function submit(db, tournament, body) {
     return reply(409, { ok: false, duplicate: true, existingRegistration: duplicate, error: `${duplicate.club_name} is already registered for this tournament.` });
   }
 
+  const account = await signedInAccount(db, event, tournament);
   const result = await db.from('tournament_registrations').insert({
     tournament_id: tournament.id,
     manager_name: club.current_manager_name,
@@ -145,6 +161,8 @@ async function submit(db, tournament, body) {
     manager_key: managerKey,
     email_key: '',
     club_key: club.club_key,
+    auth_user_id: account?.auth_user_id || null,
+    manager_id: account?.manager_id || null,
   }).select('id, manager_name, club_name, rating, status, submitted_at').single();
 
   if (result.error) {
@@ -157,6 +175,7 @@ async function submit(db, tournament, body) {
     registration: result.data,
     registrationId: result.data.id,
     submittedAt: result.data.submitted_at,
+    linkedToPortal: Boolean(account),
     message: 'Registration received.',
   });
 }
@@ -175,7 +194,7 @@ export async function handler(event) {
     const tournament = await resolveTournament(db, input);
     if (!tournament) return reply(404, { ok: false, error: 'Tournament not found.' });
     if (event.httpMethod === 'GET') return reply(200, { ok: true, ...(await config(db, tournament)) });
-    if (event.httpMethod === 'POST') return await submit(db, tournament, body);
+    if (event.httpMethod === 'POST') return await submit(db, tournament, body, event);
     return reply(405, { ok: false, error: 'Method not allowed.' });
   } catch (error) {
     return reply(500, { ok: false, error: error.message });
