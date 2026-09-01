@@ -60,7 +60,7 @@ alter table public.manager_portal_accounts
 create index if not exists manager_portal_claims_game_world_idx on public.manager_portal_claims(game_world_id);
 create index if not exists manager_portal_accounts_game_world_idx on public.manager_portal_accounts(game_world_id);
 
--- Existing Portal accounts pre-date multi-world identity and all belong to the original Top 100 workflow.
+-- Existing Portal identities pre-date multi-world claims and belong to the original Top 100 workflow.
 update public.manager_portal_accounts
 set game_world_id = (select id from public.game_worlds where slug = 'top-100')
 where game_world_id is null;
@@ -68,12 +68,74 @@ update public.manager_portal_claims
 set game_world_id = (select id from public.game_worlds where slug = 'top-100')
 where game_world_id is null;
 
+alter table public.manager_portal_accounts alter column game_world_id set not null;
+alter table public.manager_portal_claims alter column game_world_id set not null;
+
+-- Ratings are not optional registration metadata: they are part of every entry.
 alter table public.tournament_registrations
   drop constraint if exists tournament_registrations_rating_range;
 alter table public.tournament_registrations
-  add constraint tournament_registrations_rating_range check (rating between 65 and 90);
+  add constraint tournament_registrations_rating_range check (rating between 65 and 90),
+  alter column rating set not null;
 
--- Claims must name the manager currently attached to the selected occupied club.
+-- Central registration guard: old clients, RPCs and service-side callers must all use
+-- a club/manager pairing from the tournament's current game-world directory.
+create or replace function public.validate_tournament_registration_directory()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  target_game_world_id bigint;
+  club_row public.game_world_clubs%rowtype;
+begin
+  if new.rating is null or new.rating < 65 or new.rating > 90 or new.rating <> trunc(new.rating) then
+    raise exception 'Choose an average team rating from 65 to 90';
+  end if;
+
+  select t.game_world_id into target_game_world_id
+  from public.tournaments t
+  where t.id = new.tournament_id;
+
+  if target_game_world_id is null then
+    raise exception 'Tournament has no game world';
+  end if;
+
+  select * into club_row
+  from public.game_world_clubs c
+  where c.game_world_id = target_game_world_id
+    and c.club_key = public.normal_registration_key(new.club_name)
+    and c.active = true
+    and c.occupied = true
+  limit 1;
+
+  if not found then
+    raise exception 'Choose a currently managed club from this game world';
+  end if;
+
+  if club_row.manager_key is null
+     or club_row.manager_key <> public.normal_registration_key(new.manager_name) then
+    raise exception '% is currently listed as managed by %', club_row.club_name, club_row.current_manager_name;
+  end if;
+
+  new.club_name := club_row.club_name;
+  new.club_key := club_row.club_key;
+  new.manager_name := club_row.current_manager_name;
+  new.manager_key := club_row.manager_key;
+  return new;
+end;
+$$;
+
+revoke all on function public.validate_tournament_registration_directory() from public, anon, authenticated;
+
+drop trigger if exists tournament_registration_directory_guard on public.tournament_registrations;
+create trigger tournament_registration_directory_guard
+before insert or update of tournament_id, manager_name, club_name, manager_key, club_key, rating
+on public.tournament_registrations
+for each row execute function public.validate_tournament_registration_directory();
+
+-- Portal claims use the same directory and record a canonical manager suggestion where possible.
 create or replace function public.validate_manager_portal_claim_directory()
 returns trigger
 language plpgsql
@@ -82,6 +144,7 @@ set search_path = ''
 as $$
 declare
   club_row public.game_world_clubs%rowtype;
+  resolved_manager_id bigint;
 begin
   if new.game_world_id is null then
     raise exception 'Choose your game world';
@@ -104,8 +167,17 @@ begin
     raise exception 'That manager does not match the current manager listed for this club';
   end if;
 
+  select m.id into resolved_manager_id
+  from public.managers m
+  where public.normal_registration_key(coalesce(m.display_name, m.name)) = club_row.manager_key
+  order by m.active desc, m.id
+  limit 1;
+
   new.claimed_club_name := club_row.club_name;
   new.claimed_manager_name := club_row.current_manager_name;
+  if resolved_manager_id is not null then
+    new.suggested_manager_id := resolved_manager_id;
+  end if;
   return new;
 end;
 $$;
@@ -137,7 +209,6 @@ begin
   select * into claim_row from public.manager_portal_claims where id = target_claim_id for update;
   if not found then raise exception 'Manager claim not found'; end if;
   if claim_row.status <> 'pending' then raise exception 'Manager claim has already been reviewed'; end if;
-  if claim_row.game_world_id is null then raise exception 'Claim has no game world'; end if;
 
   resolved_manager_id := coalesce(target_manager_id, claim_row.suggested_manager_id);
   if resolved_manager_id is null then
@@ -174,8 +245,8 @@ begin
     updated_at = now()
   where id = target_claim_id;
 
-  -- Guest registrations need no email. Link them when a later approved Portal claim
-  -- proves the same canonical manager + club inside the same game world.
+  -- Guest registrations need no email. A later approved Portal claim can attach the
+  -- historic registration by canonical manager + club + game world.
   update public.tournament_registrations r
   set auth_user_id = claim_row.auth_user_id,
       manager_id = resolved_manager_id,
@@ -194,7 +265,7 @@ $$;
 revoke all on function public.approve_manager_portal_claim(bigint,bigint) from public, anon;
 grant execute on function public.approve_manager_portal_claim(bigint,bigint) to authenticated;
 
--- Create the new Regen tournament with registration open before its final shape is known.
+-- Create Regen S4 with registration open before the final field or tournament shape is known.
 insert into public.tournaments(
   name, status, format, source, max_entries, actual_entries, group_count, teams_per_group,
   knockout_teams, game_world_id, competition_type_id, season_number, slug, public_slug,
