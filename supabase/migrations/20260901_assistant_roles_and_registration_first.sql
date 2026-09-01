@@ -48,8 +48,6 @@ $$;
 revoke all on function public.can_assist_tournament(bigint) from public, anon;
 grant execute on function public.can_assist_tournament(bigint) to authenticated, service_role;
 
--- Both delegated roles may see their assigned private tournament and the data
--- needed to operate matchday tasks. Structural changes remain organiser-only.
 drop policy if exists "Authenticated read public tournaments and assigned organisers" on public.tournaments;
 create policy "Authenticated read public tournaments and assigned staff"
   on public.tournaments for select to authenticated
@@ -71,7 +69,6 @@ create policy "Authenticated read public matches and assigned staff"
   on public.matches for select to authenticated
   using ((select public.tournament_is_public(tournament_id)) or (select public.can_assist_tournament(tournament_id)));
 
--- Assistants may maintain fixture schedules and enter/edit ordinary results.
 drop policy if exists "Tournament managers insert matches" on public.matches;
 create policy "Tournament staff insert matches"
   on public.matches for insert to authenticated
@@ -88,9 +85,6 @@ create policy "Tournament staff delete matches"
   on public.matches for delete to authenticated
   using ((select public.can_assist_tournament(tournament_id)));
 
--- Registration, entrant selection, groups, knockout structure, publishing and
--- tournament settings continue to rely on can_manage_tournament(), which now
--- means platform admin or organiser only.
 drop policy if exists "Managers read own registrations and organisers read assigned" on public.tournament_registrations;
 create policy "Managers read own registrations and staff read assigned"
   on public.tournament_registrations for select to authenticated
@@ -99,7 +93,6 @@ create policy "Managers read own registrations and staff read assigned"
     or (select public.can_assist_tournament(tournament_id))
   );
 
--- Allow assistants to read private-tournament forfeits for tables/reports.
 drop policy if exists "Authenticated read public forfeits and tournament managers" on public.forfeits;
 create policy "Authenticated read public forfeits and tournament staff"
   on public.forfeits for select to authenticated
@@ -115,11 +108,9 @@ create policy "Authenticated read public forfeits and tournament staff"
     )
   );
 
--- Registration-first workflow: a null/zero max_entries means capacity has not
--- been decided yet, not that registration is full.
 create or replace function public.submit_manager_tournament_registration(
   target_tournament_id bigint,
-  target_club_name text,
+  target_team_name text,
   target_rating numeric default null,
   target_notes text default null
 )
@@ -134,7 +125,7 @@ declare
   manager_row public.managers%rowtype;
   tournament_row public.tournaments%rowtype;
   registration_row public.tournament_registrations%rowtype;
-  clean_club_name text := nullif(trim(target_club_name), '');
+  clean_club_name text := nullif(trim(target_team_name), '');
   active_count bigint;
 begin
   if user_id is null then raise exception 'Sign in to the Manager Portal first'; end if;
