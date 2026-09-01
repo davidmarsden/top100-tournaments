@@ -21,15 +21,19 @@ const keyOf = (value = '') => String(value)
   .replace(/[^\p{L}\p{N}]+/gu, '');
 
 async function resolveTournament(db, input) {
-  const fields = 'id, name, status, max_entries, actual_entries, registration_status, registration_opens_at, registration_closes_at, season_number, public_slug, game_world_id, game_worlds(name, slug), competition_types(name, slug)';
+  const fields = 'id, name, status, max_entries, actual_entries, registration_status, registration_opens_at, registration_closes_at, season_number, public_slug, game_world_id, is_public, game_worlds(name, slug), competition_types(name, slug)';
   if (input.tournamentId) {
-    const result = await db.from('tournaments').select(fields).eq('id', Number(input.tournamentId)).maybeSingle();
+    const result = await db.from('tournaments')
+      .select(fields)
+      .eq('id', Number(input.tournamentId))
+      .eq('is_public', true)
+      .maybeSingle();
     if (result.error) throw result.error;
     return result.data;
   }
 
   let query = db.from('tournaments')
-    .select('id, name, status, max_entries, actual_entries, registration_status, registration_opens_at, registration_closes_at, season_number, public_slug, game_world_id, game_worlds!inner(name, slug), competition_types!inner(name, slug)')
+    .select('id, name, status, max_entries, actual_entries, registration_status, registration_opens_at, registration_closes_at, season_number, public_slug, game_world_id, is_public, game_worlds!inner(name, slug), competition_types!inner(name, slug)')
     .eq('game_worlds.slug', input.worldSlug)
     .eq('competition_types.slug', input.competitionSlug)
     .eq('is_public', true);
@@ -102,18 +106,22 @@ async function resolveClub(db, tournament, body) {
   return result.data;
 }
 
-async function signedInAccount(db, event, tournament) {
+async function signedInAccount(db, event, tournament, club) {
   const authorization = String(event.headers?.authorization || event.headers?.Authorization || '');
   const token = authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : '';
   if (!token) return null;
   const { data: userData, error: userError } = await db.auth.getUser(token);
   if (userError || !userData?.user?.id) return null;
   const accountResult = await db.from('manager_portal_accounts')
-    .select('auth_user_id, manager_id, game_world_id, active')
+    .select('auth_user_id, manager_id, game_world_id, active, managers(name, display_name)')
     .eq('auth_user_id', userData.user.id)
     .eq('active', true)
     .maybeSingle();
-  if (accountResult.error || !accountResult.data || Number(accountResult.data.game_world_id) !== Number(tournament.game_world_id)) return null;
+  if (accountResult.error || !accountResult.data) return null;
+  if (Number(accountResult.data.game_world_id) !== Number(tournament.game_world_id)) return null;
+
+  const accountManagerKey = keyOf(accountResult.data.managers?.display_name || accountResult.data.managers?.name || '');
+  if (!club.manager_key || accountManagerKey !== club.manager_key) return null;
   return accountResult.data;
 }
 
@@ -124,7 +132,7 @@ async function submit(db, tournament, body, event) {
   const managerName = String(body.managerName || '').trim();
   const rating = Number(body.rating);
   if (managerName.length < 2) return reply(400, { ok: false, error: 'Enter your manager name.' });
-  if (!Number.isInteger(rating) || rating < 65 || rating > 90) return reply(400, { ok: false, error: 'Choose an average team rating from 65 to 90.' });
+  if (!Number.isInteger(rating) || rating < 65 || rating > 95) return reply(400, { ok: false, error: 'Choose an average team rating from 65 to 95.' });
 
   const club = await resolveClub(db, tournament, body);
   if (!club) return reply(400, { ok: false, error: 'Choose a currently managed club from this game world.' });
@@ -149,7 +157,7 @@ async function submit(db, tournament, body, event) {
     return reply(409, { ok: false, duplicate: true, existingRegistration: duplicate, error: `${duplicate.club_name} is already registered for this tournament.` });
   }
 
-  const account = await signedInAccount(db, event, tournament);
+  const account = await signedInAccount(db, event, tournament, club);
   const result = await db.from('tournament_registrations').insert({
     tournament_id: tournament.id,
     manager_name: club.current_manager_name,
