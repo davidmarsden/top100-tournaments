@@ -27,6 +27,7 @@ export default function ManagerPortal() {
   const [account, setAccount] = useState(null), [claim, setClaim] = useState(null), [claimForm, setClaimForm] = useState({ gameWorldId: '', managerName: '', clubName: '' });
   const [gameWorlds, setGameWorlds] = useState([]), [worldClubs, setWorldClubs] = useState([]);
   const [entries, setEntries] = useState([]), [matches, setMatches] = useState([]), [groupEntries, setGroupEntries] = useState([]), [selectedEntryId, setSelectedEntryId] = useState('');
+  const [adminAssignments, setAdminAssignments] = useState([]);
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
@@ -35,7 +36,7 @@ export default function ManagerPortal() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
-  useEffect(() => { if (session?.user) { loadIdentityDirectory(); loadPortal(); } else { setLoading(false); setAccount(null); setClaim(null); setEntries([]); } }, [session?.user?.id]);
+  useEffect(() => { if (session?.user) { loadIdentityDirectory(); loadPortal(); } else { setLoading(false); setAccount(null); setClaim(null); setEntries([]); setAdminAssignments([]); } }, [session?.user?.id]);
   useEffect(() => { loadWorldClubs(claimForm.gameWorldId); }, [claimForm.gameWorldId]);
 
   const selectedEntry = useMemo(() => entries.find((entry) => String(entry.id) === String(selectedEntryId)) || entries[0] || null, [entries, selectedEntryId]);
@@ -48,6 +49,7 @@ export default function ManagerPortal() {
   const standings = useMemo(() => buildStandings(currentGroupEntries, selectedTournamentMatches.filter((match) => match.stage === 'group' && currentGroupIds.has(match.home_entry_id) && currentGroupIds.has(match.away_entry_id))), [currentGroupEntries, selectedTournamentMatches, currentGroupIds]);
   const myPosition = selectedEntry ? standings.findIndex((row) => row.id === selectedEntry.id) + 1 : 0;
   const selectedClaimClub = useMemo(() => worldClubs.find((club) => club.club_name === claimForm.clubName) || null, [worldClubs, claimForm.clubName]);
+  const organiserAssignments = useMemo(() => adminAssignments.filter((row) => row.role === 'organiser'), [adminAssignments]);
 
   async function loadIdentityDirectory() {
     const { data, error } = await supabase.from('game_worlds').select('id, name, slug').in('slug', ['top-100', 'regen']).order('id');
@@ -88,11 +90,15 @@ export default function ManagerPortal() {
     if (accountError) { setMessage(accountError.message); setLoading(false); return; }
     if (!accountRow) {
       const { data: claimRow, error: claimError } = await supabase.from('manager_portal_claims').select('*, game_worlds(name)').eq('auth_user_id', session.user.id).maybeSingle();
-      setAccount(null); setClaim(claimRow || null); setMessage(claimError ? claimError.message : claimRow?.status === 'pending' ? 'Your manager profile claim is awaiting approval.' : claimRow?.status === 'rejected' ? claimRow.review_notes || 'Your claim was not approved. You may correct it and submit again.' : 'Choose your game world and claim your manager profile to continue.'); setLoading(false); return;
+      setAccount(null); setClaim(claimRow || null); setAdminAssignments([]); setMessage(claimError ? claimError.message : claimRow?.status === 'pending' ? 'Your manager profile claim is awaiting approval.' : claimRow?.status === 'rejected' ? claimRow.review_notes || 'Your claim was not approved. You may correct it and submit again.' : 'Choose your game world and claim your manager profile to continue.'); setLoading(false); return;
     }
-    const { data: entryRows, error: entryError } = await supabase.from('tournament_entries').select('id, tournament_id, manager_id, group_code, seed, pot, teams(id, name), tournaments!inner(id, name, status, season_number, public_slug, is_public, game_world_id)').eq('manager_id', accountRow.manager_id).eq('tournaments.game_world_id', accountRow.game_world_id);
-    if (entryError) { setMessage('Could not load your tournament entries: ' + entryError.message); setLoading(false); return; }
-    const orderedEntries = [...(entryRows || [])].sort((a, b) => Number(b.tournaments?.season_number || 0) - Number(a.tournaments?.season_number || 0));
+    const [entryResult, accessResult] = await Promise.all([
+      supabase.from('tournament_entries').select('id, tournament_id, manager_id, group_code, seed, pot, teams(id, name), tournaments!inner(id, name, status, season_number, public_slug, is_public, game_world_id)').eq('manager_id', accountRow.manager_id).eq('tournaments.game_world_id', accountRow.game_world_id),
+      supabase.from('tournament_organisers').select('tournament_id, role, tournaments(id, name)').eq('auth_user_id', session.user.id).eq('active', true),
+    ]);
+    if (entryResult.error) { setMessage('Could not load your tournament entries: ' + entryResult.error.message); setLoading(false); return; }
+    const entryRows = entryResult.data || [];
+    const orderedEntries = [...entryRows].sort((a, b) => Number(b.tournaments?.season_number || 0) - Number(a.tournaments?.season_number || 0));
     const tournamentIds = [...new Set(orderedEntries.map((entry) => entry.tournament_id))]; let matchRows = [], peerEntries = [];
     if (tournamentIds.length) {
       const [matchResult, peerResult] = await Promise.all([
@@ -101,7 +107,7 @@ export default function ManagerPortal() {
       ]);
       if (!matchResult.error) matchRows = matchResult.data || []; if (!peerResult.error) peerEntries = peerResult.data || [];
     }
-    setAccount(accountRow); setClaim(null); setEntries(orderedEntries); setSelectedEntryId((current) => current || orderedEntries[0]?.id || ''); setMatches(matchRows); setGroupEntries(peerEntries); setMessage('Portal loaded.'); setLoading(false);
+    setAccount(accountRow); setClaim(null); setEntries(orderedEntries); setSelectedEntryId((current) => current || orderedEntries[0]?.id || ''); setMatches(matchRows); setGroupEntries(peerEntries); setAdminAssignments(accessResult.error ? [] : (accessResult.data || [])); setMessage('Portal loaded.'); setLoading(false);
   }
 
   async function logout() { await supabase.auth.signOut(); setMessage('Signed out.'); }
@@ -116,7 +122,7 @@ export default function ManagerPortal() {
   if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading Manager Portal...</h1></section></main>;
   if (!account) return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal</p><h1>{claim?.status === 'pending' ? 'Claim awaiting approval' : 'Claim your profile'}</h1><p>Signed in securely as {session.user.email}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section><section className="card manager-login-card">{claim?.status === 'pending' ? <><h2>We’ve got your claim</h2><p><strong>{claim.claimed_manager_name}</strong> · {claim.claimed_club_name} · {claim.game_worlds?.name || 'Game world'}</p><button type="button" onClick={loadPortal}>Check approval</button></> : <form onSubmit={submitClaim}><h2>Match your Soccer Manager identity</h2><label>Game world<select value={claimForm.gameWorldId} onChange={(event) => setClaimForm({ gameWorldId: event.target.value, managerName: '', clubName: '' })} required><option value="">Choose game world</option>{gameWorlds.map((world) => <option key={world.id} value={world.id}>{world.name}</option>)}</select></label><label>Current club<select value={claimForm.clubName} onChange={(event) => { const club = worldClubs.find((item) => item.club_name === event.target.value); setClaimForm((current) => ({ ...current, clubName: event.target.value, managerName: club?.current_manager_name || '' })); }} required disabled={!claimForm.gameWorldId}><option value="">Choose your club</option>{worldClubs.map((club) => <option key={club.id} value={club.club_name}>{club.club_name}</option>)}</select></label><label>SM manager name<input value={claimForm.managerName} onChange={(event) => setClaimForm((current) => ({ ...current, managerName: event.target.value }))} required /></label>{selectedClaimClub?.current_manager_name && <p className="muted">Directory manager: <strong>{selectedClaimClub.current_manager_name}</strong></p>}<button type="submit">Submit manager claim</button></form>}</section>{message && <section className="card"><p className="status">{message}</p></section>}</main>;
 
-  return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal · {account.game_worlds?.name || 'Top 100'}</p><h1>{account.managers?.display_name || account.managers?.name || 'Top 100 Manager'}</h1><p>{selectedEntry ? `${selectedEntry.teams?.name} · ${selectedEntry.tournaments?.name}` : 'No active tournament entry found'}</p></div><div className="button-row"><a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
+  return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal · {account.game_worlds?.name || 'Top 100'}</p><h1>{account.managers?.display_name || account.managers?.name || 'Top 100 Manager'}</h1><p>{selectedEntry ? `${selectedEntry.teams?.name} · ${selectedEntry.tournaments?.name}` : 'No active tournament entry found'}</p></div><div className="button-row">{organiserAssignments.map((assignment) => <a key={assignment.tournament_id} className="button" href={`/admin?tournament=${assignment.tournament_id}`}>Manage {assignment.tournaments?.name || 'tournament'}</a>)}<a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
     {entries.length > 1 && <section className="card portal-selector"><label>Tournament entry<select value={selectedEntry?.id || ''} onChange={(event) => setSelectedEntryId(event.target.value)}>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.tournaments?.name} — {entry.teams?.name}</option>)}</select></label></section>}
     {!selectedEntry ? <section className="card"><h2>Account linked successfully</h2><p>Your fixtures will appear here when you enter a competition.</p><a className="button" href="/manager/registration">Register for a tournament</a></section> : <>
       <section className="portal-metrics"><article><span>Team</span><strong>{selectedEntry.teams?.name}</strong></article><article><span>Group</span><strong>{selectedEntry.group_code ? `Group ${selectedEntry.group_code}` : 'TBC'}</strong></article><article><span>Position</span><strong>{ordinal(myPosition)}</strong></article><article><span>Record</span><strong>{results.length} played</strong></article></section>
