@@ -127,7 +127,7 @@ export default function PublicRegistrationPage() {
         <div className="mini-grid">
           <label>Manager name<input required value={form.managerName} onChange={(event) => update('managerName', event.target.value)} autoComplete="name" /></label>
           <label>Club<select required value={form.clubId} onChange={(event) => update('clubId', event.target.value)}><option value="">Choose your club</option>{(config?.clubs || []).map((club) => <option key={club.id} value={club.id}>{club.club_name}</option>)}</select></label>
-          <label>Average team rating<select required value={form.rating} onChange={(event) => update('rating', event.target.value)}><option value="">Choose rating</option>{ratings.map((rating) => <option key={rating} value={rating}>{rating}</option>)}</select></label>
+          <label>Average team rating<select required value={form.rating} onChange={(event) => update('rating', event.target.value)}><option value="">Choose rating (65–95)</option>{ratings.map((rating) => <option key={rating} value={rating}>{rating}</option>)}</select></label>
         </div>
         {selectedClub?.current_manager_name && <p className="muted">Current manager listed for {selectedClub.club_name}: <strong>{selectedClub.current_manager_name}</strong>. Your manager name must match this directory entry.</p>}
         <button type="submit" disabled={loading || !open}>{loading ? 'Submitting...' : 'Submit registration'}</button>
