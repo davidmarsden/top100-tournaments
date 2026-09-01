@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const ratings = Array.from({ length: 26 }, (_, index) => 65 + index);
 
@@ -38,11 +39,16 @@ export default function PublicRegistrationPage() {
   async function request(body = null) {
     const query = new URLSearchParams({ worldSlug: route.worldSlug, competitionSlug: route.competitionSlug });
     if (route.seasonSlug) query.set('seasonSlug', route.seasonSlug);
-    const response = await fetch(`/.netlify/functions/registration?${query.toString()}`, body ? {
+    const requestOptions = body ? {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, ...route }),
-    } : undefined);
+    } : {};
+    if (body && hasSupabaseConfig && supabase) {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.access_token) requestOptions.headers.Authorization = `Bearer ${data.session.access_token}`;
+    }
+    const response = await fetch(`/.netlify/functions/registration?${query.toString()}`, requestOptions);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) throw new Error(payload.error || `Registration request failed (${response.status})`);
     return payload;
@@ -68,7 +74,7 @@ export default function PublicRegistrationPage() {
     setStatus('Submitting registration...');
     try {
       const payload = await request(form);
-      setSubmitted(payload.registration);
+      setSubmitted({ ...payload.registration, linkedToPortal: payload.linkedToPortal });
       setStatus('Registration received.');
       setForm({ managerName: '', clubId: '', rating: '' });
       await loadConfig();
@@ -109,9 +115,9 @@ export default function PublicRegistrationPage() {
         <article><span>Manager</span><strong>{submitted.manager_name}</strong></article>
         <article><span>Average rating</span><strong>{submitted.rating}</strong></article>
         <article><span>Reference</span><strong>#{submitted.id}</strong></article>
-        <article><span>Status</span><strong>Registered</strong></article>
+        <article><span>Status</span><strong>{submitted.linkedToPortal ? 'Registered · linked to Portal' : 'Registered'}</strong></article>
       </div>
-      <div className="button-row"><a className="button" href={tournamentPath}>View tournament</a><a className="button secondary" href="/manager">Create a Manager Portal account</a><button type="button" className="secondary" onClick={() => setSubmitted(null)}>Register another club</button></div>
+      <div className="button-row"><a className="button" href={tournamentPath}>View tournament</a><a className="button secondary" href="/manager">{submitted.linkedToPortal ? 'Open Manager Portal' : 'Create a Manager Portal account'}</a><button type="button" className="secondary" onClick={() => setSubmitted(null)}>Register another club</button></div>
       <p className="muted">A Portal account is optional, but it gives you one place for registrations, fixtures and result submissions.</p>
     </section> : <section className="card registration-card">
       <p className="eyebrow">Your entry</p>
