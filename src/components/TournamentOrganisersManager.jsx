@@ -11,12 +11,24 @@ export default function TournamentOrganisersManager({ selectedTournament }) {
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
   const accessRequestRef = useRef(0);
+  const targetTournamentIdRef = useRef(String(selectedTournament?.id || ''));
+
+  function selectTournament(value) {
+    const nextValue = value ? String(value) : '';
+    targetTournamentIdRef.current = nextValue;
+    setTargetTournamentId(nextValue);
+  }
+
+  function stillTargets(tournamentId) {
+    return String(targetTournamentIdRef.current) === String(tournamentId);
+  }
 
   useEffect(() => { loadTournaments(); }, []);
   useEffect(() => {
-    if (selectedTournament?.id) setTargetTournamentId(selectedTournament.id);
+    if (selectedTournament?.id) selectTournament(selectedTournament.id);
   }, [selectedTournament?.id]);
   useEffect(() => {
+    targetTournamentIdRef.current = String(targetTournamentId || '');
     const requestId = ++accessRequestRef.current;
     setSelectedAccountId('');
     setAssignments([]);
@@ -45,7 +57,7 @@ export default function TournamentOrganisersManager({ selectedTournament }) {
     }
     const rows = data || [];
     setTournaments(rows);
-    if (!targetTournamentId && rows[0]) setTargetTournamentId(rows[0].id);
+    if (!targetTournamentIdRef.current && rows[0]) selectTournament(rows[0].id);
   }
 
   async function loadAccess(tournamentId, requestId = ++accessRequestRef.current) {
@@ -55,7 +67,7 @@ export default function TournamentOrganisersManager({ selectedTournament }) {
       supabase.from('manager_portal_accounts').select('id, auth_user_id, manager_id, email, active, managers(id, name, display_name)').eq('active', true).order('email'),
       supabase.from('tournament_organisers').select('tournament_id, auth_user_id, manager_id, role, active, created_at, managers(id, name, display_name)').eq('tournament_id', tournamentId).order('created_at'),
     ]);
-    if (accessRequestRef.current !== requestId) return;
+    if (accessRequestRef.current !== requestId || !stillTargets(tournamentId)) return;
     if (accountsResult.error) setStatus('Could not load manager accounts: ' + accountsResult.error.message);
     else if (assignmentsResult.error) setStatus('Could not load organiser assignments: ' + assignmentsResult.error.message);
     else {
@@ -83,14 +95,16 @@ export default function TournamentOrganisersManager({ selectedTournament }) {
       created_by: sessionData.session?.user?.id || null,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'tournament_id,auth_user_id' });
+
+    if (!stillTargets(tournamentId)) return;
     if (error) setStatus('Could not assign organiser: ' + error.message);
     else {
       setSelectedAccountId('');
       const requestId = ++accessRequestRef.current;
       await loadAccess(tournamentId, requestId);
-      if (accessRequestRef.current === requestId) setStatus('Tournament access assigned.');
+      if (accessRequestRef.current === requestId && stillTargets(tournamentId)) setStatus('Tournament access assigned.');
     }
-    setLoading(false);
+    if (stillTargets(tournamentId)) setLoading(false);
   }
 
   async function setActive(row, active) {
@@ -101,19 +115,21 @@ export default function TournamentOrganisersManager({ selectedTournament }) {
     }
     setLoading(true);
     const { error } = await supabase.from('tournament_organisers').update({ active, updated_at: new Date().toISOString() }).eq('tournament_id', tournamentId).eq('auth_user_id', row.auth_user_id);
+
+    if (!stillTargets(tournamentId)) return;
     if (error) setStatus('Could not update organiser access: ' + error.message);
     else {
       const requestId = ++accessRequestRef.current;
       await loadAccess(tournamentId, requestId);
-      if (accessRequestRef.current === requestId) setStatus(active ? 'Tournament access restored.' : 'Tournament access removed.');
+      if (accessRequestRef.current === requestId && stillTargets(tournamentId)) setStatus(active ? 'Tournament access restored.' : 'Tournament access removed.');
     }
-    setLoading(false);
+    if (stillTargets(tournamentId)) setLoading(false);
   }
 
   return <div className="registration-manager">
     <section className="entrant-panel"><p className="eyebrow">Tournament-scoped access</p><h3>{targetTournament?.name || 'Choose tournament'}</h3>
       <div className="mini-grid">
-        <label>Tournament<select value={targetTournamentId} onChange={(event) => setTargetTournamentId(event.target.value)} required><option value="">Choose tournament</option>{tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name} · {tournament.status || 'draft'}{tournament.registration_status ? ` · registration ${tournament.registration_status}` : ''}</option>)}</select></label>
+        <label>Tournament<select value={targetTournamentId} onChange={(event) => selectTournament(event.target.value)} required><option value="">Choose tournament</option>{tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name} · {tournament.status || 'draft'}{tournament.registration_status ? ` · registration ${tournament.registration_status}` : ''}</option>)}</select></label>
       </div>
       {targetTournament && <p className="muted"><strong>{targetTournament.game_worlds?.name || 'Game world'}</strong> · Tournament status: <strong>{targetTournament.status || 'draft'}</strong>{targetTournament.registration_status ? <> · Registration: <strong>{targetTournament.registration_status}</strong></> : null}. A draft tournament can still have live registration; these are separate states.</p>}
       <p className="muted"><strong>Organiser</strong> has full operational control of this tournament: registration, format, entrants, groups, fixtures, results, knockout and publishing. <strong>Assistant</strong> is a matchday helper: fixtures and results, plus read access to tables, forfeits and reports. Neither role gets platform administration, manager-account approval, tournament creation or access to other private tournaments.</p>
