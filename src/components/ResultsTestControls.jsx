@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAdminAuth } from './AdminGate.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 function testScore(fixture) {
@@ -9,8 +10,11 @@ function testScore(fixture) {
 }
 
 export default function ResultsTestControls({ selectedTournament, onDataChanged }) {
+  const { isGlobalAdmin } = useAdminAuth();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+
+  if (!isGlobalAdmin) return null;
 
   async function autoFillOutstanding() {
     if (!selectedTournament?.id || !hasSupabaseConfig || !supabase) return;
