@@ -19,9 +19,8 @@ export default function ManagerRegistrationPortal() {
   const [session, setSession] = useState(null);
   const [account, setAccount] = useState(null);
   const [tournaments, setTournaments] = useState([]);
-  const [teams, setTeams] = useState([]);
   const [registrations, setRegistrations] = useState([]);
-  const [form, setForm] = useState({ tournamentId: '', teamId: '', rating: '', notes: '' });
+  const [form, setForm] = useState({ tournamentId: '', clubName: '', rating: '', notes: '' });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -50,21 +49,18 @@ export default function ManagerRegistrationPortal() {
   async function load() {
     setLoading(true);
     setMessage('Loading registration records...');
-    const [accountResult, tournamentsResult, teamsResult, registrationsResult] = await Promise.all([
+    const [accountResult, tournamentsResult, registrationsResult] = await Promise.all([
       supabase.from('manager_portal_accounts').select('id, manager_id, email, active, managers(id, name, display_name)').eq('auth_user_id', session.user.id).eq('active', true).maybeSingle(),
       supabase.rpc('open_tournament_registrations'),
-      supabase.from('teams').select('id, name').eq('active', true).order('name'),
-      supabase.from('tournament_registrations').select('id, tournament_id, team_id, club_name, status, submitted_at, reviewed_at, review_notes, promoted_entry_id, promoted_at, tournaments(name, season_number)').eq('auth_user_id', session.user.id).order('submitted_at', { ascending: false }),
+      supabase.from('tournament_registrations').select('id, tournament_id, club_name, status, submitted_at, reviewed_at, review_notes, promoted_entry_id, promoted_at, tournaments(name, season_number)').eq('auth_user_id', session.user.id).order('submitted_at', { ascending: false }),
     ]);
 
     if (accountResult.error) { setMessage('Could not load your Manager Portal account: ' + accountResult.error.message); setLoading(false); return; }
     setAccount(accountResult.data || null);
     setTournaments(tournamentsResult.error ? [] : tournamentsResult.data || []);
-    setTeams(teamsResult.error ? [] : teamsResult.data || []);
     setRegistrations(registrationsResult.error ? [] : registrationsResult.data || []);
 
     if (tournamentsResult.error) setMessage('Could not load open tournaments: ' + tournamentsResult.error.message);
-    else if (teamsResult.error) setMessage('Could not load teams: ' + teamsResult.error.message);
     else if (registrationsResult.error) setMessage('Could not load your registrations: ' + registrationsResult.error.message);
     else setMessage('Your registration record is up to date.');
     setLoading(false);
@@ -72,19 +68,20 @@ export default function ManagerRegistrationPortal() {
 
   async function submit(event) {
     event.preventDefault();
-    if (!form.tournamentId || !form.teamId) return setMessage('Choose a tournament and team first.');
+    const clubName = form.clubName.trim();
+    if (!form.tournamentId || !clubName) return setMessage('Choose a tournament and enter your club name first.');
     setLoading(true);
     setMessage('Submitting registration...');
     const { data, error } = await supabase.rpc('submit_manager_tournament_registration', {
       target_tournament_id: Number(form.tournamentId),
-      target_team_id: Number(form.teamId),
+      target_team_name: clubName,
       target_rating: form.rating === '' ? null : Number(form.rating),
       target_notes: form.notes.trim() || null,
     });
     if (error) setMessage('Registration failed: ' + error.message);
     else {
       setMessage(`Registration submitted successfully. Reference #${data.id}.`);
-      setForm({ tournamentId: '', teamId: '', rating: '', notes: '' });
+      setForm({ tournamentId: '', clubName: '', rating: '', notes: '' });
       await load();
     }
     setLoading(false);
@@ -114,6 +111,6 @@ export default function ManagerRegistrationPortal() {
 
     <section className="card"><div className="card-header"><p className="eyebrow">Your record</p><h2>Registrations</h2></div><p><strong>If a registration appears here as submitted or approved, we have it.</strong> No more wondering whether the form went through.</p>{!registrations.length ? <p className="muted">You have no tournament registrations yet.</p> : <div className="entrant-list">{registrations.map((row) => <article className="entrant-row registration-row" key={row.id}><div className="registration-details"><strong>{statusLabel(row)} · {row.tournaments?.name || `Tournament #${row.tournament_id}`}</strong><span>{row.club_name} · submitted {formatDate(row.submitted_at)} · reference #{row.id}</span>{row.reviewed_at && <span>Reviewed {formatDate(row.reviewed_at)}</span>}{row.review_notes && <span>{row.review_notes}</span>}{row.promoted_entry_id && <span>Entrant #{row.promoted_entry_id} confirmed {formatDate(row.promoted_at)}</span>}</div>{row.status === 'pending' && <button type="button" className="secondary" onClick={() => withdraw(row)} disabled={loading}>Withdraw</button>}</article>)}</div>}</section>
 
-    <section className="card manager-login-card"><div className="card-header"><p className="eyebrow">Register</p><h2>Enter an open tournament</h2></div>{!availableTournaments.length ? <p className="muted">There are no additional open tournaments available to you right now.</p> : <form onSubmit={submit}><label>Tournament<select value={form.tournamentId} onChange={(event) => setForm((current) => ({ ...current, tournamentId: event.target.value }))} required><option value="">Choose tournament</option>{availableTournaments.map((item) => <option key={item.id} value={item.id}>{item.name}{item.game_world_name ? ` · ${item.game_world_name}` : ''}</option>)}</select></label><label>Team<select value={form.teamId} onChange={(event) => setForm((current) => ({ ...current, teamId: event.target.value }))} required><option value="">Choose team</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label><label>Rating (optional)<input type="number" step="1" min="0" value={form.rating} onChange={(event) => setForm((current) => ({ ...current, rating: event.target.value }))} /></label><label>Note (optional)<textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} rows="3" /></label><button type="submit" disabled={loading}>{loading ? 'Submitting...' : 'Register team'}</button></form>}{message && <p className="status">{message}</p>}</section>
+    <section className="card manager-login-card"><div className="card-header"><p className="eyebrow">Register</p><h2>Enter an open tournament</h2></div>{!availableTournaments.length ? <p className="muted">There are no additional open tournaments available to you right now.</p> : <form onSubmit={submit}><label>Tournament<select value={form.tournamentId} onChange={(event) => setForm((current) => ({ ...current, tournamentId: event.target.value }))} required><option value="">Choose tournament</option>{availableTournaments.map((item) => <option key={item.id} value={item.id}>{item.name}{item.game_world_name ? ` · ${item.game_world_name}` : ''}</option>)}</select></label><label>Your club<input type="text" value={form.clubName} onChange={(event) => setForm((current) => ({ ...current, clubName: event.target.value }))} placeholder="e.g. Freiburg" required /></label><p className="muted">Use the club name you manage in the Top 100 game world. The organiser will review it before the entry is confirmed.</p><label>Rating (optional)<input type="number" step="1" min="0" value={form.rating} onChange={(event) => setForm((current) => ({ ...current, rating: event.target.value }))} /></label><label>Note (optional)<textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} rows="3" /></label><button type="submit" disabled={loading}>{loading ? 'Submitting...' : 'Register team'}</button></form>}{message && <p className="status">{message}</p>}</section>
   </main>;
 }
