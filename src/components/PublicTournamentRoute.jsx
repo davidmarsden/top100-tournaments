@@ -8,7 +8,7 @@ import EditorialStorylinesPortal from './EditorialStorylinesPortal.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { parseTournamentPath, pickLiveTournament, routeTitle } from '../lib/publicTournamentRoutes';
 
-const routeSelect = 'id, name, status, registration_status, season_number, public_slug, slug, is_public, archive_quality, source, actual_entries, max_entries, game_worlds(id, name, slug), competition_types(id, name, slug)';
+const routeSelect = 'id, name, status, registration_status, season_number, public_slug, slug, is_public, archive_quality, source, actual_entries, max_entries, game_worlds!inner(id, name, slug), competition_types!inner(id, name, slug)';
 
 function isPlaceholderArchive(row) {
   return row?.archive_quality === 'placeholder' || (String(row?.status || '').toLowerCase() === 'archived' && Number(row?.actual_entries || 0) === 0 && row?.source !== 'challonge');
@@ -43,7 +43,7 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
     if (result.error) {
       result = await supabase
         .from('tournaments')
-        .select('id, name, status, registration_status, season_number, public_slug, slug, is_public, actual_entries, max_entries, game_worlds(id, name, slug), competition_types(id, name, slug)')
+        .select('id, name, status, registration_status, season_number, public_slug, slug, is_public, actual_entries, max_entries, game_worlds!inner(id, name, slug), competition_types!inner(id, name, slug)')
         .eq('is_public', true)
         .not('game_world_id', 'is', null)
         .not('competition_type_id', 'is', null)
@@ -73,7 +73,7 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
     if (error) {
       let fallbackQuery = supabase
         .from('tournaments')
-        .select('id, name, status, registration_status, season_number, public_slug, slug, is_public, actual_entries, max_entries, game_worlds(id, name, slug), competition_types(id, name, slug)')
+        .select('id, name, status, registration_status, season_number, public_slug, slug, is_public, actual_entries, max_entries, game_worlds!inner(id, name, slug), competition_types!inner(id, name, slug)')
         .eq('is_public', true)
         .eq('game_worlds.slug', route.worldSlug)
         .eq('competition_types.slug', route.competitionSlug);
