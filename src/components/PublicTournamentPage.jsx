@@ -217,7 +217,7 @@ export default function PublicTournamentPage({ tournamentId, routeRows = [] }) {
   if (!hasSupabaseConfig || !supabase) return <main className="app-shell"><section className="warning-card"><strong>Supabase is not connected.</strong></section></main>;
   if (!tournament) return <main className="app-shell"><section className="card"><h1>Tournament page</h1><p className="status">{status}</p></section></main>;
   const nextFixture = nextFixtures[0];
-  const showWinners = tournament.game_worlds?.slug === 'top-100';
+  const showWinners = !tournament.game_worlds?.slug || tournament.game_worlds.slug === 'top-100';
 
   return <main className="app-shell public-archive tournament-hub">
     <section className="hero tournament-hero"><p className="eyebrow">{tournament.game_worlds?.name || 'Top 100'} · {tournament.competition_types?.name || 'Youth Cup'} Hub</p><h1>{tournament.name}</h1><p>{tournament.status || 'draft'} · {stats.played} results · {stats.remaining} fixtures remaining · {stats.goals} goals</p><div className="hero-countdown"><span>Next fixture</span><strong>{nextFixture ? countdownText(nextFixture) : 'Complete'}</strong><small>{nextFixture ? `${formatDate(nextFixture.fixture_date)} · ${fixtureTitle(nextFixture)}` : 'No upcoming fixtures listed'}</small></div></section>
