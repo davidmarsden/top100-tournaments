@@ -71,12 +71,15 @@ where game_world_id is null;
 alter table public.manager_portal_accounts alter column game_world_id set not null;
 alter table public.manager_portal_claims alter column game_world_id set not null;
 
--- Ratings are not optional registration metadata: they are part of every entry.
+-- Ratings are mandatory for every new registration. Older rows may legitimately
+-- pre-date that rule, so preserve legacy NULLs rather than inventing a rating.
+-- Existing 65-95 values remain valid; the trigger below requires every new/edited
+-- registration to provide a whole-number rating in that range.
 alter table public.tournament_registrations
   drop constraint if exists tournament_registrations_rating_range;
 alter table public.tournament_registrations
-  add constraint tournament_registrations_rating_range check (rating between 65 and 90),
-  alter column rating set not null;
+  add constraint tournament_registrations_rating_range
+    check (rating is null or (rating between 65 and 95 and rating = trunc(rating)));
 
 -- Central registration guard: old clients, RPCs and service-side callers must all use
 -- a club/manager pairing from the tournament's current game-world directory.
@@ -90,8 +93,8 @@ declare
   target_game_world_id bigint;
   club_row public.game_world_clubs%rowtype;
 begin
-  if new.rating is null or new.rating < 65 or new.rating > 90 or new.rating <> trunc(new.rating) then
-    raise exception 'Choose an average team rating from 65 to 90';
+  if new.rating is null or new.rating < 65 or new.rating > 95 or new.rating <> trunc(new.rating) then
+    raise exception 'Choose an average team rating from 65 to 95';
   end if;
 
   select t.game_world_id into target_game_world_id
