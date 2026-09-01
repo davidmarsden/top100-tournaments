@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
-const ratings = Array.from({ length: 26 }, (_, index) => 65 + index);
+const ratings = Array.from({ length: 31 }, (_, index) => 65 + index);
 
 function routeParts() {
   const parts = window.location.pathname.split('/').filter(Boolean);
