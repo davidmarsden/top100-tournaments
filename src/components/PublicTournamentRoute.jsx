@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import PublicTournamentPage from './PublicTournamentPage.jsx';
 import PublicGroupTablesPortal from './PublicGroupTablesPortal.jsx';
 import PublicForfeitRegisterPortal from './PublicForfeitRegisterPortal.jsx';
+import PublicRegistrationsPortal from './PublicRegistrationsPortal.jsx';
 import SpotlightResultStatus from './SpotlightResultStatus.jsx';
 import EditorialStorylinesPortal from './EditorialStorylinesPortal.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
@@ -102,6 +103,7 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
 
   if (resolvedId) return <>
     <PublicTournamentPage tournamentId={resolvedId} routeRows={routes} />
+    <PublicRegistrationsPortal tournamentId={resolvedId} />
     <PublicGroupTablesPortal tournamentId={resolvedId} />
     <PublicForfeitRegisterPortal tournamentId={resolvedId} />
     <SpotlightResultStatus />
