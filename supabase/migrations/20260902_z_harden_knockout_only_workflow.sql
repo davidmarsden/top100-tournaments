@@ -138,6 +138,28 @@ begin
     raise exception 'Loser must be one of the fixture entrants';
   end if;
 
+  -- Knockout-only ties are one-leg decisions. When an assistant completes one,
+  -- the saved winner/loser must agree with the saved scoreline.
+  if old.stage = 'knockout'
+     and public.is_knockout_only_tournament(old.tournament_id)
+     and new.away_entry_id is not null
+     and new.status in ('played', 'forfeit') then
+    if new.home_score is null or new.away_score is null or new.home_score = new.away_score then
+      raise exception 'Knockout-only ties must have a decisive score';
+    end if;
+    if new.home_score > new.away_score then
+      if new.winner_entry_id is distinct from old.home_entry_id
+         or new.loser_entry_id is distinct from old.away_entry_id then
+        raise exception 'Winner and loser must agree with the knockout score';
+      end if;
+    else
+      if new.winner_entry_id is distinct from old.away_entry_id
+         or new.loser_entry_id is distinct from old.home_entry_id then
+        raise exception 'Winner and loser must agree with the knockout score';
+      end if;
+    end if;
+  end if;
+
   return new;
 end;
 $$;
