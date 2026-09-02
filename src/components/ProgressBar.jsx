@@ -1,21 +1,10 @@
 import { useEffect, useState } from 'react';
+import { isKnockoutOnly } from '../context/TournamentProvider.jsx';
 import { supabase } from '../lib/supabaseClient';
 
-const workflowSteps = [
-  'Tournament',
-  'Entrants',
-  'Groups',
-  'Fixtures',
-  'Results',
-  'Tables',
-  'Knockout',
-  'Publish',
-  'Archive',
-];
-
-function isCompletedStatus(status) {
-  return status === 'played' || status === 'forfeit';
-}
+const groupWorkflowSteps = ['Tournament', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Publish', 'Archive'];
+const knockoutWorkflowSteps = ['Tournament', 'Entrants', 'Knockout', 'Fixtures', 'Results', 'Publish', 'Archive'];
+const OPEN_RESULT_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
 
 export function isStepDone(step, selectedTournament, preview, progressStats = {}) {
   const actualEntries = Number(selectedTournament?.actual_entries || 0);
@@ -24,14 +13,21 @@ export function isStepDone(step, selectedTournament, preview, progressStats = {}
   const groupPlayed = Number(progressStats.groupPlayed || 0);
   const knockoutTotal = Number(progressStats.knockoutTotal || 0);
   const knockoutPlayed = Number(progressStats.knockoutPlayed || 0);
+  const finalComplete = Boolean(progressStats.finalComplete);
+  const knockoutOnly = isKnockoutOnly(selectedTournament);
 
   if (step === 'Tournament') return Boolean(selectedTournament);
   if (step === 'Entrants') return actualEntries > 0;
-  if (step === 'Groups') return Boolean(preview?.groups?.length) || actualEntries > 0;
-  if (step === 'Fixtures') return Boolean(preview?.fixtures?.length) || groupTotal > 0;
-  if (step === 'Results') return groupTotal > 0 && groupPlayed === groupTotal;
-  if (step === 'Tables') return groupTotal > 0 && groupPlayed === groupTotal;
-  if (step === 'Knockout') return knockoutTotal > 0 && knockoutPlayed === knockoutTotal;
+  if (knockoutOnly) {
+    if (step === 'Knockout' || step === 'Fixtures') return knockoutTotal > 0;
+    if (step === 'Results') return finalComplete;
+  } else {
+    if (step === 'Groups') return Boolean(preview?.groups?.length) || actualEntries > 0;
+    if (step === 'Fixtures') return Boolean(preview?.fixtures?.length) || groupTotal > 0;
+    if (step === 'Results') return groupTotal > 0 && groupPlayed === groupTotal;
+    if (step === 'Tables') return groupTotal > 0 && groupPlayed === groupTotal;
+    if (step === 'Knockout') return knockoutTotal > 0 && knockoutPlayed === knockoutTotal;
+  }
   if (step === 'Publish') return ['published', 'archived', 'completed'].includes(status);
   if (step === 'Archive') return ['archived', 'completed'].includes(status);
   return false;
@@ -43,11 +39,15 @@ function currentStageLabel(selectedTournament, preview, progressStats = {}) {
   const groupPlayed = Number(progressStats.groupPlayed || 0);
   const knockoutTotal = Number(progressStats.knockoutTotal || 0);
   const knockoutPlayed = Number(progressStats.knockoutPlayed || 0);
+  const finalComplete = Boolean(progressStats.finalComplete);
   const status = selectedTournament.status || '';
+  const knockoutOnly = isKnockoutOnly(selectedTournament);
 
   if (['published', 'archived', 'completed'].includes(status)) return status.charAt(0).toUpperCase() + status.slice(1);
-  if (knockoutTotal > 0 && knockoutPlayed === knockoutTotal) return 'Tournament complete';
-  if (knockoutTotal > 0) return 'Knockouts live';
+  if (knockoutOnly && finalComplete) return 'Tournament complete';
+  if (!knockoutOnly && knockoutTotal > 0 && knockoutPlayed === knockoutTotal) return 'Tournament complete';
+  if (knockoutTotal > 0) return knockoutOnly && knockoutPlayed === knockoutTotal ? 'Next knockout draw / review' : 'Knockout live';
+  if (knockoutOnly) return 'Entrants and knockout draw';
   if (groupTotal > 0 && groupPlayed === groupTotal) return 'Group results complete';
   if (groupTotal > 0 || preview?.fixtures?.length) return 'Fixtures ready';
   if (preview?.groups?.length) return 'Approve groups';
@@ -56,73 +56,34 @@ function currentStageLabel(selectedTournament, preview, progressStats = {}) {
 
 function jumpToStep(step, onJump) {
   const mapping = {
-    Tournament: 'Overview',
-    Entrants: 'Entrants',
-    Groups: 'Groups',
-    Fixtures: 'Fixtures',
-    Results: 'Results',
-    Tables: 'Tables',
-    Knockout: 'Knockout',
-    Publish: 'Public Page',
-    Archive: 'Public Page',
+    Tournament: 'Overview', Entrants: 'Entrants', Groups: 'Groups', Fixtures: 'Fixtures', Results: 'Results', Tables: 'Tables', Knockout: 'Knockout', Publish: 'Public Page', Archive: 'Public Page',
   };
   onJump(mapping[step] || 'Overview');
 }
 
 export default function ProgressBar({ selectedTournament, preview, progressStats, onJump }) {
   const [pendingResults, setPendingResults] = useState(0);
+  const knockoutOnly = isKnockoutOnly(selectedTournament);
+  const workflowSteps = knockoutOnly ? knockoutWorkflowSteps : groupWorkflowSteps;
   const doneCount = workflowSteps.filter((step) => isStepDone(step, selectedTournament, preview, progressStats)).length;
   const progress = Math.round((doneCount / workflowSteps.length) * 100);
 
   useEffect(() => {
     let active = true;
     async function loadPendingResults() {
-      const { count, error } = await supabase
-        .from('manager_result_submissions')
-        .select('id', { count: 'exact', head: true })
-        .in('status', ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed']);
+      const { count, error } = await supabase.from('manager_result_submissions').select('id', { count: 'exact', head: true }).in('status', OPEN_RESULT_STATUSES);
       if (active && !error) setPendingResults(count || 0);
     }
     loadPendingResults();
     return () => { active = false; };
   }, []);
 
-  return (
-    <>
-      <section className="progress-card">
-        <div className="progress-header">
-          <div>
-            <p className="eyebrow">Tournament progress</p>
-            <h2>{progress}% complete</h2>
-          </div>
-          <span className="stage-pill">{currentStageLabel(selectedTournament, preview, progressStats)}</span>
-        </div>
-        <div className="progress-track">
-          <div className="progress-fill" style={{ width: progress + '%' }} />
-        </div>
-        <div className="progress-steps">
-          {workflowSteps.map((step) => {
-            const done = isStepDone(step, selectedTournament, preview, progressStats);
-            return (
-              <button key={step} type="button" className={done ? 'progress-step done' : 'progress-step'} onClick={() => jumpToStep(step, onJump)}>
-                <span>{done ? 'Done' : 'Next'}</span>
-                {step}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="card admin-attention-bar">
-        <div>
-          <p className="eyebrow">Admin inbox</p>
-          <strong>{pendingResults ? `${pendingResults} provisional result${pendingResults === 1 ? '' : 's'} awaiting final checks or appeal review` : 'No provisional results awaiting attention'}</strong>
-        </div>
-        <div className="button-row">
-          <a className="button" href="/admin/result-submissions">Review result checks{pendingResults ? ` (${pendingResults})` : ''}</a>
-          <a className="button secondary" href="/admin/manager-accounts">Manager accounts</a>
-        </div>
-      </section>
-    </>
-  );
+  return <>
+    <section className="progress-card">
+      <div className="progress-header"><div><p className="eyebrow">Tournament progress</p><h2>{progress}% complete</h2></div><span className="stage-pill">{currentStageLabel(selectedTournament, preview, progressStats)}</span></div>
+      <div className="progress-track"><div className="progress-fill" style={{ width: progress + '%' }} /></div>
+      <div className="progress-steps">{workflowSteps.map((step) => { const done = isStepDone(step, selectedTournament, preview, progressStats); return <button key={step} type="button" className={done ? 'progress-step done' : 'progress-step'} onClick={() => jumpToStep(step, onJump)}><span>{done ? 'Done' : 'Next'}</span>{step}</button>; })}</div>
+    </section>
+    <section className="card admin-attention-bar"><div><p className="eyebrow">Admin inbox</p><strong>{pendingResults ? `${pendingResults} provisional result${pendingResults === 1 ? '' : 's'} awaiting final checks or appeal review` : 'No provisional results awaiting attention'}</strong></div><div className="button-row"><a className="button" href="/admin/result-submissions">Review result checks{pendingResults ? ` (${pendingResults})` : ''}</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></section>
+  </>;
 }

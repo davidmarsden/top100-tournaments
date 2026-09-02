@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
-const ROUND_ORDER = ['R32', 'R16', 'QF', 'SF', 'Final'];
+const ROUND_ORDER = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
 
 function teamNameFromEntry(entry, fallback) {
   return entry?.teams?.name || entry?.team?.name || fallback || 'TBC';
@@ -32,6 +32,23 @@ function roundLabel(fixture) {
 function roundSortValue(round) {
   const index = ROUND_ORDER.indexOf(round);
   return index === -1 ? 99 : index;
+}
+
+function knockoutResultLockReason(fixture, fixtures, knockoutOnly) {
+  if (!knockoutOnly || fixture.stage !== 'knockout') return '';
+  const explicitBye = fixture.decided_by === 'bye';
+  const legacyBye = !fixture.away_entry_id && String(fixture.away_placeholder || '').trim().toUpperCase() === 'BYE';
+  if (explicitBye || legacyBye) return 'Automatic BYE result — fixed by the draw.';
+
+  const currentRank = roundSortValue(fixture.round);
+  if (currentRank === 99) return '';
+  const bracket = fixture.bracket || 'Cup';
+  const advanced = fixtures.some((other) => {
+    if (other.stage !== 'knockout' || (other.bracket || 'Cup') !== bracket) return false;
+    const otherRank = roundSortValue(other.round);
+    return otherRank !== 99 && otherRank > currentRank;
+  });
+  return advanced ? `${fixture.round} result locked after the next round was generated.` : '';
 }
 
 function hasSecondLeg(bracket, round) {
@@ -193,6 +210,8 @@ export default function FixturesManager({
   const [roundFilter, setRoundFilter] = useState('all');
   const [roundDate, setRoundDate] = useState('');
   const tournamentId = selectedTournament?.id;
+  const knockoutOnly = selectedTournament?.tournament_structure === 'knockout_only';
+  const allowTestAutofill = !knockoutOnly;
 
   useEffect(() => {
     if (hasSupabaseConfig && supabase && tournamentId) loadFixtures();
@@ -220,7 +239,7 @@ export default function FixturesManager({
     setStatus('Loading from database...');
     let query = supabase
       .from('matches')
-      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, played_at, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
+      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, played_at, decided_by, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
       .eq('tournament_id', tournamentId)
       .order('bracket', { ascending: true })
       .order('round', { ascending: true })
@@ -240,6 +259,8 @@ export default function FixturesManager({
   }
 
   function startEdit(fixture) {
+    const lockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
+    if (lockReason) return setStatus(lockReason);
     setEditingId(fixture.id);
     setScores({
       home_score: fixture.home_score ?? '',
@@ -292,6 +313,11 @@ export default function FixturesManager({
   }
 
   async function saveOfficialResult(fixture) {
+    const lockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
+    if (lockReason) {
+      cancelEdit();
+      return setStatus(lockReason);
+    }
     const homeScore = ruling === 'double_forfeit' ? 0 : Number(scores.home_score);
     const awayScore = ruling === 'double_forfeit' ? 0 : Number(scores.away_score);
     if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
@@ -348,6 +374,7 @@ export default function FixturesManager({
   }
 
   async function autoPopulateVisible() {
+    if (!allowTestAutofill) return setStatus('Test-score autofill is disabled for knockout-only tournaments.');
     const targets = filteredFixtures.filter((fixture) => !isCompleted(fixture));
     if (!targets.length) return setStatus('No outstanding fixtures visible.');
     setLoading(true);
@@ -376,7 +403,7 @@ export default function FixturesManager({
 
     if (stage === 'knockout') {
       const results = await Promise.all(targets.map((fixture) => {
-        const oneLegOnly = !hasSecondLeg(fixture.bracket, fixture.round);
+        const oneLegOnly = knockoutOnly || !hasSecondLeg(fixture.bracket, fixture.round);
         const fixtureDate = oneLegOnly || Number(fixture.leg || 1) === 1
           ? roundDate
           : addDays(roundDate, 7);
@@ -387,7 +414,7 @@ export default function FixturesManager({
         setStatus(`Date save failed: ${error.message}`);
       } else {
         const sample = targets[0];
-        const oneLegOnly = sample && !hasSecondLeg(sample.bracket, sample.round);
+        const oneLegOnly = knockoutOnly || (sample && !hasSecondLeg(sample.bracket, sample.round));
         setStatus(oneLegOnly
           ? `Date applied: ${formatDate(roundDate)}.`
           : `Dates applied: 1st legs ${formatDate(roundDate)}, 2nd legs ${formatDate(addDays(roundDate, 7))}.`);
@@ -408,6 +435,8 @@ export default function FixturesManager({
   }
 
   async function resetResult(fixture) {
+    const lockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
+    if (lockReason) return setStatus(lockReason);
     setLoading(true);
     setStatus('Resetting result...');
     const { error } = await supabase
@@ -441,10 +470,14 @@ export default function FixturesManager({
         ? 'Knockout results'
         : 'Fixture secretary';
   const explainer = onlyCompleted
-    ? 'Only played results are shown here. Use this page to review, edit or reset saved results.'
+    ? knockoutOnly
+      ? 'Played results are shown here. Automatic BYEs and rounds that have already fed a successor are locked; roll back the current knockout round before correcting a predecessor.'
+      : 'Only played results are shown here. Use this page to review, edit or reset saved results.'
     : onlyOutstanding
       ? stage === 'knockout'
-        ? 'Only unplayed knockout fixtures are shown here. R32 is one leg; two-legged rounds use the chosen date for 1st legs and seven days later for 2nd legs.'
+        ? knockoutOnly
+          ? 'Only unplayed knockout fixtures are shown here. Every tie is one leg.'
+          : 'Only unplayed knockout fixtures are shown here. R32 is one leg; two-legged rounds use the chosen date for 1st legs and seven days later for 2nd legs.'
         : 'Only unplayed fixtures are shown here. Results move to the Results page once saved.'
       : 'Load saved fixtures, enter official results, record single or double forfeits, and reschedule delayed fixtures without changing their matchday.';
 
@@ -458,7 +491,7 @@ export default function FixturesManager({
         </div>
         <div className="button-row">
           <button type="button" className="secondary" onClick={loadFixtures} disabled={loading}>Reload from database</button>
-          {!onlyCompleted && <button type="button" className="secondary" onClick={autoPopulateVisible} disabled={loading}>Auto-fill test scores</button>}
+          {!onlyCompleted && allowTestAutofill && <button type="button" className="secondary" onClick={autoPopulateVisible} disabled={loading}>Auto-fill test scores</button>}
         </div>
       </div>
 
@@ -476,7 +509,7 @@ export default function FixturesManager({
           </select>
         </label>
         {!onlyCompleted && <>
-          <label>{stage === 'knockout' ? 'Apply 1st-leg date to visible ties' : 'Apply date to visible fixtures'}
+          <label>{stage === 'knockout' ? (knockoutOnly ? 'Apply date to visible ties' : 'Apply 1st-leg date to visible ties') : 'Apply date to visible fixtures'}
             <input type="date" value={roundDate} onChange={(event) => setRoundDate(event.target.value)} />
           </label>
           <button type="button" className="secondary" onClick={setVisibleRoundDate} disabled={loading}>Set date</button>
@@ -488,7 +521,7 @@ export default function FixturesManager({
       {fixtures.length === 0 ? (
         <div className="empty-state">
           <h3>No saved fixtures yet.</h3>
-          <p className="muted">Approve the draw on the Groups tab first. The preview currently has {preview?.fixtures?.length || 0} generated fixtures.</p>
+          <p className="muted">{knockoutOnly ? 'Generate the knockout draw first.' : `Approve the draw on the Groups tab first. The preview currently has ${preview?.fixtures?.length || 0} generated fixtures.`}</p>
         </div>
       ) : sections.length === 0 ? (
         <div className="empty-state">
@@ -512,6 +545,7 @@ export default function FixturesManager({
                   const completed = isCompleted(fixture);
                   const doubleForfeit = isDoubleForfeit(fixture);
                   const tieSummary = stage === 'knockout' ? tieSummaries.get(knockoutTieKey(fixture)) : null;
+                  const resultLockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
 
                   return (
                     <article className="fixture-card" key={fixture.id}>
@@ -520,13 +554,14 @@ export default function FixturesManager({
                         <span className="score-pill">{completed ? `${fixture.home_score} - ${fixture.away_score}` : 'v'}</span>
                         <strong>{awayName}</strong>
                       </div>
-                      <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {legLabel(fixture.leg || 1)}</p>
+                      <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {knockoutOnly && stage === 'knockout' ? 'single leg' : legLabel(fixture.leg || 1)}</p>
                       {doubleForfeit && <p className="muted">Double forfeit: 0–0, both teams receive a loss and zero points.</p>}
                       {fixture.status === 'forfeit' && !doubleForfeit && <p className="muted">Forfeit ruling recorded.</p>}
                       {fixture.status === 'postponed' && <p className="muted">Rescheduled fixture — still counts as {fixture.round} when played.</p>}
                       {tieSummary && <p className="status">{tieSummary}</p>}
+                      {resultLockReason && <p className="muted">🔒 {resultLockReason}</p>}
 
-                      {isEditing ? (
+                      {isEditing && !resultLockReason ? (
                         <div className="result-editor">
                           <div className="mini-grid">
                             <label>Home score
@@ -553,14 +588,14 @@ export default function FixturesManager({
                             <button type="button" className="secondary" onClick={cancelEdit} disabled={loading}>Cancel</button>
                           </div>
                         </div>
-                      ) : (
+                      ) : !resultLockReason ? (
                         <div className="button-row">
                           <button type="button" className="secondary" onClick={() => startEdit(fixture)} disabled={loading}>{completed ? 'Edit official result' : 'Enter official result'}</button>
                           {completed && <button type="button" className="danger" onClick={() => resetResult(fixture)} disabled={loading}>Reset result</button>}
                           {!completed && stage === 'group' && <label className="inline-date-control">New date<input type="date" value={rescheduleDates[fixture.id] || fixture.fixture_date || ''} onChange={(event) => setRescheduleDates((current) => ({ ...current, [fixture.id]: event.target.value }))} /></label>}
                           {!completed && stage === 'group' && <button type="button" className="secondary" onClick={() => rescheduleFixture(fixture)} disabled={loading}>Reschedule</button>}
                         </div>
-                      )}
+                      ) : null}
                     </article>
                   );
                 })}

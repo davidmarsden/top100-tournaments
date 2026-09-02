@@ -3,6 +3,8 @@ import CommentsModeration from './CommentsModeration.jsx';
 import KnockoutBracket from './KnockoutBracket.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
+const OPEN_RESULT_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
+
 function isCompleted(match) { return ['played', 'forfeit', 'voided'].includes(match.status); }
 function teamNameFromEntry(entry, fallback) { return entry?.teams?.name || fallback || 'TBC'; }
 function latestWinner(ordered) { return [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null; }
@@ -43,6 +45,7 @@ function bracketsFrom(matches) { return [...new Set(matches.filter((match) => ma
 
 export default function PublicPageManager({ selectedTournament, onTournamentUpdated }) {
   const [matches, setMatches] = useState([]);
+  const [finalUnderReview, setFinalUnderReview] = useState(false);
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
   const tournamentId = selectedTournament?.id;
@@ -50,12 +53,23 @@ export default function PublicPageManager({ selectedTournament, onTournamentUpda
   const summary = useMemo(() => { const groupMatches = matches.filter((match) => match.stage === 'group'); const knockoutMatches = matches.filter((match) => match.stage === 'knockout'); return { groupTotal: groupMatches.length, groupPlayed: groupMatches.filter(isCompleted).length, knockoutTotal: knockoutMatches.length, knockoutPlayed: knockoutMatches.filter(isCompleted).length }; }, [matches]);
   const knockoutBrackets = useMemo(() => bracketsFrom(matches), [matches]);
   const winners = useMemo(() => knockoutBrackets.map((bracket) => resolveFinal(matches, bracket)).filter(Boolean), [matches, knockoutBrackets]);
+  const resolvedFinal = useMemo(() => winners.some((winner) => !winner.needsFet), [winners]);
   async function loadSummary() {
     if (!tournamentId) return;
     setLoading(true); setStatus('Loading tournament summary...');
-    const { data, error } = await supabase.from('matches').select('id, stage, status, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId);
-    if (error) { setStatus('Could not load summary: ' + error.message); setMatches([]); }
-    else { setMatches(data || []); setStatus('Summary loaded.'); }
+    const [matchesResult, submissionsResult] = await Promise.all([
+      supabase.from('matches').select('id, stage, status, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
+      supabase.from('manager_result_submissions').select('match_id, status'),
+    ]);
+    const error = matchesResult.error || submissionsResult.error;
+    if (error) { setStatus('Could not load summary: ' + error.message); setMatches([]); setFinalUnderReview(false); }
+    else {
+      const loadedMatches = matchesResult.data || [];
+      const finalMatchIds = new Set(loadedMatches.filter((match) => match.stage === 'knockout' && match.round === 'Final').map((match) => match.id));
+      setMatches(loadedMatches);
+      setFinalUnderReview((submissionsResult.data || []).some((submission) => finalMatchIds.has(submission.match_id) && OPEN_RESULT_STATUSES.includes(submission.status)));
+      setStatus('Summary loaded.');
+    }
     setLoading(false);
   }
   async function updateTournamentStatus(nextStatus) {
@@ -69,6 +83,14 @@ export default function PublicPageManager({ selectedTournament, onTournamentUpda
   if (!selectedTournament) return <p className="muted">Create or select a tournament first.</p>;
   if (!hasSupabaseConfig || !supabase) return <p className="muted">Supabase is not connected yet.</p>;
   const publicPath = '/tournaments/' + selectedTournament.id;
-  const tournamentComplete = summary.knockoutTotal > 0 && summary.knockoutPlayed === summary.knockoutTotal;
-  return <div className="public-page-manager"><section className="public-grid"><article className="public-card"><p className="eyebrow">Publishing controls</p><h3>{selectedTournament.name}</h3><p className="muted">Status: <strong>{selectedTournament.status || 'draft'}</strong></p><div className="button-row"><button type="button" onClick={() => updateTournamentStatus('published')} disabled={loading}>Mark published</button><button type="button" className="secondary" onClick={() => updateTournamentStatus('completed')} disabled={loading || !tournamentComplete}>Mark completed</button><button type="button" className="secondary" onClick={() => updateTournamentStatus('archived')} disabled={loading}>Archive tournament</button></div>{!tournamentComplete && <p className="muted">Complete all knockout fixtures before marking the tournament completed.</p>}</article><article className="public-card"><p className="eyebrow">Public tournament page</p><h3>Manager view</h3><code>{publicPath}</code><p className="muted">This is the non-admin page for fixtures, results, brackets and winners. It works while the tournament is live and after it is archived.</p><a className="public-link-button" href={publicPath} target="_blank" rel="noreferrer">Open public page</a></article></section>{knockoutBrackets.length > 0 && <section className="public-card"><p className="eyebrow">Public bracket preview</p><div className="public-bracket-stack">{knockoutBrackets.map((bracket) => <KnockoutBracket key={bracket} title={`${bracket} bracket`} matches={matches.filter((match) => (match.bracket || 'Cup') === bracket)} />)}</div></section>}<section className="public-card"><p className="eyebrow">Winners</p>{winners.length === 0 ? <p className="muted">No completed finals yet.</p> : <div className="overview-metrics compact-metrics">{winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>{winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}{winner.decision ? ` · ${winner.decision}` : ''}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamNameFromEntry(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamNameFromEntry(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>)}</div>}</section><section className="public-card"><p className="eyebrow">Match comments moderation</p><h3>Manager quotes</h3><CommentsModeration selectedTournament={selectedTournament} /></section><section className="public-card"><p className="eyebrow">Completion summary</p><div className="overview-metrics compact-metrics"><article><span>Group results</span><strong>{summary.groupPlayed}/{summary.groupTotal}</strong></article><article><span>Knockout results</span><strong>{summary.knockoutPlayed}/{summary.knockoutTotal}</strong></article><article><span>Ready to complete</span><strong>{tournamentComplete ? 'Yes' : 'No'}</strong></article></div><p className="status">{status}</p><button type="button" className="secondary" onClick={loadSummary} disabled={loading}>Reload summary</button></section></div>;
+  const knockoutOnly = selectedTournament.tournament_structure === 'knockout_only';
+  const tournamentComplete = knockoutOnly
+    ? resolvedFinal && !finalUnderReview
+    : summary.knockoutTotal > 0 && summary.knockoutPlayed === summary.knockoutTotal;
+  const completionHint = knockoutOnly
+    ? finalUnderReview
+      ? 'The Final result is still under review. Resolve the submission before marking the tournament completed.'
+      : 'A completed Final with a resolved winner is required before marking the tournament completed.'
+    : 'Complete all knockout fixtures before marking the tournament completed.';
+  return <div className="public-page-manager"><section className="public-grid"><article className="public-card"><p className="eyebrow">Publishing controls</p><h3>{selectedTournament.name}</h3><p className="muted">Status: <strong>{selectedTournament.status || 'draft'}</strong></p><div className="button-row"><button type="button" onClick={() => updateTournamentStatus('published')} disabled={loading}>Mark published</button><button type="button" className="secondary" onClick={() => updateTournamentStatus('completed')} disabled={loading || !tournamentComplete}>Mark completed</button><button type="button" className="secondary" onClick={() => updateTournamentStatus('archived')} disabled={loading || (knockoutOnly && !tournamentComplete)}>Archive tournament</button></div>{!tournamentComplete && <p className="muted">{completionHint}</p>}</article><article className="public-card"><p className="eyebrow">Public tournament page</p><h3>Manager view</h3><code>{publicPath}</code><p className="muted">This is the non-admin page for fixtures, results, brackets and winners. It works while the tournament is live and after it is archived.</p><a className="public-link-button" href={publicPath} target="_blank" rel="noreferrer">Open public page</a></article></section>{knockoutBrackets.length > 0 && <section className="public-card"><p className="eyebrow">Public bracket preview</p><div className="public-bracket-stack">{knockoutBrackets.map((bracket) => <KnockoutBracket key={bracket} title={`${bracket} bracket`} matches={matches.filter((match) => (match.bracket || 'Cup') === bracket)} />)}</div></section>}<section className="public-card"><p className="eyebrow">Winners</p>{winners.length === 0 ? <p className="muted">No completed finals yet.</p> : <div className="overview-metrics compact-metrics">{winners.map((winner) => <article className="winner-summary-card" key={winner.bracket}><span>{winner.bracket} winner</span><strong>{winner.winnerName}</strong><small>{winner.firstName} {winner.aggregate} {winner.secondName}{winner.decision ? ` · ${winner.decision}` : ''}</small><div className="mini-results">{winner.legs.map((leg) => <p key={leg.id}>{Number(leg.leg) === 1 ? '1st leg' : '2nd leg'}: {teamNameFromEntry(leg.home_entry, leg.home_placeholder)} {leg.home_score}-{leg.away_score} {teamNameFromEntry(leg.away_entry, leg.away_placeholder)}</p>)}</div></article>)}</div>}</section><section className="public-card"><p className="eyebrow">Match comments moderation</p><h3>Manager quotes</h3><CommentsModeration selectedTournament={selectedTournament} /></section><section className="public-card"><p className="eyebrow">Completion summary</p><div className="overview-metrics compact-metrics"><article><span>Group results</span><strong>{summary.groupPlayed}/{summary.groupTotal}</strong></article><article><span>Knockout results</span><strong>{summary.knockoutPlayed}/{summary.knockoutTotal}</strong></article><article><span>Ready to complete</span><strong>{tournamentComplete ? 'Yes' : 'No'}</strong></article></div><p className="status">{status}</p><button type="button" className="secondary" onClick={loadSummary} disabled={loading}>Reload summary</button></section></div>;
 }
