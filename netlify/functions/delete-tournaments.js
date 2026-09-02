@@ -41,6 +41,27 @@ async function deleteByMatch(db, table, ids) {
   if (error && !String(error.message || '').includes('does not exist')) throw error;
 }
 
+async function deleteMatchesForTournamentTeardown(db, ids) {
+  // Knockout-only dependency guards deliberately block removing an earlier round
+  // while a successor still exists. Whole-tournament teardown therefore removes
+  // knockout rounds from the Final backwards before deleting any remaining
+  // fixtures. This preserves the editing invariant without weakening it for the
+  // global-admin maintenance path.
+  for (const round of ['Final', 'SF', 'QF', 'R16', 'R32', 'R64']) {
+    const { error } = await db
+      .from('matches')
+      .delete()
+      .in('tournament_id', ids)
+      .eq('stage', 'knockout')
+      .eq('round', round);
+    if (error) throw error;
+  }
+
+  // Remove any non-knockout fixtures, plus legacy/unknown knockout round labels
+  // after the known dependency chain has been dismantled.
+  await deleteByTournament(db, 'matches', ids);
+}
+
 export async function handler(event) {
   if (event.httpMethod === 'OPTIONS') return json(200, { ok: true });
   if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
@@ -71,7 +92,7 @@ export async function handler(event) {
     await deleteByTournament(db, 'tournament_round_dates', ids);
     await deleteByMatch(db, 'forfeits', matchIds);
     await deleteByMatch(db, 'match_comments', matchIds);
-    await deleteByTournament(db, 'matches', ids);
+    await deleteMatchesForTournamentTeardown(db, ids);
     await deleteByTournament(db, 'groups', ids);
     await deleteByTournament(db, 'tournament_entries', ids);
     await deleteByTournament(db, 'tournament_rounds', ids);
