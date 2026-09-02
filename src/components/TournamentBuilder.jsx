@@ -124,7 +124,7 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
     const [entriesResult, groupsResult, matchesResult, registrationsResult] = await Promise.all([
       supabase.from('tournament_entries').select('id', { count: 'exact', head: true }).eq('tournament_id', tournamentId),
       supabase.from('groups').select('id', { count: 'exact', head: true }).eq('tournament_id', tournamentId),
-      supabase.from('matches').select('id, stage, round, status').eq('tournament_id', tournamentId),
+      supabase.from('matches').select('id, stage, round, status, winner_entry_id').eq('tournament_id', tournamentId),
       supabase.from('tournament_registrations').select('id, status, promoted_entry_id').eq('tournament_id', tournamentId),
     ]);
     const error = entriesResult.error || groupsResult.error || matchesResult.error || registrationsResult.error;
@@ -147,7 +147,7 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
       groupPlayed: groupMatches.filter(isPlayed).length,
       knockoutMatches: knockoutMatches.length,
       knockoutPlayed: knockoutMatches.filter(isPlayed).length,
-      finalComplete: finalMatches.length > 0 && finalMatches.every(isPlayed),
+      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => isPlayed(match) && Boolean(match.winner_entry_id)),
       pendingRegistrations: registrations.filter((row) => row.status === 'pending').length,
       approvedUnpromoted: registrations.filter((row) => row.status === 'approved' && !row.promoted_entry_id).length,
     });
