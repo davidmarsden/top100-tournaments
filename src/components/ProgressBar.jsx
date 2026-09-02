@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 
 const groupWorkflowSteps = ['Tournament', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Publish', 'Archive'];
 const knockoutWorkflowSteps = ['Tournament', 'Entrants', 'Knockout', 'Fixtures', 'Results', 'Publish', 'Archive'];
+const OPEN_RESULT_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
 
 export function isStepDone(step, selectedTournament, preview, progressStats = {}) {
   const actualEntries = Number(selectedTournament?.actual_entries || 0);
@@ -45,7 +46,7 @@ function currentStageLabel(selectedTournament, preview, progressStats = {}) {
   if (['published', 'archived', 'completed'].includes(status)) return status.charAt(0).toUpperCase() + status.slice(1);
   if (knockoutOnly && finalComplete) return 'Tournament complete';
   if (!knockoutOnly && knockoutTotal > 0 && knockoutPlayed === knockoutTotal) return 'Tournament complete';
-  if (knockoutTotal > 0) return knockoutOnly && knockoutPlayed === knockoutTotal ? 'Next knockout draw' : 'Knockout live';
+  if (knockoutTotal > 0) return knockoutOnly && knockoutPlayed === knockoutTotal ? 'Next knockout draw / review' : 'Knockout live';
   if (knockoutOnly) return 'Entrants and knockout draw';
   if (groupTotal > 0 && groupPlayed === groupTotal) return 'Group results complete';
   if (groupTotal > 0 || preview?.fixtures?.length) return 'Fixtures ready';
@@ -72,7 +73,7 @@ export default function ProgressBar({ selectedTournament, preview, progressStats
   useEffect(() => {
     let active = true;
     async function loadPendingResults() {
-      const { count, error } = await supabase.from('manager_result_submissions').select('id', { count: 'exact', head: true }).in('status', ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed']);
+      const { count, error } = await supabase.from('manager_result_submissions').select('id', { count: 'exact', head: true }).in('status', OPEN_RESULT_STATUSES);
       if (active && !error) setPendingResults(count || 0);
     }
     loadPendingResults();
@@ -86,14 +87,19 @@ export default function ProgressBar({ selectedTournament, preview, progressStats
         if (active) setFinalComplete(false);
         return;
       }
-      const { data, error } = await supabase.from('matches').select('status, winner_entry_id').eq('tournament_id', selectedTournament.id).eq('stage', 'knockout').eq('round', 'Final');
+      const [matchesResult, submissionsResult] = await Promise.all([
+        supabase.from('matches').select('id, status, winner_entry_id').eq('tournament_id', selectedTournament.id).eq('stage', 'knockout').eq('round', 'Final'),
+        supabase.from('manager_result_submissions').select('match_id, status'),
+      ]);
       if (!active) return;
-      if (error) {
+      if (matchesResult.error || submissionsResult.error) {
         setFinalComplete(false);
         return;
       }
-      const finals = data || [];
-      setFinalComplete(finals.length > 0 && finals.every((match) => ['played', 'forfeit'].includes(match.status) && Boolean(match.winner_entry_id)));
+      const finals = matchesResult.data || [];
+      const finalIds = new Set(finals.map((match) => match.id));
+      const underReview = (submissionsResult.data || []).some((submission) => finalIds.has(submission.match_id) && OPEN_RESULT_STATUSES.includes(submission.status));
+      setFinalComplete(finals.length > 0 && finals.every((match) => ['played', 'forfeit'].includes(match.status) && Boolean(match.winner_entry_id)) && !underReview);
     }
     loadFinalStatus();
     return () => { active = false; };
