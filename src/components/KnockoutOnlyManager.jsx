@@ -10,11 +10,6 @@ const ROUND_SEQUENCE = [
   { size: 4, name: 'SF' },
   { size: 2, name: 'Final' },
 ];
-const OPEN_RESULT_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
-
-function isCompleted(match) {
-  return match.status === 'played' || match.status === 'forfeit';
-}
 
 function nextPowerOfTwo(value) {
   let size = 2;
@@ -63,26 +58,7 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
   const cupMatches = useMemo(() => matches.filter((match) => (match.bracket || 'Cup') === 'Cup'), [matches]);
   const roundsPresent = useMemo(() => ROUND_SEQUENCE.filter((round) => cupMatches.some((match) => match.round === round.name)), [cupMatches]);
   const latestRound = roundsPresent[roundsPresent.length - 1] || null;
-  const latestMatches = latestRound ? cupMatches.filter((match) => match.round === latestRound.name).sort((a, b) => Number(a.match_order || 0) - Number(b.match_order || 0)) : [];
   const configuredEntrants = Number(selectedTournament?.knockout_teams || 0);
-
-  async function insertRows(rows, message) {
-    setLoading(true);
-    const { error } = await supabase.from('matches').insert(rows);
-    if (error) {
-      if (error.code === '23505') {
-        setStatus('That knockout round has already been generated, probably from another tab or organiser session. Refresh the draw before continuing.');
-        await loadData();
-      } else {
-        setStatus('Draw generation failed: ' + error.message);
-      }
-    } else {
-      setStatus(message);
-      await loadData();
-      await onDataChanged?.();
-    }
-    setLoading(false);
-  }
 
   async function generateOpeningRound() {
     if (cupMatches.length) return setStatus('The knockout draw already exists.');
@@ -115,49 +91,23 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
   async function generateNextRound() {
     if (!latestRound) return generateOpeningRound();
     if (latestRound.name === 'Final') return setStatus('The final is already the last round.');
-    if (!latestMatches.length || latestMatches.some((match) => !isCompleted(match))) return setStatus(`Finish every ${latestRound.name} tie before generating the next round.`);
-    if (latestMatches.some((match) => !match.winner_entry_id)) return setStatus(`At least one ${latestRound.name} tie has no winner. Knockout matches cannot finish level; resolve the tie before continuing.`);
-
-    const latestMatchIds = latestMatches.map((match) => match.id);
-    const { data: openSubmissions, error: reviewError } = await supabase
-      .from('manager_result_submissions')
-      .select('id, match_id, status')
-      .in('match_id', latestMatchIds)
-      .in('status', OPEN_RESULT_STATUSES)
-      .limit(1);
-    if (reviewError) return setStatus('Could not verify result-review status: ' + reviewError.message);
-    if ((openSubmissions || []).length) return setStatus(`A ${latestRound.name} result is still awaiting confirmation, admin review or appeal resolution. Finalise all result reviews before generating the next round.`);
-
     const nextRound = roundForSize(latestRound.size / 2);
     if (!nextRound) return setStatus('Could not determine the next knockout round.');
-    if (cupMatches.some((match) => match.round === nextRound.name)) return setStatus(`${nextRound.name} already exists.`);
-    if (!window.confirm(`Generate ${nextRound.name} from the ${latestRound.name} winners?`)) return;
+    if (!window.confirm(`Generate ${nextRound.name} from the latest resolved ${latestRound.name} winners?`)) return;
 
-    const entryById = new Map(entries.map((entry) => [entry.id, entry]));
-    const winners = latestMatches.map((match) => entryById.get(match.winner_entry_id)).filter(Boolean);
-    if (winners.length !== latestMatches.length) return setStatus('Could not resolve every winning entrant. Refresh and try again.');
-    const rows = [];
-    for (let index = 0; index < winners.length; index += 2) {
-      const home = winners[index];
-      const away = winners[index + 1];
-      if (!away) return setStatus('The previous round produced an odd number of winners. Check the bracket before continuing.');
-      rows.push({
-        tournament_id: tournamentId,
-        stage: 'knockout',
-        bracket: 'Cup',
-        round: nextRound.name,
-        leg: 1,
-        match_order: rows.length + 1,
-        home_entry_id: home.id,
-        away_entry_id: away.id,
-        home_placeholder: entryName(home),
-        away_placeholder: entryName(away),
-        home_seed: home.seed,
-        away_seed: away.seed,
-        status: 'scheduled',
-      });
+    setLoading(true);
+    setStatus(`Revalidating ${latestRound.name} and generating ${nextRound.name} atomically...`);
+    const { data, error } = await supabase.rpc('generate_knockout_successor_round_atomic', { p_tournament_id: tournamentId });
+    if (error) {
+      setStatus('Next-round generation failed: ' + error.message);
+      await loadData();
+    } else {
+      const draw = data || {};
+      setStatus(`${draw.round || nextRound.name} generated from the fresh ${draw.source_round || latestRound.name} winner snapshot with ${Number(draw.ties || 0)} ties.`);
+      await loadData();
+      await onDataChanged?.();
     }
-    await insertRows(rows, `${nextRound.name} generated from ${latestRound.name} winners.`);
+    setLoading(false);
   }
 
   const nextLabel = !latestRound ? 'Generate opening draw' : latestRound.name === 'Final' ? 'Final generated' : `Generate ${roundForSize(latestRound.size / 2)?.name || 'next round'}`;
