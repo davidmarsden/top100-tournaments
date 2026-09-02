@@ -48,7 +48,7 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
     if (error) return setStatus('Could not load entrants: ' + error.message);
     const loaded = data || [];
     setEntries(loaded);
-    if (knockoutOnly && Number(selectedTournament?.actual_entries || 0) !== loaded.length) {
+    if (knockoutOnly) {
       const { error: countError } = await supabase.from('tournaments').update({ actual_entries: loaded.length }).eq('id', tournamentId);
       if (countError) return setStatus('Entrants loaded, but the tournament entrant count could not be synchronized: ' + countError.message);
     }
