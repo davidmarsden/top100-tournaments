@@ -32,17 +32,31 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function canChangeStructure(nextStructure) {
+  async function canChangeFormat(nextStructure, nextMaxEntries) {
     const currentStructure = selectedTournament?.tournament_structure || 'group_knockout';
-    if (nextStructure === currentStructure) return true;
+    const currentMaxEntries = numberOrNull(selectedTournament?.max_entries);
+    const structureChanged = nextStructure !== currentStructure;
+    const knockoutFieldChanged = currentStructure === 'knockout_only'
+      && nextStructure === 'knockout_only'
+      && nextMaxEntries !== currentMaxEntries;
+
+    if (!structureChanged && !knockoutFieldChanged) return true;
+
     const [groupsResult, matchesResult] = await Promise.all([
       supabase.from('groups').select('id', { count: 'exact', head: true }).eq('tournament_id', selectedTournament.id),
       supabase.from('matches').select('id', { count: 'exact', head: true }).eq('tournament_id', selectedTournament.id),
     ]);
     const error = groupsResult.error || matchesResult.error;
     if (error) throw error;
-    if ((groupsResult.count || 0) > 0 || (matchesResult.count || 0) > 0) {
+    const hasGroups = (groupsResult.count || 0) > 0;
+    const hasMatches = (matchesResult.count || 0) > 0;
+
+    if (structureChanged && (hasGroups || hasMatches)) {
       setStatus('Tournament structure cannot be changed after groups or fixtures have been created.');
+      return false;
+    }
+    if (knockoutFieldChanged && hasMatches) {
+      setStatus('The knockout field size is locked after the opening draw has been generated. Remove the saved draw before changing the field size.');
       return false;
     }
     return true;
@@ -54,7 +68,6 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
     setLoading(true);
     setStatus('Saving tournament shape...');
     try {
-      if (!(await canChangeStructure(form.structure))) return;
       const knockoutOnly = form.structure === 'knockout_only';
       const maxEntries = numberOrNull(form.maxEntries);
       const knockoutTeams = knockoutOnly ? maxEntries : numberOrNull(form.knockoutTeams);
@@ -62,6 +75,7 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
         setStatus(knockoutOnly ? 'Set the final entrant count before saving the knockout-only format.' : 'Set the final entry count and knockout field before saving the format.');
         return;
       }
+      if (!(await canChangeFormat(form.structure, maxEntries))) return;
       if (knockoutTeams > maxEntries) {
         setStatus('Knockout teams cannot exceed the final entry count.');
         return;
@@ -112,7 +126,7 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
         {!knockoutOnly && <label>Teams/group<input type="number" min="2" value={form.teamsPerGroup} onChange={(event) => update('teamsPerGroup', event.target.value)} placeholder="TBC" /></label>}
         {!knockoutOnly && <label>Knockout teams<input type="number" min="2" max="64" value={form.knockoutTeams} onChange={(event) => update('knockoutTeams', event.target.value)} placeholder="TBC" /></label>}
       </div>
-      {knockoutOnly ? <p className="muted">Every accepted entrant goes into the knockout field, so there is only one field size to set. The opening draw uses entrant seeds directly; when the field is not a power of two, the highest seeds receive the required byes. Knockout-only currently uses a single Cup bracket.</p> : <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => update('secondaryBracketName', event.target.value)} placeholder="Optional — e.g. Shield" /></label>}
+      {knockoutOnly ? <p className="muted">Every accepted entrant goes into the knockout field, so there is only one field size to set. The opening draw uses entrant seeds directly; when the field is not a power of two, the highest seeds receive the required byes. Once the draw exists, this field size is locked unless the draw is removed. Knockout-only currently uses a single Cup bracket.</p> : <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => update('secondaryBracketName', event.target.value)} placeholder="Optional — e.g. Shield" /></label>}
       <div className="button-row"><button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save tournament shape'}</button></div>
       <p className="status">{status}</p>
     </section>
