@@ -74,8 +74,14 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
   async function insertRows(rows, message) {
     setLoading(true);
     const { error } = await supabase.from('matches').insert(rows);
-    if (error) setStatus('Draw generation failed: ' + error.message);
-    else {
+    if (error) {
+      if (error.code === '23505') {
+        setStatus('That knockout round has already been generated, probably from another tab or organiser session. Refresh the draw before continuing.');
+        await loadData();
+      } else {
+        setStatus('Draw generation failed: ' + error.message);
+      }
+    } else {
       setStatus(message);
       await loadData();
       await onDataChanged?.();
