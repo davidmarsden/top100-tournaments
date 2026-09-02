@@ -10,6 +10,7 @@ const ROUND_SEQUENCE = [
   { size: 4, name: 'SF' },
   { size: 2, name: 'Final' },
 ];
+const OPEN_RESULT_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
 
 function isCompleted(match) {
   return match.status === 'played' || match.status === 'forfeit';
@@ -134,6 +135,17 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
     if (latestRound.name === 'Final') return setStatus('The final is already the last round.');
     if (!latestMatches.length || latestMatches.some((match) => !isCompleted(match))) return setStatus(`Finish every ${latestRound.name} tie before generating the next round.`);
     if (latestMatches.some((match) => !match.winner_entry_id)) return setStatus(`At least one ${latestRound.name} tie has no winner. Knockout matches cannot finish level; resolve the tie before continuing.`);
+
+    const latestMatchIds = latestMatches.map((match) => match.id);
+    const { data: openSubmissions, error: reviewError } = await supabase
+      .from('manager_result_submissions')
+      .select('id, match_id, status')
+      .in('match_id', latestMatchIds)
+      .in('status', OPEN_RESULT_STATUSES)
+      .limit(1);
+    if (reviewError) return setStatus('Could not verify result-review status: ' + reviewError.message);
+    if ((openSubmissions || []).length) return setStatus(`A ${latestRound.name} result is still awaiting confirmation, admin review or appeal resolution. Finalise all result reviews before generating the next round.`);
+
     const nextRound = roundForSize(latestRound.size / 2);
     if (!nextRound) return setStatus('Could not determine the next knockout round.');
     if (cupMatches.some((match) => match.round === nextRound.name)) return setStatus(`${nextRound.name} already exists.`);
