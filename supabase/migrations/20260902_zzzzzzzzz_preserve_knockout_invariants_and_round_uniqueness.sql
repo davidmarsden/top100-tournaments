@@ -59,7 +59,11 @@ declare
   final_ready boolean;
   final_under_review boolean;
 begin
-  tournament_id_value := coalesce(new.tournament_id, old.tournament_id);
+  if tg_op = 'DELETE' then
+    tournament_id_value := old.tournament_id;
+  else
+    tournament_id_value := new.tournament_id;
+  end if;
 
   if not (
     (tg_op = 'DELETE' and old.stage = 'knockout' and old.round = 'Final')
@@ -69,7 +73,7 @@ begin
       or (new.stage = 'knockout' and new.round = 'Final')
     ))
   ) then
-    return coalesce(new, old);
+    return null;
   end if;
 
   select t.status, t.tournament_structure = 'knockout_only'
@@ -79,7 +83,7 @@ begin
 
   if not coalesce(knockout_only, false)
      or tournament_status not in ('completed', 'archived') then
-    return coalesce(new, old);
+    return null;
   end if;
 
   select exists (
@@ -116,7 +120,7 @@ begin
       and status in ('completed', 'archived');
   end if;
 
-  return coalesce(new, old);
+  return null;
 end;
 $$;
 
