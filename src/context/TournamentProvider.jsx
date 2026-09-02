@@ -4,6 +4,7 @@ import { seasonNumberFromCode, seasonSlugFromCode, slugify } from '../lib/tourna
 
 const TournamentContext = createContext(null);
 const groupCodes = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const OPEN_RESULT_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
 
 export const defaultTournamentForm = {
   gameWorldName: 'Top 100',
@@ -112,18 +113,23 @@ export function TournamentProvider({ children }) {
     setLoading(false);
   }
   async function loadProgressStats(tournamentId) {
-    const { data, error } = await supabase.from('matches').select('id, stage, round, status, winner_entry_id').eq('tournament_id', tournamentId);
-    if (error) return setProgressStats({ groupTotal: 0, groupPlayed: 0, knockoutTotal: 0, knockoutPlayed: 0, finalComplete: false });
-    const matches = data || [];
+    const [matchesResult, submissionsResult] = await Promise.all([
+      supabase.from('matches').select('id, stage, round, status, winner_entry_id').eq('tournament_id', tournamentId),
+      supabase.from('manager_result_submissions').select('match_id, status'),
+    ]);
+    if (matchesResult.error || submissionsResult.error) return setProgressStats({ groupTotal: 0, groupPlayed: 0, knockoutTotal: 0, knockoutPlayed: 0, finalComplete: false });
+    const matches = matchesResult.data || [];
     const groupMatches = matches.filter((match) => match.stage === 'group');
     const knockoutMatches = matches.filter((match) => match.stage === 'knockout');
     const finalMatches = knockoutMatches.filter((match) => match.round === 'Final');
+    const finalIds = new Set(finalMatches.map((match) => match.id));
+    const finalUnderReview = (submissionsResult.data || []).some((submission) => finalIds.has(submission.match_id) && OPEN_RESULT_STATUSES.includes(submission.status));
     setProgressStats({
       groupTotal: groupMatches.length,
       groupPlayed: groupMatches.filter(completed).length,
       knockoutTotal: knockoutMatches.length,
       knockoutPlayed: knockoutMatches.filter(completed).length,
-      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => ['played', 'forfeit'].includes(match.status) && Boolean(match.winner_entry_id)),
+      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => ['played', 'forfeit'].includes(match.status) && Boolean(match.winner_entry_id)) && !finalUnderReview,
     });
   }
   async function refreshTournamentData() { await loadTournaments(); const tournamentId = selectedTournament?.id || selectedTournamentId; if (tournamentId) await loadProgressStats(tournamentId); }
