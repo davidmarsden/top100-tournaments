@@ -63,11 +63,9 @@ function jumpToStep(step, onJump) {
 
 export default function ProgressBar({ selectedTournament, preview, progressStats, onJump }) {
   const [pendingResults, setPendingResults] = useState(0);
-  const [finalComplete, setFinalComplete] = useState(false);
   const knockoutOnly = isKnockoutOnly(selectedTournament);
   const workflowSteps = knockoutOnly ? knockoutWorkflowSteps : groupWorkflowSteps;
-  const effectiveProgressStats = knockoutOnly ? { ...progressStats, finalComplete } : progressStats;
-  const doneCount = workflowSteps.filter((step) => isStepDone(step, selectedTournament, preview, effectiveProgressStats)).length;
+  const doneCount = workflowSteps.filter((step) => isStepDone(step, selectedTournament, preview, progressStats)).length;
   const progress = Math.round((doneCount / workflowSteps.length) * 100);
 
   useEffect(() => {
@@ -80,36 +78,11 @@ export default function ProgressBar({ selectedTournament, preview, progressStats
     return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    async function loadFinalStatus() {
-      if (!knockoutOnly || !selectedTournament?.id) {
-        if (active) setFinalComplete(false);
-        return;
-      }
-      const [matchesResult, submissionsResult] = await Promise.all([
-        supabase.from('matches').select('id, status, winner_entry_id').eq('tournament_id', selectedTournament.id).eq('stage', 'knockout').eq('round', 'Final'),
-        supabase.from('manager_result_submissions').select('match_id, status'),
-      ]);
-      if (!active) return;
-      if (matchesResult.error || submissionsResult.error) {
-        setFinalComplete(false);
-        return;
-      }
-      const finals = matchesResult.data || [];
-      const finalIds = new Set(finals.map((match) => match.id));
-      const underReview = (submissionsResult.data || []).some((submission) => finalIds.has(submission.match_id) && OPEN_RESULT_STATUSES.includes(submission.status));
-      setFinalComplete(finals.length > 0 && finals.every((match) => ['played', 'forfeit'].includes(match.status) && Boolean(match.winner_entry_id)) && !underReview);
-    }
-    loadFinalStatus();
-    return () => { active = false; };
-  }, [knockoutOnly, selectedTournament?.id, progressStats?.knockoutPlayed, progressStats?.knockoutTotal]);
-
   return <>
     <section className="progress-card">
-      <div className="progress-header"><div><p className="eyebrow">Tournament progress</p><h2>{progress}% complete</h2></div><span className="stage-pill">{currentStageLabel(selectedTournament, preview, effectiveProgressStats)}</span></div>
+      <div className="progress-header"><div><p className="eyebrow">Tournament progress</p><h2>{progress}% complete</h2></div><span className="stage-pill">{currentStageLabel(selectedTournament, preview, progressStats)}</span></div>
       <div className="progress-track"><div className="progress-fill" style={{ width: progress + '%' }} /></div>
-      <div className="progress-steps">{workflowSteps.map((step) => { const done = isStepDone(step, selectedTournament, preview, effectiveProgressStats); return <button key={step} type="button" className={done ? 'progress-step done' : 'progress-step'} onClick={() => jumpToStep(step, onJump)}><span>{done ? 'Done' : 'Next'}</span>{step}</button>; })}</div>
+      <div className="progress-steps">{workflowSteps.map((step) => { const done = isStepDone(step, selectedTournament, preview, progressStats); return <button key={step} type="button" className={done ? 'progress-step done' : 'progress-step'} onClick={() => jumpToStep(step, onJump)}><span>{done ? 'Done' : 'Next'}</span>{step}</button>; })}</div>
     </section>
     <section className="card admin-attention-bar"><div><p className="eyebrow">Admin inbox</p><strong>{pendingResults ? `${pendingResults} provisional result${pendingResults === 1 ? '' : 's'} awaiting final checks or appeal review` : 'No provisional results awaiting attention'}</strong></div><div className="button-row"><a className="button" href="/admin/result-submissions">Review result checks{pendingResults ? ` (${pendingResults})` : ''}</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></section>
   </>;
