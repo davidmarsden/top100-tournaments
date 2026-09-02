@@ -22,6 +22,8 @@ const knockoutSteps = [
   ['complete', 'Complete'],
 ];
 
+const OPEN_RESULT_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
+
 function isPlayed(match) {
   return match.status === 'played' || match.status === 'forfeit';
 }
@@ -103,7 +105,7 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
     if (knockoutOnly) {
       if (summary.knockoutMatches === 0) return 'knockout';
       if (summary.knockoutPlayed < summary.knockoutMatches) return 'results';
-      if (!summary.finalComplete) return 'knockout';
+      if (!summary.finalComplete) return summary.finalUnderReview ? 'results' : 'knockout';
       if (!selectedTournament?.is_public) return 'publish';
       if (!['completed', 'archived'].includes(String(selectedTournament?.status || '').toLowerCase())) return 'complete';
       return 'complete';
@@ -121,13 +123,14 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
   async function loadSummary() {
     if (!tournamentId) return;
     setLoading(true);
-    const [entriesResult, groupsResult, matchesResult, registrationsResult] = await Promise.all([
+    const [entriesResult, groupsResult, matchesResult, registrationsResult, submissionsResult] = await Promise.all([
       supabase.from('tournament_entries').select('id', { count: 'exact', head: true }).eq('tournament_id', tournamentId),
       supabase.from('groups').select('id', { count: 'exact', head: true }).eq('tournament_id', tournamentId),
       supabase.from('matches').select('id, stage, round, status, winner_entry_id').eq('tournament_id', tournamentId),
       supabase.from('tournament_registrations').select('id, status, promoted_entry_id').eq('tournament_id', tournamentId),
+      supabase.from('manager_result_submissions').select('match_id, status'),
     ]);
-    const error = entriesResult.error || groupsResult.error || matchesResult.error || registrationsResult.error;
+    const error = entriesResult.error || groupsResult.error || matchesResult.error || registrationsResult.error || submissionsResult.error;
     if (error) {
       setStatus('Could not load builder status: ' + error.message);
       setLoading(false);
@@ -137,6 +140,8 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
     const groupMatches = matches.filter((match) => match.stage === 'group');
     const knockoutMatches = matches.filter((match) => match.stage === 'knockout');
     const finalMatches = knockoutMatches.filter((match) => match.round === 'Final');
+    const finalMatchIds = new Set(finalMatches.map((match) => match.id));
+    const finalUnderReview = (submissionsResult.data || []).some((submission) => finalMatchIds.has(submission.match_id) && OPEN_RESULT_STATUSES.includes(submission.status));
     const registrations = registrationsResult.data || [];
     setSummary({
       entries: entriesResult.count || 0,
@@ -147,7 +152,8 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
       groupPlayed: groupMatches.filter(isPlayed).length,
       knockoutMatches: knockoutMatches.length,
       knockoutPlayed: knockoutMatches.filter(isPlayed).length,
-      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => isPlayed(match) && Boolean(match.winner_entry_id)),
+      finalUnderReview,
+      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => isPlayed(match) && Boolean(match.winner_entry_id)) && !finalUnderReview,
       pendingRegistrations: registrations.filter((row) => row.status === 'pending').length,
       approvedUnpromoted: registrations.filter((row) => row.status === 'approved' && !row.promoted_entry_id).length,
     });
@@ -252,7 +258,7 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
       ? { label: 'Review generated groups', action: () => onNavigate('Groups') }
       : { label: 'Generate groups', action: generateGroupPreview };
     if (step === 'fixtures') return { label: 'Generate fixtures', action: generateFixtures };
-    if (step === 'results') return { label: knockoutOnly ? 'Enter knockout results' : 'Enter results', action: () => onNavigate('Results') };
+    if (step === 'results') return { label: knockoutOnly && summary?.finalUnderReview ? 'Review Final result' : knockoutOnly ? 'Enter knockout results' : 'Enter results', action: () => onNavigate('Results') };
     if (step === 'knockout') return { label: knockoutOnly ? (summary?.knockoutMatches ? 'Generate next knockout round' : 'Open seeded knockout draw') : 'Generate knockout', action: () => onNavigate('Knockout') };
     if (step === 'publish') return { label: 'Open public page settings', action: () => onNavigate('Public Page') };
     return { label: 'Complete and archive', action: markCompleted };
@@ -275,7 +281,7 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
     <section className="entrant-panel builder-hero">
       <p className="eyebrow">Guided tournament builder</p>
       <h3>{selectedTournament.name}</h3>
-      <p className="muted">{knockoutOnly ? 'This tournament skips groups and tables. Once the entrant list is final, the builder moves straight to the seeded knockout draw and keeps returning there between completed rounds until the Final is finished.' : 'The builder reads the saved tournament data and takes you to the next unfinished stage.'}</p>
+      <p className="muted">{knockoutOnly ? 'This tournament skips groups and tables. Once the entrant list is final, the builder moves straight to the seeded knockout draw and keeps returning there between completed rounds until the Final is finished and its result is clear of review.' : 'The builder reads the saved tournament data and takes you to the next unfinished stage.'}</p>
       {summary && <div className="overview-metrics compact-metrics">
         <article><span>Entrants</span><strong>{summary.entries}/{summary.maxEntries || 'TBC'}</strong></article>
         {knockoutOnly ? <>
