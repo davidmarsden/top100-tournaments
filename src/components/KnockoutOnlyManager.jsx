@@ -98,10 +98,35 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
     const bracketSize = nextPowerOfTwo(entries.length);
     const openingRound = roundForSize(bracketSize);
     if (!openingRound) return setStatus('Could not determine the opening knockout round.');
-    if (!window.confirm(`Generate the ${openingRound.name} draw for ${entries.length} entrants${bracketSize > entries.length ? ` with ${bracketSize - entries.length} bye(s)` : ''}? Seeds will be placed into a fixed bracket.`)) return;
+    if (!window.confirm(`Generate the ${openingRound.name} draw for ${entries.length} entrants${bracketSize > entries.length ? ` with ${bracketSize - entries.length} bye(s)` : ''}? Seeds will be normalized and placed into a fixed bracket.`)) return;
 
-    const entrantsBySeed = new Map(entries.map((entry, index) => [index + 1, { ...entry, knockoutSeed: index + 1 }]));
-    const slots = seedOrder(bracketSize).map((seed) => entrantsBySeed.get(seed) || { bye: true, knockoutSeed: seed });
+    setLoading(true);
+    setStatus('Normalizing entrant seeds before the draw...');
+    const { error: normalizeError } = await supabase.rpc('normalize_knockout_entry_seeds', { target_tournament_id: tournamentId });
+    if (normalizeError) {
+      setLoading(false);
+      return setStatus('Could not normalize entrant seeds: ' + normalizeError.message);
+    }
+    const { data: normalizedEntries, error: entriesError } = await supabase
+      .from('tournament_entries')
+      .select('id, seed, rating, teams(id, name), managers(id, name, display_name)')
+      .eq('tournament_id', tournamentId)
+      .order('seed', { ascending: true });
+    if (entriesError) {
+      setLoading(false);
+      return setStatus('Could not reload normalized entrant seeds: ' + entriesError.message);
+    }
+    const drawEntries = normalizedEntries || [];
+    const seedsValid = drawEntries.length === configuredEntrants
+      && drawEntries.every((entry, index) => Number(entry.seed) === index + 1);
+    if (!seedsValid) {
+      setLoading(false);
+      return setStatus('Entrant seeds are not a unique contiguous 1–N sequence. Refresh the entrant list before drawing.');
+    }
+    setEntries(drawEntries);
+
+    const entrantsBySeed = new Map(drawEntries.map((entry) => [Number(entry.seed), entry]));
+    const slots = seedOrder(bracketSize).map((seed) => entrantsBySeed.get(seed) || { bye: true, seed });
     const rows = [];
     for (let index = 0; index < slots.length; index += 2) {
       const home = slots[index];
@@ -123,8 +148,8 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
         away_entry_id: bye ? null : realAway.id,
         home_placeholder: entryName(realHome),
         away_placeholder: bye ? 'BYE' : entryName(realAway),
-        home_seed: realHome.knockoutSeed,
-        away_seed: bye ? null : realAway.knockoutSeed,
+        home_seed: Number(realHome.seed),
+        away_seed: bye ? null : Number(realAway.seed),
         home_score: bye ? 3 : null,
         away_score: bye ? 0 : null,
         winner_entry_id: bye ? realHome.id : null,
@@ -133,7 +158,8 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
         decided_by: bye ? 'bye' : null,
       });
     }
-    await insertRows(rows, `${openingRound.name} draw generated with ${rows.length} ties${bracketSize > entries.length ? ` and ${bracketSize - entries.length} bye(s)` : ''}.`);
+    setLoading(false);
+    await insertRows(rows, `${openingRound.name} draw generated with ${rows.length} ties${bracketSize > drawEntries.length ? ` and ${bracketSize - drawEntries.length} bye(s)` : ''}.`);
   }
 
   async function generateNextRound() {
