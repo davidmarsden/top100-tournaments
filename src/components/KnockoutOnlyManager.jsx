@@ -110,6 +110,27 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
     setLoading(false);
   }
 
+  async function rollbackLatestRound() {
+    if (!latestRound) return setStatus('There is no knockout round to roll back.');
+    const warning = latestRound === roundsPresent[0]
+      ? `Roll back the entire ${latestRound.name} opening draw? This removes every tie in that round and unlocks the entrant roster.`
+      : `Roll back the entire ${latestRound.name} round? This removes every tie in that round so the previous round can be corrected before regenerating it.`;
+    if (!window.confirm(warning)) return;
+
+    setLoading(true);
+    setStatus(`Rolling back ${latestRound.name} atomically...`);
+    const { data, error } = await supabase.rpc('rollback_knockout_latest_round_atomic', { p_tournament_id: tournamentId });
+    if (error) {
+      setStatus('Round rollback failed: ' + error.message);
+    } else {
+      const rolledBack = data || {};
+      setStatus(`${rolledBack.round || latestRound.name} rolled back (${Number(rolledBack.deleted_matches || 0)} ties removed).`);
+      await loadData();
+      await onDataChanged?.();
+    }
+    setLoading(false);
+  }
+
   const nextLabel = !latestRound ? 'Generate opening draw' : latestRound.name === 'Final' ? 'Final generated' : `Generate ${roundForSize(latestRound.size / 2)?.name || 'next round'}`;
 
   return <div className="knockout-manager">
@@ -123,7 +144,11 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
         <article><span>Draw</span><strong>{cupMatches.length ? 'Live' : 'Not generated'}</strong></article>
         <article><span>Current round</span><strong>{latestRound?.name || 'TBC'}</strong></article>
       </div>
-      <div className="button-row"><button type="button" onClick={generateNextRound} disabled={loading || latestRound?.name === 'Final'}>{loading ? 'Working...' : nextLabel}</button><button type="button" className="secondary" onClick={loadData} disabled={loading}>Refresh draw</button></div>
+      <div className="button-row">
+        <button type="button" onClick={generateNextRound} disabled={loading || latestRound?.name === 'Final'}>{loading ? 'Working...' : nextLabel}</button>
+        <button type="button" className="secondary" onClick={loadData} disabled={loading}>Refresh draw</button>
+        {latestRound && <button type="button" className="danger" onClick={rollbackLatestRound} disabled={loading}>Roll back {latestRound.name}</button>}
+      </div>
       <p className="status">{status}</p>
     </section>
     {cupMatches.length > 0 && <FixturesManager selectedTournament={selectedTournament} stage="knockout" onDataChanged={async () => { await loadData(); await onDataChanged?.(); }} />}
