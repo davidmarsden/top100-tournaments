@@ -1,8 +1,8 @@
 -- Follow-up to PR #73 Codex review.
 -- A generated successor round copies its participants from the previous round's
 -- winners. Once that successor exists, result edits in the predecessor must be
--- locked or the bracket can retain stale participants. Also require every
--- completed knockout tie to have a resolved winner.
+-- locked or the bracket can retain stale participants. Knockout-only one-leg
+-- ties must also have a resolved winner before they can be completed.
 
 create or replace function public.knockout_round_rank(round_name text)
 returns integer
@@ -33,12 +33,19 @@ as $$
 declare
   result_changed boolean;
   has_successor boolean;
+  knockout_only boolean;
 begin
-  if new.stage = 'knockout'
+  knockout_only := new.stage = 'knockout'
+    and public.is_knockout_only_tournament(new.tournament_id);
+
+  -- Knockout-only tournaments use one-leg ties, so every completed non-bye tie
+  -- must have a resolved winner. Do not apply this to the existing group +
+  -- knockout format, where an individual leg may legitimately finish level.
+  if knockout_only
      and new.status in ('played', 'forfeit')
      and new.away_entry_id is not null
      and new.winner_entry_id is null then
-    raise exception 'Knockout matches cannot be completed without a resolved winner';
+    raise exception 'Knockout-only matches cannot be completed without a resolved winner';
   end if;
 
   if tg_op <> 'UPDATE'
