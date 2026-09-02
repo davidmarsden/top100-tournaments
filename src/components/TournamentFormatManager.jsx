@@ -57,9 +57,9 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
       if (!(await canChangeStructure(form.structure))) return;
       const knockoutOnly = form.structure === 'knockout_only';
       const maxEntries = numberOrNull(form.maxEntries);
-      const knockoutTeams = numberOrNull(form.knockoutTeams) || (knockoutOnly ? maxEntries : null);
+      const knockoutTeams = knockoutOnly ? maxEntries : numberOrNull(form.knockoutTeams);
       if (!maxEntries || !knockoutTeams) {
-        setStatus('Set the final entry count and knockout field before saving the format.');
+        setStatus(knockoutOnly ? 'Set the final entrant count before saving the knockout-only format.' : 'Set the final entry count and knockout field before saving the format.');
         return;
       }
       if (knockoutTeams > maxEntries) {
@@ -81,7 +81,7 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
       const { error } = await supabase.from('tournaments').update(payload).eq('id', selectedTournament.id);
       if (error) setStatus('Could not save tournament shape: ' + error.message);
       else {
-        setStatus(knockoutOnly ? 'Knockout-only format saved. Entrants will go directly into the seeded knockout draw.' : 'Group + knockout format saved. Group generation will use these values.');
+        setStatus(knockoutOnly ? `Knockout-only format saved for ${maxEntries} entrants. The same field goes directly into the seeded draw.` : 'Group + knockout format saved. Group generation will use these values.');
         await onTournamentUpdated?.();
       }
     } catch (error) {
@@ -107,12 +107,12 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
         <option value="knockout_only">Knockout only</option>
       </select></label>
       <div className="mini-grid">
-        <label>Final entries<input type="number" min="2" max="64" value={form.maxEntries} onChange={(event) => update('maxEntries', event.target.value)} placeholder="Decide after registration" /></label>
+        <label>{knockoutOnly ? 'Final entrants / knockout field' : 'Final entries'}<input type="number" min="2" max="64" value={form.maxEntries} onChange={(event) => update('maxEntries', event.target.value)} placeholder="Decide after registration" /></label>
         {!knockoutOnly && <label>Groups<input type="number" min="1" value={form.groupCount} onChange={(event) => update('groupCount', event.target.value)} placeholder="TBC" /></label>}
         {!knockoutOnly && <label>Teams/group<input type="number" min="2" value={form.teamsPerGroup} onChange={(event) => update('teamsPerGroup', event.target.value)} placeholder="TBC" /></label>}
-        <label>Knockout teams<input type="number" min="2" max="64" value={form.knockoutTeams} onChange={(event) => update('knockoutTeams', event.target.value)} placeholder={knockoutOnly ? 'Defaults to final entries' : 'TBC'} /></label>
+        {!knockoutOnly && <label>Knockout teams<input type="number" min="2" max="64" value={form.knockoutTeams} onChange={(event) => update('knockoutTeams', event.target.value)} placeholder="TBC" /></label>}
       </div>
-      {knockoutOnly ? <p className="muted">The opening draw will use the entrant seeds directly. If the field is not a power of two, the highest seeds receive the required byes. Knockout-only currently uses a single Cup bracket.</p> : <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => update('secondaryBracketName', event.target.value)} placeholder="Optional — e.g. Shield" /></label>}
+      {knockoutOnly ? <p className="muted">Every accepted entrant goes into the knockout field, so there is only one field size to set. The opening draw uses entrant seeds directly; when the field is not a power of two, the highest seeds receive the required byes. Knockout-only currently uses a single Cup bracket.</p> : <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => update('secondaryBracketName', event.target.value)} placeholder="Optional — e.g. Shield" /></label>}
       <div className="button-row"><button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save tournament shape'}</button></div>
       <p className="status">{status}</p>
     </section>
