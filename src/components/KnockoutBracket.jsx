@@ -131,8 +131,9 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
   const [seedByEntryId, setSeedByEntryId] = useState(new Map());
   const entryIds = useMemo(() => [...new Set(matches.flatMap((match) => [match.home_entry_id, match.away_entry_id]).filter(Boolean))], [matches]);
   const rounds = useMemo(() => buildTies(matches.filter((match) => match.stage === 'knockout')), [matches]);
-  const finalRound = rounds.find((round) => round.round === 'Final') || rounds[rounds.length - 1];
+  const finalRound = rounds.find((round) => round.round === 'Final') || null;
   const finalTie = finalRound?.ties?.find((tie) => tie.winnerName) || null;
+  const championVisible = showChampion && Boolean(finalRound);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,12 +162,12 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
         <div className="bracket-legend">
           <span><i className="legend-win" /> Winner</span>
           <span><i className="legend-loss" /> Loser</span>
-          <span>🏆 Champion</span>
+          {championVisible && <span>🏆 Champion</span>}
         </div>
       </div>
 
       <div className="visual-bracket-scroll">
-        <div className="visual-bracket" style={{ gridTemplateColumns: `repeat(${rounds.length + (showChampion ? 1 : 0)}, minmax(210px, 1fr))` }}>
+        <div className="visual-bracket" style={{ gridTemplateColumns: `repeat(${rounds.length + (championVisible ? 1 : 0)}, minmax(210px, 1fr))` }}>
           {rounds.map((round) => (
             <div className="bracket-round-column" key={round.round}>
               <div className="bracket-round-title">{roundLabel(round.round)}</div>
@@ -175,7 +176,7 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
               </div>
             </div>
           ))}
-          {showChampion && (
+          {championVisible && (
             <div className="bracket-champion-column">
               <div className="bracket-round-title">Champion</div>
               <div className="champion-card">
