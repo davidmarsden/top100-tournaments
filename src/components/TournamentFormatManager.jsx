@@ -121,10 +121,10 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
         <option value="knockout_only">Knockout only</option>
       </select></label>
       <div className="mini-grid">
-        <label>{knockoutOnly ? 'Final entrants / knockout field' : 'Final entries'}<input type="number" min="2" max="64" value={form.maxEntries} onChange={(event) => update('maxEntries', event.target.value)} placeholder="Decide after registration" /></label>
+        <label>{knockoutOnly ? 'Final entrants / knockout field' : 'Final entries'}<input type="number" min="2" max={knockoutOnly ? 64 : undefined} value={form.maxEntries} onChange={(event) => update('maxEntries', event.target.value)} placeholder="Decide after registration" /></label>
         {!knockoutOnly && <label>Groups<input type="number" min="1" value={form.groupCount} onChange={(event) => update('groupCount', event.target.value)} placeholder="TBC" /></label>}
         {!knockoutOnly && <label>Teams/group<input type="number" min="2" value={form.teamsPerGroup} onChange={(event) => update('teamsPerGroup', event.target.value)} placeholder="TBC" /></label>}
-        {!knockoutOnly && <label>Knockout teams<input type="number" min="2" max="64" value={form.knockoutTeams} onChange={(event) => update('knockoutTeams', event.target.value)} placeholder="TBC" /></label>}
+        {!knockoutOnly && <label>Knockout teams<input type="number" min="2" value={form.knockoutTeams} onChange={(event) => update('knockoutTeams', event.target.value)} placeholder="TBC" /></label>}
       </div>
       {knockoutOnly ? <p className="muted">Every accepted entrant goes into the knockout field, so there is only one field size to set. The opening draw uses entrant seeds directly; when the field is not a power of two, the highest seeds receive the required byes. Once the draw exists, this field size is locked unless the draw is removed. Knockout-only currently uses a single Cup bracket.</p> : <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => update('secondaryBracketName', event.target.value)} placeholder="Optional — e.g. Shield" /></label>}
       <div className="button-row"><button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save tournament shape'}</button></div>
