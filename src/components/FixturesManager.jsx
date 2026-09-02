@@ -34,6 +34,23 @@ function roundSortValue(round) {
   return index === -1 ? 99 : index;
 }
 
+function knockoutResultLockReason(fixture, fixtures, knockoutOnly) {
+  if (!knockoutOnly || fixture.stage !== 'knockout') return '';
+  const explicitBye = fixture.decided_by === 'bye';
+  const legacyBye = !fixture.away_entry_id && String(fixture.away_placeholder || '').trim().toUpperCase() === 'BYE';
+  if (explicitBye || legacyBye) return 'Automatic BYE result — fixed by the draw.';
+
+  const currentRank = roundSortValue(fixture.round);
+  if (currentRank === 99) return '';
+  const bracket = fixture.bracket || 'Cup';
+  const advanced = fixtures.some((other) => {
+    if (other.stage !== 'knockout' || (other.bracket || 'Cup') !== bracket) return false;
+    const otherRank = roundSortValue(other.round);
+    return otherRank !== 99 && otherRank > currentRank;
+  });
+  return advanced ? `${fixture.round} result locked after the next round was generated.` : '';
+}
+
 function hasSecondLeg(bracket, round) {
   if (round === 'R32') return false;
   if (bracket === 'Shield' && round === 'R16') return false;
@@ -222,7 +239,7 @@ export default function FixturesManager({
     setStatus('Loading from database...');
     let query = supabase
       .from('matches')
-      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, played_at, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
+      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, played_at, decided_by, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
       .eq('tournament_id', tournamentId)
       .order('bracket', { ascending: true })
       .order('round', { ascending: true })
@@ -242,6 +259,8 @@ export default function FixturesManager({
   }
 
   function startEdit(fixture) {
+    const lockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
+    if (lockReason) return setStatus(lockReason);
     setEditingId(fixture.id);
     setScores({
       home_score: fixture.home_score ?? '',
@@ -294,6 +313,11 @@ export default function FixturesManager({
   }
 
   async function saveOfficialResult(fixture) {
+    const lockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
+    if (lockReason) {
+      cancelEdit();
+      return setStatus(lockReason);
+    }
     const homeScore = ruling === 'double_forfeit' ? 0 : Number(scores.home_score);
     const awayScore = ruling === 'double_forfeit' ? 0 : Number(scores.away_score);
     if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
@@ -411,6 +435,8 @@ export default function FixturesManager({
   }
 
   async function resetResult(fixture) {
+    const lockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
+    if (lockReason) return setStatus(lockReason);
     setLoading(true);
     setStatus('Resetting result...');
     const { error } = await supabase
@@ -444,7 +470,9 @@ export default function FixturesManager({
         ? 'Knockout results'
         : 'Fixture secretary';
   const explainer = onlyCompleted
-    ? 'Only played results are shown here. Use this page to review, edit or reset saved results.'
+    ? knockoutOnly
+      ? 'Played results are shown here. Automatic BYEs and rounds that have already fed a successor are locked; roll back the current knockout round before correcting a predecessor.'
+      : 'Only played results are shown here. Use this page to review, edit or reset saved results.'
     : onlyOutstanding
       ? stage === 'knockout'
         ? knockoutOnly
@@ -517,6 +545,7 @@ export default function FixturesManager({
                   const completed = isCompleted(fixture);
                   const doubleForfeit = isDoubleForfeit(fixture);
                   const tieSummary = stage === 'knockout' ? tieSummaries.get(knockoutTieKey(fixture)) : null;
+                  const resultLockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
 
                   return (
                     <article className="fixture-card" key={fixture.id}>
@@ -530,8 +559,9 @@ export default function FixturesManager({
                       {fixture.status === 'forfeit' && !doubleForfeit && <p className="muted">Forfeit ruling recorded.</p>}
                       {fixture.status === 'postponed' && <p className="muted">Rescheduled fixture — still counts as {fixture.round} when played.</p>}
                       {tieSummary && <p className="status">{tieSummary}</p>}
+                      {resultLockReason && <p className="muted">🔒 {resultLockReason}</p>}
 
-                      {isEditing ? (
+                      {isEditing && !resultLockReason ? (
                         <div className="result-editor">
                           <div className="mini-grid">
                             <label>Home score
@@ -558,14 +588,14 @@ export default function FixturesManager({
                             <button type="button" className="secondary" onClick={cancelEdit} disabled={loading}>Cancel</button>
                           </div>
                         </div>
-                      ) : (
+                      ) : !resultLockReason ? (
                         <div className="button-row">
                           <button type="button" className="secondary" onClick={() => startEdit(fixture)} disabled={loading}>{completed ? 'Edit official result' : 'Enter official result'}</button>
                           {completed && <button type="button" className="danger" onClick={() => resetResult(fixture)} disabled={loading}>Reset result</button>}
                           {!completed && stage === 'group' && <label className="inline-date-control">New date<input type="date" value={rescheduleDates[fixture.id] || fixture.fixture_date || ''} onChange={(event) => setRescheduleDates((current) => ({ ...current, [fixture.id]: event.target.value }))} /></label>}
                           {!completed && stage === 'group' && <button type="button" className="secondary" onClick={() => rescheduleFixture(fixture)} disabled={loading}>Reschedule</button>}
                         </div>
-                      )}
+                      ) : null}
                     </article>
                   );
                 })}
