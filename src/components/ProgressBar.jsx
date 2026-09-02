@@ -12,13 +12,14 @@ export function isStepDone(step, selectedTournament, preview, progressStats = {}
   const groupPlayed = Number(progressStats.groupPlayed || 0);
   const knockoutTotal = Number(progressStats.knockoutTotal || 0);
   const knockoutPlayed = Number(progressStats.knockoutPlayed || 0);
+  const finalComplete = Boolean(progressStats.finalComplete);
   const knockoutOnly = isKnockoutOnly(selectedTournament);
 
   if (step === 'Tournament') return Boolean(selectedTournament);
   if (step === 'Entrants') return actualEntries > 0;
   if (knockoutOnly) {
     if (step === 'Knockout' || step === 'Fixtures') return knockoutTotal > 0;
-    if (step === 'Results') return knockoutTotal > 0 && knockoutPlayed === knockoutTotal;
+    if (step === 'Results') return finalComplete;
   } else {
     if (step === 'Groups') return Boolean(preview?.groups?.length) || actualEntries > 0;
     if (step === 'Fixtures') return Boolean(preview?.fixtures?.length) || groupTotal > 0;
@@ -37,12 +38,15 @@ function currentStageLabel(selectedTournament, preview, progressStats = {}) {
   const groupPlayed = Number(progressStats.groupPlayed || 0);
   const knockoutTotal = Number(progressStats.knockoutTotal || 0);
   const knockoutPlayed = Number(progressStats.knockoutPlayed || 0);
+  const finalComplete = Boolean(progressStats.finalComplete);
   const status = selectedTournament.status || '';
+  const knockoutOnly = isKnockoutOnly(selectedTournament);
 
   if (['published', 'archived', 'completed'].includes(status)) return status.charAt(0).toUpperCase() + status.slice(1);
-  if (knockoutTotal > 0 && knockoutPlayed === knockoutTotal) return 'Tournament complete';
-  if (knockoutTotal > 0) return 'Knockout live';
-  if (isKnockoutOnly(selectedTournament)) return 'Entrants and knockout draw';
+  if (knockoutOnly && finalComplete) return 'Tournament complete';
+  if (!knockoutOnly && knockoutTotal > 0 && knockoutPlayed === knockoutTotal) return 'Tournament complete';
+  if (knockoutTotal > 0) return knockoutOnly && knockoutPlayed === knockoutTotal ? 'Next knockout draw' : 'Knockout live';
+  if (knockoutOnly) return 'Entrants and knockout draw';
   if (groupTotal > 0 && groupPlayed === groupTotal) return 'Group results complete';
   if (groupTotal > 0 || preview?.fixtures?.length) return 'Fixtures ready';
   if (preview?.groups?.length) return 'Approve groups';
@@ -58,8 +62,11 @@ function jumpToStep(step, onJump) {
 
 export default function ProgressBar({ selectedTournament, preview, progressStats, onJump }) {
   const [pendingResults, setPendingResults] = useState(0);
-  const workflowSteps = isKnockoutOnly(selectedTournament) ? knockoutWorkflowSteps : groupWorkflowSteps;
-  const doneCount = workflowSteps.filter((step) => isStepDone(step, selectedTournament, preview, progressStats)).length;
+  const [finalComplete, setFinalComplete] = useState(false);
+  const knockoutOnly = isKnockoutOnly(selectedTournament);
+  const workflowSteps = knockoutOnly ? knockoutWorkflowSteps : groupWorkflowSteps;
+  const effectiveProgressStats = knockoutOnly ? { ...progressStats, finalComplete } : progressStats;
+  const doneCount = workflowSteps.filter((step) => isStepDone(step, selectedTournament, preview, effectiveProgressStats)).length;
   const progress = Math.round((doneCount / workflowSteps.length) * 100);
 
   useEffect(() => {
@@ -72,11 +79,31 @@ export default function ProgressBar({ selectedTournament, preview, progressStats
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    async function loadFinalStatus() {
+      if (!knockoutOnly || !selectedTournament?.id) {
+        if (active) setFinalComplete(false);
+        return;
+      }
+      const { data, error } = await supabase.from('matches').select('status').eq('tournament_id', selectedTournament.id).eq('stage', 'knockout').eq('round', 'Final');
+      if (!active) return;
+      if (error) {
+        setFinalComplete(false);
+        return;
+      }
+      const finals = data || [];
+      setFinalComplete(finals.length > 0 && finals.every((match) => ['played', 'forfeit', 'voided'].includes(match.status)));
+    }
+    loadFinalStatus();
+    return () => { active = false; };
+  }, [knockoutOnly, selectedTournament?.id, progressStats?.knockoutPlayed, progressStats?.knockoutTotal]);
+
   return <>
     <section className="progress-card">
-      <div className="progress-header"><div><p className="eyebrow">Tournament progress</p><h2>{progress}% complete</h2></div><span className="stage-pill">{currentStageLabel(selectedTournament, preview, progressStats)}</span></div>
+      <div className="progress-header"><div><p className="eyebrow">Tournament progress</p><h2>{progress}% complete</h2></div><span className="stage-pill">{currentStageLabel(selectedTournament, preview, effectiveProgressStats)}</span></div>
       <div className="progress-track"><div className="progress-fill" style={{ width: progress + '%' }} /></div>
-      <div className="progress-steps">{workflowSteps.map((step) => { const done = isStepDone(step, selectedTournament, preview, progressStats); return <button key={step} type="button" className={done ? 'progress-step done' : 'progress-step'} onClick={() => jumpToStep(step, onJump)}><span>{done ? 'Done' : 'Next'}</span>{step}</button>; })}</div>
+      <div className="progress-steps">{workflowSteps.map((step) => { const done = isStepDone(step, selectedTournament, preview, effectiveProgressStats); return <button key={step} type="button" className={done ? 'progress-step done' : 'progress-step'} onClick={() => jumpToStep(step, onJump)}><span>{done ? 'Done' : 'Next'}</span>{step}</button>; })}</div>
     </section>
     <section className="card admin-attention-bar"><div><p className="eyebrow">Admin inbox</p><strong>{pendingResults ? `${pendingResults} provisional result${pendingResults === 1 ? '' : 's'} awaiting final checks or appeal review` : 'No provisional results awaiting attention'}</strong></div><div className="button-row"><a className="button" href="/admin/result-submissions">Review result checks{pendingResults ? ` (${pendingResults})` : ''}</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></section>
   </>;
