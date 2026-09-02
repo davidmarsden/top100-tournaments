@@ -75,7 +75,7 @@ export function TournamentProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [bulkSelectedIds, setBulkSelectedIds] = useState([]);
-  const [progressStats, setProgressStats] = useState({ groupTotal: 0, groupPlayed: 0, knockoutTotal: 0, knockoutPlayed: 0 });
+  const [progressStats, setProgressStats] = useState({ groupTotal: 0, groupPlayed: 0, knockoutTotal: 0, knockoutPlayed: 0, finalComplete: false });
   const canUseDatabase = hasSupabaseConfig && supabase;
 
   useEffect(() => { if (canUseDatabase) loadTournaments(); }, [canUseDatabase]);
@@ -112,12 +112,19 @@ export function TournamentProvider({ children }) {
     setLoading(false);
   }
   async function loadProgressStats(tournamentId) {
-    const { data, error } = await supabase.from('matches').select('id, stage, status').eq('tournament_id', tournamentId);
-    if (error) return setProgressStats({ groupTotal: 0, groupPlayed: 0, knockoutTotal: 0, knockoutPlayed: 0 });
+    const { data, error } = await supabase.from('matches').select('id, stage, round, status, winner_entry_id').eq('tournament_id', tournamentId);
+    if (error) return setProgressStats({ groupTotal: 0, groupPlayed: 0, knockoutTotal: 0, knockoutPlayed: 0, finalComplete: false });
     const matches = data || [];
     const groupMatches = matches.filter((match) => match.stage === 'group');
     const knockoutMatches = matches.filter((match) => match.stage === 'knockout');
-    setProgressStats({ groupTotal: groupMatches.length, groupPlayed: groupMatches.filter(completed).length, knockoutTotal: knockoutMatches.length, knockoutPlayed: knockoutMatches.filter(completed).length });
+    const finalMatches = knockoutMatches.filter((match) => match.round === 'Final');
+    setProgressStats({
+      groupTotal: groupMatches.length,
+      groupPlayed: groupMatches.filter(completed).length,
+      knockoutTotal: knockoutMatches.length,
+      knockoutPlayed: knockoutMatches.filter(completed).length,
+      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => ['played', 'forfeit'].includes(match.status) && Boolean(match.winner_entry_id)),
+    });
   }
   async function refreshTournamentData() { await loadTournaments(); const tournamentId = selectedTournament?.id || selectedTournamentId; if (tournamentId) await loadProgressStats(tournamentId); }
   async function deleteRows(table, tournamentIds) { if (!tournamentIds.length) return; const { error } = await supabase.from(table).delete().in('tournament_id', tournamentIds); if (error && !String(error.message || '').includes('does not exist')) throw error; }
