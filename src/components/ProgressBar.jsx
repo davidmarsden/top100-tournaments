@@ -86,14 +86,14 @@ export default function ProgressBar({ selectedTournament, preview, progressStats
         if (active) setFinalComplete(false);
         return;
       }
-      const { data, error } = await supabase.from('matches').select('status').eq('tournament_id', selectedTournament.id).eq('stage', 'knockout').eq('round', 'Final');
+      const { data, error } = await supabase.from('matches').select('status, winner_entry_id').eq('tournament_id', selectedTournament.id).eq('stage', 'knockout').eq('round', 'Final');
       if (!active) return;
       if (error) {
         setFinalComplete(false);
         return;
       }
       const finals = data || [];
-      setFinalComplete(finals.length > 0 && finals.every((match) => ['played', 'forfeit', 'voided'].includes(match.status)));
+      setFinalComplete(finals.length > 0 && finals.every((match) => ['played', 'forfeit'].includes(match.status) && Boolean(match.winner_entry_id)));
     }
     loadFinalStatus();
     return () => { active = false; };
