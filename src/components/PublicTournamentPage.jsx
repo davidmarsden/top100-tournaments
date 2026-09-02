@@ -197,7 +197,7 @@ export default function PublicTournamentPage({ tournamentId, routeRows = [] }) {
   const featured = useMemo(() => buildFixtureSpotlights(publicMatches, entries, honours, tables, tournamentId), [publicMatches, entries, honours, tables, tournamentId]);
   const stats = useMemo(() => competitionStats(publicMatches, entries, tables, forfeits), [publicMatches, entries, tables, forfeits]);
   const knockoutFinalComplete = knockoutOnly && knockoutFinalPublicResolved;
-  const finalReviewPending = knockoutOnly && knockoutFinalExists && !knockoutFinalPublicResolved;
+  const finalReviewPending = knockoutOnly && datedMatches.some((match) => match.stage === 'knockout' && match.round === 'Final' && isCompleted(match) && Boolean(match.winner_entry_id)) && !knockoutFinalPublicResolved;
   const awaitingKnockoutDraw = knockoutOnly && !knockoutFinalExists && !knockoutFinalComplete && stats.remaining === 0;
   const remainingDisplay = finalReviewPending ? 'Review pending' : awaitingKnockoutDraw ? (stats.fixtures > 0 ? 'Next draw' : 'Draw TBC') : stats.remaining;
   const remainingNote = finalReviewPending ? 'Final result awaiting confirmation or review' : awaitingKnockoutDraw ? (stats.fixtures > 0 ? 'Current round complete · next round not drawn yet' : 'Opening draw not generated yet') : 'Fixtures still to play';
