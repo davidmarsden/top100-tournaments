@@ -42,23 +42,15 @@ async function deleteByMatch(db, table, ids) {
 }
 
 async function deleteMatchesForTournamentTeardown(db, ids) {
-  // Knockout-only dependency guards deliberately block removing an earlier round
-  // while a successor still exists. Whole-tournament teardown therefore removes
-  // knockout rounds from the Final backwards before deleting any remaining
-  // fixtures. This preserves the editing invariant without weakening it for the
-  // global-admin maintenance path.
-  for (const round of ['Final', 'SF', 'QF', 'R16', 'R32', 'R64']) {
-    const { error } = await db
-      .from('matches')
-      .delete()
-      .in('tournament_id', ids)
-      .eq('stage', 'knockout')
-      .eq('round', round);
+  // Knockout-only matches cannot be deleted individually. Give the service-role
+  // maintenance path an explicit transaction-safe teardown RPC, then remove any
+  // remaining standard/legacy fixtures normally.
+  for (const tournamentId of ids) {
+    const { error } = await db.rpc('delete_knockout_matches_for_tournament_teardown', {
+      p_tournament_id: tournamentId,
+    });
     if (error) throw error;
   }
-
-  // Remove any non-knockout fixtures, plus legacy/unknown knockout round labels
-  // after the known dependency chain has been dismantled.
   await deleteByTournament(db, 'matches', ids);
 }
 
