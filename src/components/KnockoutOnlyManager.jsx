@@ -22,11 +22,6 @@ function nextPowerOfTwo(value) {
   return size;
 }
 
-function seedOrder(size) {
-  if (size === 2) return [1, 2];
-  return seedOrder(size / 2).flatMap((seed) => [seed, size + 1 - seed]);
-}
-
 function roundForSize(size) {
   return ROUND_SEQUENCE.find((round) => round.size === size) || null;
 }
@@ -101,65 +96,20 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
     if (!window.confirm(`Generate the ${openingRound.name} draw for ${entries.length} entrants${bracketSize > entries.length ? ` with ${bracketSize - entries.length} bye(s)` : ''}? Seeds will be normalized and placed into a fixed bracket.`)) return;
 
     setLoading(true);
-    setStatus('Normalizing entrant seeds before the draw...');
-    const { error: normalizeError } = await supabase.rpc('normalize_knockout_entry_seeds', { target_tournament_id: tournamentId });
-    if (normalizeError) {
-      setLoading(false);
-      return setStatus('Could not normalize entrant seeds: ' + normalizeError.message);
-    }
-    const { data: normalizedEntries, error: entriesError } = await supabase
-      .from('tournament_entries')
-      .select('id, seed, rating, teams(id, name), managers(id, name, display_name)')
-      .eq('tournament_id', tournamentId)
-      .order('seed', { ascending: true });
-    if (entriesError) {
-      setLoading(false);
-      return setStatus('Could not reload normalized entrant seeds: ' + entriesError.message);
-    }
-    const drawEntries = normalizedEntries || [];
-    const seedsValid = drawEntries.length === configuredEntrants
-      && drawEntries.every((entry, index) => Number(entry.seed) === index + 1);
-    if (!seedsValid) {
-      setLoading(false);
-      return setStatus('Entrant seeds are not a unique contiguous 1–N sequence. Refresh the entrant list before drawing.');
-    }
-    setEntries(drawEntries);
-
-    const entrantsBySeed = new Map(drawEntries.map((entry) => [Number(entry.seed), entry]));
-    const slots = seedOrder(bracketSize).map((seed) => entrantsBySeed.get(seed) || { bye: true, seed });
-    const rows = [];
-    for (let index = 0; index < slots.length; index += 2) {
-      const home = slots[index];
-      const away = slots[index + 1];
-      const homeBye = Boolean(home?.bye);
-      const awayBye = Boolean(away?.bye);
-      if (homeBye && awayBye) continue;
-      const realHome = homeBye ? away : home;
-      const realAway = homeBye ? home : away;
-      const bye = Boolean(realAway?.bye);
-      rows.push({
-        tournament_id: tournamentId,
-        stage: 'knockout',
-        bracket: 'Cup',
-        round: openingRound.name,
-        leg: 1,
-        match_order: rows.length + 1,
-        home_entry_id: realHome.id,
-        away_entry_id: bye ? null : realAway.id,
-        home_placeholder: entryName(realHome),
-        away_placeholder: bye ? 'BYE' : entryName(realAway),
-        home_seed: Number(realHome.seed),
-        away_seed: bye ? null : Number(realAway.seed),
-        home_score: bye ? 3 : null,
-        away_score: bye ? 0 : null,
-        winner_entry_id: bye ? realHome.id : null,
-        loser_entry_id: null,
-        status: bye ? 'played' : 'scheduled',
-        decided_by: bye ? 'bye' : null,
-      });
+    setStatus('Generating the opening draw atomically...');
+    const { data, error } = await supabase.rpc('generate_knockout_opening_round_atomic', { p_tournament_id: tournamentId });
+    if (error) {
+      setStatus('Draw generation failed: ' + error.message);
+    } else {
+      const draw = data || {};
+      const generatedRound = draw.round || openingRound.name;
+      const ties = Number(draw.ties || 0);
+      const byes = Number(draw.byes || 0);
+      setStatus(`${generatedRound} draw generated with ${ties} ties${byes ? ` and ${byes} bye(s)` : ''}.`);
+      await loadData();
+      await onDataChanged?.();
     }
     setLoading(false);
-    await insertRows(rows, `${openingRound.name} draw generated with ${rows.length} ties${bracketSize > drawEntries.length ? ` and ${bracketSize - drawEntries.length} bye(s)` : ''}.`);
   }
 
   async function generateNextRound() {
