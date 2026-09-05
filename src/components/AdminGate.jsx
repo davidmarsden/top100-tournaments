@@ -24,18 +24,26 @@ export default function AdminGate({ children, requireGlobal = false }) {
     let mounted = true;
     async function checkSession() {
       const { data } = await supabase.auth.getSession();
-      if (mounted) await checkAccess(data.session?.user || null);
+      if (mounted) await checkAccess(data.session?.user || null, false);
     }
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { checkAccess(session?.user || null); });
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      // Supabase may emit SIGNED_IN as well as TOKEN_REFRESHED when an already
+      // authenticated tab regains focus. Treat every authenticated auth event as
+      // a background permission refresh so the admin React tree stays mounted and
+      // an in-progress result/FET form is not destroyed. Only a genuine sign-out
+      // should collapse the admin tree.
+      const background = Boolean(session?.user) && event !== 'SIGNED_OUT';
+      checkAccess(session?.user || null, background);
+    });
     checkSession();
     return () => { mounted = false; listener.subscription.unsubscribe(); };
   }, []);
 
-  async function checkAccess(user) {
+  async function checkAccess(user, background = false) {
     if (!user) {
       setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setChecking(false); return;
     }
-    setChecking(true);
+    if (!background) setChecking(true);
     const [adminResult, accessResult, assignmentsResult] = await Promise.all([
       supabase.rpc('is_admin'),
       supabase.rpc('has_tournament_admin_access'),

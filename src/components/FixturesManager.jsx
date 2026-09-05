@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { calculateFetFromStats, describeFetStep, tieSnapshot } from '../lib/knockoutResolution';
 
 const ROUND_ORDER = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
+const EMPTY_FET = { home_possession: '', away_possession: '', home_shots_on_target: '', away_shots_on_target: '' };
 
 function teamNameFromEntry(entry, fallback) {
   return entry?.teams?.name || entry?.team?.name || fallback || 'TBC';
@@ -62,12 +64,7 @@ function formatDate(dateString) {
   const [year, month, day] = dateString.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   if (Number.isNaN(date.getTime())) return dateString;
-  return date.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
 function addDays(dateString, days) {
@@ -114,68 +111,58 @@ function groupFixtures(fixtures) {
 }
 
 function testScore(fixture) {
-  const base = Number(fixture.match_order || fixture.id || 1)
-    + (fixture.round || '').length
-    + Number(fixture.leg || 1);
+  const base = Number(fixture.match_order || fixture.id || 1) + (fixture.round || '').length + Number(fixture.leg || 1);
   const home = (base % 5) + 1;
   const away = base % 4;
-  return home === away
-    ? { home_score: home + 1, away_score: away }
-    : { home_score: home, away_score: away };
+  return home === away ? { home_score: home + 1, away_score: away } : { home_score: home, away_score: away };
 }
 
 function knockoutTieKey(fixture) {
   return [fixture.bracket || 'Knockout', fixture.round || 'Round', fixture.match_order || 0].join('|');
 }
 
+function tieLegs(fixtures, fixture) {
+  const key = knockoutTieKey(fixture);
+  return fixtures.filter((item) => item.stage === 'knockout' && knockoutTieKey(item) === key && item.status !== 'voided');
+}
+
 function buildTieSummaries(fixtures) {
   const ties = new Map();
-  fixtures
-    .filter((fixture) => fixture.stage === 'knockout')
-    .forEach((fixture) => {
-      const key = knockoutTieKey(fixture);
-      if (!ties.has(key)) ties.set(key, []);
-      ties.get(key).push(fixture);
-    });
+  fixtures.filter((fixture) => fixture.stage === 'knockout' && fixture.status !== 'voided').forEach((fixture) => {
+    const key = knockoutTieKey(fixture);
+    if (!ties.has(key)) ties.set(key, []);
+    ties.get(key).push(fixture);
+  });
 
   const summaries = new Map();
   ties.forEach((legs, key) => {
     const ordered = [...legs].sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
     const completed = ordered.filter(isCompleted);
     if (ordered.length < 2 || completed.length !== ordered.length) return;
+    const snapshot = tieSnapshot(ordered);
+    if (!snapshot) return;
 
     const first = ordered[0];
-    const firstId = first.home_entry_id;
-    const secondId = first.away_entry_id;
     const firstName = teamNameFromEntry(first.home_entry, first.home_placeholder);
     const secondName = teamNameFromEntry(first.away_entry, first.away_placeholder);
-    let firstAgg = 0;
-    let secondAgg = 0;
-    let firstAway = 0;
-    let secondAway = 0;
-
-    completed.forEach((leg) => {
-      const home = Number(leg.home_score || 0);
-      const away = Number(leg.away_score || 0);
-      if (leg.home_entry_id === firstId) {
-        firstAgg += home;
-        secondAgg += away;
-        secondAway += away;
+    let detail = `Aggregate after normal time: ${firstName} ${snapshot.firstAgg}-${snapshot.secondAgg} ${secondName}`;
+    if (snapshot.firstAgg === snapshot.secondAgg) {
+      if (snapshot.firstAway !== snapshot.secondAway) {
+        detail += snapshot.firstAway > snapshot.secondAway
+          ? ` · ${firstName} advance on away goals (${snapshot.firstAway}-${snapshot.secondAway})`
+          : ` · ${secondName} advance on away goals (${snapshot.secondAway}-${snapshot.firstAway})`;
       } else {
-        firstAgg += away;
-        secondAgg += home;
-        firstAway += away;
-      }
-    });
-
-    let detail = `Aggregate: ${firstName} ${firstAgg}-${secondAgg} ${secondName}`;
-    if (firstAgg === secondAgg) {
-      if (firstAway !== secondAway) {
-        detail += firstAway > secondAway
-          ? ` · ${firstName} lead on away goals (${firstAway}-${secondAway})`
-          : ` · ${secondName} lead on away goals (${secondAway}-${firstAway})`;
-      } else {
-        detail += ' · Away goals level — Fictional Extra Time needed';
+        const decidingLeg = [...ordered].reverse().find((leg) => leg.home_extra_time_score !== null && leg.home_extra_time_score !== undefined && leg.away_extra_time_score !== null && leg.away_extra_time_score !== undefined);
+        if (decidingLeg) {
+          const homeFet = Number(decidingLeg.home_extra_time_score || 0);
+          const awayFet = Number(decidingLeg.away_extra_time_score || 0);
+          const winner = homeFet > awayFet
+            ? teamNameFromEntry(decidingLeg.home_entry, decidingLeg.home_placeholder)
+            : teamNameFromEntry(decidingLeg.away_entry, decidingLeg.away_placeholder);
+          detail += ` · Away goals level (${snapshot.firstAway}-${snapshot.secondAway}) · ${winner} advance after ${decidingLeg.decided_by === 'manual' ? 'manual FET decider' : `FET ${homeFet}-${awayFet}`}`;
+        } else {
+          detail += ` · Away goals level (${snapshot.firstAway}-${snapshot.secondAway}) — Fictional Extra Time needed`;
+        }
       }
     }
     summaries.set(key, detail);
@@ -190,19 +177,21 @@ function rulingLabel(ruling) {
   return 'Played normally';
 }
 
-export default function FixturesManager({
-  selectedTournament,
-  preview,
-  stage = 'group',
-  onlyOutstanding = false,
-  onlyCompleted = false,
-  onDataChanged,
-}) {
+function scoreLabel(fixture) {
+  if (!isCompleted(fixture)) return 'v';
+  const hasFet = fixture.home_extra_time_score !== null && fixture.home_extra_time_score !== undefined
+    && fixture.away_extra_time_score !== null && fixture.away_extra_time_score !== undefined;
+  return `${fixture.home_score ?? 0} - ${fixture.away_score ?? 0}${hasFet ? ' FET' : ''}`;
+}
+
+export default function FixturesManager({ selectedTournament, preview, stage = 'group', onlyOutstanding = false, onlyCompleted = false, onDataChanged }) {
   const [fixtures, setFixtures] = useState([]);
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [scores, setScores] = useState({ home_score: '', away_score: '' });
+  const [fetStats, setFetStats] = useState(EMPTY_FET);
+  const [manualFetWinner, setManualFetWinner] = useState('');
   const [ruling, setRuling] = useState('played');
   const [resultNote, setResultNote] = useState('');
   const [rescheduleDates, setRescheduleDates] = useState({});
@@ -230,8 +219,7 @@ export default function FixturesManager({
   const playedCount = fixtures.filter(isCompleted).length;
   const groupOptions = useMemo(() => [...new Set(fixtures.filter((fixture) => fixture.status !== 'voided').map(fixtureGroupLabel))].sort(), [fixtures]);
   const roundOptions = useMemo(() => [...new Set(fixtures.filter((fixture) => fixture.status !== 'voided').map(roundLabel))]
-    .sort((a, b) => roundSortValue(a) - roundSortValue(b)
-      || a.localeCompare(b, undefined, { numeric: true })), [fixtures]);
+    .sort((a, b) => roundSortValue(a) - roundSortValue(b) || a.localeCompare(b, undefined, { numeric: true })), [fixtures]);
 
   async function loadFixtures() {
     if (!tournamentId) return;
@@ -239,7 +227,7 @@ export default function FixturesManager({
     setStatus('Loading from database...');
     let query = supabase
       .from('matches')
-      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, played_at, decided_by, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
+      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, home_possession, away_possession, home_shots_on_target, away_shots_on_target, winner_entry_id, loser_entry_id, status, played_at, decided_by, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
       .eq('tournament_id', tournamentId)
       .order('bracket', { ascending: true })
       .order('round', { ascending: true })
@@ -263,53 +251,83 @@ export default function FixturesManager({
     if (lockReason) return setStatus(lockReason);
     setEditingId(fixture.id);
     setScores({
-      home_score: fixture.home_score ?? '',
-      away_score: fixture.away_score ?? '',
+      home_score: fixture.home_normal_time_score ?? fixture.home_score ?? '',
+      away_score: fixture.away_normal_time_score ?? fixture.away_score ?? '',
     });
+    setFetStats({
+      home_possession: fixture.home_possession ?? '',
+      away_possession: fixture.away_possession ?? '',
+      home_shots_on_target: fixture.home_shots_on_target ?? '',
+      away_shots_on_target: fixture.away_shots_on_target ?? '',
+    });
+    setManualFetWinner(fixture.decided_by === 'manual'
+      ? fixture.winner_entry_id === fixture.home_entry_id ? 'home' : fixture.winner_entry_id === fixture.away_entry_id ? 'away' : ''
+      : '');
     setResultNote('');
-    if (isDoubleForfeit(fixture)) {
-      setRuling('double_forfeit');
-    } else if (fixture.status === 'forfeit') {
-      setRuling(Number(fixture.home_score) > Number(fixture.away_score) ? 'away_forfeited' : 'home_forfeited');
-    } else {
-      setRuling('played');
-    }
+    if (isDoubleForfeit(fixture)) setRuling('double_forfeit');
+    else if (fixture.status === 'forfeit') setRuling(Number(fixture.home_score) > Number(fixture.away_score) ? 'away_forfeited' : 'home_forfeited');
+    else setRuling('played');
   }
 
   function cancelEdit() {
     setEditingId(null);
     setScores({ home_score: '', away_score: '' });
+    setFetStats(EMPTY_FET);
+    setManualFetWinner('');
     setRuling('played');
     setResultNote('');
   }
 
   function changeRuling(nextRuling) {
     setRuling(nextRuling);
+    setManualFetWinner('');
     if (nextRuling === 'double_forfeit') setScores({ home_score: 0, away_score: 0 });
   }
 
-  async function updateResult(fixture, homeScore, awayScore, resultStatus = 'played') {
-    let winnerEntryId = null;
-    let loserEntryId = null;
-    if (homeScore > awayScore) {
-      winnerEntryId = fixture.home_entry_id;
-      loserEntryId = fixture.away_entry_id;
-    } else if (awayScore > homeScore) {
-      winnerEntryId = fixture.away_entry_id;
-      loserEntryId = fixture.home_entry_id;
+  function knockoutDraft(fixture, homeScore, awayScore) {
+    if (stage !== 'knockout' || ruling !== 'played') return { requiresFet: false, snapshot: null, oneLeg: false };
+    const legs = tieLegs(fixtures, fixture);
+    const oneLeg = knockoutOnly || !hasSecondLeg(fixture.bracket, fixture.round) || legs.length === 1;
+    const override = new Map([[fixture.id, { home_score: homeScore, away_score: awayScore }]]);
+    const snapshot = tieSnapshot(legs, override);
+    if (!snapshot) return { requiresFet: oneLeg && homeScore === awayScore, snapshot: null, oneLeg };
+    const currentIsDecidingLeg = oneLeg || Number(fixture.leg || 1) === Math.max(...legs.map((leg) => Number(leg.leg || 1)));
+    return { requiresFet: currentIsDecidingLeg && snapshot.complete && snapshot.reason === 'fet_required', snapshot, oneLeg };
+  }
+
+  async function updateResult(fixture, homeScore, awayScore, resultStatus = 'played', resolution = {}) {
+    const hasFet = resolution.decided_by === 'fictional_extra_time' || resolution.decided_by === 'manual';
+    const storedHomeScore = homeScore + Number(resolution.home_extra_time_score || 0);
+    const storedAwayScore = awayScore + Number(resolution.away_extra_time_score || 0);
+    let winnerEntryId = resolution.winner_entry_id ?? null;
+    let loserEntryId = resolution.loser_entry_id ?? null;
+    if (!resolution.overrideWinner) {
+      if (storedHomeScore > storedAwayScore) {
+        winnerEntryId = fixture.home_entry_id;
+        loserEntryId = fixture.away_entry_id;
+      } else if (storedAwayScore > storedHomeScore) {
+        winnerEntryId = fixture.away_entry_id;
+        loserEntryId = fixture.home_entry_id;
+      }
     }
 
-    return supabase
-      .from('matches')
-      .update({
-        home_score: homeScore,
-        away_score: awayScore,
-        winner_entry_id: winnerEntryId,
-        loser_entry_id: loserEntryId,
-        status: resultStatus,
-        played_at: new Date().toISOString(),
-      })
-      .eq('id', fixture.id);
+    return supabase.from('matches').update({
+      home_score: storedHomeScore,
+      away_score: storedAwayScore,
+      home_normal_time_score: stage === 'knockout' ? homeScore : null,
+      away_normal_time_score: stage === 'knockout' ? awayScore : null,
+      home_extra_time_score: hasFet ? resolution.home_extra_time_score : null,
+      away_extra_time_score: hasFet ? resolution.away_extra_time_score : null,
+      home_possession: hasFet ? resolution.home_possession : null,
+      away_possession: hasFet ? resolution.away_possession : null,
+      home_shots_on_target: hasFet ? resolution.home_shots_on_target : null,
+      away_shots_on_target: hasFet ? resolution.away_shots_on_target : null,
+      decided_by: resolution.decided_by ?? null,
+      winner_entry_id: winnerEntryId,
+      loser_entry_id: loserEntryId,
+      status: resultStatus,
+      played_at: new Date().toISOString(),
+    }).eq('id', fixture.id);
   }
 
   async function saveOfficialResult(fixture) {
@@ -320,33 +338,83 @@ export default function FixturesManager({
     }
     const homeScore = ruling === 'double_forfeit' ? 0 : Number(scores.home_score);
     const awayScore = ruling === 'double_forfeit' ? 0 : Number(scores.away_score);
-    if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
-      return setStatus('Enter valid whole-number scores before saving.');
-    }
-    if (ruling === 'away_forfeited' && homeScore - awayScore < 3) {
-      return setStatus('An away-team forfeit must give the home team at least a three-goal advantage.');
-    }
-    if (ruling === 'home_forfeited' && awayScore - homeScore < 3) {
-      return setStatus('A home-team forfeit must give the away team at least a three-goal advantage.');
-    }
-    if (ruling === 'double_forfeit' && !resultNote.trim()) {
-      return setStatus('Add a reason before recording a double forfeit.');
-    }
+    if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) return setStatus('Enter valid whole-number scores before saving.');
+    if (ruling === 'away_forfeited' && homeScore - awayScore < 3) return setStatus('An away-team forfeit must give the home team at least a three-goal advantage.');
+    if (ruling === 'home_forfeited' && awayScore - homeScore < 3) return setStatus('A home-team forfeit must give the away team at least a three-goal advantage.');
+    if (ruling === 'double_forfeit' && !resultNote.trim()) return setStatus('Add a reason before recording a double forfeit.');
 
     const homeName = teamNameFromEntry(fixture.home_entry, fixture.home_placeholder);
     const awayName = teamNameFromEntry(fixture.away_entry, fixture.away_placeholder);
-    if (!window.confirm(`Save ${homeName} ${homeScore}–${awayScore} ${awayName}\n\nRuling: ${rulingLabel(ruling)}${resultNote.trim() ? `\nReason: ${resultNote.trim()}` : ''}?`)) return;
+    const draft = knockoutDraft(fixture, homeScore, awayScore);
+    let resolution = {};
+    let confirmationExtra = '';
+
+    if (draft.requiresFet) {
+      const fet = calculateFetFromStats({
+        homePossession: fetStats.home_possession,
+        awayPossession: fetStats.away_possession,
+        homeShotsOnTarget: fetStats.home_shots_on_target,
+        awayShotsOnTarget: fetStats.away_shots_on_target,
+      });
+      if (!fet.valid) return setStatus('Enter complete, valid possession percentages and shots-on-target figures to calculate FET.');
+
+      let homeFetGoals = fet.homeGoals;
+      let awayFetGoals = fet.awayGoals;
+      let decidedBy = 'fictional_extra_time';
+      let winnerEntryId;
+      let loserEntryId;
+      let manualLine = '';
+
+      if (!fet.resolved) {
+        if (!manualFetWinner) return setStatus('FET is exactly level after every statistical tiebreak. Choose the manual decider before saving.');
+        decidedBy = 'manual';
+        if (manualFetWinner === 'home') {
+          homeFetGoals += 1;
+          winnerEntryId = fixture.home_entry_id;
+          loserEntryId = fixture.away_entry_id;
+          manualLine = `\nManual decider: ${homeName} +1 deciding FET goal`;
+        } else {
+          awayFetGoals += 1;
+          winnerEntryId = fixture.away_entry_id;
+          loserEntryId = fixture.home_entry_id;
+          manualLine = `\nManual decider: ${awayName} +1 deciding FET goal`;
+        }
+      } else {
+        winnerEntryId = homeFetGoals > awayFetGoals ? fixture.home_entry_id : fixture.away_entry_id;
+        loserEntryId = homeFetGoals > awayFetGoals ? fixture.away_entry_id : fixture.home_entry_id;
+      }
+
+      resolution = {
+        overrideWinner: true,
+        winner_entry_id: winnerEntryId,
+        loser_entry_id: loserEntryId,
+        home_extra_time_score: homeFetGoals,
+        away_extra_time_score: awayFetGoals,
+        home_possession: Number(fetStats.home_possession),
+        away_possession: Number(fetStats.away_possession),
+        home_shots_on_target: Number(fetStats.home_shots_on_target),
+        away_shots_on_target: Number(fetStats.away_shots_on_target),
+        decided_by: decidedBy,
+      };
+      const finalHome = homeScore + homeFetGoals;
+      const finalAway = awayScore + awayFetGoals;
+      confirmationExtra = `\nFET: ${homeFetGoals}–${awayFetGoals}\nFinal score after FET: ${finalHome}–${finalAway}\n${fet.steps.map((step) => describeFetStep(step, homeName, awayName)).join('\n')}${manualLine}`;
+    }
+
+    if (!window.confirm(`Save ${homeName} ${homeScore}–${awayScore} ${awayName} after normal time${confirmationExtra}\n\nRuling: ${rulingLabel(ruling)}${resultNote.trim() ? `\nReason: ${resultNote.trim()}` : ''}?`)) return;
 
     setLoading(true);
     setStatus('Saving official result...');
     const result = ruling === 'double_forfeit'
       ? await supabase.rpc('admin_record_double_forfeit', { target_match_id: fixture.id, note: resultNote.trim() })
-      : await updateResult(fixture, homeScore, awayScore, ruling === 'played' ? 'played' : 'forfeit');
+      : await updateResult(fixture, homeScore, awayScore, ruling === 'played' ? 'played' : 'forfeit', resolution);
     const { error } = result;
-    if (error) {
-      setStatus(`Save failed: ${error.message}`);
-    } else {
-      setStatus(`Official result saved as ${homeScore}–${awayScore} · ${rulingLabel(ruling)}.`);
+    if (error) setStatus(`Save failed: ${error.message}`);
+    else {
+      const finalHome = homeScore + Number(resolution.home_extra_time_score || 0);
+      const finalAway = awayScore + Number(resolution.away_extra_time_score || 0);
+      const decisionText = resolution.decided_by === 'manual' ? ' after manual FET decider' : resolution.decided_by ? ` after FET (${homeScore}–${awayScore} after normal time)` : '';
+      setStatus(`Official result saved as ${finalHome}–${finalAway}${decisionText} · ${rulingLabel(ruling)}.`);
       cancelEdit();
       await loadFixtures();
       await onDataChanged?.();
@@ -360,10 +428,7 @@ export default function FixturesManager({
     if (isCompleted(fixture)) return setStatus('Reset the completed result before rescheduling this fixture.');
     setLoading(true);
     setStatus('Rescheduling fixture...');
-    const { error } = await supabase
-      .from('matches')
-      .update({ fixture_date: date, status: 'postponed' })
-      .eq('id', fixture.id);
+    const { error } = await supabase.from('matches').update({ fixture_date: date, status: 'postponed' }).eq('id', fixture.id);
     if (error) setStatus(`Reschedule failed: ${error.message}`);
     else {
       setStatus(`${fixture.round} fixture rescheduled to ${formatDate(date)}; it remains part of ${fixture.round}.`);
@@ -404,27 +469,19 @@ export default function FixturesManager({
     if (stage === 'knockout') {
       const results = await Promise.all(targets.map((fixture) => {
         const oneLegOnly = knockoutOnly || !hasSecondLeg(fixture.bracket, fixture.round);
-        const fixtureDate = oneLegOnly || Number(fixture.leg || 1) === 1
-          ? roundDate
-          : addDays(roundDate, 7);
+        const fixtureDate = oneLegOnly || Number(fixture.leg || 1) === 1 ? roundDate : addDays(roundDate, 7);
         return supabase.from('matches').update({ fixture_date: fixtureDate }).eq('id', fixture.id);
       }));
       const error = results.find((result) => result.error)?.error;
-      if (error) {
-        setStatus(`Date save failed: ${error.message}`);
-      } else {
+      if (error) setStatus(`Date save failed: ${error.message}`);
+      else {
         const sample = targets[0];
         const oneLegOnly = knockoutOnly || (sample && !hasSecondLeg(sample.bracket, sample.round));
-        setStatus(oneLegOnly
-          ? `Date applied: ${formatDate(roundDate)}.`
-          : `Dates applied: 1st legs ${formatDate(roundDate)}, 2nd legs ${formatDate(addDays(roundDate, 7))}.`);
+        setStatus(oneLegOnly ? `Date applied: ${formatDate(roundDate)}.` : `Dates applied: 1st legs ${formatDate(roundDate)}, 2nd legs ${formatDate(addDays(roundDate, 7))}.`);
         await loadFixtures();
       }
     } else {
-      const { error } = await supabase
-        .from('matches')
-        .update({ fixture_date: roundDate })
-        .in('id', targets.map((fixture) => fixture.id));
+      const { error } = await supabase.from('matches').update({ fixture_date: roundDate }).in('id', targets.map((fixture) => fixture.id));
       if (error) setStatus(`Date save failed: ${error.message}`);
       else {
         setStatus(`Date applied to ${targets.length} visible fixtures and view refreshed.`);
@@ -439,17 +496,23 @@ export default function FixturesManager({
     if (lockReason) return setStatus(lockReason);
     setLoading(true);
     setStatus('Resetting result...');
-    const { error } = await supabase
-      .from('matches')
-      .update({
-        home_score: null,
-        away_score: null,
-        winner_entry_id: null,
-        loser_entry_id: null,
-        status: 'scheduled',
-        played_at: null,
-      })
-      .eq('id', fixture.id);
+    const { error } = await supabase.from('matches').update({
+      home_score: null,
+      away_score: null,
+      home_normal_time_score: null,
+      away_normal_time_score: null,
+      home_extra_time_score: null,
+      away_extra_time_score: null,
+      home_possession: null,
+      away_possession: null,
+      home_shots_on_target: null,
+      away_shots_on_target: null,
+      decided_by: null,
+      winner_entry_id: null,
+      loser_entry_id: null,
+      status: 'scheduled',
+      played_at: null,
+    }).eq('id', fixture.id);
     if (error) setStatus(`Reset failed: ${error.message}`);
     else {
       setStatus('Result reset and view refreshed.');
@@ -462,13 +525,7 @@ export default function FixturesManager({
   if (!selectedTournament) return <p className="muted">Create or select a tournament first.</p>;
   if (!hasSupabaseConfig || !supabase) return <p className="muted">Supabase is not connected yet.</p>;
 
-  const titleText = onlyCompleted
-    ? 'Results archive'
-    : onlyOutstanding
-      ? 'Fixture list'
-      : stage === 'knockout'
-        ? 'Knockout results'
-        : 'Fixture secretary';
+  const titleText = onlyCompleted ? 'Results archive' : onlyOutstanding ? 'Fixture list' : stage === 'knockout' ? 'Knockout results' : 'Fixture secretary';
   const explainer = onlyCompleted
     ? knockoutOnly
       ? 'Played results are shown here. Automatic BYEs and rounds that have already fed a successor are locked; roll back the current knockout round before correcting a predecessor.'
@@ -479,7 +536,7 @@ export default function FixturesManager({
           ? 'Only unplayed knockout fixtures are shown here. Every tie is one leg.'
           : 'Only unplayed knockout fixtures are shown here. R32 is one leg; two-legged rounds use the chosen date for 1st legs and seven days later for 2nd legs.'
         : 'Only unplayed fixtures are shown here. Results move to the Results page once saved.'
-      : 'Load saved fixtures, enter official results, record single or double forfeits, and reschedule delayed fixtures without changing their matchday.';
+      : 'Load saved fixtures, enter official results, record forfeits, and resolve knockout ties through aggregate, away goals and progressive Fictional Extra Time.';
 
   return (
     <div className="fixtures-manager">
@@ -524,10 +581,7 @@ export default function FixturesManager({
           <p className="muted">{knockoutOnly ? 'Generate the knockout draw first.' : `Approve the draw on the Groups tab first. The preview currently has ${preview?.fixtures?.length || 0} generated fixtures.`}</p>
         </div>
       ) : sections.length === 0 ? (
-        <div className="empty-state">
-          <h3>No fixtures match this view.</h3>
-          <p className="muted">Try another group/bracket, round, or reload from the database.</p>
-        </div>
+        <div className="empty-state"><h3>No fixtures match this view.</h3><p className="muted">Try another group/bracket, round, or reload from the database.</p></div>
       ) : (
         <div className="fixture-sections">
           {sections.map((section) => (
@@ -546,15 +600,26 @@ export default function FixturesManager({
                   const doubleForfeit = isDoubleForfeit(fixture);
                   const tieSummary = stage === 'knockout' ? tieSummaries.get(knockoutTieKey(fixture)) : null;
                   const resultLockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
+                  const draftHome = Number(scores.home_score);
+                  const draftAway = Number(scores.away_score);
+                  const draftScoresValid = Number.isInteger(draftHome) && Number.isInteger(draftAway) && draftHome >= 0 && draftAway >= 0;
+                  const draft = isEditing && draftScoresValid ? knockoutDraft(fixture, draftHome, draftAway) : { requiresFet: false, snapshot: null, oneLeg: false };
+                  const fet = draft.requiresFet ? calculateFetFromStats({
+                    homePossession: fetStats.home_possession,
+                    awayPossession: fetStats.away_possession,
+                    homeShotsOnTarget: fetStats.home_shots_on_target,
+                    awayShotsOnTarget: fetStats.away_shots_on_target,
+                  }) : null;
 
                   return (
                     <article className="fixture-card" key={fixture.id}>
                       <div className="fixture-teams">
                         <strong>{homeName}</strong>
-                        <span className="score-pill">{completed ? `${fixture.home_score} - ${fixture.away_score}` : 'v'}</span>
+                        <span className="score-pill">{scoreLabel(fixture)}</span>
                         <strong>{awayName}</strong>
                       </div>
                       <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {knockoutOnly && stage === 'knockout' ? 'single leg' : legLabel(fixture.leg || 1)}</p>
+                      {(fixture.decided_by === 'fictional_extra_time' || fixture.decided_by === 'manual') && <p className="muted">Normal time: {fixture.home_normal_time_score ?? fixture.home_score}–{fixture.away_normal_time_score ?? fixture.away_score} · FET goals: {fixture.home_extra_time_score ?? 0}–{fixture.away_extra_time_score ?? 0} · Final: {fixture.home_score}–{fixture.away_score}{fixture.decided_by === 'manual' ? ' · manual decider' : ''}</p>}
                       {doubleForfeit && <p className="muted">{stage === 'knockout' ? 'Double forfeit: 0–0, both teams eliminated. No team advances or drops into the consolation bracket.' : 'Double forfeit: 0–0, both teams receive a loss and zero points.'}</p>}
                       {fixture.status === 'forfeit' && !doubleForfeit && <p className="muted">Forfeit ruling recorded.</p>}
                       {fixture.status === 'postponed' && <p className="muted">Rescheduled fixture — still counts as {fixture.round} when played.</p>}
@@ -564,10 +629,10 @@ export default function FixturesManager({
                       {isEditing && !resultLockReason ? (
                         <div className="result-editor">
                           <div className="mini-grid">
-                            <label>Home score
+                            <label>{stage === 'knockout' ? 'Home score after normal time' : 'Home score'}
                               <input type="number" min="0" disabled={ruling === 'double_forfeit'} value={ruling === 'double_forfeit' ? 0 : scores.home_score} onChange={(event) => setScores((current) => ({ ...current, home_score: event.target.value }))} />
                             </label>
-                            <label>Away score
+                            <label>{stage === 'knockout' ? 'Away score after normal time' : 'Away score'}
                               <input type="number" min="0" disabled={ruling === 'double_forfeit'} value={ruling === 'double_forfeit' ? 0 : scores.away_score} onChange={(event) => setScores((current) => ({ ...current, away_score: event.target.value }))} />
                             </label>
                             <label>Official ruling
@@ -582,8 +647,49 @@ export default function FixturesManager({
                               <input value={resultNote} onChange={(event) => setResultNote(event.target.value)} placeholder="Required — why neither team fulfilled the fixture" />
                             </label>}
                           </div>
+
+                          {stage === 'knockout' && ruling === 'played' && draft.snapshot && !draft.oneLeg && <div className="ready-banner">
+                            <strong>Live tie calculation</strong>
+                            <span>Aggregate after normal time: {draft.snapshot.firstAgg}–{draft.snapshot.secondAgg} · Away goals: {draft.snapshot.firstAway}–{draft.snapshot.secondAway}{draft.snapshot.reason === 'away_goals' ? ' · decided on away goals' : draft.snapshot.reason === 'aggregate' ? ' · decided on aggregate' : draft.requiresFet ? ' · level: FET required' : ''}</span>
+                          </div>}
+
+                          {draft.requiresFet && ruling === 'played' && <div className="fet-editor">
+                            <p className="eyebrow">Fictional Extra Time</p>
+                            <p className="muted">The tie is still level after {draft.oneLeg ? 'normal time' : 'aggregate and away goals'}. Enter the match stats and the app awards FET goals progressively.</p>
+                            <div className="mini-grid">
+                              <label>{homeName} possession %
+                                <input type="number" min="0" max="100" step="0.1" value={fetStats.home_possession} onChange={(event) => { setFetStats((current) => ({ ...current, home_possession: event.target.value })); setManualFetWinner(''); }} />
+                              </label>
+                              <label>{awayName} possession %
+                                <input type="number" min="0" max="100" step="0.1" value={fetStats.away_possession} onChange={(event) => { setFetStats((current) => ({ ...current, away_possession: event.target.value })); setManualFetWinner(''); }} />
+                              </label>
+                              <label>{homeName} shots on target
+                                <input type="number" min="0" step="1" value={fetStats.home_shots_on_target} onChange={(event) => { setFetStats((current) => ({ ...current, home_shots_on_target: event.target.value })); setManualFetWinner(''); }} />
+                              </label>
+                              <label>{awayName} shots on target
+                                <input type="number" min="0" step="1" value={fetStats.away_shots_on_target} onChange={(event) => { setFetStats((current) => ({ ...current, away_shots_on_target: event.target.value })); setManualFetWinner(''); }} />
+                              </label>
+                            </div>
+                            {fet?.valid && <div className="ready-banner ready">
+                              <strong>FET: {homeName} {fet.homeGoals}–{fet.awayGoals} {awayName}</strong>
+                              <span>{fet.steps.map((step) => describeFetStep(step, homeName, awayName)).join(' · ')}</span>
+                              {fet.resolved && <span>Final score after FET: {draftHome + fet.homeGoals}–{draftAway + fet.awayGoals}</span>}
+                              {!fet.resolved && <>
+                                <span>Every FET criterion is exactly level. Use a manual organiser decision rather than altering the source stats.</span>
+                                <label>Manual decider
+                                  <select value={manualFetWinner} onChange={(event) => setManualFetWinner(event.target.value)}>
+                                    <option value="">Choose winner</option>
+                                    <option value="home">{homeName}</option>
+                                    <option value="away">{awayName}</option>
+                                  </select>
+                                </label>
+                                {manualFetWinner && <span>Manual deciding FET goal: {manualFetWinner === 'home' ? homeName : awayName} +1.</span>}
+                              </>}
+                            </div>}
+                          </div>}
+
                           <p className="muted">{stage === 'knockout'
-                            ? 'Single forfeits use the normal 3–0 minimum (or a better played scoreline). A double forfeit is recorded 0–0, eliminates both teams, records both managers in the Forfeits register, and leaves the bracket place vacant so the paired next-round opponent receives a BYE.'
+                            ? 'Enter the score at the end of normal time. For two-leg ties the app calculates aggregate and away goals automatically. FET appears only when the tie remains level; its goals are derived from possession, shots on target, then possession + shots on target as the tiebreak. If every criterion is exactly tied, the organiser can record the manual decider without falsifying the stats.'
                             : 'Single forfeits use the normal 3–0 minimum (or a better played scoreline). A double forfeit is always recorded 0–0, gives both teams a loss and zero points, and records both managers in the Forfeits register.'}</p>
                           <div className="button-row">
                             <button type="button" onClick={() => saveOfficialResult(fixture)} disabled={loading}>Save official result</button>
