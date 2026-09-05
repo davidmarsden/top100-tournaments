@@ -40,6 +40,10 @@ function restoreScore(score) {
   }
 }
 
+function removeTeamPills(card) {
+  card.querySelectorAll('.forfeit-team-pill').forEach((pill) => pill.remove());
+}
+
 function addBadge(card, forfeit) {
   const score = card.querySelector('.fixture-score');
   if (!score || !forfeit) return;
@@ -80,6 +84,28 @@ function addBadge(card, forfeit) {
 
   layout.append(home, separator, away);
   score.appendChild(layout);
+}
+
+function addDoubleForfeitBadges(card, forfeits) {
+  const teams = [...card.querySelectorAll('.fixture-teams > strong')];
+  if (teams.length !== 2) return;
+
+  const bySide = new Map(forfeits.map((forfeit) => [forfeit.side, forfeit]));
+  [['home', teams[0]], ['away', teams[1]]].forEach(([side, teamNode]) => {
+    const forfeit = bySide.get(side);
+    if (!forfeit) return;
+
+    const pill = document.createElement('span');
+    pill.className = 'forfeit-result-pill forfeit-team-pill';
+    pill.textContent = 'F';
+    pill.title = `Forfeit by ${forfeit.team}`;
+    pill.setAttribute('aria-label', `Forfeit by ${forfeit.team}`);
+    teamNode.appendChild(pill);
+  });
+
+  const note = [...card.querySelectorAll('p.muted')]
+    .find((node) => node.textContent.trim().toLowerCase().startsWith('double forfeit'));
+  if (note) note.textContent = 'Double forfeit - both teams disqualified';
 }
 
 async function resolveDisplayedTournamentId() {
@@ -161,7 +187,11 @@ async function loadForfeitMatches() {
         forfeit = { side: 'away', team: match.away_entry?.teams?.name || '' };
       }
 
-      if (forfeit?.team) forfeitsByMatch.set(String(match.id), forfeit);
+      if (!forfeit?.team) return;
+      const key = String(match.id);
+      const existing = forfeitsByMatch.get(key) || [];
+      if (!existing.some((item) => item.side === forfeit.side)) existing.push(forfeit);
+      forfeitsByMatch.set(key, existing);
     });
   }
 
@@ -199,6 +229,7 @@ async function applyForfeitBadges() {
     hub.querySelectorAll('.fixture-card').forEach((card) => {
       const score = card.querySelector('.fixture-score');
       if (score) restoreScore(score);
+      removeTeamPills(card);
       card.removeAttribute('data-match-id');
 
       const candidates = matchesByRenderKey.get(renderedCardKey(card));
@@ -206,8 +237,9 @@ async function applyForfeitBadges() {
       if (!matchId) return;
 
       card.dataset.matchId = matchId;
-      const forfeit = cachedPayload.forfeitsByMatch.get(matchId);
-      if (forfeit) addBadge(card, forfeit);
+      const forfeits = cachedPayload.forfeitsByMatch.get(matchId) || [];
+      if (forfeits.length >= 2) addDoubleForfeitBadges(card, forfeits);
+      else if (forfeits.length === 1) addBadge(card, forfeits[0]);
     });
   } finally {
     applying = false;

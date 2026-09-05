@@ -15,6 +15,7 @@ import './public-forfeit-badges.css';
 import './reports-exports.css';
 import './public-matchday-boundaries.js';
 import './public-forfeit-badges.js';
+import './public-double-forfeit-badges.js';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
