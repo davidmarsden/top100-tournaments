@@ -244,7 +244,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
     const { error } = await supabase.rpc('react_to_match_comment', { comment_id: commentId, reaction_key: reactionKey });
     setReactingId(null);
     if (error) return setStatus('Reaction failed: ' + error.message);
-    setComments((rows) => rows.map((row) => row.id === commentId ? { ...row, reactions: { ...reactionsFor(row), [reactionKey]: Number(reactionsFor(row)[reactionKey] || 0) + 1 } : row));
+    setComments((rows) => rows.map((row) => row.id === commentId ? { ...row, reactions: { ...reactionsFor(row), [reactionKey]: Number(reactionsFor(row)[reactionKey] || 0) + 1 } } : row));
   }
 
   async function report(item) {
