@@ -16,7 +16,6 @@ declare
   match_row public.matches%rowtype;
   penalty_text text;
 begin
-  if not public.is_admin() then raise exception 'Admin access required'; end if;
   if nullif(trim(note), '') is null then raise exception 'A reason is required for a double forfeit'; end if;
 
   select * into match_row
@@ -25,6 +24,9 @@ begin
   for update;
 
   if not found then raise exception 'Match not found'; end if;
+  if not public.can_manage_tournament(match_row.tournament_id) then
+    raise exception 'Tournament organiser access required';
+  end if;
   if match_row.stage not in ('group', 'knockout') then
     raise exception 'Double forfeits are supported only for group-stage and knockout matches';
   end if;
@@ -48,7 +50,7 @@ begin
   );
 
   -- Finalise any open manager submission before changing the match. This means
-  -- the match trigger sees the admin ruling, not an open provisional allegation,
+  -- the match trigger sees the organiser ruling, not an open provisional allegation,
   -- and can safely create both permanent forfeit rows in the same transaction.
   update public.manager_result_submissions
   set status = 'final',
