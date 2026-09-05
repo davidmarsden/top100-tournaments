@@ -343,7 +343,7 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
 
     const [entriesResult, matchesResult, presetsResult, forfeitsResult] = await Promise.all([
       supabase.from('tournament_entries').select('id, tournament_id, team_id, manager_id, seed, rating, group_code, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
-      supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, bracket, home_placeholder, away_placeholder, groups(id, code, name)').eq('tournament_id', tournamentId).order('stage', { ascending: true }).order('bracket', { ascending: true }).order('round', { ascending: true }).order('match_order', { ascending: true }).order('leg', { ascending: true }),
+      supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, decided_by, bracket, home_placeholder, away_placeholder, groups(id, code, name)').eq('tournament_id', tournamentId).order('stage', { ascending: true }).order('bracket', { ascending: true }).order('round', { ascending: true }).order('match_order', { ascending: true }).order('leg', { ascending: true }),
       supabase.from('tournament_round_dates').select('bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
       supabase.from('forfeits').select('id, match_id, manager_id'),
     ]);
