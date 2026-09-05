@@ -117,3 +117,141 @@ $$;
 
 revoke all on function public.guard_assistant_match_update() from public, anon, authenticated;
 grant execute on function public.guard_assistant_match_update() to service_role;
+
+-- A double-forfeit ruling replaces any previously recorded sporting result.
+-- Clear all normal-time, FET, penalty and source-stat evidence on the selected
+-- fixture and every sibling leg so stale FET data can never survive the ruling.
+create or replace function public.admin_record_double_forfeit(
+  target_match_id bigint,
+  note text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  match_row public.matches%rowtype;
+  penalty_text text;
+  sibling_ids bigint[];
+begin
+  if nullif(trim(note), '') is null then raise exception 'A reason is required for a double forfeit'; end if;
+
+  select * into match_row
+  from public.matches
+  where id = target_match_id
+  for update;
+
+  if not found then raise exception 'Match not found'; end if;
+  if not public.can_manage_tournament(match_row.tournament_id) then
+    raise exception 'Tournament organiser access required';
+  end if;
+  if match_row.stage not in ('group', 'knockout') then
+    raise exception 'Double forfeits are supported only for group-stage and knockout matches';
+  end if;
+  if match_row.home_entry_id is null or match_row.away_entry_id is null then
+    raise exception 'Both entrants are required';
+  end if;
+
+  penalty_text := case
+    when match_row.stage = 'knockout' then 'Double forfeit — both teams eliminated'
+    else 'Double forfeit — 0 points'
+  end;
+
+  insert into public.match_result_revisions (
+    match_id, changed_by, action,
+    previous_status, previous_home_score, previous_away_score,
+    new_status, new_home_score, new_away_score, reason
+  ) values (
+    match_row.id, auth.uid(), 'forfeit',
+    match_row.status, match_row.home_score, match_row.away_score,
+    'forfeit', 0, 0, trim(note)
+  );
+
+  update public.manager_result_submissions
+  set status = 'final',
+      resolved_by = auth.uid(),
+      resolved_home_score = 0,
+      resolved_away_score = 0,
+      resolution_note = trim(note),
+      resolved_at = now(),
+      updated_at = now()
+  where match_id = target_match_id;
+
+  if match_row.stage = 'knockout' then
+    select array_agg(m.id)
+      into sibling_ids
+    from public.matches m
+    where m.tournament_id = match_row.tournament_id
+      and m.stage = 'knockout'
+      and coalesce(m.bracket, 'Cup') = coalesce(match_row.bracket, 'Cup')
+      and m.round = match_row.round
+      and m.match_order = match_row.match_order
+      and m.id <> target_match_id;
+
+    update public.matches
+    set home_score = 0,
+        away_score = 0,
+        home_normal_time_score = null,
+        away_normal_time_score = null,
+        home_extra_time_score = null,
+        away_extra_time_score = null,
+        home_penalty_score = null,
+        away_penalty_score = null,
+        home_possession = null,
+        away_possession = null,
+        home_shots_on_target = null,
+        away_shots_on_target = null,
+        winner_entry_id = null,
+        loser_entry_id = null,
+        status = 'forfeit',
+        decided_by = 'double_forfeit',
+        played_at = coalesce(played_at, now())
+    where id = any(coalesce(sibling_ids, array[]::bigint[]));
+
+    update public.manager_result_submissions
+    set status = 'final',
+        resolved_by = auth.uid(),
+        resolved_home_score = 0,
+        resolved_away_score = 0,
+        resolution_note = trim(note),
+        resolved_at = now(),
+        updated_at = now()
+    where match_id = any(coalesce(sibling_ids, array[]::bigint[]));
+  end if;
+
+  update public.matches
+  set home_score = 0,
+      away_score = 0,
+      home_normal_time_score = null,
+      away_normal_time_score = null,
+      home_extra_time_score = null,
+      away_extra_time_score = null,
+      home_penalty_score = null,
+      away_penalty_score = null,
+      home_possession = null,
+      away_possession = null,
+      home_shots_on_target = null,
+      away_shots_on_target = null,
+      winner_entry_id = null,
+      loser_entry_id = null,
+      status = 'forfeit',
+      decided_by = case when match_row.stage = 'knockout' then 'double_forfeit' else null end,
+      played_at = coalesce(played_at, now())
+  where id = target_match_id;
+
+  update public.forfeits
+  set reason = trim(note),
+      penalty = penalty_text,
+      affects_prize_draw = true,
+      source = 'admin'
+  where match_id = target_match_id;
+
+  if match_row.stage = 'knockout' and sibling_ids is not null then
+    delete from public.forfeits where match_id = any(sibling_ids);
+  end if;
+end;
+$$;
+
+revoke all on function public.admin_record_double_forfeit(bigint, text) from public, anon;
+grant execute on function public.admin_record_double_forfeit(bigint, text) to authenticated;
