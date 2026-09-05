@@ -19,6 +19,11 @@ export function normalTimeScore(match, side) {
 }
 
 export function calculateFetFromStats({ homePossession, awayPossession, homeShotsOnTarget, awayShotsOnTarget } = {}) {
+  const raw = [homePossession, awayPossession, homeShotsOnTarget, awayShotsOnTarget];
+  if (raw.some((value) => value === '' || value === null || value === undefined)) {
+    return { valid: false, homeGoals: 0, awayGoals: 0, steps: [], resolved: false };
+  }
+
   const hp = Number(homePossession);
   const ap = Number(awayPossession);
   const hs = Number(homeShotsOnTarget);
@@ -26,6 +31,8 @@ export function calculateFetFromStats({ homePossession, awayPossession, homeShot
   const valid = [hp, ap, hs, as].every(Number.isFinite)
     && hp >= 0 && hp <= 100
     && ap >= 0 && ap <= 100
+    && Math.abs((hp + ap) - 100) < 0.11
+    && Number.isInteger(hs) && Number.isInteger(as)
     && hs >= 0 && as >= 0;
 
   if (!valid) return { valid: false, homeGoals: 0, awayGoals: 0, steps: [], resolved: false };
