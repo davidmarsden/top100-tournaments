@@ -186,7 +186,7 @@ function buildTieSummaries(fixtures) {
 function rulingLabel(ruling) {
   if (ruling === 'away_forfeited') return 'Away team forfeited — home win';
   if (ruling === 'home_forfeited') return 'Home team forfeited — away win';
-  if (ruling === 'double_forfeit') return 'Both teams forfeited — 0-0, zero points each';
+  if (ruling === 'double_forfeit') return 'Both teams forfeited — 0-0';
   return 'Played normally';
 }
 
@@ -555,7 +555,7 @@ export default function FixturesManager({
                         <strong>{awayName}</strong>
                       </div>
                       <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {knockoutOnly && stage === 'knockout' ? 'single leg' : legLabel(fixture.leg || 1)}</p>
-                      {doubleForfeit && <p className="muted">Double forfeit: 0–0, both teams receive a loss and zero points.</p>}
+                      {doubleForfeit && <p className="muted">{stage === 'knockout' ? 'Double forfeit: 0–0, both teams eliminated. No team advances or drops into the consolation bracket.' : 'Double forfeit: 0–0, both teams receive a loss and zero points.'}</p>}
                       {fixture.status === 'forfeit' && !doubleForfeit && <p className="muted">Forfeit ruling recorded.</p>}
                       {fixture.status === 'postponed' && <p className="muted">Rescheduled fixture — still counts as {fixture.round} when played.</p>}
                       {tieSummary && <p className="status">{tieSummary}</p>}
@@ -575,14 +575,16 @@ export default function FixturesManager({
                                 <option value="played">Played normally</option>
                                 <option value="away_forfeited">Away team forfeited — home win</option>
                                 <option value="home_forfeited">Home team forfeited — away win</option>
-                                {stage === 'group' && <option value="double_forfeit">Both teams forfeited — 0-0, zero points</option>}
+                                <option value="double_forfeit">{stage === 'knockout' ? 'Both teams forfeited — both eliminated' : 'Both teams forfeited — 0-0, zero points'}</option>
                               </select>
                             </label>
                             {ruling === 'double_forfeit' && <label>Double-forfeit reason
                               <input value={resultNote} onChange={(event) => setResultNote(event.target.value)} placeholder="Required — why neither team fulfilled the fixture" />
                             </label>}
                           </div>
-                          <p className="muted">Single forfeits use the normal 3–0 minimum (or a better played scoreline). A double forfeit is always recorded 0–0, gives both teams a loss and zero points, and records both managers in the Forfeits register.</p>
+                          <p className="muted">{stage === 'knockout'
+                            ? 'Single forfeits use the normal 3–0 minimum (or a better played scoreline). A double forfeit is recorded 0–0, eliminates both teams, records both managers in the Forfeits register, and leaves the bracket place vacant so the paired next-round opponent receives a BYE.'
+                            : 'Single forfeits use the normal 3–0 minimum (or a better played scoreline). A double forfeit is always recorded 0–0, gives both teams a loss and zero points, and records both managers in the Forfeits register.'}</p>
                           <div className="button-row">
                             <button type="button" onClick={() => saveOfficialResult(fixture)} disabled={loading}>Save official result</button>
                             <button type="button" className="secondary" onClick={cancelEdit} disabled={loading}>Cancel</button>
