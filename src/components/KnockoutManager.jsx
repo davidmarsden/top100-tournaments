@@ -37,6 +37,13 @@ function isDoubleForfeit(match) {
     && !match.loser_entry_id;
 }
 
+function isVacantTieMarker(match) {
+  return match.status === 'voided'
+    && match.decided_by === 'double_forfeit'
+    && !match.home_entry_id
+    && !match.away_entry_id;
+}
+
 function roundKey(round) {
   return round.round_name || round.name || round.round;
 }
@@ -211,9 +218,11 @@ function winnerLoserFor(match, homeScore, awayScore) {
 
 function resolveTie(legs) {
   const ordered = [...legs].sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
+  if (ordered.length && ordered.every(isVacantTieMarker)) return { reason: 'double_forfeit' };
   if (ordered.some((leg) => !isCompleted(leg))) return { reason: 'incomplete' };
   const first = ordered[0];
   if (!first.away_entry_id) return { winnerId: first.home_entry_id, loserId: null, reason: 'bye' };
+  if (ordered.every(isDoubleForfeit)) return { winnerId: null, loserId: null, reason: 'double_forfeit' };
   const firstId = first.home_entry_id;
   const secondId = first.away_entry_id;
   let firstAgg = 0;
@@ -242,22 +251,27 @@ function resolveTie(legs) {
   return { reason: 'fet_required' };
 }
 
-function tieWinners(source) {
+function tieOutcomes(source) {
   const ties = new Map();
   source.forEach((match) => {
     if (!ties.has(match.match_order)) ties.set(match.match_order, []);
     ties.get(match.match_order).push(match);
   });
 
-  const winners = [];
+  const outcomes = [];
   const unresolved = [];
   [...ties.entries()].sort(([a], [b]) => Number(a) - Number(b)).forEach(([matchOrder, legs]) => {
     const result = resolveTie(legs);
-    if (result.winnerId) winners.push(result.winnerId);
-    else unresolved.push({ matchOrder, reason: result.reason });
+    if (result.winnerId) {
+      outcomes.push({ matchOrder, winnerId: result.winnerId, reason: result.reason || 'winner' });
+    } else if (result.reason === 'double_forfeit') {
+      outcomes.push({ matchOrder, winnerId: null, reason: 'double_forfeit' });
+    } else {
+      unresolved.push({ matchOrder, reason: result.reason });
+    }
   });
 
-  return { winners, unresolved };
+  return { outcomes, unresolved };
 }
 
 function entryIdsFromMatches(matches) {
@@ -329,7 +343,7 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
 
     const [entriesResult, matchesResult, presetsResult, forfeitsResult] = await Promise.all([
       supabase.from('tournament_entries').select('id, tournament_id, team_id, manager_id, seed, rating, group_code, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
-      supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, bracket, home_placeholder, away_placeholder, groups(id, code, name)').eq('tournament_id', tournamentId).order('stage', { ascending: true }).order('bracket', { ascending: true }).order('round', { ascending: true }).order('match_order', { ascending: true }).order('leg', { ascending: true }),
+      supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, status, decided_by, bracket, home_placeholder, away_placeholder, groups(id, code, name)').eq('tournament_id', tournamentId).order('stage', { ascending: true }).order('bracket', { ascending: true }).order('round', { ascending: true }).order('match_order', { ascending: true }).order('leg', { ascending: true }),
       supabase.from('tournament_round_dates').select('bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
       supabase.from('forfeits').select('id, match_id, manager_id'),
     ]);
@@ -419,14 +433,14 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
     const sourceMatches = bracketRound(knockoutMatches, roundTemplates, sourceBracket, sourceRoundName);
     if (!sourceMatches.length) return setStatus(`Generate ${sourceBracket} ${sourceRoundName} first.`);
     const realSourceMatches = sourceMatches.filter((match) => match.away_entry_id);
-    if (realSourceMatches.some((match) => !isCompleted(match) || !match.loser_entry_id)) return setStatus(`Finish ${sourceBracket} ${sourceRoundName} first.`);
+    if (realSourceMatches.some((match) => !isCompleted(match) || (!match.loser_entry_id && !isDoubleForfeit(match)))) return setStatus(`Finish ${sourceBracket} ${sourceRoundName} first.`);
 
     const cupParticipantIds = entryIdsFromMatches(sourceMatches);
     const shieldExcluded = new Set([...cupParticipantIds, ...ineligibleEntryIds]);
     const targetHomeSlots = openingRoundTarget(selectedTournament, 'Shield', sourceMatches);
     const homeTeams = qualifiersForRules(tables, qualificationRules, 'Shield', firstRoundName, { targetSlots: targetHomeSlots, excludeEntryIds: shieldExcluded });
     const cupLosers = realSourceMatches
-      .filter((match) => !ineligibleEntryIds.has(match.loser_entry_id))
+      .filter((match) => match.loser_entry_id && !ineligibleEntryIds.has(match.loser_entry_id))
       .map((match, index) => ({ entry_id: match.loser_entry_id, team_name: entryName(entries, match.loser_entry_id, `${sourceBracket} loser ${index + 1}`) }));
     const awaySlots = [...cupLosers];
     while (awaySlots.length < homeTeams.length) awaySlots.push({ bye: true, team_name: 'BYE' });
@@ -456,11 +470,13 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
       };
     });
 
-    await insertMatches(rows, `Shield ${firstRoundName} saved with ${homeTeams.length} eligible group qualifier(s) and ${cupLosers.length} eligible drop-in loser(s).`);
+    const doubleForfeitCount = realSourceMatches.filter(isDoubleForfeit).length;
+    const vacancyText = doubleForfeitCount ? ` ${doubleForfeitCount} double-forfeit Cup place(s) became Shield BYEs.` : '';
+    await insertMatches(rows, `Shield ${firstRoundName} saved with ${homeTeams.length} eligible group qualifier(s) and ${cupLosers.length} eligible drop-in loser(s).${vacancyText}`);
   }
 
   async function autoFillKnockout() {
-    const targets = knockoutMatches.filter((match) => !isCompleted(match));
+    const targets = knockoutMatches.filter((match) => !isCompleted(match) && match.status !== 'voided');
     if (!targets.length) return setStatus('No outstanding knockout fixtures to auto-fill.');
     setLoading(true);
     for (const match of targets) {
@@ -487,25 +503,79 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
     const nextName = roundKey(next);
     if (bracketRound(knockoutMatches, roundTemplates, bracket, nextName).length > 0) return setStatus(`${bracket} ${nextName} already exists.`);
 
-    const { winners, unresolved } = tieWinners(bracketRound(knockoutMatches, roundTemplates, bracket, latestName));
+    const { outcomes, unresolved } = tieOutcomes(bracketRound(knockoutMatches, roundTemplates, bracket, latestName));
     if (unresolved.length) return setStatus(`Cannot generate ${bracket} ${nextName}: unresolved ties remain.`);
 
     const rows = [];
-    for (let index = 0; index < winners.length; index += 2) {
-      const homeId = winners[index];
-      const awayId = winners[index + 1];
-      if (!awayId) continue;
+    let byeCount = 0;
+    let vacantCount = 0;
+    for (let index = 0; index < outcomes.length; index += 2) {
+      const firstOutcome = outcomes[index];
+      const secondOutcome = outcomes[index + 1];
+      const firstId = firstOutcome?.winnerId || null;
+      const secondId = secondOutcome?.winnerId || null;
       const order = index / 2 + 1;
+
+      if (!firstId && !secondId) {
+        vacantCount += 1;
+        rows.push({
+          tournament_id: tournamentId,
+          stage: 'knockout',
+          round: nextName,
+          leg: 1,
+          match_order: order,
+          home_entry_id: null,
+          away_entry_id: null,
+          home_placeholder: 'NO QUALIFIER',
+          away_placeholder: 'NO QUALIFIER',
+          bracket,
+          fixture_date: dateFor(presets, bracket, nextName, 1),
+          home_score: null,
+          away_score: null,
+          winner_entry_id: null,
+          loser_entry_id: null,
+          decided_by: 'double_forfeit',
+          status: 'voided',
+        });
+        continue;
+      }
+
+      if (!firstId || !secondId) {
+        byeCount += 1;
+        const winnerId = firstId || secondId;
+        const sourcePosition = firstId ? index + 1 : index + 2;
+        rows.push({
+          tournament_id: tournamentId,
+          stage: 'knockout',
+          round: nextName,
+          leg: 1,
+          match_order: order,
+          home_entry_id: winnerId,
+          away_entry_id: null,
+          home_placeholder: entryName(entries, winnerId, 'Winner ' + sourcePosition),
+          away_placeholder: 'BYE',
+          bracket,
+          fixture_date: dateFor(presets, bracket, nextName, 1),
+          home_score: 3,
+          away_score: 0,
+          winner_entry_id: winnerId,
+          loser_entry_id: null,
+          decided_by: 'bye',
+          status: 'played',
+        });
+        continue;
+      }
+
       rows.push({
         tournament_id: tournamentId,
         stage: 'knockout',
         round: nextName,
         leg: 1,
         match_order: order,
-        home_entry_id: homeId,
-        away_entry_id: awayId,
-        home_placeholder: entryName(entries, homeId, 'Winner ' + (index + 1)),
-        away_placeholder: entryName(entries, awayId, 'Winner ' + (index + 2)),
+        home_entry_id: firstId,
+        away_entry_id: secondId,
+        home_placeholder: entryName(entries, firstId, 'Winner ' + (index + 1)),
+        away_placeholder: entryName(entries, secondId, 'Winner ' + (index + 2)),
         bracket,
         fixture_date: dateFor(presets, bracket, nextName, 1),
         status: 'scheduled',
@@ -517,10 +587,10 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
           round: nextName,
           leg: 2,
           match_order: order,
-          home_entry_id: awayId,
-          away_entry_id: homeId,
-          home_placeholder: entryName(entries, awayId, 'Winner ' + (index + 2)),
-          away_placeholder: entryName(entries, homeId, 'Winner ' + (index + 1)),
+          home_entry_id: secondId,
+          away_entry_id: firstId,
+          home_placeholder: entryName(entries, secondId, 'Winner ' + (index + 2)),
+          away_placeholder: entryName(entries, firstId, 'Winner ' + (index + 1)),
           bracket,
           fixture_date: dateFor(presets, bracket, nextName, 2),
           status: 'scheduled',
@@ -528,7 +598,10 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
       }
     }
 
-    await insertMatches(rows, `${bracket} ${nextName} generated from round templates.`);
+    const vacancyText = byeCount || vacantCount
+      ? ` ${byeCount} BYE(s) created from vacated double-forfeit place(s)${vacantCount ? `; ${vacantCount} completely vacant tie(s) carried forward` : ''}.`
+      : '';
+    await insertMatches(rows, `${bracket} ${nextName} generated from round templates.${vacancyText}`);
   }
 
   if (!selectedTournament) return <p className="muted">Create or select a tournament first.</p>;
@@ -542,7 +615,7 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
         <div>
           <p className="eyebrow">Knockout generator</p>
           <h3>{playedGroupMatches.length} / {groupMatches.length} group fixtures played</h3>
-          <p className="muted">Knockout rounds, legs, byes and qualification sources now come from database templates and rules. Double forfeits count as played losses for both teams with zero points.</p>
+          <p className="muted">Knockout rounds, legs, byes and qualification sources now come from database templates and rules. Group double forfeits count as played losses with zero points; knockout double forfeits eliminate both teams and vacate the bracket place.</p>
         </div>
         <div className="button-row">
           <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload knockout data</button>
@@ -554,7 +627,7 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
               ? <button key={bracket} type="button" className="secondary" onClick={() => generateNextRoundForBracket(bracket)} disabled={loading || !next}>Generate {bracket} {next ? roundKey(next) : 'next'}</button>
               : <button key={bracket} type="button" onClick={() => generateOpeningRound(bracket)} disabled={loading || !groupComplete}>Generate {bracket} {first ? roundKey(first) : 'opening round'}</button>;
           })}
-          <button type="button" className="secondary" onClick={autoFillKnockout} disabled={loading || knockoutMatches.every(isCompleted)}>Auto-fill knockout test scores</button>
+          <button type="button" className="secondary" onClick={autoFillKnockout} disabled={loading || knockoutMatches.filter((match) => match.status !== 'voided').every(isCompleted)}>Auto-fill knockout test scores</button>
         </div>
       </div>
 
@@ -596,5 +669,5 @@ function BracketColumn({ title, type, rounds, matches }) {
 
 function KnockoutList({ matches }) {
   if (!matches.length) return <p className="muted">No matches yet.</p>;
-  return <div className="knockout-list">{matches.map((match) => <article className={isCompleted(match) ? 'knockout-card played' : 'knockout-card'} key={(match.bracket || 'draw') + '-' + match.round + '-' + match.match_order + '-' + (match.leg || 1) + '-' + match.home_entry_id}><span>{match.bracket || 'Knockout'} · {match.round || 'Round'}{match.leg ? ' · ' + (Number(match.leg) === 1 ? '1st leg' : '2nd leg') : ''}</span><strong>{match.home_placeholder}</strong><em>{isCompleted(match) ? `${match.home_score} - ${match.away_score}` : 'v'}</em><strong>{match.away_placeholder}</strong></article>)}</div>;
+  return <div className="knockout-list">{matches.map((match) => <article className={isCompleted(match) ? 'knockout-card played' : 'knockout-card'} key={(match.bracket || 'draw') + '-' + match.round + '-' + match.match_order + '-' + (match.leg || 1) + '-' + (match.home_entry_id || 'vacant')}><span>{match.bracket || 'Knockout'} · {match.round || 'Round'}{match.leg ? ' · ' + (Number(match.leg) === 1 ? '1st leg' : '2nd leg') : ''}</span><strong>{match.home_placeholder}</strong><em>{isVacantTieMarker(match) ? 'vacant' : isCompleted(match) ? `${match.home_score} - ${match.away_score}` : 'v'}</em><strong>{match.away_placeholder}</strong></article>)}</div>;
 }
