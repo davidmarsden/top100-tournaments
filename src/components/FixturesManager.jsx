@@ -179,14 +179,9 @@ function rulingLabel(ruling) {
 
 function scoreLabel(fixture) {
   if (!isCompleted(fixture)) return 'v';
-  const home90 = Number(fixture.home_score || 0);
-  const away90 = Number(fixture.away_score || 0);
   const hasFet = fixture.home_extra_time_score !== null && fixture.home_extra_time_score !== undefined
     && fixture.away_extra_time_score !== null && fixture.away_extra_time_score !== undefined;
-  if (!hasFet) return `${home90} - ${away90}`;
-  const homeFet = Number(fixture.home_extra_time_score || 0);
-  const awayFet = Number(fixture.away_extra_time_score || 0);
-  return `${home90 + homeFet} - ${away90 + awayFet} FET`;
+  return `${fixture.home_score ?? 0} - ${fixture.away_score ?? 0}${hasFet ? ' FET' : ''}`;
 }
 
 export default function FixturesManager({ selectedTournament, preview, stage = 'group', onlyOutstanding = false, onlyCompleted = false, onDataChanged }) {
@@ -231,7 +226,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     setStatus('Loading from database...');
     let query = supabase
       .from('matches')
-      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_extra_time_score, away_extra_time_score, home_possession, away_possession, home_shots_on_target, away_shots_on_target, winner_entry_id, loser_entry_id, status, played_at, decided_by, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
+      .select('id, tournament_id, group_id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, home_possession, away_possession, home_shots_on_target, away_shots_on_target, winner_entry_id, loser_entry_id, status, played_at, decided_by, home_placeholder, away_placeholder, bracket, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, seed, teams(id, name), managers(id, name, display_name))')
       .eq('tournament_id', tournamentId)
       .order('bracket', { ascending: true })
       .order('round', { ascending: true })
@@ -254,7 +249,10 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     const lockReason = knockoutResultLockReason(fixture, fixtures, knockoutOnly);
     if (lockReason) return setStatus(lockReason);
     setEditingId(fixture.id);
-    setScores({ home_score: fixture.home_score ?? '', away_score: fixture.away_score ?? '' });
+    setScores({
+      home_score: fixture.home_normal_time_score ?? fixture.home_score ?? '',
+      away_score: fixture.away_normal_time_score ?? fixture.away_score ?? '',
+    });
     setFetStats({
       home_possession: fixture.home_possession ?? '',
       away_possession: fixture.away_possession ?? '',
@@ -292,27 +290,32 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
   }
 
   async function updateResult(fixture, homeScore, awayScore, resultStatus = 'played', resolution = {}) {
+    const hasFet = resolution.decided_by === 'fictional_extra_time';
+    const storedHomeScore = homeScore + Number(resolution.home_extra_time_score || 0);
+    const storedAwayScore = awayScore + Number(resolution.away_extra_time_score || 0);
     let winnerEntryId = resolution.winner_entry_id ?? null;
     let loserEntryId = resolution.loser_entry_id ?? null;
     if (!resolution.overrideWinner) {
-      if (homeScore > awayScore) {
+      if (storedHomeScore > storedAwayScore) {
         winnerEntryId = fixture.home_entry_id;
         loserEntryId = fixture.away_entry_id;
-      } else if (awayScore > homeScore) {
+      } else if (storedAwayScore > storedHomeScore) {
         winnerEntryId = fixture.away_entry_id;
         loserEntryId = fixture.home_entry_id;
       }
     }
 
     return supabase.from('matches').update({
-      home_score: homeScore,
-      away_score: awayScore,
-      home_extra_time_score: resolution.home_extra_time_score ?? null,
-      away_extra_time_score: resolution.away_extra_time_score ?? null,
-      home_possession: resolution.home_possession ?? null,
-      away_possession: resolution.away_possession ?? null,
-      home_shots_on_target: resolution.home_shots_on_target ?? null,
-      away_shots_on_target: resolution.away_shots_on_target ?? null,
+      home_score: storedHomeScore,
+      away_score: storedAwayScore,
+      home_normal_time_score: stage === 'knockout' ? homeScore : null,
+      away_normal_time_score: stage === 'knockout' ? awayScore : null,
+      home_extra_time_score: hasFet ? resolution.home_extra_time_score : null,
+      away_extra_time_score: hasFet ? resolution.away_extra_time_score : null,
+      home_possession: hasFet ? resolution.home_possession : null,
+      away_possession: hasFet ? resolution.away_possession : null,
+      home_shots_on_target: hasFet ? resolution.home_shots_on_target : null,
+      away_shots_on_target: hasFet ? resolution.away_shots_on_target : null,
       decided_by: resolution.decided_by ?? null,
       winner_entry_id: winnerEntryId,
       loser_entry_id: loserEntryId,
@@ -378,7 +381,9 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     const { error } = result;
     if (error) setStatus(`Save failed: ${error.message}`);
     else {
-      setStatus(`Official result saved as ${homeScore}–${awayScore}${resolution.decided_by ? ` after normal time · FET ${resolution.home_extra_time_score}–${resolution.away_extra_time_score}` : ''} · ${rulingLabel(ruling)}.`);
+      const finalHome = homeScore + Number(resolution.home_extra_time_score || 0);
+      const finalAway = awayScore + Number(resolution.away_extra_time_score || 0);
+      setStatus(`Official result saved as ${finalHome}–${finalAway}${resolution.decided_by ? ` after FET (${homeScore}–${awayScore} after normal time)` : ''} · ${rulingLabel(ruling)}.`);
       cancelEdit();
       await loadFixtures();
       await onDataChanged?.();
@@ -463,6 +468,8 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     const { error } = await supabase.from('matches').update({
       home_score: null,
       away_score: null,
+      home_normal_time_score: null,
+      away_normal_time_score: null,
       home_extra_time_score: null,
       away_extra_time_score: null,
       home_possession: null,
@@ -581,7 +588,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
                         <strong>{awayName}</strong>
                       </div>
                       <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {knockoutOnly && stage === 'knockout' ? 'single leg' : legLabel(fixture.leg || 1)}</p>
-                      {fixture.decided_by === 'fictional_extra_time' && <p className="muted">90 mins: {fixture.home_score}–{fixture.away_score} · FET: {fixture.home_extra_time_score ?? 0}–{fixture.away_extra_time_score ?? 0}</p>}
+                      {fixture.decided_by === 'fictional_extra_time' && <p className="muted">Normal time: {fixture.home_normal_time_score ?? fixture.home_score}–{fixture.away_normal_time_score ?? fixture.away_score} · FET goals: {fixture.home_extra_time_score ?? 0}–{fixture.away_extra_time_score ?? 0} · Final: {fixture.home_score}–{fixture.away_score}</p>}
                       {doubleForfeit && <p className="muted">{stage === 'knockout' ? 'Double forfeit: 0–0, both teams eliminated. No team advances or drops into the consolation bracket.' : 'Double forfeit: 0–0, both teams receive a loss and zero points.'}</p>}
                       {fixture.status === 'forfeit' && !doubleForfeit && <p className="muted">Forfeit ruling recorded.</p>}
                       {fixture.status === 'postponed' && <p className="muted">Rescheduled fixture — still counts as {fixture.round} when played.</p>}
