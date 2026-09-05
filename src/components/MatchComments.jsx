@@ -39,6 +39,58 @@ function normaliseComment(item) {
     badge_label: null, reactions: {}, ...item,
   };
 }
+function normalScore(match, side) {
+  const normalKey = side === 'home' ? 'home_normal_time_score' : 'away_normal_time_score';
+  const finalKey = side === 'home' ? 'home_score' : 'away_score';
+  return Number(match?.[normalKey] ?? match?.[finalKey] ?? 0);
+}
+function hasFet(match) {
+  return match?.home_extra_time_score !== null && match?.home_extra_time_score !== undefined
+    && match?.away_extra_time_score !== null && match?.away_extra_time_score !== undefined;
+}
+function knockoutDecisionSummary(rows, currentMatchId) {
+  const ordered = [...rows].sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
+  if (!ordered.length || ordered.some((row) => !isPlayed(row))) return '';
+  const deciding = ordered[ordered.length - 1];
+  if (Number(deciding.id) !== Number(currentMatchId)) return '';
+
+  if (ordered.length === 1) {
+    const row = ordered[0];
+    if (!hasFet(row)) return '';
+    return `Normal time ${normalScore(row, 'home')}–${normalScore(row, 'away')} · FET ${row.home_extra_time_score ?? 0}–${row.away_extra_time_score ?? 0} · final ${row.home_score ?? 0}–${row.away_score ?? 0}`;
+  }
+
+  const first = ordered[0];
+  const firstId = first.home_entry_id;
+  const secondId = first.away_entry_id;
+  if (!firstId || !secondId) return '';
+  let firstAgg = 0;
+  let secondAgg = 0;
+  let firstAway = 0;
+  let secondAway = 0;
+
+  ordered.forEach((row) => {
+    const home = normalScore(row, 'home');
+    const away = normalScore(row, 'away');
+    if (row.home_entry_id === firstId) {
+      firstAgg += home;
+      secondAgg += away;
+      secondAway += away;
+    } else {
+      firstAgg += away;
+      secondAgg += home;
+      firstAway += away;
+    }
+  });
+
+  let detail = `Aggregate after normal time ${firstAgg}–${secondAgg}`;
+  if (firstAgg === secondAgg) {
+    detail += ` · away goals ${firstAway}–${secondAway}`;
+    if (firstAway !== secondAway) detail += ' · decided on away goals';
+    else if (hasFet(deciding)) detail += ` · FET ${deciding.home_extra_time_score ?? 0}–${deciding.away_extra_time_score ?? 0}`;
+  }
+  return detail;
+}
 
 function ConferenceSection({ title, subtitle, comments, onReact, reactingId, signedIn, onReport, reportingId }) {
   return <section className="press-conference-section">
@@ -80,10 +132,33 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
   const [reactingId, setReactingId] = useState(null);
   const [reportingId, setReportingId] = useState(null);
   const [signedIn, setSignedIn] = useState(false);
+  const [knockoutSummary, setKnockoutSummary] = useState('');
 
   useEffect(() => {
     if (hasSupabaseConfig && supabase && match?.id) loadComments();
   }, [match?.id]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadKnockoutSummary() {
+      if (!supabase || match?.stage !== 'knockout' || !isPlayed(match) || !tournamentId || !match?.round || match?.match_order === null || match?.match_order === undefined) {
+        if (active) setKnockoutSummary('');
+        return;
+      }
+      let query = supabase.from('matches')
+        .select('id, leg, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, winner_entry_id, loser_entry_id, decided_by, status')
+        .eq('tournament_id', tournamentId)
+        .eq('stage', 'knockout')
+        .eq('round', match.round)
+        .eq('match_order', match.match_order);
+      if (match.bracket) query = query.eq('bracket', match.bracket);
+      const { data, error } = await query;
+      if (!active) return;
+      setKnockoutSummary(error ? '' : knockoutDecisionSummary(data || [], match.id));
+    }
+    loadKnockoutSummary();
+    return () => { active = false; };
+  }, [match?.id, match?.status, match?.home_score, match?.away_score, match?.decided_by, tournamentId]);
 
   useEffect(() => {
     let active = true;
@@ -169,7 +244,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
     const { error } = await supabase.rpc('react_to_match_comment', { comment_id: commentId, reaction_key: reactionKey });
     setReactingId(null);
     if (error) return setStatus('Reaction failed: ' + error.message);
-    setComments((rows) => rows.map((row) => row.id === commentId ? { ...row, reactions: { ...reactionsFor(row), [reactionKey]: Number(reactionsFor(row)[reactionKey] || 0) + 1 } } : row));
+    setComments((rows) => rows.map((row) => row.id === commentId ? { ...row, reactions: { ...reactionsFor(row), [reactionKey]: Number(reactionsFor(row)[reactionKey] || 0) + 1 } : row));
   }
 
   async function report(item) {
@@ -185,6 +260,7 @@ export default function MatchComments({ match, tournamentId, compact = false }) 
   if (!hasSupabaseConfig || !supabase || !match?.id) return null;
 
   return <div className={compact ? 'match-comments press-conferences compact' : 'match-comments press-conferences'}>
+    {knockoutSummary && <p className="status knockout-decision-summary">{knockoutSummary}</p>}
     {pinnedComment && !open && <article className="match-comment pinned-comment-preview">
       <strong>⭐ Headline quote · {pinnedComment.manager_name}{pinnedComment.club_name ? ` · ${pinnedComment.club_name}` : ''}</strong>
       <p>{pinnedComment.comment}</p>
