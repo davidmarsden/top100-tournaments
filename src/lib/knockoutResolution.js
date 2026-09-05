@@ -12,12 +12,13 @@ export function isDoubleForfeit(match) {
     && !match?.loser_entry_id;
 }
 
-export function calculateFetFromStats({
-  homePossession,
-  awayPossession,
-  homeShotsOnTarget,
-  awayShotsOnTarget,
-} = {}) {
+export function normalTimeScore(match, side) {
+  const normalKey = side === 'home' ? 'home_normal_time_score' : 'away_normal_time_score';
+  const finalKey = side === 'home' ? 'home_score' : 'away_score';
+  return Number(match?.[normalKey] ?? match?.[finalKey] ?? 0);
+}
+
+export function calculateFetFromStats({ homePossession, awayPossession, homeShotsOnTarget, awayShotsOnTarget } = {}) {
   const hp = Number(homePossession);
   const ap = Number(awayPossession);
   const hs = Number(homeShotsOnTarget);
@@ -94,14 +95,16 @@ export function tieSnapshot(legs = [], scoreOverrides = new Map()) {
 
   ordered.forEach((leg) => {
     const override = scoreOverrides.get(leg.id);
+    const storedHome = leg.home_normal_time_score ?? leg.home_score;
+    const storedAway = leg.away_normal_time_score ?? leg.away_score;
     const hasScore = override
       ? Number.isFinite(Number(override.home_score)) && Number.isFinite(Number(override.away_score))
-      : leg.home_score !== null && leg.home_score !== undefined && leg.away_score !== null && leg.away_score !== undefined;
+      : storedHome !== null && storedHome !== undefined && storedAway !== null && storedAway !== undefined;
     if (!hasScore) return;
 
     completedCount += 1;
-    const home = Number(override?.home_score ?? leg.home_score ?? 0);
-    const away = Number(override?.away_score ?? leg.away_score ?? 0);
+    const home = Number(override?.home_score ?? storedHome ?? 0);
+    const away = Number(override?.away_score ?? storedAway ?? 0);
     if (leg.home_entry_id === firstId) {
       firstAgg += home;
       secondAgg += away;
@@ -131,19 +134,7 @@ export function tieSnapshot(legs = [], scoreOverrides = new Map()) {
     }
   }
 
-  return {
-    ordered,
-    firstId,
-    secondId,
-    firstAgg,
-    secondAgg,
-    firstAway,
-    secondAway,
-    complete,
-    winnerId,
-    loserId,
-    reason,
-  };
+  return { ordered, firstId, secondId, firstAgg, secondAgg, firstAway, secondAway, complete, winnerId, loserId, reason };
 }
 
 export function resolveTieWithFet(legs = []) {
