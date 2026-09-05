@@ -27,10 +27,12 @@ export default function AdminGate({ children, requireGlobal = false }) {
       if (mounted) await checkAccess(data.session?.user || null, false);
     }
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      // Supabase can emit TOKEN_REFRESHED when a backgrounded tab becomes active.
-      // Re-check permissions without replacing the whole admin tree, otherwise an
-      // in-progress score/FET form is lost simply by switching to the game page.
-      const background = event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED';
+      // Supabase may emit SIGNED_IN as well as TOKEN_REFRESHED when an already
+      // authenticated tab regains focus. Treat every authenticated auth event as
+      // a background permission refresh so the admin React tree stays mounted and
+      // an in-progress result/FET form is not destroyed. Only a genuine sign-out
+      // should collapse the admin tree.
+      const background = Boolean(session?.user) && event !== 'SIGNED_OUT';
       checkAccess(session?.user || null, background);
     });
     checkSession();
