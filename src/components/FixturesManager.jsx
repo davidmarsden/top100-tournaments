@@ -159,7 +159,7 @@ function buildTieSummaries(fixtures) {
           const winner = homeFet > awayFet
             ? teamNameFromEntry(decidingLeg.home_entry, decidingLeg.home_placeholder)
             : teamNameFromEntry(decidingLeg.away_entry, decidingLeg.away_placeholder);
-          detail += ` · Away goals level (${snapshot.firstAway}-${snapshot.secondAway}) · ${winner} advance after FET ${homeFet}-${awayFet}`;
+          detail += ` · Away goals level (${snapshot.firstAway}-${snapshot.secondAway}) · ${winner} advance after ${decidingLeg.decided_by === 'manual' ? 'manual FET decider' : `FET ${homeFet}-${awayFet}`}`;
         } else {
           detail += ` · Away goals level (${snapshot.firstAway}-${snapshot.secondAway}) — Fictional Extra Time needed`;
         }
@@ -191,6 +191,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
   const [editingId, setEditingId] = useState(null);
   const [scores, setScores] = useState({ home_score: '', away_score: '' });
   const [fetStats, setFetStats] = useState(EMPTY_FET);
+  const [manualFetWinner, setManualFetWinner] = useState('');
   const [ruling, setRuling] = useState('played');
   const [resultNote, setResultNote] = useState('');
   const [rescheduleDates, setRescheduleDates] = useState({});
@@ -259,6 +260,9 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       home_shots_on_target: fixture.home_shots_on_target ?? '',
       away_shots_on_target: fixture.away_shots_on_target ?? '',
     });
+    setManualFetWinner(fixture.decided_by === 'manual'
+      ? fixture.winner_entry_id === fixture.home_entry_id ? 'home' : fixture.winner_entry_id === fixture.away_entry_id ? 'away' : ''
+      : '');
     setResultNote('');
     if (isDoubleForfeit(fixture)) setRuling('double_forfeit');
     else if (fixture.status === 'forfeit') setRuling(Number(fixture.home_score) > Number(fixture.away_score) ? 'away_forfeited' : 'home_forfeited');
@@ -269,12 +273,14 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     setEditingId(null);
     setScores({ home_score: '', away_score: '' });
     setFetStats(EMPTY_FET);
+    setManualFetWinner('');
     setRuling('played');
     setResultNote('');
   }
 
   function changeRuling(nextRuling) {
     setRuling(nextRuling);
+    setManualFetWinner('');
     if (nextRuling === 'double_forfeit') setScores({ home_score: 0, away_score: 0 });
   }
 
@@ -290,7 +296,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
   }
 
   async function updateResult(fixture, homeScore, awayScore, resultStatus = 'played', resolution = {}) {
-    const hasFet = resolution.decided_by === 'fictional_extra_time';
+    const hasFet = resolution.decided_by === 'fictional_extra_time' || resolution.decided_by === 'manual';
     const storedHomeScore = homeScore + Number(resolution.home_extra_time_score || 0);
     const storedAwayScore = awayScore + Number(resolution.away_extra_time_score || 0);
     let winnerEntryId = resolution.winner_entry_id ?? null;
@@ -350,25 +356,49 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
         homeShotsOnTarget: fetStats.home_shots_on_target,
         awayShotsOnTarget: fetStats.away_shots_on_target,
       });
-      if (!fet.valid) return setStatus('Enter valid possession percentages and shots-on-target figures to calculate FET.');
-      if (!fet.resolved) return setStatus('FET is still level after possession, shots on target and the combined tiebreak. Check the source stats before saving.');
-      const winnerEntryId = fet.homeGoals > fet.awayGoals ? fixture.home_entry_id : fixture.away_entry_id;
-      const loserEntryId = fet.homeGoals > fet.awayGoals ? fixture.away_entry_id : fixture.home_entry_id;
+      if (!fet.valid) return setStatus('Enter complete, valid possession percentages and shots-on-target figures to calculate FET.');
+
+      let homeFetGoals = fet.homeGoals;
+      let awayFetGoals = fet.awayGoals;
+      let decidedBy = 'fictional_extra_time';
+      let winnerEntryId;
+      let loserEntryId;
+      let manualLine = '';
+
+      if (!fet.resolved) {
+        if (!manualFetWinner) return setStatus('FET is exactly level after every statistical tiebreak. Choose the manual decider before saving.');
+        decidedBy = 'manual';
+        if (manualFetWinner === 'home') {
+          homeFetGoals += 1;
+          winnerEntryId = fixture.home_entry_id;
+          loserEntryId = fixture.away_entry_id;
+          manualLine = `\nManual decider: ${homeName} +1 deciding FET goal`;
+        } else {
+          awayFetGoals += 1;
+          winnerEntryId = fixture.away_entry_id;
+          loserEntryId = fixture.home_entry_id;
+          manualLine = `\nManual decider: ${awayName} +1 deciding FET goal`;
+        }
+      } else {
+        winnerEntryId = homeFetGoals > awayFetGoals ? fixture.home_entry_id : fixture.away_entry_id;
+        loserEntryId = homeFetGoals > awayFetGoals ? fixture.away_entry_id : fixture.home_entry_id;
+      }
+
       resolution = {
         overrideWinner: true,
         winner_entry_id: winnerEntryId,
         loser_entry_id: loserEntryId,
-        home_extra_time_score: fet.homeGoals,
-        away_extra_time_score: fet.awayGoals,
+        home_extra_time_score: homeFetGoals,
+        away_extra_time_score: awayFetGoals,
         home_possession: Number(fetStats.home_possession),
         away_possession: Number(fetStats.away_possession),
         home_shots_on_target: Number(fetStats.home_shots_on_target),
         away_shots_on_target: Number(fetStats.away_shots_on_target),
-        decided_by: 'fictional_extra_time',
+        decided_by: decidedBy,
       };
-      const finalHome = homeScore + fet.homeGoals;
-      const finalAway = awayScore + fet.awayGoals;
-      confirmationExtra = `\nFET: ${fet.homeGoals}–${fet.awayGoals}\nFinal score after FET: ${finalHome}–${finalAway}\n${fet.steps.map((step) => describeFetStep(step, homeName, awayName)).join('\n')}`;
+      const finalHome = homeScore + homeFetGoals;
+      const finalAway = awayScore + awayFetGoals;
+      confirmationExtra = `\nFET: ${homeFetGoals}–${awayFetGoals}\nFinal score after FET: ${finalHome}–${finalAway}\n${fet.steps.map((step) => describeFetStep(step, homeName, awayName)).join('\n')}${manualLine}`;
     }
 
     if (!window.confirm(`Save ${homeName} ${homeScore}–${awayScore} ${awayName} after normal time${confirmationExtra}\n\nRuling: ${rulingLabel(ruling)}${resultNote.trim() ? `\nReason: ${resultNote.trim()}` : ''}?`)) return;
@@ -383,7 +413,8 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     else {
       const finalHome = homeScore + Number(resolution.home_extra_time_score || 0);
       const finalAway = awayScore + Number(resolution.away_extra_time_score || 0);
-      setStatus(`Official result saved as ${finalHome}–${finalAway}${resolution.decided_by ? ` after FET (${homeScore}–${awayScore} after normal time)` : ''} · ${rulingLabel(ruling)}.`);
+      const decisionText = resolution.decided_by === 'manual' ? ' after manual FET decider' : resolution.decided_by ? ` after FET (${homeScore}–${awayScore} after normal time)` : '';
+      setStatus(`Official result saved as ${finalHome}–${finalAway}${decisionText} · ${rulingLabel(ruling)}.`);
       cancelEdit();
       await loadFixtures();
       await onDataChanged?.();
@@ -588,7 +619,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
                         <strong>{awayName}</strong>
                       </div>
                       <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {knockoutOnly && stage === 'knockout' ? 'single leg' : legLabel(fixture.leg || 1)}</p>
-                      {fixture.decided_by === 'fictional_extra_time' && <p className="muted">Normal time: {fixture.home_normal_time_score ?? fixture.home_score}–{fixture.away_normal_time_score ?? fixture.away_score} · FET goals: {fixture.home_extra_time_score ?? 0}–{fixture.away_extra_time_score ?? 0} · Final: {fixture.home_score}–{fixture.away_score}</p>}
+                      {(fixture.decided_by === 'fictional_extra_time' || fixture.decided_by === 'manual') && <p className="muted">Normal time: {fixture.home_normal_time_score ?? fixture.home_score}–{fixture.away_normal_time_score ?? fixture.away_score} · FET goals: {fixture.home_extra_time_score ?? 0}–{fixture.away_extra_time_score ?? 0} · Final: {fixture.home_score}–{fixture.away_score}{fixture.decided_by === 'manual' ? ' · manual decider' : ''}</p>}
                       {doubleForfeit && <p className="muted">{stage === 'knockout' ? 'Double forfeit: 0–0, both teams eliminated. No team advances or drops into the consolation bracket.' : 'Double forfeit: 0–0, both teams receive a loss and zero points.'}</p>}
                       {fixture.status === 'forfeit' && !doubleForfeit && <p className="muted">Forfeit ruling recorded.</p>}
                       {fixture.status === 'postponed' && <p className="muted">Rescheduled fixture — still counts as {fixture.round} when played.</p>}
@@ -627,28 +658,38 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
                             <p className="muted">The tie is still level after {draft.oneLeg ? 'normal time' : 'aggregate and away goals'}. Enter the match stats and the app awards FET goals progressively.</p>
                             <div className="mini-grid">
                               <label>{homeName} possession %
-                                <input type="number" min="0" max="100" step="0.1" value={fetStats.home_possession} onChange={(event) => setFetStats((current) => ({ ...current, home_possession: event.target.value }))} />
+                                <input type="number" min="0" max="100" step="0.1" value={fetStats.home_possession} onChange={(event) => { setFetStats((current) => ({ ...current, home_possession: event.target.value })); setManualFetWinner(''); }} />
                               </label>
                               <label>{awayName} possession %
-                                <input type="number" min="0" max="100" step="0.1" value={fetStats.away_possession} onChange={(event) => setFetStats((current) => ({ ...current, away_possession: event.target.value }))} />
+                                <input type="number" min="0" max="100" step="0.1" value={fetStats.away_possession} onChange={(event) => { setFetStats((current) => ({ ...current, away_possession: event.target.value })); setManualFetWinner(''); }} />
                               </label>
                               <label>{homeName} shots on target
-                                <input type="number" min="0" step="1" value={fetStats.home_shots_on_target} onChange={(event) => setFetStats((current) => ({ ...current, home_shots_on_target: event.target.value }))} />
+                                <input type="number" min="0" step="1" value={fetStats.home_shots_on_target} onChange={(event) => { setFetStats((current) => ({ ...current, home_shots_on_target: event.target.value })); setManualFetWinner(''); }} />
                               </label>
                               <label>{awayName} shots on target
-                                <input type="number" min="0" step="1" value={fetStats.away_shots_on_target} onChange={(event) => setFetStats((current) => ({ ...current, away_shots_on_target: event.target.value }))} />
+                                <input type="number" min="0" step="1" value={fetStats.away_shots_on_target} onChange={(event) => { setFetStats((current) => ({ ...current, away_shots_on_target: event.target.value })); setManualFetWinner(''); }} />
                               </label>
                             </div>
                             {fet?.valid && <div className="ready-banner ready">
                               <strong>FET: {homeName} {fet.homeGoals}–{fet.awayGoals} {awayName}</strong>
                               <span>{fet.steps.map((step) => describeFetStep(step, homeName, awayName)).join(' · ')}</span>
                               {fet.resolved && <span>Final score after FET: {draftHome + fet.homeGoals}–{draftAway + fet.awayGoals}</span>}
-                              {!fet.resolved && <span>Still level after the combined tiebreak — check the source stats before saving.</span>}
+                              {!fet.resolved && <>
+                                <span>Every FET criterion is exactly level. Use a manual organiser decision rather than altering the source stats.</span>
+                                <label>Manual decider
+                                  <select value={manualFetWinner} onChange={(event) => setManualFetWinner(event.target.value)}>
+                                    <option value="">Choose winner</option>
+                                    <option value="home">{homeName}</option>
+                                    <option value="away">{awayName}</option>
+                                  </select>
+                                </label>
+                                {manualFetWinner && <span>Manual deciding FET goal: {manualFetWinner === 'home' ? homeName : awayName} +1.</span>}
+                              </>}
                             </div>}
                           </div>}
 
                           <p className="muted">{stage === 'knockout'
-                            ? 'Enter the score at the end of normal time. For two-leg ties the app calculates aggregate and away goals automatically. FET appears only when the tie remains level; its goals are derived from possession, shots on target, then possession + shots on target as the tiebreak.'
+                            ? 'Enter the score at the end of normal time. For two-leg ties the app calculates aggregate and away goals automatically. FET appears only when the tie remains level; its goals are derived from possession, shots on target, then possession + shots on target as the tiebreak. If every criterion is exactly tied, the organiser can record the manual decider without falsifying the stats.'
                             : 'Single forfeits use the normal 3–0 minimum (or a better played scoreline). A double forfeit is always recorded 0–0, gives both teams a loss and zero points, and records both managers in the Forfeits register.'}</p>
                           <div className="button-row">
                             <button type="button" onClick={() => saveOfficialResult(fixture)} disabled={loading}>Save official result</button>
