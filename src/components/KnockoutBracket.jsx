@@ -31,8 +31,23 @@ function roundLabel(round) {
   return ROUND_LABELS[round] || round || 'Round';
 }
 
+function hasFet(match) {
+  return match.home_extra_time_score !== null && match.home_extra_time_score !== undefined
+    && match.away_extra_time_score !== null && match.away_extra_time_score !== undefined;
+}
+
+function regulationScore(match, side) {
+  const finalScore = Number(side === 'home' ? match.home_score || 0 : match.away_score || 0);
+  if (!hasFet(match)) return finalScore;
+  const fetGoals = Number(side === 'home' ? match.home_extra_time_score || 0 : match.away_extra_time_score || 0);
+  return finalScore - fetGoals;
+}
+
 function scoreText(match) {
-  return completed(match) ? `${match.home_score ?? 0} - ${match.away_score ?? 0}` : 'v';
+  if (!completed(match)) return 'v';
+  const final = `${match.home_score ?? 0} - ${match.away_score ?? 0}`;
+  if (!hasFet(match)) return final;
+  return `${final} FET`;
 }
 
 function sideId(match, side) {
@@ -50,12 +65,12 @@ function decisionLabel(tie) {
   if (tie.firstAgg !== tie.secondAgg) return null;
   if (tie.firstAway !== tie.secondAway) {
     const leader = tie.firstAway > tie.secondAway ? tie.firstName : tie.secondName;
-    return `${leader} lead on away goals (${tie.firstAway}-${tie.secondAway})`;
+    return `${leader} advance on away goals (${tie.firstAway}-${tie.secondAway})`;
   }
-  const decidingLeg = [...tie.ordered].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
+  const decidingLeg = [...tie.ordered].reverse().find((leg) => leg.decided_by || hasFet(leg) || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
   if (!decidingLeg) return tie.winnerName ? `${tie.winnerName} advance after tie-break` : 'Tie-break decision needed';
   const decidedBy = String(decidingLeg.decided_by || '').replace(/_/g, ' ');
-  if (decidingLeg.home_extra_time_score !== null || decidingLeg.away_extra_time_score !== null) {
+  if (hasFet(decidingLeg)) {
     return `${tie.winnerName || 'Winner'} after FET (${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0})`;
   }
   if (decidingLeg.home_penalty_score !== null || decidingLeg.away_penalty_score !== null) {
@@ -79,8 +94,8 @@ function aggregateTie(legs) {
 
   ordered.forEach((leg) => {
     if (!completed(leg)) allPlayed = false;
-    const home = Number(leg.home_score || 0);
-    const away = Number(leg.away_score || 0);
+    const home = regulationScore(leg, 'home');
+    const away = regulationScore(leg, 'away');
     const homeId = sideId(leg, 'home');
     if (homeId === firstId) {
       firstAgg += home;
@@ -199,6 +214,7 @@ function BracketTie({ tie, seedByEntryId }) {
   const hasAggregate = tie.ordered.length > 1 && tie.allPlayed;
   const firstSeed = seedByEntryId.get(tie.firstId);
   const secondSeed = seedByEntryId.get(tie.secondId);
+  const decidingLeg = [...tie.ordered].reverse().find(hasFet);
 
   return (
     <article className={tie.allPlayed ? 'bracket-tie played' : 'bracket-tie'}>
@@ -212,7 +228,9 @@ function BracketTie({ tie, seedByEntryId }) {
         <span>{hasAggregate ? tie.secondAgg : scoreText(tie.ordered[0])?.split(' - ')[1] || ''}</span>
         {secondWon && <b>✓</b>}
       </div>
-      <small>{hasAggregate ? `Aggregate ${tie.firstAgg}-${tie.secondAgg}${tie.decision ? ` · ${tie.decision}` : ''}` : `${tie.ordered[0]?.round || 'Round'} · ${Number(tie.ordered[0]?.leg || 1) === 1 ? '1st leg' : '2nd leg'}`}</small>
+      <small>{hasAggregate
+        ? `Aggregate after normal time ${tie.firstAgg}-${tie.secondAgg}${tie.firstAgg === tie.secondAgg ? ` · away goals ${tie.firstAway}-${tie.secondAway}` : ''}${tie.decision ? ` · ${tie.decision}` : ''}`
+        : `${tie.ordered[0]?.round || 'Round'} · ${scoreText(tie.ordered[0])}${decidingLeg ? ` · normal time ${regulationScore(decidingLeg, 'home')}-${regulationScore(decidingLeg, 'away')} · FET ${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0}` : ''}`}</small>
     </article>
   );
 }
