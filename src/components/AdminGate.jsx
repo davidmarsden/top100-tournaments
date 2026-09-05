@@ -24,18 +24,24 @@ export default function AdminGate({ children, requireGlobal = false }) {
     let mounted = true;
     async function checkSession() {
       const { data } = await supabase.auth.getSession();
-      if (mounted) await checkAccess(data.session?.user || null);
+      if (mounted) await checkAccess(data.session?.user || null, false);
     }
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { checkAccess(session?.user || null); });
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      // Supabase can emit TOKEN_REFRESHED when a backgrounded tab becomes active.
+      // Re-check permissions without replacing the whole admin tree, otherwise an
+      // in-progress score/FET form is lost simply by switching to the game page.
+      const background = event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED';
+      checkAccess(session?.user || null, background);
+    });
     checkSession();
     return () => { mounted = false; listener.subscription.unsubscribe(); };
   }, []);
 
-  async function checkAccess(user) {
+  async function checkAccess(user, background = false) {
     if (!user) {
       setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setChecking(false); return;
     }
-    setChecking(true);
+    if (!background) setChecking(true);
     const [adminResult, accessResult, assignmentsResult] = await Promise.all([
       supabase.rpc('is_admin'),
       supabase.rpc('has_tournament_admin_access'),
