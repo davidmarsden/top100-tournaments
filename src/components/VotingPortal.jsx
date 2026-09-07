@@ -169,7 +169,10 @@ export default function VotingPortal() {
       const eventQuestions = questionsByEvent.get(vote.id) || [];
       const existingBallot = ballots.find((ballot) => ballot.event_id === vote.id);
       const resultRows = results[vote.id] || [];
-      const canVote = Boolean(account) && vote.status === 'open' && (!vote.opens_at || new Date(vote.opens_at) <= new Date()) && (!vote.closes_at || new Date(vote.closes_at) > new Date());
+      const now = new Date();
+      const deadlinePassed = Boolean(vote.closes_at) && new Date(vote.closes_at) <= now;
+      const canVote = Boolean(account) && vote.status === 'open' && (!vote.opens_at || new Date(vote.opens_at) <= now) && (!vote.closes_at || !deadlinePassed);
+      const resultsAvailable = isAdmin || vote.results_visibility === 'live' || vote.status === 'closed' || (vote.results_visibility === 'after_close' && deadlinePassed);
       return <section className="card" key={vote.id}>
         <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : 'Manager poll'} · {vote.status}</p>
         <h2>{vote.title}</h2>
@@ -180,7 +183,7 @@ export default function VotingPortal() {
         {canVote && <button type="button" onClick={() => submitBallot(vote.id)}>{existingBallot ? 'Update vote' : 'Submit vote'}</button>}
         {isAdmin && vote.status === 'draft' && <button type="button" className="secondary" onClick={() => openEvent(vote.id)}>Open test vote</button>}
         {isAdmin && vote.status === 'open' && <button type="button" className="secondary" onClick={() => closeEvent(vote.id)}>Close vote now</button>}
-        {(isAdmin || vote.results_visibility === 'live' || vote.status === 'closed') && <button type="button" className="secondary" onClick={() => loadResults(vote.id)}>Show results</button>}
+        {resultsAvailable && <button type="button" className="secondary" onClick={() => loadResults(vote.id)}>Show results</button>}
         {resultRows.length > 0 && <div style={{ marginTop: '1rem' }}>{eventQuestions.map((question) => <div key={question.id}><h3>{question.title}</h3><ul>{resultRows.filter((row) => row.question_id === question.id).map((row) => <li key={row.option_id}>{row.option_label}: <strong>{row.votes}</strong></li>)}</ul></div>)}</div>}
       </section>;
     })}
