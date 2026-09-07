@@ -196,7 +196,7 @@ export default function VotingPortal() {
       const deadlinePassed = Boolean(vote.closes_at) && new Date(vote.closes_at) <= now;
       const canVote = Boolean(account) && vote.status === 'open' && (!vote.opens_at || new Date(vote.opens_at) <= now) && (!vote.closes_at || !deadlinePassed);
       const resultsAvailable = isAdmin || vote.results_visibility === 'live' || vote.status === 'closed' || (vote.results_visibility === 'after_close' && deadlinePassed);
-      const canFinalise = isAdmin && vote.status !== 'draft' && !finalResult && (vote.status === 'closed' || deadlinePassed);
+      const canFinalise = isAdmin && !finalResult && (vote.status === 'closed' || (vote.status === 'open' && deadlinePassed));
       return <section className="card" key={vote.id}>
         <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : governanceLabel(vote.governance_kind)} · {vote.status}</p>
         <h2>{vote.title}</h2>
