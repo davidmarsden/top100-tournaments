@@ -73,8 +73,11 @@ export default function VotingPortal() {
       supabase.from('voting_events').select('*').order('created_at', { ascending: false }),
     ]);
     if (accountResult.error) { setMessage(accountResult.error.message); setLoading(false); return; }
-    setAccount(accountResult.data || null);
-    setIsAdmin(Boolean(adminResult.data));
+
+    const managerAccount = accountResult.data || null;
+    const adminAccess = Boolean(adminResult.data);
+    setAccount(managerAccount);
+    setIsAdmin(adminAccess);
     if (eventResult.error) { setMessage(eventResult.error.message); setLoading(false); return; }
 
     const eventRows = eventResult.data || [];
@@ -82,9 +85,13 @@ export default function VotingPortal() {
     const eventIds = eventRows.map((row) => row.id);
     if (!eventIds.length) { setQuestions([]); setOptions([]); setBallots([]); setResponses([]); setLoading(false); setMessage('No votes available.'); return; }
 
+    const ownBallotQuery = managerAccount
+      ? supabase.from('voting_ballots').select('*').in('event_id', eventIds).eq('manager_id', managerAccount.manager_id)
+      : Promise.resolve({ data: [], error: null });
+
     const [questionResult, ballotResult] = await Promise.all([
       supabase.from('voting_questions').select('*').in('event_id', eventIds).order('sort_order').order('id'),
-      supabase.from('voting_ballots').select('*').in('event_id', eventIds),
+      ownBallotQuery,
     ]);
     if (questionResult.error) { setMessage(questionResult.error.message); setLoading(false); return; }
     const questionRows = questionResult.data || [];
@@ -104,11 +111,15 @@ export default function VotingPortal() {
     const existing = {};
     responseRows.forEach((row) => { existing[row.question_id] = row.option_id; });
     setAnswers(existing);
-    setMessage(accountResult.data ? 'Voting account verified.' : 'Your sign-in is valid, but you do not have an active manager account.');
+
+    if (managerAccount) setMessage('Voting account verified.');
+    else if (adminAccess) setMessage('Administrator access verified.');
+    else setMessage('Your sign-in is valid, but you do not have an active manager account.');
     setLoading(false);
   }
 
   async function submitBallot(eventId) {
+    if (!account) return setMessage('An active manager account is required to vote.');
     const eventQuestions = questionsByEvent.get(eventId) || [];
     const payload = eventQuestions
       .filter((question) => answers[question.id])
@@ -145,17 +156,20 @@ export default function VotingPortal() {
 
   if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100</p><h1>Manager Voting</h1><p>Secure one-manager-one-vote polling using your existing Top 100 manager account.</p></section><section className="card manager-login-card"><h2>Sign in securely</h2><p className="muted">Use the same email address as your Manager Portal account.</p><form onSubmit={sendMagicLink}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button type="submit" disabled={loading}>{loading ? 'Sending…' : 'Email me a sign-in link'}</button></form>{message && <p className="status">{message}</p>}</section></main>;
 
+  const canRenderEvents = Boolean(account || isAdmin);
+
   return <main className="manager-portal-shell">
     <section className="manager-portal-hero"><div><p className="eyebrow">Top 100</p><h1>Manager Voting</h1><p>{account ? `Signed in as ${account.managers?.display_name || account.managers?.name || 'manager'}.` : `Signed in as ${session.user.email}.`}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section>
     {message && <p className="status">{message}</p>}
     {loading && <section className="card"><h2>Loading…</h2></section>}
-    {!loading && !account && <section className="card"><h2>Manager account required</h2><p>Your email is authenticated, but it is not linked to an active Top 100 manager account. Use the Manager Portal to claim or restore your manager identity first.</p><a href="/manager">Go to Manager Portal</a></section>}
-    {!loading && account && events.length === 0 && <section className="card"><h2>No votes available</h2><p>There are no voting events in your electorate at the moment.</p></section>}
-    {!loading && account && events.map((vote) => {
+    {!loading && !account && !isAdmin && <section className="card"><h2>Manager account required</h2><p>Your email is authenticated, but it is not linked to an active Top 100 manager account. Use the Manager Portal to claim or restore your manager identity first.</p><a href="/manager">Go to Manager Portal</a></section>}
+    {!loading && isAdmin && !account && <section className="card"><h2>Administrator mode</h2><p>You can open, close and inspect voting events, but you need an active manager account to cast a ballot.</p></section>}
+    {!loading && canRenderEvents && events.length === 0 && <section className="card"><h2>No votes available</h2><p>There are no voting events available at the moment.</p></section>}
+    {!loading && canRenderEvents && events.map((vote) => {
       const eventQuestions = questionsByEvent.get(vote.id) || [];
       const existingBallot = ballots.find((ballot) => ballot.event_id === vote.id);
       const resultRows = results[vote.id] || [];
-      const canVote = vote.status === 'open' && (!vote.opens_at || new Date(vote.opens_at) <= new Date()) && (!vote.closes_at || new Date(vote.closes_at) > new Date());
+      const canVote = Boolean(account) && vote.status === 'open' && (!vote.opens_at || new Date(vote.opens_at) <= new Date()) && (!vote.closes_at || new Date(vote.closes_at) > new Date());
       return <section className="card" key={vote.id}>
         <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : 'Manager poll'} · {vote.status}</p>
         <h2>{vote.title}</h2>
