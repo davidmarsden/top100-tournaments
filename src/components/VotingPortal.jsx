@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import AdminPollBuilder from './AdminPollBuilder.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 function formatDate(value) {
   if (!value) return 'Not set';
   return new Date(value).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function governanceLabel(value) {
+  return ({ advisory: 'Advisory', rule_change: 'Rule change', appointment: 'Appointment', other: 'Other' })[value] || 'Poll';
 }
 
 export default function VotingPortal() {
@@ -20,6 +25,7 @@ export default function VotingPortal() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [results, setResults] = useState({});
+  const [finalResults, setFinalResults] = useState({});
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
@@ -83,19 +89,26 @@ export default function VotingPortal() {
     const eventRows = eventResult.data || [];
     setEvents(eventRows);
     const eventIds = eventRows.map((row) => row.id);
-    if (!eventIds.length) { setQuestions([]); setOptions([]); setBallots([]); setResponses([]); setLoading(false); setMessage('No votes available.'); return; }
+    if (!eventIds.length) { setQuestions([]); setOptions([]); setBallots([]); setResponses([]); setFinalResults({}); setLoading(false); setMessage('No votes available.'); return; }
 
     const ownBallotQuery = managerAccount
       ? supabase.from('voting_ballots').select('*').in('event_id', eventIds).eq('manager_id', managerAccount.manager_id)
       : Promise.resolve({ data: [], error: null });
 
-    const [questionResult, ballotResult] = await Promise.all([
+    const finalResultQuery = supabase.from('voting_event_results').select('*').in('event_id', eventIds);
+
+    const [questionResult, ballotResult, finalResultResult] = await Promise.all([
       supabase.from('voting_questions').select('*').in('event_id', eventIds).order('sort_order').order('id'),
       ownBallotQuery,
+      finalResultQuery,
     ]);
     if (questionResult.error) { setMessage(questionResult.error.message); setLoading(false); return; }
     const questionRows = questionResult.data || [];
     setQuestions(questionRows);
+
+    const finalMap = {};
+    (finalResultResult.error ? [] : (finalResultResult.data || [])).forEach((row) => { finalMap[row.event_id] = row; });
+    setFinalResults(finalMap);
 
     const questionIds = questionRows.map((row) => row.id);
     const ballotRows = ballotResult.error ? [] : (ballotResult.data || []);
@@ -140,8 +153,16 @@ export default function VotingPortal() {
 
   async function closeEvent(eventId) {
     const { error } = await supabase.rpc('close_voting_event', { target_event_id: eventId });
-    setMessage(error ? error.message : 'Vote closed.');
+    setMessage(error ? error.message : 'Vote closed. You can now finalise the governance result.');
     if (!error) await loadVoting();
+  }
+
+  async function finaliseEvent(eventId) {
+    setMessage('Finalising turnout, quorum and result…');
+    const { data, error } = await supabase.rpc('finalise_voting_event', { target_event_id: eventId });
+    if (error) return setMessage(error.message);
+    setMessage(data?.decision_summary || 'Vote finalised.');
+    await loadVoting();
   }
 
   async function loadResults(eventId) {
@@ -162,28 +183,34 @@ export default function VotingPortal() {
     <section className="manager-portal-hero"><div><p className="eyebrow">Top 100</p><h1>Manager Voting</h1><p>{account ? `Signed in as ${account.managers?.display_name || account.managers?.name || 'manager'}.` : `Signed in as ${session.user.email}.`}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section>
     {message && <p className="status">{message}</p>}
     {loading && <section className="card"><h2>Loading…</h2></section>}
+    {!loading && isAdmin && <AdminPollBuilder onCreated={loadVoting} setMessage={setMessage} />}
     {!loading && !account && !isAdmin && <section className="card"><h2>Manager account required</h2><p>Your email is authenticated, but it is not linked to an active Top 100 manager account. Use the Manager Portal to claim or restore your manager identity first.</p><a href="/manager">Go to Manager Portal</a></section>}
-    {!loading && isAdmin && !account && <section className="card"><h2>Administrator mode</h2><p>You can open, close and inspect voting events, but you need an active manager account to cast a ballot.</p></section>}
+    {!loading && isAdmin && !account && <section className="card"><h2>Administrator mode</h2><p>You can create, open, close and finalise voting events, but you need an active manager account to cast a ballot.</p></section>}
     {!loading && canRenderEvents && events.length === 0 && <section className="card"><h2>No votes available</h2><p>There are no voting events available at the moment.</p></section>}
     {!loading && canRenderEvents && events.map((vote) => {
       const eventQuestions = questionsByEvent.get(vote.id) || [];
       const existingBallot = ballots.find((ballot) => ballot.event_id === vote.id);
       const resultRows = results[vote.id] || [];
+      const finalResult = finalResults[vote.id];
       const now = new Date();
       const deadlinePassed = Boolean(vote.closes_at) && new Date(vote.closes_at) <= now;
       const canVote = Boolean(account) && vote.status === 'open' && (!vote.opens_at || new Date(vote.opens_at) <= now) && (!vote.closes_at || !deadlinePassed);
       const resultsAvailable = isAdmin || vote.results_visibility === 'live' || vote.status === 'closed' || (vote.results_visibility === 'after_close' && deadlinePassed);
+      const canFinalise = isAdmin && !finalResult && (vote.status === 'closed' || (vote.status === 'open' && deadlinePassed));
       return <section className="card" key={vote.id}>
-        <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : 'Manager poll'} · {vote.status}</p>
+        <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : governanceLabel(vote.governance_kind)} · {vote.status}</p>
         <h2>{vote.title}</h2>
         {vote.description && <p>{vote.description}</p>}
         <p className="muted">Opens: {formatDate(vote.opens_at)} · Closes: {formatDate(vote.closes_at)}</p>
+        {vote.event_type === 'poll' && <p className="muted">Quorum: {vote.quorum_percent || 0}% · Decision: {vote.decision_rule}{vote.decision_rule !== 'plurality' ? ` at ${vote.threshold_percent}%` : ''} · Tie: {(vote.tie_policy || 'no_change').replaceAll('_', ' ')}</p>}
         {existingBallot && <p><strong>Your ballot is saved.</strong> {canVote ? 'You may change it before the deadline.' : ''}</p>}
         {eventQuestions.map((question) => <fieldset key={question.id} disabled={!canVote} style={{ border: 0, padding: 0, margin: '1.25rem 0' }}><legend><strong>{question.title}</strong>{question.required ? ' *' : ''}</legend>{question.description && <p className="muted">{question.description}</p>}{(optionsByQuestion.get(question.id) || []).map((option) => <label key={option.id} style={{ display: 'block', margin: '.5rem 0' }}><input type="radio" name={`question-${question.id}`} value={option.id} checked={String(answers[question.id] || '') === String(option.id)} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option.id }))} /> {option.label}</label>)}</fieldset>)}
         {canVote && <button type="button" onClick={() => submitBallot(vote.id)}>{existingBallot ? 'Update vote' : 'Submit vote'}</button>}
-        {isAdmin && vote.status === 'draft' && <button type="button" className="secondary" onClick={() => openEvent(vote.id)}>Open test vote</button>}
-        {isAdmin && vote.status === 'open' && <button type="button" className="secondary" onClick={() => closeEvent(vote.id)}>Close vote now</button>}
-        {resultsAvailable && <button type="button" className="secondary" onClick={() => loadResults(vote.id)}>Show results</button>}
+        {isAdmin && vote.status === 'draft' && <button type="button" className="secondary" onClick={() => openEvent(vote.id)}>Open vote</button>}
+        {isAdmin && vote.status === 'open' && !deadlinePassed && <button type="button" className="secondary" onClick={() => closeEvent(vote.id)}>Close vote now</button>}
+        {canFinalise && <button type="button" className="secondary" onClick={() => finaliseEvent(vote.id)}>Finalise result</button>}
+        {resultsAvailable && <button type="button" className="secondary" onClick={() => loadResults(vote.id)}>Show vote totals</button>}
+        {finalResult && <div style={{ marginTop: '1rem' }}><h3>Official result</h3><p><strong>{finalResult.decision_summary}</strong></p><p className="muted">Turnout: {finalResult.ballots_cast}/{finalResult.electorate_count} ({finalResult.turnout_percent}%) · Quorum {finalResult.quorum_met ? 'met' : 'not met'}</p></div>}
         {resultRows.length > 0 && <div style={{ marginTop: '1rem' }}>{eventQuestions.map((question) => <div key={question.id}><h3>{question.title}</h3><ul>{resultRows.filter((row) => row.question_id === question.id).map((row) => <li key={row.option_id}>{row.option_label}: <strong>{row.votes}</strong></li>)}</ul></div>)}</div>}
       </section>;
     })}
