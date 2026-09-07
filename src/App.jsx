@@ -6,6 +6,7 @@ import ManagerRegistrationPortal from './components/ManagerRegistrationPortal.js
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
 import Top100BrandShell from './components/Top100BrandShell.jsx';
 import TournamentRouter, { isAdminPath } from './components/TournamentRouter.jsx';
+import VotingPortal from './components/VotingPortal.jsx';
 import { TournamentProvider } from './context/TournamentProvider.jsx';
 
 function isManagerPath() {
@@ -24,9 +25,14 @@ function isResultSubmissionsPath() {
   return /^\/admin\/result-submissions\/?$/.test(window.location.pathname);
 }
 
+function isVotingPath() {
+  return /^\/vote\/?$/.test(window.location.pathname);
+}
+
 export default function App() {
   if (isManagerPath()) return <ManagerPortal />;
   if (isManagerRegistrationPath()) return <ManagerRegistrationPortal />;
+  if (isVotingPath()) return <Top100BrandShell><VotingPortal /></Top100BrandShell>;
   if (isManagerAccountsPath()) return <AdminGate requireGlobal><ManagerAccountsPage /></AdminGate>;
   if (isResultSubmissionsPath()) return <AdminGate requireGlobal><ResultSubmissionsPage /></AdminGate>;
   if (!isAdminPath()) return <Top100BrandShell><TournamentRouter /></Top100BrandShell>;
