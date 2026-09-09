@@ -1,6 +1,8 @@
 # Shared manager voting V1
 
-This branch adds the first reusable Top 100 voting foundation on the same Supabase identity already used by Tournament Manager and the Publishing Desk.
+> Historical foundation. Shared Voting V2 extends this implementation for Awards and wider ecosystem use. See [`shared-voting-v2.md`](./shared-voting-v2.md).
+
+This branch added the first reusable Top 100 voting foundation on the same Supabase identity already used by Tournament Manager and the Publishing Desk.
 
 ## V1 behaviour
 
@@ -25,9 +27,8 @@ After deployment:
 4. Managers in that electorate can submit one vote and revise it before close.
 5. Admin can close the vote early and inspect aggregate results.
 
-## Next steps after the test
+## What happened next
 
-- add an admin poll builder rather than seeding events in SQL;
-- add quorum, majority/supermajority and tie rules for All-Manager Polls;
-- link adopted governance votes to versioned Rules History;
-- migrate Manager Awards from free-text manager names + Google Sheets to the same authenticated voting primitives.
+The All-Manager Poll layer added an admin poll builder plus quorum, majority/supermajority and tie rules. Shared Voting V2 then adds Awards-ready nominee metadata, manual result release, a ballot-read RPC, audited electorate corrections, multi-question event import and a released-results archive bridge.
+
+Manager Awards is the next production consumer of the shared authenticated voting primitives.

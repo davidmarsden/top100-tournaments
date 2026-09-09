@@ -153,15 +153,24 @@ export default function VotingPortal() {
 
   async function closeEvent(eventId) {
     const { error } = await supabase.rpc('close_voting_event', { target_event_id: eventId });
-    setMessage(error ? error.message : 'Vote closed. You can now finalise the governance result.');
+    setMessage(error ? error.message : 'Vote closed. You can now finalise the result.');
     if (!error) await loadVoting();
   }
 
-  async function finaliseEvent(eventId) {
-    setMessage('Finalising turnout, quorum and result…');
-    const { data, error } = await supabase.rpc('finalise_voting_event', { target_event_id: eventId });
+  async function finaliseEvent(vote) {
+    setMessage(vote.event_type === 'awards' ? 'Finalising each Awards category…' : 'Finalising turnout, quorum and result…');
+    const rpcName = vote.event_type === 'awards' ? 'finalise_awards_event' : 'finalise_voting_event';
+    const { data, error } = await supabase.rpc(rpcName, { target_event_id: vote.id });
     if (error) return setMessage(error.message);
     setMessage(data?.decision_summary || 'Vote finalised.');
+    await loadVoting();
+  }
+
+  async function releaseResults(eventId) {
+    setMessage('Releasing results…');
+    const { data, error } = await supabase.rpc('release_voting_results', { target_event_id: eventId });
+    if (error) return setMessage(error.message);
+    setMessage(`Results released${data ? ` at ${formatDate(data)}` : ''}.`);
     await loadVoting();
   }
 
@@ -195,8 +204,10 @@ export default function VotingPortal() {
       const now = new Date();
       const deadlinePassed = Boolean(vote.closes_at) && new Date(vote.closes_at) <= now;
       const canVote = Boolean(account) && vote.status === 'open' && (!vote.opens_at || new Date(vote.opens_at) <= now) && (!vote.closes_at || !deadlinePassed);
-      const resultsAvailable = isAdmin || vote.results_visibility === 'live' || vote.status === 'closed' || (vote.results_visibility === 'after_close' && deadlinePassed);
+      const manualReleased = vote.results_visibility === 'manual_release' && Boolean(vote.results_released_at);
+      const resultsAvailable = isAdmin || vote.results_visibility === 'live' || manualReleased || (vote.results_visibility === 'after_close' && (vote.status === 'closed' || deadlinePassed));
       const canFinalise = isAdmin && !finalResult && (vote.status === 'closed' || (vote.status === 'open' && deadlinePassed));
+      const canRelease = isAdmin && vote.results_visibility === 'manual_release' && !vote.results_released_at && Boolean(finalResult) && (vote.status === 'closed' || deadlinePassed);
       return <section className="card" key={vote.id}>
         <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : governanceLabel(vote.governance_kind)} · {vote.status}</p>
         <h2>{vote.title}</h2>
@@ -208,9 +219,10 @@ export default function VotingPortal() {
         {canVote && <button type="button" onClick={() => submitBallot(vote.id)}>{existingBallot ? 'Update vote' : 'Submit vote'}</button>}
         {isAdmin && vote.status === 'draft' && <button type="button" className="secondary" onClick={() => openEvent(vote.id)}>Open vote</button>}
         {isAdmin && vote.status === 'open' && !deadlinePassed && <button type="button" className="secondary" onClick={() => closeEvent(vote.id)}>Close vote now</button>}
-        {canFinalise && <button type="button" className="secondary" onClick={() => finaliseEvent(vote.id)}>Finalise result</button>}
+        {canFinalise && <button type="button" className="secondary" onClick={() => finaliseEvent(vote)}>{vote.event_type === 'awards' ? 'Finalise Awards categories' : 'Finalise result'}</button>}
+        {canRelease && <button type="button" className="secondary" onClick={() => releaseResults(vote.id)}>Release results</button>}
         {resultsAvailable && <button type="button" className="secondary" onClick={() => loadResults(vote.id)}>Show vote totals</button>}
-        {finalResult && <div style={{ marginTop: '1rem' }}><h3>Official result</h3><p><strong>{finalResult.decision_summary}</strong></p><p className="muted">Turnout: {finalResult.ballots_cast}/{finalResult.electorate_count} ({finalResult.turnout_percent}%) · Quorum {finalResult.quorum_met ? 'met' : 'not met'}</p></div>}
+        {finalResult && <div style={{ marginTop: '1rem' }}><h3>Official result</h3><p><strong>{finalResult.decision_summary}</strong></p><p className="muted">Turnout: {finalResult.ballots_cast}/{finalResult.electorate_count} ({finalResult.turnout_percent}%) · Quorum {finalResult.quorum_met ? 'met' : 'not met'}</p>{vote.results_visibility === 'manual_release' && <p className="muted">Results: {vote.results_released_at ? `released ${formatDate(vote.results_released_at)}` : 'awaiting manual release'}</p>}</div>}
         {resultRows.length > 0 && <div style={{ marginTop: '1rem' }}>{eventQuestions.map((question) => <div key={question.id}><h3>{question.title}</h3><ul>{resultRows.filter((row) => row.question_id === question.id).map((row) => <li key={row.option_id}>{row.option_label}: <strong>{row.votes}</strong></li>)}</ul></div>)}</div>}
       </section>;
     })}
