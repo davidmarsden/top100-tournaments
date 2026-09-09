@@ -5,9 +5,9 @@ const PUBLIC_STATUS_LABELS = {
 };
 
 const FAMILY_LINKS = [
-  { key: 'top100', label: 'Top 100', href: 'https://smtop100.micro.blog/' },
+  { key: 'top100', label: 'Top 100', href: 'https://smtop100.blog/' },
   { key: 'history', label: 'Stats & History', href: 'https://archive.smtop100.blog/' },
-  { key: 'tournaments', label: 'Tournaments', href: 'https://youth-cup.smtop100.blog/' },
+  { key: 'tournaments', label: 'Tournaments', href: 'https://tournaments.smtop100.blog/' },
   { key: 'voting', label: 'Voting', href: 'https://vote.smtop100.blog/' },
   { key: 'awards', label: 'Awards', href: 'https://awards.smtop100.blog/' },
   { key: 'regen', label: 'Regen', href: 'https://top100regen.website/' },
@@ -49,7 +49,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
     <div className="top100-site-shell">
       <header className="top100-brand-header">
         <div className="top100-brand-header__inner">
-          <a className="top100-brand-header__identity" href="https://smtop100.micro.blog/" aria-label="Visit the Top 100 main site">
+          <a className="top100-brand-header__identity" href="https://smtop100.blog/" aria-label="Visit the Top 100 main site">
             <div className="top100-brand-header__wordmark" aria-hidden="true">
               <span>Top</span><strong>100</strong>
             </div>
@@ -71,7 +71,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
           </nav>
 
           <nav className="top100-brand-header__utility" aria-label={isVoting ? 'Manager tools' : 'Tournament tools'}>
-            <a className="top100-brand-header__manager-link" href="https://youth-cup.smtop100.blog/manager">Manager portal</a>
+            <a className="top100-brand-header__manager-link" href="https://tournaments.smtop100.blog/manager">Manager portal</a>
           </nav>
         </div>
       </header>
@@ -81,17 +81,17 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
       <footer className="top100-footer">
         <div className="top100-footer__inner">
           <div className="top100-footer__brand">
-            <a href="https://smtop100.micro.blog/" className="top100-footer__wordmark" aria-label="Top 100 main site"><span>Top</span><strong>100</strong></a>
+            <a href="https://smtop100.blog/" className="top100-footer__wordmark" aria-label="Top 100 main site"><span>Top</span><strong>100</strong></a>
             <span>{product}</span>
           </div>
           <nav aria-label="Top 100 footer links">
-            <a href="https://smtop100.micro.blog/">Top 100</a>
+            <a href="https://smtop100.blog/">Top 100</a>
             <a href="https://archive.smtop100.blog/">Stats &amp; History</a>
             <a href="https://vote.smtop100.blog/">Voting</a>
-            <a href="https://smtop100.micro.blog/rules/">Rules</a>
-            <a href="https://smtop100.micro.blog/support/">Support</a>
+            <a href="https://smtop100.blog/rules/">Rules</a>
+            <a href="https://smtop100.blog/support/">Support</a>
             <a href="https://awards.smtop100.blog/">Awards</a>
-            <a href="https://youth-cup.smtop100.blog/manager">Manager portal</a>
+            <a href="https://tournaments.smtop100.blog/manager">Manager portal</a>
           </nav>
         </div>
         <div className="top100-footer__note">
