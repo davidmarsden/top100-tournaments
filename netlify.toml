@@ -3,3 +3,9 @@
   # secret scanner otherwise flags them when they legitimately appear in the
   # repository, function responses, or generated client assets.
   SECRETS_SCAN_OMIT_KEYS = "WORDPRESS_SITE_URL,WORDPRESS_SITE_ID,WORDPRESS_USERNAME,WORDPRESS_CLIENT_ID,CHALLONGE_CLIENT_ID"
+
+[[redirects]]
+  from = "https://youth-cup.smtop100.blog/*"
+  to = "https://tournaments.smtop100.blog/:splat"
+  status = 301
+  force = true
