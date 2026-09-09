@@ -4,6 +4,21 @@
   # repository, function responses, or generated client assets.
   SECRETS_SCAN_OMIT_KEYS = "WORDPRESS_SITE_URL,WORDPRESS_SITE_ID,WORDPRESS_USERNAME,WORDPRESS_CLIENT_ID,CHALLONGE_CLIENT_ID"
 
+# Keep machine-to-machine/function callbacks working on the legacy hostname.
+# These rewrites preserve the original HTTP method/body and must run before the
+# browser-facing hostname redirect below.
+[[redirects]]
+  from = "https://youth-cup.smtop100.blog/.netlify/functions/notify-manager-claim"
+  to = "/.netlify/functions/notify-manager-claim"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "https://youth-cup.smtop100.blog/.netlify/functions/wordpress-oauth-setup"
+  to = "/.netlify/functions/wordpress-oauth-setup"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "https://youth-cup.smtop100.blog/*"
   to = "https://tournaments.smtop100.blog/:splat"
