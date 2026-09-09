@@ -67,7 +67,7 @@ export default function AdminPollBuilder({ onCreated, setMessage }) {
       {decisionRule !== 'plurality' && <label>Required winning share (%)<input type="number" min="1" max="100" step="0.01" value={thresholdPercent} onChange={(event) => setThresholdPercent(event.target.value)} required /></label>}
       <label>Quorum (%) <span className="muted">— minimum percentage of eligible managers who must vote for the poll to be valid</span><input type="number" min="0" max="100" step="0.01" value={quorumPercent} onChange={(event) => setQuorumPercent(event.target.value)} /><span className="muted">For example, a 50% quorum means at least half of eligible managers must vote.</span></label>
       <label>Tie handling<select value={tiePolicy} onChange={(event) => setTiePolicy(event.target.value)}><option value="no_change">No change carried</option><option value="runoff">Runoff required</option><option value="admin_decision">Admin decision required</option></select></label>
-      <label>Results<select value={resultsVisibility} onChange={(event) => setResultsVisibility(event.target.value)}><option value="after_close">After voting closes</option><option value="live">Live while voting</option><option value="hidden">Admin only</option></select></label>
+      <label>Results<select value={resultsVisibility} onChange={(event) => setResultsVisibility(event.target.value)}><option value="after_close">After voting closes</option><option value="manual_release">Hidden until an admin releases them</option><option value="live">Live while voting</option><option value="hidden">Admin only</option></select></label>
       <button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create draft poll'}</button>
     </form>
   </section>;
