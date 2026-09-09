@@ -237,7 +237,7 @@
   font-size: 0.78rem;
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1280px) {
   .top100-brand-header__inner {
     grid-template-columns: auto 1fr;
   }
