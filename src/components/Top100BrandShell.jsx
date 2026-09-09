@@ -4,6 +4,15 @@ const PUBLIC_STATUS_LABELS = {
   groups_approved: 'Group stage underway',
 };
 
+const FAMILY_LINKS = [
+  { key: 'top100', label: 'Top 100', href: 'https://smtop100.micro.blog/' },
+  { key: 'history', label: 'Stats & History', href: 'https://archive.smtop100.blog/' },
+  { key: 'tournaments', label: 'Tournaments', href: 'https://youth-cup.smtop100.blog/' },
+  { key: 'voting', label: 'Voting', href: 'https://vote.smtop100.blog/' },
+  { key: 'awards', label: 'Awards', href: 'https://awards.smtop100.blog/' },
+  { key: 'regen', label: 'Regen', href: 'https://top100regen.website/' },
+];
+
 function replaceInternalStatusLabels(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const textNodes = [];
@@ -21,7 +30,9 @@ function replaceInternalStatusLabels(root) {
   });
 }
 
-export default function Top100BrandShell({ children }) {
+export default function Top100BrandShell({ children, product = 'Tournaments', current = 'tournaments' }) {
+  const isVoting = current === 'voting';
+
   useEffect(() => {
     const shell = document.querySelector('.top100-site-shell');
     if (!shell) return undefined;
@@ -50,18 +61,16 @@ export default function Top100BrandShell({ children }) {
 
           <div className="top100-brand-header__product">
             <span>Top 100</span>
-            <strong>Tournaments</strong>
+            <strong>{product}</strong>
           </div>
 
           <nav className="top100-brand-header__nav" aria-label="Top 100 websites">
-            <a href="https://smtop100.micro.blog/">Top 100</a>
-            <a href="https://archive.smtop100.blog/">Stats &amp; History</a>
-            <a className="is-current" href="https://youth-cup.smtop100.blog/">Tournaments</a>
-            <a href="https://awards.smtop100.blog/">Awards</a>
-            <a href="https://top100regen.website/">Regen</a>
+            {FAMILY_LINKS.map((link) => (
+              <a key={link.key} className={current === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>
+            ))}
           </nav>
 
-          <nav className="top100-brand-header__utility" aria-label="Tournament tools">
+          <nav className="top100-brand-header__utility" aria-label={isVoting ? 'Manager tools' : 'Tournament tools'}>
             <a className="top100-brand-header__manager-link" href="https://youth-cup.smtop100.blog/manager">Manager portal</a>
           </nav>
         </div>
@@ -73,18 +82,23 @@ export default function Top100BrandShell({ children }) {
         <div className="top100-footer__inner">
           <div className="top100-footer__brand">
             <a href="https://smtop100.micro.blog/" className="top100-footer__wordmark" aria-label="Top 100 main site"><span>Top</span><strong>100</strong></a>
-            <span>Tournaments</span>
+            <span>{product}</span>
           </div>
           <nav aria-label="Top 100 footer links">
             <a href="https://smtop100.micro.blog/">Top 100</a>
             <a href="https://archive.smtop100.blog/">Stats &amp; History</a>
+            <a href="https://vote.smtop100.blog/">Voting</a>
             <a href="https://smtop100.micro.blog/rules/">Rules</a>
             <a href="https://smtop100.micro.blog/support/">Support</a>
             <a href="https://awards.smtop100.blog/">Awards</a>
             <a href="https://youth-cup.smtop100.blog/manager">Manager portal</a>
           </nav>
         </div>
-        <div className="top100-footer__note">Tournament fixtures, results and competition history from the Top 100 Soccer Manager community.</div>
+        <div className="top100-footer__note">
+          {isVoting
+            ? 'Manager-authenticated polls, Awards ballots and community votes for the Top 100 Soccer Manager community.'
+            : 'Tournament fixtures, results and competition history from the Top 100 Soccer Manager community.'}
+        </div>
       </footer>
     </div>
   );
