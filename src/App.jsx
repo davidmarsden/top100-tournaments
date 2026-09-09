@@ -33,12 +33,16 @@ function isVotingPath() {
   return /^\/vote\/?$/.test(window.location.pathname);
 }
 
+function TournamentManagerShell({ children }) {
+  return <Top100BrandShell product="Tournaments" current="tournaments">{children}</Top100BrandShell>;
+}
+
 export default function App() {
   if (isVotingHost()) {
     return <Top100BrandShell product="Voting" current="voting"><VotingPortal /></Top100BrandShell>;
   }
-  if (isManagerPath()) return <ManagerPortal />;
-  if (isManagerRegistrationPath()) return <ManagerRegistrationPortal />;
+  if (isManagerPath()) return <TournamentManagerShell><ManagerPortal /></TournamentManagerShell>;
+  if (isManagerRegistrationPath()) return <TournamentManagerShell><ManagerRegistrationPortal /></TournamentManagerShell>;
   if (isVotingPath()) return <Top100BrandShell product="Voting" current="voting"><VotingPortal /></Top100BrandShell>;
   if (isManagerAccountsPath()) return <AdminGate requireGlobal><ManagerAccountsPage /></AdminGate>;
   if (isResultSubmissionsPath()) return <AdminGate requireGlobal><ResultSubmissionsPage /></AdminGate>;
