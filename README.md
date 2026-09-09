@@ -40,7 +40,7 @@ RESEND_API_KEY=your_resend_sending_key
 MANAGER_CLAIM_ADMIN_EMAIL=admin@smtop100.blog
 MANAGER_CLAIM_WEBHOOK_SECRET=a-long-random-secret
 MANAGER_CLAIM_EMAIL_FROM=Top 100 Tournaments <notifications@smtop100.blog>
-MANAGER_ACCOUNTS_ADMIN_URL=https://youth-cup.smtop100.blog/admin/manager-accounts
+MANAGER_ACCOUNTS_ADMIN_URL=https://tournaments.smtop100.blog/admin/manager-accounts
 ```
 
 Never prefix the service-role, Resend or webhook secrets with `VITE_`.
@@ -49,7 +49,7 @@ After applying `supabase/migrations/20260720_manager_claim_email_notifications.s
 
 ```sql
 select vault.create_secret(
-  'https://youth-cup.smtop100.blog/.netlify/functions/notify-manager-claim',
+  'https://tournaments.smtop100.blog/.netlify/functions/notify-manager-claim',
   'manager_claim_notification_url'
 );
 
@@ -58,6 +58,8 @@ select vault.create_secret(
   'manager_claim_webhook_secret'
 );
 ```
+
+The legacy `https://youth-cup.smtop100.blog/.netlify/functions/notify-manager-claim` endpoint is kept as an internal 200 rewrite during the hostname transition so an older stored Vault URL cannot lose POST requests to the browser-facing 301 redirect.
 
 A pending claim is emailed once per review cycle. If a claim is rejected, corrected and resubmitted, its notification state is reset so the administrator receives a fresh alert.
 
@@ -82,13 +84,19 @@ WORDPRESS_CLIENT_ID=your_wordpress_com_app_client_id
 WORDPRESS_CLIENT_SECRET=your_wordpress_com_app_client_secret
 ```
 
-Set the WordPress.com application's redirect URL to:
+During the domain transition, the currently registered WordPress.com callback may remain:
 
 ```text
 https://youth-cup.smtop100.blog/.netlify/functions/wordpress-oauth-setup
 ```
 
-After deploying, open that same URL in a browser and tap **Authorise with WordPress.com**. The helper generates a fresh random OAuth state for that attempt and stores it in a short-lived Secure, HttpOnly, SameSite cookie. The callback is accepted only in the browser that initiated the flow, then exchanges the temporary authorization code server-side and displays the resulting `WORDPRESS_ACCESS_TOKEN` and numeric `WORDPRESS_SITE_ID` for copying into Netlify.
+That exact path is exempted from the legacy-host 301 and is internally rewritten to the same Netlify function, preserving the request hostname so the OAuth `redirect_uri` still matches the registered callback. If the WordPress.com application callback is later changed to the canonical hostname, use:
+
+```text
+https://tournaments.smtop100.blog/.netlify/functions/wordpress-oauth-setup
+```
+
+Open the URL that is currently registered with WordPress.com in a browser and tap **Authorise with WordPress.com**. The helper generates a fresh random OAuth state for that attempt and stores it in a short-lived Secure, HttpOnly, SameSite cookie. The callback is accepted only in the browser that initiated the flow, then exchanges the temporary authorization code server-side and displays the resulting `WORDPRESS_ACCESS_TOKEN` and numeric `WORDPRESS_SITE_ID` for copying into Netlify.
 
 After the token is saved and a fresh deploy succeeds, remove `WORDPRESS_CLIENT_SECRET` if the setup helper is no longer needed. Keep `WORDPRESS_ACCESS_TOKEN` private.
 
