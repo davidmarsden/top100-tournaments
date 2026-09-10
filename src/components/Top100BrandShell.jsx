@@ -72,7 +72,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
 
           <nav className="top100-brand-header__utility" aria-label={isVoting ? 'Manager tools' : 'Tournament tools'}>
             <a className="top100-brand-header__manager-link" href="https://tournaments.smtop100.blog/manager">Manager portal</a>
-            {isVoting && <a className="top100-brand-header__manager-link" href="https://tournaments.smtop100.blog/vote">Manager voting</a>}
+            {isVoting && <a className="top100-brand-header__manager-link" href="https://vote.smtop100.blog/vote">Manager voting</a>}
           </nav>
         </div>
       </header>
@@ -89,7 +89,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
             <a href="https://smtop100.blog/">Top 100</a>
             <a href="https://archive.smtop100.blog/">Stats &amp; History</a>
             <a href="https://vote.smtop100.blog/">Voting Results</a>
-            <a href="https://tournaments.smtop100.blog/vote">Manager voting</a>
+            <a href="https://vote.smtop100.blog/vote">Manager voting</a>
             <a href="https://smtop100.blog/rules/">Rules</a>
             <a href="https://smtop100.blog/support/">Support</a>
             <a href="https://awards.smtop100.blog/">Awards</a>
@@ -98,7 +98,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
         </div>
         <div className="top100-footer__note">
           {isVoting
-            ? 'Published poll and Awards results, with authenticated manager voting handled through the Manager Portal.'
+            ? 'Published poll and Awards results, with authenticated manager voting available on this Voting site.'
             : 'Tournament fixtures, results and competition history from the Top 100 Soccer Manager community.'}
         </div>
       </footer>
