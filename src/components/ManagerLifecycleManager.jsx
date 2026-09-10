@@ -17,7 +17,7 @@ export default function ManagerLifecycleManager() {
     if (error) setStatus('Could not load managers: ' + error.message);
     else {
       setManagers(data || []);
-      setStatus(`${(data || []).filter((row) => row.active).length} active managers.`);
+      setStatus(`${(data || []).filter((row) => row.active).length} active Top 100 managers.`);
     }
     setLoading(false);
   }
@@ -58,8 +58,8 @@ export default function ManagerLifecycleManager() {
     if (error) setStatus('Manager update failed: ' + error.message);
     else {
       setStatus(active
-        ? `${manager.display_name || manager.name} reactivated. Existing Manager Portal access has been restored where available.`
-        : `${manager.display_name || manager.name} marked inactive. Manager Portal, Voting and Awards access are now disabled.`);
+        ? `${manager.display_name || manager.name} reactivated. Existing Top 100 Manager Portal access has been restored where available; organiser or assistant roles must be reassigned separately.`
+        : `${manager.display_name || manager.name} marked inactive. Top 100 Manager Portal, Voting, Awards and delegated tournament access are now disabled.`);
       await loadManagers();
     }
     setLoading(false);
@@ -78,7 +78,7 @@ export default function ManagerLifecycleManager() {
         <div>
           <p className="eyebrow">Top 100 roster</p>
           <h3>Manager lifecycle</h3>
-          <p className="muted">This is the canonical active-manager list used by Manager Portal, future Voting electorates and Manager Awards. Managers are deactivated, never deleted, so historical records remain intact.</p>
+          <p className="muted">This is the canonical Top 100 active-manager list used by Manager Portal, future Voting electorates and Manager Awards. Membership is scoped to the Top 100 game world, so Regen and test-only identities stay separate. Managers are deactivated, never deleted, so historical records remain intact.</p>
         </div>
         <button type="button" className="secondary" onClick={loadManagers} disabled={loading}>Refresh</button>
       </div>
@@ -108,7 +108,7 @@ export default function ManagerLifecycleManager() {
         {filtered.map((manager) => <article className={`entrant-row ${manager.active ? 'selected' : ''}`} key={manager.manager_id}>
           <div>
             <strong>{manager.display_name || manager.name}</strong>
-            <span>{manager.active ? 'Active Top 100 manager' : 'Inactive / historical manager'}</span>
+            <span>{manager.active ? 'Active Top 100 manager' : 'Inactive / historical Top 100 manager'}</span>
             <span>{Number(manager.account_count || 0) > 0
               ? `${manager.active_account_count || 0}/${manager.account_count} active Manager Portal account(s) · ${(manager.account_emails || []).join(', ')}`
               : 'No Manager Portal account claimed yet'}</span>
@@ -123,9 +123,9 @@ export default function ManagerLifecycleManager() {
     </section>
 
     <section className="entrant-panel">
-      <p className="eyebrow">Voting behaviour</p>
+      <p className="eyebrow">Access behaviour</p>
       <h3>What these controls affect</h3>
-      <p className="muted">Deactivating a manager disables any linked Manager Portal account immediately and excludes them from future poll and Awards electorates. Reactivating restores an existing linked account where available. Open votes keep their frozen electorate; changing that remains a separate audited voting correction.</p>
+      <p className="muted">Deactivating a Top 100 manager disables linked Top 100 Manager Portal access, removes delegated organiser/assistant access, and excludes them from future poll and Awards electorates. Reactivating restores an existing Portal account where available, but delegated tournament roles must be granted again deliberately. Open votes keep their frozen electorate; changing that remains a separate audited voting correction.</p>
     </section>
   </div>;
 }
