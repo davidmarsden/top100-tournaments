@@ -40,11 +40,17 @@ function TournamentManagerShell({ children }) {
 
 export default function App() {
   if (isVotingHost()) {
+    if (isVotingPath()) {
+      return <Top100BrandShell product="Voting" current="voting"><VotingPortal /></Top100BrandShell>;
+    }
     return <Top100BrandShell product="Voting Results" current="voting"><PublicVotingResults /></Top100BrandShell>;
   }
   if (isManagerPath()) return <TournamentManagerShell><ManagerPortal /></TournamentManagerShell>;
   if (isManagerRegistrationPath()) return <TournamentManagerShell><ManagerRegistrationPortal /></TournamentManagerShell>;
-  if (isVotingPath()) return <Top100BrandShell product="Voting" current="voting"><VotingPortal /></Top100BrandShell>;
+  if (isVotingPath()) {
+    window.location.replace('https://vote.smtop100.blog/vote');
+    return null;
+  }
   if (isManagerAccountsPath()) return <AdminGate requireGlobal><ManagerAccountsPage /></AdminGate>;
   if (isResultSubmissionsPath()) return <AdminGate requireGlobal><ResultSubmissionsPage /></AdminGate>;
   if (!isAdminPath()) return <Top100BrandShell><TournamentRouter /></Top100BrandShell>;
