@@ -17,6 +17,41 @@ create policy "Admins can read manager lifecycle audit"
   on public.manager_lifecycle_audit for select to authenticated
   using (public.is_admin());
 
+create or replace function public.admin_list_manager_lifecycle()
+returns table (
+  manager_id bigint,
+  name text,
+  display_name text,
+  active boolean,
+  account_count bigint,
+  active_account_count bigint,
+  account_emails text[]
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  return query
+  select
+    m.id,
+    m.name,
+    m.display_name,
+    coalesce(m.active, false),
+    count(a.id),
+    count(a.id) filter (where a.active),
+    coalesce(array_agg(a.email order by a.email) filter (where a.email is not null), array[]::text[])
+  from public.managers m
+  left join public.manager_portal_accounts a on a.manager_id = m.id
+  group by m.id, m.name, m.display_name, m.active
+  order by coalesce(m.display_name, m.name), m.id;
+end;
+$$;
+
 create or replace function public.admin_create_manager(
   manager_name text,
   manager_display_name text default null
@@ -121,7 +156,9 @@ begin
 end;
 $$;
 
+revoke all on function public.admin_list_manager_lifecycle() from public;
 revoke all on function public.admin_create_manager(text,text) from public;
 revoke all on function public.admin_set_manager_active(bigint,boolean,text) from public;
+grant execute on function public.admin_list_manager_lifecycle() to authenticated;
 grant execute on function public.admin_create_manager(text,text) to authenticated;
 grant execute on function public.admin_set_manager_active(bigint,boolean,text) to authenticated;
