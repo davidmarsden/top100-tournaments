@@ -29,6 +29,13 @@ function isVotingHost() {
   return window.location.hostname === 'vote.smtop100.blog';
 }
 
+function canonicalVotingUrl() {
+  const target = new URL('https://tournaments.smtop100.blog/vote');
+  target.search = window.location.search;
+  target.hash = window.location.hash;
+  return target.toString();
+}
+
 function isVotingPath() {
   return /^\/vote\/?$/.test(window.location.pathname);
 }
@@ -39,7 +46,11 @@ function TournamentManagerShell({ children }) {
 
 export default function App() {
   if (isVotingHost()) {
-    return <Top100BrandShell product="Voting" current="voting"><VotingPortal /></Top100BrandShell>;
+    // Supabase browser sessions are origin-scoped. Keep vote.smtop100.blog as a
+    // friendly entry point, but run authenticated voting on the same origin as
+    // the Manager Portal so an existing manager session is reused.
+    window.location.replace(canonicalVotingUrl());
+    return null;
   }
   if (isManagerPath()) return <TournamentManagerShell><ManagerPortal /></TournamentManagerShell>;
   if (isManagerRegistrationPath()) return <TournamentManagerShell><ManagerRegistrationPortal /></TournamentManagerShell>;
