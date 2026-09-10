@@ -2,7 +2,7 @@ import AdminDashboard from './components/AdminDashboard.jsx';
 import AdminGate from './components/AdminGate.jsx';
 import AuthSessionBridge from './components/AuthSessionBridge.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
-import ManagerEntry from './components/ManagerEntry.jsx';
+import ManagerPortal from './components/ManagerPortal.jsx';
 import ManagerRegistrationPortal from './components/ManagerRegistrationPortal.jsx';
 import PublicVotingResults from './components/PublicVotingResults.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
@@ -47,10 +47,6 @@ function isVotingPath() {
   return /^\/vote\/?$/.test(window.location.pathname);
 }
 
-function TournamentManagerShell({ children }) {
-  return <Top100BrandShell product="Tournaments" current="tournaments">{children}</Top100BrandShell>;
-}
-
 function ManagerShell({ children }) {
   return <Top100BrandShell product="Manager Portal" current="manager">{children}</Top100BrandShell>;
 }
@@ -66,7 +62,7 @@ export default function App() {
   if (isManagerHost()) {
     if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
     if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerRegistrationPortal /></ManagerShell>;
-    return <ManagerShell><ManagerEntry /></ManagerShell>;
+    return <ManagerShell><ManagerPortal /></ManagerShell>;
   }
 
   if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
