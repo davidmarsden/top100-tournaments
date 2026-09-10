@@ -8,7 +8,7 @@ const FAMILY_LINKS = [
   { key: 'top100', label: 'Top 100', href: 'https://smtop100.blog/' },
   { key: 'history', label: 'Stats & History', href: 'https://archive.smtop100.blog/' },
   { key: 'tournaments', label: 'Tournaments', href: 'https://tournaments.smtop100.blog/' },
-  { key: 'voting', label: 'Voting', href: '/vote' },
+  { key: 'voting', label: 'Voting', href: 'https://vote.smtop100.blog/' },
   { key: 'awards', label: 'Awards', href: 'https://awards.smtop100.blog/' },
   { key: 'regen', label: 'Regen', href: 'https://top100regen.website/' },
 ];
@@ -72,6 +72,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
 
           <nav className="top100-brand-header__utility" aria-label={isVoting ? 'Manager tools' : 'Tournament tools'}>
             <a className="top100-brand-header__manager-link" href="https://tournaments.smtop100.blog/manager">Manager portal</a>
+            {isVoting && <a className="top100-brand-header__manager-link" href="https://vote.smtop100.blog/vote">Manager voting</a>}
           </nav>
         </div>
       </header>
@@ -87,7 +88,8 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
           <nav aria-label="Top 100 footer links">
             <a href="https://smtop100.blog/">Top 100</a>
             <a href="https://archive.smtop100.blog/">Stats &amp; History</a>
-            <a href="/vote">Voting</a>
+            <a href="https://vote.smtop100.blog/">Voting Results</a>
+            <a href="https://vote.smtop100.blog/vote">Manager voting</a>
             <a href="https://smtop100.blog/rules/">Rules</a>
             <a href="https://smtop100.blog/support/">Support</a>
             <a href="https://awards.smtop100.blog/">Awards</a>
@@ -96,7 +98,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
         </div>
         <div className="top100-footer__note">
           {isVoting
-            ? 'Manager-authenticated polls, Awards ballots and community votes for the Top 100 Soccer Manager community.'
+            ? 'Published poll and Awards results, with authenticated manager voting available on this Voting site.'
             : 'Tournament fixtures, results and competition history from the Top 100 Soccer Manager community.'}
         </div>
       </footer>

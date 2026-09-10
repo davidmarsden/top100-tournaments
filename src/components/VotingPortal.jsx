@@ -193,7 +193,7 @@ export default function VotingPortal() {
     {message && <p className="status">{message}</p>}
     {loading && <section className="card"><h2>Loading…</h2></section>}
     {!loading && isAdmin && <AdminPollBuilder onCreated={loadVoting} setMessage={setMessage} />}
-    {!loading && !account && !isAdmin && <section className="card"><h2>Manager account required</h2><p>Your email is authenticated, but it is not linked to an active Top 100 manager account. Use the Manager Portal to claim or restore your manager identity first.</p><a href="/manager">Go to Manager Portal</a></section>}
+    {!loading && !account && !isAdmin && <section className="card"><h2>Manager account required</h2><p>Your email is authenticated, but it is not linked to an active Top 100 manager account. Use the Manager Portal to claim or restore your manager identity first.</p><a href="https://tournaments.smtop100.blog/manager">Go to Manager Portal</a></section>}
     {!loading && isAdmin && !account && <section className="card"><h2>Administrator mode</h2><p>You can create, open, close and finalise voting events, but you need an active manager account to cast a ballot.</p></section>}
     {!loading && canRenderEvents && events.length === 0 && <section className="card"><h2>No votes available</h2><p>There are no voting events available at the moment.</p></section>}
     {!loading && canRenderEvents && events.map((vote) => {
@@ -223,7 +223,7 @@ export default function VotingPortal() {
         {canRelease && <button type="button" className="secondary" onClick={() => releaseResults(vote.id)}>Release results</button>}
         {resultsAvailable && <button type="button" className="secondary" onClick={() => loadResults(vote.id)}>Show vote totals</button>}
         {finalResult && <div style={{ marginTop: '1rem' }}><h3>Official result</h3><p><strong>{finalResult.decision_summary}</strong></p><p className="muted">Turnout: {finalResult.ballots_cast}/{finalResult.electorate_count} ({finalResult.turnout_percent}%) · Quorum {finalResult.quorum_met ? 'met' : 'not met'}</p>{vote.results_visibility === 'manual_release' && <p className="muted">Results: {vote.results_released_at ? `released ${formatDate(vote.results_released_at)}` : 'awaiting manual release'}</p>}</div>}
-        {resultRows.length > 0 && <div style={{ marginTop: '1rem' }}>{eventQuestions.map((question) => <div key={question.id}><h3>{question.title}</h3><ul>{resultRows.filter((row) => row.question_id === question.id).map((row) => <li key={row.option_id}>{row.option_label}: <strong>{row.votes}</strong></li>)}</ul></div>)}</div>}
+        {resultRows.length > 0 && <div style={{ marginTop: '1rem' }}>{resultRows.map((row) => <div key={`${row.question_id}-${row.option_id}`}>{row.question_title}: {row.option_label} — <strong>{row.votes}</strong></div>)}</div>}
       </section>;
     })}
   </main>;
