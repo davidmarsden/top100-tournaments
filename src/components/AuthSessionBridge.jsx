@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const TRUSTED_CONSUMER_ORIGINS = new Set([
+  'https://manager.smtop100.blog',
   'https://vote.smtop100.blog',
   'https://awards.smtop100.blog',
 ]);
