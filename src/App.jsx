@@ -3,6 +3,7 @@ import AdminGate from './components/AdminGate.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
 import ManagerPortal from './components/ManagerPortal.jsx';
 import ManagerRegistrationPortal from './components/ManagerRegistrationPortal.jsx';
+import PublicVotingResults from './components/PublicVotingResults.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
 import Top100BrandShell from './components/Top100BrandShell.jsx';
 import TournamentRouter, { isAdminPath } from './components/TournamentRouter.jsx';
@@ -29,13 +30,6 @@ function isVotingHost() {
   return window.location.hostname === 'vote.smtop100.blog';
 }
 
-function canonicalVotingUrl() {
-  const target = new URL('https://tournaments.smtop100.blog/vote');
-  target.search = window.location.search;
-  target.hash = window.location.hash;
-  return target.toString();
-}
-
 function isVotingPath() {
   return /^\/vote\/?$/.test(window.location.pathname);
 }
@@ -46,11 +40,7 @@ function TournamentManagerShell({ children }) {
 
 export default function App() {
   if (isVotingHost()) {
-    // Supabase browser sessions are origin-scoped. Keep vote.smtop100.blog as a
-    // friendly entry point, but run authenticated voting on the same origin as
-    // the Manager Portal so an existing manager session is reused.
-    window.location.replace(canonicalVotingUrl());
-    return null;
+    return <Top100BrandShell product="Voting Results" current="voting"><PublicVotingResults /></Top100BrandShell>;
   }
   if (isManagerPath()) return <TournamentManagerShell><ManagerPortal /></TournamentManagerShell>;
   if (isManagerRegistrationPath()) return <TournamentManagerShell><ManagerRegistrationPortal /></TournamentManagerShell>;
