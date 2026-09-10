@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import VotingPortal from './VotingPortal.jsx';
 
-const MANAGER_ORIGIN = 'https://tournaments.smtop100.blog';
+const MANAGER_ORIGIN = 'https://manager.smtop100.blog';
 const BRIDGE_TIMEOUT_MS = 15000;
 
 export default function VotingEntry() {
@@ -34,9 +34,6 @@ export default function VotingEntry() {
         const { error } = await supabase.auth.setSession(bridgeSession);
         if (error) console.warn('Could not import Manager Portal session into Voting.', error);
       }
-
-      // A valid bridge response with session: null is also definitive: there is
-      // no Manager Portal session to reuse, so Voting can show its own sign-in.
       finish();
     };
 
@@ -61,9 +58,6 @@ export default function VotingEntry() {
         frame.style.display = 'none';
         frame.addEventListener('error', finish, { once: true });
         document.body.appendChild(frame);
-
-        // Normally AuthSessionBridge explicitly responds with either a session
-        // or null. Keep this only as a generous network/browser failure guard.
         timeout = window.setTimeout(finish, BRIDGE_TIMEOUT_MS);
       })
       .catch((error) => {

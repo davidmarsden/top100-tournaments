@@ -11,6 +11,7 @@ const FAMILY_LINKS = [
   { key: 'voting-results', label: 'Voting Results', href: 'https://vote.smtop100.blog/' },
   { key: 'vote', label: 'Vote', href: 'https://vote.smtop100.blog/vote' },
   { key: 'awards', label: 'Awards', href: 'https://awards.smtop100.blog/' },
+  { key: 'manager', label: 'Manager', href: 'https://manager.smtop100.blog/' },
   { key: 'regen', label: 'Regen', href: 'https://top100regen.website/' },
 ];
 
@@ -33,6 +34,7 @@ function replaceInternalStatusLabels(root) {
 
 export default function Top100BrandShell({ children, product = 'Tournaments', current = 'tournaments' }) {
   const isVoting = current === 'vote' || current === 'voting-results';
+  const isManager = current === 'manager';
 
   useEffect(() => {
     const shell = document.querySelector('.top100-site-shell');
@@ -71,9 +73,11 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
             ))}
           </nav>
 
-          <nav className="top100-brand-header__utility" aria-label={isVoting ? 'Manager tools' : 'Tournament tools'}>
-            <a className="top100-brand-header__manager-link" href="https://tournaments.smtop100.blog/manager">Manager portal</a>
-          </nav>
+          {!isManager && (
+            <nav className="top100-brand-header__utility" aria-label={isVoting ? 'Manager tools' : 'Tournament tools'}>
+              <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">Manager portal</a>
+            </nav>
+          )}
         </div>
       </header>
 
@@ -93,13 +97,15 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
             <a href="https://smtop100.blog/rules/">Rules</a>
             <a href="https://smtop100.blog/support/">Support</a>
             <a href="https://awards.smtop100.blog/">Awards</a>
-            <a href="https://tournaments.smtop100.blog/manager">Manager portal</a>
+            <a href="https://manager.smtop100.blog/">Manager portal</a>
           </nav>
         </div>
         <div className="top100-footer__note">
-          {isVoting
-            ? 'Published poll and Awards results, with authenticated manager voting available on this Voting site.'
-            : 'Tournament fixtures, results and competition history from the Top 100 Soccer Manager community.'}
+          {isManager
+            ? 'Your verified Top 100 identity for manager-only tools across the community.'
+            : isVoting
+              ? 'Published poll and Awards results, with authenticated manager voting available on this Voting site.'
+              : 'Tournament fixtures, results and competition history from the Top 100 Soccer Manager community.'}
         </div>
       </footer>
     </div>

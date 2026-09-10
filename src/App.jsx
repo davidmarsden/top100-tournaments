@@ -19,6 +19,14 @@ function isManagerRegistrationPath() {
   return /^\/manager\/registrations?\/?$/.test(window.location.pathname);
 }
 
+function isManagerHostRegistrationPath() {
+  return /^\/(?:manager\/)?registrations?\/?$/.test(window.location.pathname);
+}
+
+function isManagerHostPortalPath() {
+  return /^\/(?:manager\/?)?$/.test(window.location.pathname);
+}
+
 function isManagerAccountsPath() {
   return /^\/admin\/manager-accounts\/?$/.test(window.location.pathname);
 }
@@ -35,12 +43,22 @@ function isVotingHost() {
   return window.location.hostname === 'vote.smtop100.blog';
 }
 
+function isManagerHost() {
+  return window.location.hostname === 'manager.smtop100.blog';
+}
+
 function isVotingPath() {
   return /^\/vote\/?$/.test(window.location.pathname);
 }
 
-function TournamentManagerShell({ children }) {
-  return <Top100BrandShell product="Tournaments" current="tournaments">{children}</Top100BrandShell>;
+function ManagerShell({ children }) {
+  return <Top100BrandShell product="Manager Portal" current="manager">{children}</Top100BrandShell>;
+}
+
+function forwardManagerHostPathToTournaments() {
+  const target = new URL(window.location.href);
+  target.hostname = 'tournaments.smtop100.blog';
+  window.location.replace(target.toString());
 }
 
 export default function App() {
@@ -50,9 +68,24 @@ export default function App() {
     }
     return <Top100BrandShell product="Voting Results" current="voting-results"><PublicVotingResults /></Top100BrandShell>;
   }
+
+  if (isManagerHost()) {
+    if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
+    if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerRegistrationPortal /></ManagerShell>;
+    if (isManagerHostPortalPath()) return <ManagerShell><ManagerPortal /></ManagerShell>;
+    forwardManagerHostPathToTournaments();
+    return null;
+  }
+
   if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
-  if (isManagerPath()) return <TournamentManagerShell><ManagerPortal /></TournamentManagerShell>;
-  if (isManagerRegistrationPath()) return <TournamentManagerShell><ManagerRegistrationPortal /></TournamentManagerShell>;
+  if (isManagerPath()) {
+    window.location.replace('https://manager.smtop100.blog/');
+    return null;
+  }
+  if (isManagerRegistrationPath()) {
+    window.location.replace('https://manager.smtop100.blog/registrations');
+    return null;
+  }
   if (isVotingPath()) {
     window.location.replace('https://vote.smtop100.blog/vote');
     return null;
