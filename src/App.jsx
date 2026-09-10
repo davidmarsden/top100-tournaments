@@ -2,7 +2,7 @@ import AdminDashboard from './components/AdminDashboard.jsx';
 import AdminGate from './components/AdminGate.jsx';
 import AuthSessionBridge from './components/AuthSessionBridge.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
-import ManagerPortal from './components/ManagerPortal.jsx';
+import ManagerEntry from './components/ManagerEntry.jsx';
 import ManagerRegistrationPortal from './components/ManagerRegistrationPortal.jsx';
 import PublicVotingResults from './components/PublicVotingResults.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
@@ -17,6 +17,10 @@ function isManagerPath() {
 
 function isManagerRegistrationPath() {
   return /^\/manager\/registrations?\/?$/.test(window.location.pathname);
+}
+
+function isManagerHostRegistrationPath() {
+  return /^\/(?:manager\/)?registrations?\/?$/.test(window.location.pathname);
 }
 
 function isManagerAccountsPath() {
@@ -35,12 +39,20 @@ function isVotingHost() {
   return window.location.hostname === 'vote.smtop100.blog';
 }
 
+function isManagerHost() {
+  return window.location.hostname === 'manager.smtop100.blog';
+}
+
 function isVotingPath() {
   return /^\/vote\/?$/.test(window.location.pathname);
 }
 
 function TournamentManagerShell({ children }) {
   return <Top100BrandShell product="Tournaments" current="tournaments">{children}</Top100BrandShell>;
+}
+
+function ManagerShell({ children }) {
+  return <Top100BrandShell product="Manager Portal" current="manager">{children}</Top100BrandShell>;
 }
 
 export default function App() {
@@ -50,9 +62,22 @@ export default function App() {
     }
     return <Top100BrandShell product="Voting Results" current="voting-results"><PublicVotingResults /></Top100BrandShell>;
   }
+
+  if (isManagerHost()) {
+    if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
+    if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerRegistrationPortal /></ManagerShell>;
+    return <ManagerShell><ManagerEntry /></ManagerShell>;
+  }
+
   if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
-  if (isManagerPath()) return <TournamentManagerShell><ManagerPortal /></TournamentManagerShell>;
-  if (isManagerRegistrationPath()) return <TournamentManagerShell><ManagerRegistrationPortal /></TournamentManagerShell>;
+  if (isManagerPath()) {
+    window.location.replace('https://manager.smtop100.blog/');
+    return null;
+  }
+  if (isManagerRegistrationPath()) {
+    window.location.replace('https://manager.smtop100.blog/registrations');
+    return null;
+  }
   if (isVotingPath()) {
     window.location.replace('https://vote.smtop100.blog/vote');
     return null;
