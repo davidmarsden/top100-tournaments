@@ -53,7 +53,7 @@ export default function PublicVotingResults() {
         <h1>Voting Results</h1>
         <p>Published results from Top 100 manager polls and Awards voting. No sign-in required.</p>
       </div>
-      <a className="button" href="https://tournaments.smtop100.blog/vote">Manager voting</a>
+      <a className="button" href="/vote">Manager voting</a>
     </section>
 
     {loading && <section className="card"><h2>Loading results…</h2></section>}
