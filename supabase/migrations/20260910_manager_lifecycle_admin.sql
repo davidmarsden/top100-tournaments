@@ -17,6 +17,38 @@ create policy "Admins can read manager lifecycle audit"
   on public.manager_lifecycle_audit for select to authenticated
   using (public.is_admin());
 
+-- Prevent a later account claim/approval from accidentally re-enabling Portal,
+-- Voting or Awards access for a manager who has been marked inactive.
+create or replace function public.enforce_active_manager_portal_account()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  manager_is_active boolean;
+begin
+  if coalesce(new.active, false) then
+    select coalesce(m.active, false) into manager_is_active
+    from public.managers m
+    where m.id = new.manager_id;
+
+    if not coalesce(manager_is_active, false) then
+      raise exception 'This manager is inactive. Reactivate the canonical manager record before enabling their account.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.enforce_active_manager_portal_account() from public, anon, authenticated;
+
+drop trigger if exists manager_portal_account_requires_active_manager on public.manager_portal_accounts;
+create trigger manager_portal_account_requires_active_manager
+before insert or update of manager_id, active
+on public.manager_portal_accounts
+for each row execute function public.enforce_active_manager_portal_account();
+
 create or replace function public.admin_list_manager_lifecycle()
 returns table (
   manager_id bigint,
@@ -129,17 +161,27 @@ begin
     return manager_row;
   end if;
 
+  -- When deactivating, switch linked accounts off first so the trigger above
+  -- never permits a stale active account. When reactivating, flip the manager
+  -- first and then restore any existing linked account.
+  if not target_active then
+    update public.manager_portal_accounts
+    set active = false,
+        updated_at = now()
+    where manager_id = target_manager_id;
+  end if;
+
   update public.managers
   set active = target_active
   where id = target_manager_id
   returning * into manager_row;
 
-  -- Manager Portal, Voting and Awards all resolve identity through active
-  -- manager_portal_accounts. Keep account access aligned with manager status.
-  update public.manager_portal_accounts
-  set active = target_active,
-      updated_at = now()
-  where manager_id = target_manager_id;
+  if target_active then
+    update public.manager_portal_accounts
+    set active = true,
+        updated_at = now()
+    where manager_id = target_manager_id;
+  end if;
 
   insert into public.manager_lifecycle_audit(manager_id, action, reason, performed_by)
   values (
