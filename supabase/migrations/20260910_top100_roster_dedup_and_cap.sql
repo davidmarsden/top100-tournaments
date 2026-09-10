@@ -150,6 +150,7 @@ end $$;
 
 -- Enforce the hard Top 100 roster cap at the database boundary so imports,
 -- admin tools and future code paths cannot silently create manager 101.
+-- Lock the game-world row before counting so concurrent admissions serialize.
 create or replace function public.enforce_top100_active_manager_cap()
 returns trigger
 language plpgsql
@@ -157,19 +158,19 @@ security definer
 set search_path = public
 as $$
 declare
-  is_top100 boolean;
+  world_slug text;
   active_count integer;
 begin
   if not coalesce(new.active, false) then
     return new;
   end if;
 
-  select exists(
-    select 1 from public.game_worlds gw
-    where gw.id = new.game_world_id and gw.slug = 'top-100'
-  ) into is_top100;
+  select gw.slug into world_slug
+  from public.game_worlds gw
+  where gw.id = new.game_world_id
+  for update;
 
-  if not is_top100 then
+  if world_slug is distinct from 'top-100' then
     return new;
   end if;
 
