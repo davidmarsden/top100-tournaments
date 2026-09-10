@@ -193,7 +193,7 @@ export default function VotingPortal() {
     {message && <p className="status">{message}</p>}
     {loading && <section className="card"><h2>Loading…</h2></section>}
     {!loading && isAdmin && <AdminPollBuilder onCreated={loadVoting} setMessage={setMessage} />}
-    {!loading && !account && !isAdmin && <section className="card"><h2>Manager account required</h2><p>Your email is authenticated, but it is not linked to an active Top 100 manager account. Use the Manager Portal to claim or restore your manager identity first.</p><a href="https://tournaments.smtop100.blog/manager">Go to Manager Portal</a></section>}
+    {!loading && !account && !isAdmin && <section className="card"><h2>Manager account required</h2><p>Your email is authenticated, but it is not linked to an active Top 100 manager account. Use the Manager Portal to claim or restore your manager identity first.</p><a href="https://manager.smtop100.blog/">Go to Manager Portal</a></section>}
     {!loading && isAdmin && !account && <section className="card"><h2>Administrator mode</h2><p>You can create, open, close and finalise voting events, but you need an active manager account to cast a ballot.</p></section>}
     {!loading && canRenderEvents && events.length === 0 && <section className="card"><h2>No votes available</h2><p>There are no voting events available at the moment.</p></section>}
     {!loading && canRenderEvents && events.map((vote) => {
