@@ -3,6 +3,7 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import VotingPortal from './VotingPortal.jsx';
 
 const MANAGER_ORIGIN = 'https://tournaments.smtop100.blog';
+const BRIDGE_TIMEOUT_MS = 15000;
 
 export default function VotingEntry() {
   const [checkingBridge, setCheckingBridge] = useState(true);
@@ -15,41 +16,63 @@ export default function VotingEntry() {
 
     let finished = false;
     let frame;
+    let timeout;
 
     const finish = () => {
       if (finished) return;
       finished = true;
+      if (timeout) window.clearTimeout(timeout);
       setCheckingBridge(false);
       if (frame?.parentNode) frame.parentNode.removeChild(frame);
     };
 
     const handleMessage = async (event) => {
       if (event.origin !== MANAGER_ORIGIN || event.data?.type !== 'top100-manager-session') return;
+
       const bridgeSession = event.data.session;
       if (bridgeSession?.access_token && bridgeSession?.refresh_token) {
-        await supabase.auth.setSession(bridgeSession);
+        const { error } = await supabase.auth.setSession(bridgeSession);
+        if (error) console.warn('Could not import Manager Portal session into Voting.', error);
       }
+
+      // A valid bridge response with session: null is also definitive: there is
+      // no Manager Portal session to reuse, so Voting can show its own sign-in.
       finish();
     };
 
     window.addEventListener('message', handleMessage);
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        finish();
-        return;
-      }
-      frame = document.createElement('iframe');
-      frame.src = `${MANAGER_ORIGIN}/auth/session-bridge`;
-      frame.title = 'Manager sign-in check';
-      frame.setAttribute('aria-hidden', 'true');
-      frame.style.display = 'none';
-      document.body.appendChild(frame);
-    });
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('Could not read Voting session before manager bridge check.', error);
+          finish();
+          return;
+        }
+        if (data.session) {
+          finish();
+          return;
+        }
 
-    const timeout = window.setTimeout(finish, 2500);
+        frame = document.createElement('iframe');
+        frame.src = `${MANAGER_ORIGIN}/auth/session-bridge`;
+        frame.title = 'Manager sign-in check';
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.display = 'none';
+        frame.addEventListener('error', finish, { once: true });
+        document.body.appendChild(frame);
+
+        // Normally AuthSessionBridge explicitly responds with either a session
+        // or null. Keep this only as a generous network/browser failure guard.
+        timeout = window.setTimeout(finish, BRIDGE_TIMEOUT_MS);
+      })
+      .catch((error) => {
+        console.warn('Manager sign-in bridge check failed.', error);
+        finish();
+      });
+
     return () => {
-      window.clearTimeout(timeout);
+      if (timeout) window.clearTimeout(timeout);
       window.removeEventListener('message', handleMessage);
       if (frame?.parentNode) frame.parentNode.removeChild(frame);
     };
