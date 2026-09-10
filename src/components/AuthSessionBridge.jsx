@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
-const VOTING_ORIGIN = 'https://vote.smtop100.blog';
+const TRUSTED_CONSUMER_ORIGINS = new Set([
+  'https://vote.smtop100.blog',
+  'https://awards.smtop100.blog',
+]);
 
 export default function AuthSessionBridge() {
   useEffect(() => {
@@ -12,7 +15,7 @@ export default function AuthSessionBridge() {
     })();
 
     // Never expose a session to an arbitrary embedding origin.
-    if (parentOrigin !== VOTING_ORIGIN || window.parent === window) return;
+    if (!TRUSTED_CONSUMER_ORIGINS.has(parentOrigin) || window.parent === window) return;
 
     supabase.auth.getSession().then(({ data }) => {
       const session = data.session;
@@ -22,7 +25,7 @@ export default function AuthSessionBridge() {
           access_token: session.access_token,
           refresh_token: session.refresh_token,
         } : null,
-      }, VOTING_ORIGIN);
+      }, parentOrigin);
     });
   }, []);
 
