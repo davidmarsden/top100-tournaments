@@ -1,29 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import ManagerPortal from './ManagerPortal.jsx';
 
 const LEGACY_MANAGER_ORIGIN = 'https://tournaments.smtop100.blog';
-const BRIDGE_TIMEOUT_MS = 12000;
+const LEGACY_MIGRATION_KEY = 'top100-manager-legacy-session-migration-attempted';
+const BRIDGE_TIMEOUT_MS = 3000;
 
 export default function ManagerEntry() {
-  const [checkingBridge, setCheckingBridge] = useState(true);
-
   useEffect(() => {
-    if (!hasSupabaseConfig || !supabase || window.location.hostname !== 'manager.smtop100.blog') {
-      setCheckingBridge(false);
-      return undefined;
-    }
+    if (!hasSupabaseConfig || !supabase || window.location.hostname !== 'manager.smtop100.blog') return undefined;
 
-    let finished = false;
     let frame;
     let timeout;
+    let finished = false;
 
-    const finish = () => {
+    const cleanup = () => {
       if (finished) return;
       finished = true;
       if (timeout) window.clearTimeout(timeout);
+      window.removeEventListener('message', handleMessage);
       if (frame?.parentNode) frame.parentNode.removeChild(frame);
-      setCheckingBridge(false);
     };
 
     const handleMessage = async (event) => {
@@ -34,39 +30,37 @@ export default function ManagerEntry() {
         const { error } = await supabase.auth.setSession(bridgeSession);
         if (error) console.warn('Could not import previous Manager Portal session.', error);
       }
-      finish();
+      cleanup();
     };
 
-    window.addEventListener('message', handleMessage);
+    const tryLegacySessionMigration = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || data.session) return;
 
-    supabase.auth.getSession()
-      .then(({ data, error }) => {
-        if (error || data.session) {
-          finish();
-          return;
-        }
+      try {
+        if (window.localStorage.getItem(LEGACY_MIGRATION_KEY) === '1') return;
+        // Mark before opening the bridge so a later explicit logout cannot
+        // trigger the old tournaments-origin session to be imported again.
+        window.localStorage.setItem(LEGACY_MIGRATION_KEY, '1');
+      } catch {
+        // If storage is unavailable, skip the legacy migration rather than
+        // making sign-in or sign-out semantics depend on an untracked bridge.
+        return;
+      }
 
-        frame = document.createElement('iframe');
-        frame.src = `${LEGACY_MANAGER_ORIGIN}/auth/session-bridge`;
-        frame.title = 'Previous Manager Portal sign-in check';
-        frame.setAttribute('aria-hidden', 'true');
-        frame.style.display = 'none';
-        frame.addEventListener('error', finish, { once: true });
-        document.body.appendChild(frame);
-        timeout = window.setTimeout(finish, BRIDGE_TIMEOUT_MS);
-      })
-      .catch(finish);
-
-    return () => {
-      if (timeout) window.clearTimeout(timeout);
-      window.removeEventListener('message', handleMessage);
-      if (frame?.parentNode) frame.parentNode.removeChild(frame);
+      window.addEventListener('message', handleMessage);
+      frame = document.createElement('iframe');
+      frame.src = `${LEGACY_MANAGER_ORIGIN}/auth/session-bridge`;
+      frame.title = 'Previous Manager Portal sign-in check';
+      frame.setAttribute('aria-hidden', 'true');
+      frame.style.display = 'none';
+      document.body.appendChild(frame);
+      timeout = window.setTimeout(cleanup, BRIDGE_TIMEOUT_MS);
     };
+
+    tryLegacySessionMigration().catch(cleanup);
+    return cleanup;
   }, []);
-
-  if (checkingBridge) {
-    return <main className="manager-portal-shell"><section className="card"><h2>Checking manager sign-in…</h2></section></main>;
-  }
 
   return <ManagerPortal />;
 }
