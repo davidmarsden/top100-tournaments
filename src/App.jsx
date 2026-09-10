@@ -23,6 +23,10 @@ function isManagerHostRegistrationPath() {
   return /^\/(?:manager\/)?registrations?\/?$/.test(window.location.pathname);
 }
 
+function isManagerHostPortalPath() {
+  return /^\/(?:manager\/?)?$/.test(window.location.pathname);
+}
+
 function isManagerAccountsPath() {
   return /^\/admin\/manager-accounts\/?$/.test(window.location.pathname);
 }
@@ -51,6 +55,12 @@ function ManagerShell({ children }) {
   return <Top100BrandShell product="Manager Portal" current="manager">{children}</Top100BrandShell>;
 }
 
+function forwardManagerHostPathToTournaments() {
+  const target = new URL(window.location.href);
+  target.hostname = 'tournaments.smtop100.blog';
+  window.location.replace(target.toString());
+}
+
 export default function App() {
   if (isVotingHost()) {
     if (isVotingPath()) {
@@ -62,7 +72,9 @@ export default function App() {
   if (isManagerHost()) {
     if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
     if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerRegistrationPortal /></ManagerShell>;
-    return <ManagerShell><ManagerPortal /></ManagerShell>;
+    if (isManagerHostPortalPath()) return <ManagerShell><ManagerPortal /></ManagerShell>;
+    forwardManagerHostPathToTournaments();
+    return null;
   }
 
   if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
