@@ -43,7 +43,13 @@ export default function ManagerReminderPreferences() {
   }, []);
 
   useEffect(() => {
-    if (!session?.user?.id) { setAccount(null); setLoading(false); return; }
+    if (!session?.user?.id) {
+      setAccount(null);
+      setNextFixture(null);
+      setLastDelivery(null);
+      setLoading(false);
+      return;
+    }
     loadPreferences();
   }, [session?.user?.id]);
 
@@ -57,6 +63,8 @@ export default function ManagerReminderPreferences() {
   }, [savedPrefs]);
 
   async function loadFixtureStatus(accountRow) {
+    setNextFixture(null);
+    setLastDelivery(null);
     if (accountRow.game_worlds?.slug !== 'top-100') return;
 
     const [{ data: competition }, { data: deliveries }] = await Promise.all([
@@ -71,6 +79,7 @@ export default function ManagerReminderPreferences() {
       .select('id, season_number')
       .eq('game_world_id', accountRow.game_world_id)
       .eq('competition_type_id', competition.id)
+      .eq('is_public', true)
       .not('status', 'in', '(completed,archived)')
       .order('season_number', { ascending: false });
     const tournamentIds = (tournaments || []).map((row) => row.id);
@@ -107,6 +116,8 @@ export default function ManagerReminderPreferences() {
 
   async function loadPreferences() {
     setLoading(true);
+    setNextFixture(null);
+    setLastDelivery(null);
     const { data: accountRow, error: accountError } = await supabase
       .from('manager_portal_accounts')
       .select('id, manager_id, game_world_id, email, active, game_worlds(slug)')
