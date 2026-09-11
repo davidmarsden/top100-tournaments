@@ -48,6 +48,18 @@ function replaceInternalStatusLabels(root) {
   });
 }
 
+function normalizeCommunityPollUi(root) {
+  root.querySelectorAll('.manager-portal-hero h1').forEach((heading) => {
+    if (heading.textContent.trim() === 'Manager Voting') heading.textContent = 'Community Polls';
+  });
+
+  root.querySelectorAll('.status').forEach((status) => {
+    if (status.textContent.trim() === 'Voting account verified.') {
+      status.textContent = 'Community Polls account verified.';
+    }
+  });
+}
+
 export default function Top100BrandShell({ children, product = 'Tournaments', current = 'tournaments' }) {
   const resolvedCurrent = current === 'tournaments' ? tournamentCurrentFromPath(window.location.pathname) : current;
   const isVoting = resolvedCurrent === 'vote' || resolvedCurrent === 'voting-results';
@@ -58,13 +70,18 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
     const shell = document.querySelector('.top100-site-shell');
     if (!shell) return undefined;
 
-    replaceInternalStatusLabels(shell);
+    const normalize = () => {
+      replaceInternalStatusLabels(shell);
+      if (isVoting) normalizeCommunityPollUi(shell);
+    };
 
-    const observer = new MutationObserver(() => replaceInternalStatusLabels(shell));
+    normalize();
+
+    const observer = new MutationObserver(normalize);
     observer.observe(shell, { childList: true, subtree: true, characterData: true });
 
     return () => observer.disconnect();
-  }, []);
+  }, [isVoting]);
 
   return (
     <div className="top100-site-shell">
