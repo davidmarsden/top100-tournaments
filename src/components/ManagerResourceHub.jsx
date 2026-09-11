@@ -5,7 +5,7 @@ const RESOURCES = [
   { label: 'Community Polls', description: 'Vote on game-world decisions and read the published results.', href: 'https://vote.smtop100.blog/' },
   { label: 'Search & Categories', description: 'Find more than a decade of manager-written Top 100 stories.', href: 'https://smtop100.blog/explore/' },
   { label: 'Write for Top 100', description: 'Submit club news, reports and features to the community.', href: 'https://write.smtop100.blog/' },
-  { label: 'Subscribe', description: 'Get new Top 100 posts by email and, later, fixture and voting reminders.', href: 'https://smtop100.blog/subscribe/' },
+  { label: 'Subscribe', description: 'Get new Top 100 posts by email. Manager accounts can also opt in to Youth Cup fixture reminders here in the portal.', href: 'https://smtop100.blog/subscribe/' },
   { label: 'Support', description: 'Help with the site, accounts, submissions and keeping Top 100 running.', href: 'https://smtop100.blog/support/' },
 ];
 
@@ -15,7 +15,7 @@ export default function ManagerResourceHub() {
       <div className="manager-resource-hub__intro">
         <p className="eyebrow">Manager resources</p>
         <h2 id="manager-resource-heading">Everything around the game world</h2>
-        <p>These resources stay public. Signing in is only needed for your personal manager account and manager-only actions.</p>
+        <p>These resources stay public. A Manager Portal account adds personal tools such as Youth Cup fixture reminders, voting and manager-only actions.</p>
       </div>
       <div className="manager-resource-grid">
         {RESOURCES.map((resource) => (
