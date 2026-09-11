@@ -31,7 +31,7 @@ function matchTypeForToday(match, prefs, today) {
   return null;
 }
 
-function subjectFor(type, club, opponent, fixtureDate) {
+function subjectFor(type, club, opponent) {
   if (type === 'deadline_day') return `Youth Cup today: ${club} v ${opponent}`;
   if (type === 'day_before') return `Youth Cup reminder: ${club} play tomorrow`;
   return `New Youth Cup fixture: ${club} v ${opponent}`;
@@ -45,7 +45,7 @@ function bodyFor(type, details) {
       ? 'A quick reminder that your Youth Cup fixture is tomorrow.'
       : 'A Youth Cup fixture has been assigned to your club.';
   const roundText = [stage, round].filter(Boolean).join(' · ');
-  const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;line-height:1.55;color:#172033"><h2>${escapeHtml(subjectFor(type, club, opponent, fixtureDate))}</h2><p>${escapeHtml(intro)}</p><p><strong>${escapeHtml(club)}</strong> · ${escapeHtml(venue)} v ${escapeHtml(opponent)}<br>${escapeHtml(fixtureDate)}${roundText ? `<br>${escapeHtml(roundText)}` : ''}</p><p><a href="${escapeHtml(tournamentUrl)}">Open Youth Cup</a> · <a href="https://manager.smtop100.blog/">Manager Portal</a></p><p style="color:#5f6f8e;font-size:13px">You opted in to Youth Cup reminders in your Manager Portal. You can change or switch off reminders there at any time.</p></body></html>`;
+  const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;line-height:1.55;color:#172033"><h2>${escapeHtml(subjectFor(type, club, opponent))}</h2><p>${escapeHtml(intro)}</p><p><strong>${escapeHtml(club)}</strong> · ${escapeHtml(venue)} v ${escapeHtml(opponent)}<br>${escapeHtml(fixtureDate)}${roundText ? `<br>${escapeHtml(roundText)}` : ''}</p><p><a href="${escapeHtml(tournamentUrl)}">Open Youth Cup</a> · <a href="https://manager.smtop100.blog/">Manager Portal</a></p><p style="color:#5f6f8e;font-size:13px">You opted in to Youth Cup reminders in your Manager Portal. You can change or switch off reminders there at any time.</p></body></html>`;
   const text = `${intro}\n\n${club} · ${venue} v ${opponent}\n${fixtureDate}${roundText ? `\n${roundText}` : ''}\n\nYouth Cup: ${tournamentUrl}\nManager Portal: https://manager.smtop100.blog/\n\nYou opted in to these reminders in your Manager Portal.`;
   return { html, text };
 }
@@ -79,13 +79,21 @@ export default async () => {
   let sent = 0; let skipped = 0; const errors = [];
 
   try {
+    const competitionTypes = await requestJson(`${supabaseUrl}/rest/v1/competition_types?slug=eq.youth-cup&select=id`, { headers });
+    const youthCupTypeId = competitionTypes?.[0]?.id;
+    if (!youthCupTypeId) return json({ skipped: true, reason: 'Youth Cup competition type was not found.' }, 202);
+
     const prefs = await requestJson(`${supabaseUrl}/rest/v1/manager_reminder_preferences?youth_cup_enabled=eq.true&select=account_id,fixture_assigned,day_before,deadline_day`, { headers });
     for (const pref of prefs || []) {
       const accounts = await requestJson(`${supabaseUrl}/rest/v1/manager_portal_accounts?id=eq.${pref.account_id}&active=eq.true&select=id,manager_id,email,game_world_id,game_worlds!inner(slug)`, { headers });
       const account = accounts?.[0];
       if (!account || account.game_worlds?.slug !== 'top-100' || !account.email) { skipped += 1; continue; }
 
-      const entries = await requestJson(`${supabaseUrl}/rest/v1/tournament_entries?manager_id=eq.${account.manager_id}&select=id,tournament_id,teams(name),tournaments!inner(id,name,public_slug,season_number,game_world_id)&tournaments.game_world_id=eq.${account.game_world_id}&tournaments.public_slug=eq.youth-cup`, { headers });
+      const tournaments = await requestJson(`${supabaseUrl}/rest/v1/tournaments?game_world_id=eq.${account.game_world_id}&competition_type_id=eq.${youthCupTypeId}&select=id,name,public_slug,season_number,status&order=season_number.desc`, { headers });
+      const tournamentIds = (tournaments || []).map((row) => row.id);
+      if (!tournamentIds.length) { skipped += 1; continue; }
+
+      const entries = await requestJson(`${supabaseUrl}/rest/v1/tournament_entries?manager_id=eq.${account.manager_id}&tournament_id=in.(${tournamentIds.join(',')})&select=id,tournament_id,teams(name)`, { headers });
       if (!entries?.length) { skipped += 1; continue; }
       const entryIds = entries.map((entry) => entry.id).join(',');
       const matches = await requestJson(`${supabaseUrl}/rest/v1/matches?or=(home_entry_id.in.(${entryIds}),away_entry_id.in.(${entryIds}))&status=not.in.(played,forfeit)&select=id,tournament_id,stage,round,status,fixture_date,home_entry_id,away_entry_id,home_entry:tournament_entries!matches_home_entry_id_fkey(id,teams(name)),away_entry:tournament_entries!matches_away_entry_id_fkey(id,teams(name))`, { headers });
@@ -107,7 +115,7 @@ export default async () => {
         const body = bodyFor(type, details);
 
         try {
-          const provider = await sendResend(resendApiKey, { from: emailFrom, to: [account.email], subject: subjectFor(type, club, opponent, match.fixture_date), html: body.html, text: body.text }, deliveryKey);
+          const provider = await sendResend(resendApiKey, { from: emailFrom, to: [account.email], subject: subjectFor(type, club, opponent), html: body.html, text: body.text }, deliveryKey);
           await requestJson(`${supabaseUrl}/rest/v1/manager_reminder_deliveries`, {
             method: 'POST', headers: { ...headers, prefer: 'return=minimal' },
             body: JSON.stringify({ account_id: account.id, match_id: match.id, reminder_type: type, delivery_key: deliveryKey, provider_message_id: provider?.id || null }),
