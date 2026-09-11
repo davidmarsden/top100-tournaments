@@ -1,5 +1,7 @@
 const json = (body, status = 200) => Response.json(body, { status });
 
+const TERMINAL_MATCH_STATUSES = new Set(['played', 'forfeit', 'voided', 'cancelled']);
+
 const escapeHtml = (value) => String(value ?? '')
   .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
   .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -24,11 +26,16 @@ function addDays(day, amount) {
 }
 
 function matchTypeForToday(match, prefs, today) {
-  if (!match.fixture_date || ['played', 'forfeit'].includes(match.status)) return null;
+  if (!match.fixture_date || TERMINAL_MATCH_STATUSES.has(match.status)) return null;
   if (prefs.deadline_day && match.fixture_date === today) return 'deadline_day';
   if (prefs.day_before && match.fixture_date === addDays(today, 1)) return 'day_before';
-  if (prefs.fixture_assigned) return 'fixture_assigned';
+  if (prefs.fixture_assigned && match.fixture_date > today) return 'fixture_assigned';
   return null;
+}
+
+function deliveryKeyFor(accountId, match, type) {
+  const scheduleVersion = ['day_before', 'deadline_day'].includes(type) ? `:${match.fixture_date}` : '';
+  return `youth-cup:${accountId}:${match.id}:${type}${scheduleVersion}`;
 }
 
 function subjectFor(type, club, opponent) {
@@ -89,21 +96,21 @@ export default async () => {
       const account = accounts?.[0];
       if (!account || account.game_worlds?.slug !== 'top-100' || !account.email) { skipped += 1; continue; }
 
-      const tournaments = await requestJson(`${supabaseUrl}/rest/v1/tournaments?game_world_id=eq.${account.game_world_id}&competition_type_id=eq.${youthCupTypeId}&select=id,name,public_slug,season_number,status&order=season_number.desc`, { headers });
+      const tournaments = await requestJson(`${supabaseUrl}/rest/v1/tournaments?game_world_id=eq.${account.game_world_id}&competition_type_id=eq.${youthCupTypeId}&is_public=eq.true&status=not.in.(archived,completed)&select=id,name,public_slug,season_number,status&order=season_number.desc`, { headers });
       const tournamentIds = (tournaments || []).map((row) => row.id);
       if (!tournamentIds.length) { skipped += 1; continue; }
 
       const entries = await requestJson(`${supabaseUrl}/rest/v1/tournament_entries?manager_id=eq.${account.manager_id}&tournament_id=in.(${tournamentIds.join(',')})&select=id,tournament_id,teams(name)`, { headers });
       if (!entries?.length) { skipped += 1; continue; }
       const entryIds = entries.map((entry) => entry.id).join(',');
-      const matches = await requestJson(`${supabaseUrl}/rest/v1/matches?or=(home_entry_id.in.(${entryIds}),away_entry_id.in.(${entryIds}))&status=not.in.(played,forfeit)&select=id,tournament_id,stage,round,status,fixture_date,home_entry_id,away_entry_id,home_entry:tournament_entries!matches_home_entry_id_fkey(id,teams(name)),away_entry:tournament_entries!matches_away_entry_id_fkey(id,teams(name))`, { headers });
+      const matches = await requestJson(`${supabaseUrl}/rest/v1/matches?or=(home_entry_id.in.(${entryIds}),away_entry_id.in.(${entryIds}))&status=not.in.(played,forfeit,voided,cancelled)&select=id,tournament_id,stage,round,status,fixture_date,home_entry_id,away_entry_id,home_entry:tournament_entries!matches_home_entry_id_fkey(id,teams(name)),away_entry:tournament_entries!matches_away_entry_id_fkey(id,teams(name))`, { headers });
 
       for (const match of matches || []) {
         const ownEntry = entries.find((entry) => entry.id === match.home_entry_id || entry.id === match.away_entry_id);
         if (!ownEntry || ownEntry.tournament_id !== match.tournament_id) continue;
         const type = matchTypeForToday(match, pref, today);
         if (!type) continue;
-        const deliveryKey = `youth-cup:${account.id}:${match.id}:${type}`;
+        const deliveryKey = deliveryKeyFor(account.id, match, type);
         const prior = await requestJson(`${supabaseUrl}/rest/v1/manager_reminder_deliveries?delivery_key=eq.${encodeURIComponent(deliveryKey)}&select=id`, { headers });
         if (prior?.length) { skipped += 1; continue; }
 
