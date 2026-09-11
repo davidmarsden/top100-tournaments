@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import ManagerPortal from './ManagerPortal.jsx';
 import ManagerResourceHub from './ManagerResourceHub.jsx';
+import ManagerReminderPreferences from './ManagerReminderPreferences.jsx';
 
 const LEGACY_MANAGER_ORIGIN = 'https://tournaments.smtop100.blog';
 const LEGACY_MIGRATION_KEY = 'top100-manager-legacy-session-migration-attempted';
@@ -62,6 +63,7 @@ export default function ManagerEntry() {
   return (
     <>
       <ManagerResourceHub />
+      <ManagerReminderPreferences />
       <ManagerPortal />
     </>
   );
