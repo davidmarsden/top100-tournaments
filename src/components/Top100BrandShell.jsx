@@ -25,6 +25,12 @@ const POLL_LINKS = [
   { key: 'vote', label: 'Vote', href: 'https://vote.smtop100.blog/vote' },
 ];
 
+function tournamentCurrentFromPath(pathname) {
+  if (/^\/top-100\/youth-cup(?:\/|$)/.test(pathname)) return 'youth-cup';
+  if (/^\/top-100\/world-club-cup(?:\/|$)/.test(pathname)) return 'world-club-cup';
+  return 'tournament-centre';
+}
+
 function replaceInternalStatusLabels(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const textNodes = [];
@@ -43,8 +49,9 @@ function replaceInternalStatusLabels(root) {
 }
 
 export default function Top100BrandShell({ children, product = 'Tournaments', current = 'tournaments' }) {
-  const isVoting = current === 'vote' || current === 'voting-results';
-  const isManager = current === 'manager';
+  const resolvedCurrent = current === 'tournaments' ? tournamentCurrentFromPath(window.location.pathname) : current;
+  const isVoting = resolvedCurrent === 'vote' || resolvedCurrent === 'voting-results';
+  const isManager = resolvedCurrent === 'manager';
   const localLinks = isVoting ? POLL_LINKS : isManager ? [] : TOURNAMENT_LINKS;
 
   useEffect(() => {
@@ -93,7 +100,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
           {localLinks.length > 0 && (
             <nav className="top100-brand-header__local" aria-label={`${product} navigation`}>
               {localLinks.map((link) => (
-                <a key={link.key} className={current === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>
+                <a key={link.key} className={resolvedCurrent === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>
               ))}
             </nav>
           )}
