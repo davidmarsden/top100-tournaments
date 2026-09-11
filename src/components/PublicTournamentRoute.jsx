@@ -9,6 +9,7 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { parseTournamentPath, pickLiveTournament, routeTitle } from '../lib/publicTournamentRoutes';
 
 const routeSelect = 'id, name, status, registration_status, season_number, public_slug, slug, is_public, archive_quality, source, actual_entries, max_entries, game_worlds!inner(id, name, slug), competition_types!inner(id, name, slug)';
+const LEGACY_WORLD_CLUB_CUP_URL = 'https://smtop100.blog/categories/world-club-cup/';
 
 function isPlaceholderArchive(row) {
   return row?.archive_quality === 'placeholder' || (String(row?.status || '').toLowerCase() === 'archived' && Number(row?.actual_entries || 0) === 0 && row?.source !== 'challonge');
@@ -16,6 +17,13 @@ function isPlaceholderArchive(row) {
 
 function publicRouteRows(rows = []) {
   return rows.filter((row) => row.is_public !== false && !isPlaceholderArchive(row));
+}
+
+function isCurrentTop100WorldClubCupRoute(route) {
+  return route?.mode === 'slug'
+    && route.worldSlug === 'top-100'
+    && route.competitionSlug === 'world-club-cup'
+    && !route.seasonSlug;
 }
 
 export default function PublicTournamentRoute({ fallbackTournamentId }) {
@@ -54,6 +62,10 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
 
   async function resolveRoute() {
     if (!hasSupabaseConfig || !supabase) {
+      if (isCurrentTop100WorldClubCupRoute(route)) {
+        window.location.replace(LEGACY_WORLD_CLUB_CUP_URL);
+        return;
+      }
       setResolvedId(fallbackTournamentId);
       setStatus('Supabase is not connected; showing default tournament.');
       return;
@@ -84,6 +96,10 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
       error = fallback.error;
     }
     if (error) {
+      if (isCurrentTop100WorldClubCupRoute(route)) {
+        window.location.replace(LEGACY_WORLD_CLUB_CUP_URL);
+        return;
+      }
       setResolvedId(fallbackTournamentId);
       setStatus('Could not resolve this route. Showing the default tournament for now.');
       return;
@@ -92,6 +108,10 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
     const candidates = publicRouteRows(data || []);
     const row = route.seasonSlug ? candidates[0] : pickLiveTournament(candidates);
     if (!row) {
+      if (isCurrentTop100WorldClubCupRoute(route)) {
+        window.location.replace(LEGACY_WORLD_CLUB_CUP_URL);
+        return;
+      }
       setStatus(`No public tournament found for ${routeTitle(route)}.`);
       setResolvedId(null);
       return;
