@@ -23,6 +23,7 @@ export default function PublicVotingResults() {
   const events = useMemo(() => {
     const map = new Map();
     rows.forEach((row) => {
+      if (row.event_type === 'awards') return;
       if (!map.has(row.event_id)) {
         map.set(row.event_id, {
           ...row,
@@ -61,7 +62,7 @@ export default function PublicVotingResults() {
     {!loading && !message && events.length === 0 && <section className="card"><h2>No published results yet</h2><p>Results will appear here after a Community Poll has closed and its official result is available.</p></section>}
 
     {!loading && events.map((event) => <section className="card" key={event.event_id}>
-      <p className="eyebrow">{event.event_type === 'awards' ? 'Manager Awards' : 'Community Poll'}</p>
+      <p className="eyebrow">Community Poll</p>
       <h2>{event.event_title}</h2>
       {event.event_description && <p>{event.event_description}</p>}
       <p className="muted">Closed: {formatDate(event.closes_at) || '—'} · Turnout: {event.ballots_cast}/{event.electorate_count} ({event.turnout_percent}%)</p>
