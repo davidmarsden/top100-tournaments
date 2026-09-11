@@ -50,18 +50,18 @@ export default function PublicVotingResults() {
     <section className="manager-portal-hero">
       <div>
         <p className="eyebrow">Top 100</p>
-        <h1>Voting Results</h1>
-        <p>Published results from Top 100 manager polls and Awards voting. No sign-in required.</p>
+        <h1>Community Poll Results</h1>
+        <p>Published results from Top 100 Community Polls. No sign-in required.</p>
       </div>
-      <a className="button" href="/vote">Manager voting</a>
+      <a className="button" href="/vote">Vote in Community Polls</a>
     </section>
 
     {loading && <section className="card"><h2>Loading results…</h2></section>}
     {!loading && message && <section className="warning-card"><strong>Results unavailable.</strong><span>{message}</span></section>}
-    {!loading && !message && events.length === 0 && <section className="card"><h2>No published results yet</h2><p>Results will appear here after a vote has closed and its official result is available.</p></section>}
+    {!loading && !message && events.length === 0 && <section className="card"><h2>No published results yet</h2><p>Results will appear here after a Community Poll has closed and its official result is available.</p></section>}
 
     {!loading && events.map((event) => <section className="card" key={event.event_id}>
-      <p className="eyebrow">{event.event_type === 'awards' ? 'Awards' : 'Manager poll'}</p>
+      <p className="eyebrow">{event.event_type === 'awards' ? 'Manager Awards' : 'Community Poll'}</p>
       <h2>{event.event_title}</h2>
       {event.event_description && <p>{event.event_description}</p>}
       <p className="muted">Closed: {formatDate(event.closes_at) || '—'} · Turnout: {event.ballots_cast}/{event.electorate_count} ({event.turnout_percent}%)</p>
