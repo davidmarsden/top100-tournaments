@@ -4,6 +4,8 @@ const PUBLIC_STATUS_LABELS = {
   groups_approved: 'Group stage underway',
 };
 
+const REGEN_URL = 'https://smtop100.blog/regen/';
+
 const FAMILY_LINKS = [
   { key: 'top100', label: 'Top 100', href: 'https://smtop100.blog/' },
   { key: 'history', label: 'Stats & History', href: 'https://archive.smtop100.blog/' },
@@ -12,7 +14,7 @@ const FAMILY_LINKS = [
   { key: 'vote', label: 'Vote', href: 'https://vote.smtop100.blog/vote' },
   { key: 'awards', label: 'Awards', href: 'https://awards.smtop100.blog/' },
   { key: 'manager', label: 'Manager', href: 'https://manager.smtop100.blog/' },
-  { key: 'regen', label: 'Regen', href: 'https://top100regen.website/' },
+  { key: 'regen', label: 'Regen', href: REGEN_URL },
 ];
 
 function replaceInternalStatusLabels(root) {
@@ -92,12 +94,14 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
           <nav aria-label="Top 100 footer links">
             <a href="https://smtop100.blog/">Top 100</a>
             <a href="https://archive.smtop100.blog/">Stats &amp; History</a>
+            <a href="https://tournaments.smtop100.blog/">Tournaments</a>
             <a href="https://vote.smtop100.blog/">Voting Results</a>
             <a href="https://vote.smtop100.blog/vote">Vote</a>
             <a href="https://smtop100.blog/rules/">Rules</a>
             <a href="https://smtop100.blog/support/">Support</a>
             <a href="https://awards.smtop100.blog/">Awards</a>
-            <a href="https://manager.smtop100.blog/">Manager portal</a>
+            <a href="https://manager.smtop100.blog/">Manager</a>
+            <a href={REGEN_URL}>Regen</a>
           </nav>
         </div>
         <div className="top100-footer__note">
