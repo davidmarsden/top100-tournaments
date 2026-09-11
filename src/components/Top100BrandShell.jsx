@@ -4,17 +4,25 @@ const PUBLIC_STATUS_LABELS = {
   groups_approved: 'Group stage underway',
 };
 
+const MAIN_SITE_URL = 'https://smtop100.blog/';
 const REGEN_URL = 'https://smtop100.blog/regen/';
 
-const FAMILY_LINKS = [
-  { key: 'top100', label: 'Top 100', href: 'https://smtop100.blog/' },
-  { key: 'history', label: 'Stats & History', href: 'https://archive.smtop100.blog/' },
-  { key: 'tournaments', label: 'Tournaments', href: 'https://tournaments.smtop100.blog/' },
-  { key: 'voting-results', label: 'Voting Results', href: 'https://vote.smtop100.blog/' },
+const GLOBAL_LINKS = [
+  { key: 'top100', label: 'Top 100', href: MAIN_SITE_URL },
+  { key: 'regen', label: 'Top 100 Regen', href: REGEN_URL },
+  { key: 'about', label: 'About', href: `${MAIN_SITE_URL}about/` },
+  { key: 'explore', label: 'Explore', href: `${MAIN_SITE_URL}explore/` },
+];
+
+const TOURNAMENT_LINKS = [
+  { key: 'youth-cup', label: 'Youth Cup', href: 'https://tournaments.smtop100.blog/top-100/youth-cup' },
+  { key: 'world-club-cup', label: 'World Club Cup', href: 'https://tournaments.smtop100.blog/top-100/world-club-cup' },
+  { key: 'tournament-centre', label: 'Tournament centre', href: 'https://tournaments.smtop100.blog/' },
+];
+
+const POLL_LINKS = [
+  { key: 'voting-results', label: 'Results', href: 'https://vote.smtop100.blog/' },
   { key: 'vote', label: 'Vote', href: 'https://vote.smtop100.blog/vote' },
-  { key: 'awards', label: 'Awards', href: 'https://awards.smtop100.blog/' },
-  { key: 'manager', label: 'Manager', href: 'https://manager.smtop100.blog/' },
-  { key: 'regen', label: 'Regen', href: REGEN_URL },
 ];
 
 function replaceInternalStatusLabels(root) {
@@ -37,6 +45,7 @@ function replaceInternalStatusLabels(root) {
 export default function Top100BrandShell({ children, product = 'Tournaments', current = 'tournaments' }) {
   const isVoting = current === 'vote' || current === 'voting-results';
   const isManager = current === 'manager';
+  const localLinks = isVoting ? POLL_LINKS : isManager ? [] : TOURNAMENT_LINKS;
 
   useEffect(() => {
     const shell = document.querySelector('.top100-site-shell');
@@ -54,7 +63,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
     <div className="top100-site-shell">
       <header className="top100-brand-header">
         <div className="top100-brand-header__inner">
-          <a className="top100-brand-header__identity" href="https://smtop100.blog/" aria-label="Visit the Top 100 main site">
+          <a className="top100-brand-header__identity" href={MAIN_SITE_URL} aria-label="Visit the Top 100 main site">
             <div className="top100-brand-header__wordmark" aria-hidden="true">
               <span>Top</span><strong>100</strong>
             </div>
@@ -69,15 +78,23 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
             <strong>{product}</strong>
           </div>
 
-          <nav className="top100-brand-header__nav" aria-label="Top 100 websites">
-            {FAMILY_LINKS.map((link) => (
-              <a key={link.key} className={current === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>
+          <nav className="top100-brand-header__nav" aria-label="Top 100 public navigation">
+            {GLOBAL_LINKS.map((link) => (
+              <a key={link.key} href={link.href}>{link.label}</a>
             ))}
           </nav>
 
           {!isManager && (
-            <nav className="top100-brand-header__utility" aria-label={isVoting ? 'Manager tools' : 'Tournament tools'}>
-              <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">Manager portal</a>
+            <nav className="top100-brand-header__utility" aria-label="Manager account">
+              <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">Manager sign-in</a>
+            </nav>
+          )}
+
+          {localLinks.length > 0 && (
+            <nav className="top100-brand-header__local" aria-label={`${product} navigation`}>
+              {localLinks.map((link) => (
+                <a key={link.key} className={current === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>
+              ))}
             </nav>
           )}
         </div>
@@ -88,28 +105,25 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
       <footer className="top100-footer">
         <div className="top100-footer__inner">
           <div className="top100-footer__brand">
-            <a href="https://smtop100.blog/" className="top100-footer__wordmark" aria-label="Top 100 main site"><span>Top</span><strong>100</strong></a>
+            <a href={MAIN_SITE_URL} className="top100-footer__wordmark" aria-label="Top 100 main site"><span>Top</span><strong>100</strong></a>
             <span>{product}</span>
           </div>
           <nav aria-label="Top 100 footer links">
-            <a href="https://smtop100.blog/">Top 100</a>
-            <a href="https://archive.smtop100.blog/">Stats &amp; History</a>
-            <a href="https://tournaments.smtop100.blog/">Tournaments</a>
-            <a href="https://vote.smtop100.blog/">Voting Results</a>
-            <a href="https://vote.smtop100.blog/vote">Vote</a>
-            <a href="https://smtop100.blog/rules/">Rules</a>
-            <a href="https://smtop100.blog/support/">Support</a>
-            <a href="https://awards.smtop100.blog/">Awards</a>
-            <a href="https://manager.smtop100.blog/">Manager</a>
-            <a href={REGEN_URL}>Regen</a>
+            <a href={MAIN_SITE_URL}>Top 100</a>
+            <a href={REGEN_URL}>Top 100 Regen</a>
+            <a href={`${MAIN_SITE_URL}about/`}>About</a>
+            <a href={`${MAIN_SITE_URL}explore/`}>Explore</a>
+            <a href={`${MAIN_SITE_URL}support/`}>Support</a>
+            <a href={`${MAIN_SITE_URL}subscribe/`}>Subscribe</a>
+            <a href="https://manager.smtop100.blog/">Manager portal</a>
           </nav>
         </div>
         <div className="top100-footer__note">
           {isManager
-            ? 'Your verified Top 100 identity for manager-only tools across the community.'
+            ? 'Your verified Top 100 identity and manager-only tools, with the wider Top 100 resources always available publicly.'
             : isVoting
-              ? 'Published poll and Awards results, with authenticated manager voting available on this Voting site.'
-              : 'Tournament fixtures, results and competition history from the Top 100 Soccer Manager community.'}
+              ? 'Community Polls help managers shape how the Top 100 game world is run.'
+              : 'Youth Cup, World Club Cup and other Top 100 competitions.'}
         </div>
       </footer>
     </div>
