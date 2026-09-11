@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const DEFAULTS = {
@@ -8,10 +8,28 @@ const DEFAULTS = {
   deadline_day: true,
 };
 
+const TERMINAL_MATCH_STATUSES = ['played', 'forfeit', 'voided', 'cancelled'];
+
+function formatFixtureDate(value) {
+  if (!value) return 'Date TBC';
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
+function formatDeliveryTime(value) {
+  if (!value) return null;
+  return new Date(value).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 export default function ManagerReminderPreferences() {
   const [session, setSession] = useState(null);
   const [account, setAccount] = useState(null);
   const [prefs, setPrefs] = useState(DEFAULTS);
+  const [savedPrefs, setSavedPrefs] = useState(DEFAULTS);
+  const [nextFixture, setNextFixture] = useState(null);
+  const [lastDelivery, setLastDelivery] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -29,11 +47,69 @@ export default function ManagerReminderPreferences() {
     loadPreferences();
   }, [session?.user?.id]);
 
+  const enabledLabels = useMemo(() => {
+    if (!savedPrefs.youth_cup_enabled) return [];
+    return [
+      savedPrefs.fixture_assigned && 'new fixtures',
+      savedPrefs.day_before && 'day-before',
+      savedPrefs.deadline_day && 'fixture-day',
+    ].filter(Boolean);
+  }, [savedPrefs]);
+
+  async function loadFixtureStatus(accountRow) {
+    if (accountRow.game_worlds?.slug !== 'top-100') return;
+
+    const [{ data: competition }, { data: deliveries }] = await Promise.all([
+      supabase.from('competition_types').select('id').eq('slug', 'youth-cup').maybeSingle(),
+      supabase.from('manager_reminder_deliveries').select('sent_at, reminder_type').eq('account_id', accountRow.id).order('sent_at', { ascending: false }).limit(1),
+    ]);
+    setLastDelivery(deliveries?.[0] || null);
+    if (!competition?.id) return;
+
+    const { data: tournaments } = await supabase
+      .from('tournaments')
+      .select('id, season_number')
+      .eq('game_world_id', accountRow.game_world_id)
+      .eq('competition_type_id', competition.id)
+      .not('status', 'in', '(completed,archived)')
+      .order('season_number', { ascending: false });
+    const tournamentIds = (tournaments || []).map((row) => row.id);
+    if (!tournamentIds.length) return;
+
+    const { data: entries } = await supabase
+      .from('tournament_entries')
+      .select('id, tournament_id, teams(name)')
+      .eq('manager_id', accountRow.manager_id)
+      .in('tournament_id', tournamentIds);
+    if (!entries?.length) return;
+
+    const entryIds = entries.map((entry) => entry.id);
+    const { data: matches } = await supabase
+      .from('matches')
+      .select('id, tournament_id, fixture_date, stage, round, status, home_entry_id, away_entry_id, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))')
+      .or(`home_entry_id.in.(${entryIds.join(',')}),away_entry_id.in.(${entryIds.join(',')})`)
+      .not('status', 'in', `(${TERMINAL_MATCH_STATUSES.join(',')})`);
+
+    const candidates = (matches || []).map((match) => {
+      const ownEntry = entries.find((entry) => entry.tournament_id === match.tournament_id && (entry.id === match.home_entry_id || entry.id === match.away_entry_id));
+      if (!ownEntry) return null;
+      const isHome = match.home_entry_id === ownEntry.id;
+      return {
+        ...match,
+        club: ownEntry.teams?.name || 'Your club',
+        opponent: isHome ? (match.away_entry?.teams?.name || 'TBC') : (match.home_entry?.teams?.name || 'TBC'),
+        venue: isHome ? 'Home' : 'Away',
+      };
+    }).filter(Boolean).sort((a, b) => String(a.fixture_date || '9999-99-99').localeCompare(String(b.fixture_date || '9999-99-99')));
+
+    setNextFixture(candidates[0] || null);
+  }
+
   async function loadPreferences() {
     setLoading(true);
     const { data: accountRow, error: accountError } = await supabase
       .from('manager_portal_accounts')
-      .select('id, email, active, game_worlds(slug)')
+      .select('id, manager_id, game_world_id, email, active, game_worlds(slug)')
       .eq('auth_user_id', session.user.id)
       .eq('active', true)
       .maybeSingle();
@@ -49,7 +125,12 @@ export default function ManagerReminderPreferences() {
       .eq('account_id', accountRow.id)
       .maybeSingle();
     if (error) setMessage('Reminder preferences are not available yet.');
-    else setPrefs(data || DEFAULTS);
+    else {
+      const loaded = data || DEFAULTS;
+      setPrefs(loaded);
+      setSavedPrefs(loaded);
+    }
+    await loadFixtureStatus(accountRow);
     setLoading(false);
   }
 
@@ -58,7 +139,11 @@ export default function ManagerReminderPreferences() {
     setSaving(true); setMessage('Saving reminder preferences…');
     const payload = { account_id: account.id, ...prefs, updated_at: new Date().toISOString() };
     const { error } = await supabase.from('manager_reminder_preferences').upsert(payload, { onConflict: 'account_id' });
-    setMessage(error ? `Could not save reminders: ${error.message}` : prefs.youth_cup_enabled ? 'Youth Cup reminders are on.' : 'Youth Cup reminders are off.');
+    if (error) setMessage(`Could not save reminders: ${error.message}`);
+    else {
+      setSavedPrefs(prefs);
+      setMessage(prefs.youth_cup_enabled ? 'Youth Cup reminders are on.' : 'Youth Cup reminders are off.');
+    }
     setSaving(false);
   }
 
@@ -71,6 +156,13 @@ export default function ManagerReminderPreferences() {
           <p className="eyebrow">Never miss a thing</p>
           <h2 id="youth-cup-reminders-heading">Youth Cup reminders</h2>
         </div>
+
+        <div className="reminder-status" aria-live="polite">
+          <p><strong>{savedPrefs.youth_cup_enabled ? 'Reminders on' : 'Reminders off'}</strong>{enabledLabels.length ? ` · ${enabledLabels.join(' · ')}` : ''}</p>
+          {nextFixture ? <p><strong>Next fixture:</strong> {nextFixture.club} · {nextFixture.venue} v {nextFixture.opponent} · {formatFixtureDate(nextFixture.fixture_date)}</p> : <p className="muted">No outstanding Youth Cup fixture is currently attached to your account.</p>}
+          {lastDelivery?.sent_at && <p className="muted">Last reminder sent {formatDeliveryTime(lastDelivery.sent_at)}.</p>}
+        </div>
+
         <p>Opt in to email reminders for <strong>your club’s</strong> Youth Cup fixtures. They are tied to your approved Manager Portal identity, so there is no team to choose manually.</p>
         <p className="muted">Emails go to {account.email || session.user.email}. You can switch them off here at any time.</p>
 
