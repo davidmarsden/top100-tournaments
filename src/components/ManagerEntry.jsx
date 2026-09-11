@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import ManagerPortal from './ManagerPortal.jsx';
+import ManagerResourceHub from './ManagerResourceHub.jsx';
 
 const LEGACY_MANAGER_ORIGIN = 'https://tournaments.smtop100.blog';
 const LEGACY_MIGRATION_KEY = 'top100-manager-legacy-session-migration-attempted';
@@ -39,12 +40,8 @@ export default function ManagerEntry() {
 
       try {
         if (window.localStorage.getItem(LEGACY_MIGRATION_KEY) === '1') return;
-        // Mark before opening the bridge so a later explicit logout cannot
-        // trigger the old tournaments-origin session to be imported again.
         window.localStorage.setItem(LEGACY_MIGRATION_KEY, '1');
       } catch {
-        // If storage is unavailable, skip the legacy migration rather than
-        // making sign-in or sign-out semantics depend on an untracked bridge.
         return;
       }
 
@@ -62,5 +59,10 @@ export default function ManagerEntry() {
     return cleanup;
   }, []);
 
-  return <ManagerPortal />;
+  return (
+    <>
+      <ManagerResourceHub />
+      <ManagerPortal />
+    </>
+  );
 }
