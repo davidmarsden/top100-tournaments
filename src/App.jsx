@@ -64,9 +64,9 @@ function forwardManagerHostPathToTournaments() {
 export default function App() {
   if (isVotingHost()) {
     if (isVotingPath()) {
-      return <Top100BrandShell product="Voting" current="vote"><VotingEntry /></Top100BrandShell>;
+      return <Top100BrandShell product="Community Polls" current="vote"><VotingEntry /></Top100BrandShell>;
     }
-    return <Top100BrandShell product="Voting Results" current="voting-results"><PublicVotingResults /></Top100BrandShell>;
+    return <Top100BrandShell product="Community Polls" current="voting-results"><PublicVotingResults /></Top100BrandShell>;
   }
 
   if (isManagerHost()) {
