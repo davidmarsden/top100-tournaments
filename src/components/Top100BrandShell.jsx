@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 
 const PUBLIC_STATUS_LABELS = {
   groups_approved: 'Group stage underway',
+  'Manager Voting': 'Community Polls',
+  'Voting account verified.': 'Community Polls account verified.',
 };
 
 const MAIN_SITE_URL = 'https://smtop100.blog/';
