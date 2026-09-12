@@ -13,9 +13,11 @@ import './public-page-overrides.css';
 import './fixture-polish.css';
 import './public-forfeit-badges.css';
 import './reports-exports.css';
+import './fixture-first-navigation.css';
 import './public-matchday-boundaries.js';
 import './public-forfeit-badges.js';
 import './public-double-forfeit-badges.js';
+import './fixture-first-navigation.js';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
