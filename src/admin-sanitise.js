@@ -143,6 +143,26 @@ function prepareTestTools(main) {
   header.appendChild(toggle);
 }
 
+function makeKnockoutDisclosure(panel, label) {
+  if (!panel || panel.dataset.adminKnockoutDisclosure) return;
+  const heading = panel.querySelector(':scope > h3');
+  if (!heading) return;
+  panel.dataset.adminKnockoutDisclosure = 'true';
+  panel.classList.add('admin-knockout-disclosure', 'admin-knockout-collapsed');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'secondary admin-knockout-toggle';
+  button.setAttribute('aria-label', `Show or hide ${label}`);
+  const render = () => {
+    const open = !panel.classList.contains('admin-knockout-collapsed');
+    button.textContent = open ? '− Hide' : '+ Show';
+    button.setAttribute('aria-expanded', String(open));
+  };
+  button.addEventListener('click', () => { panel.classList.toggle('admin-knockout-collapsed'); render(); });
+  heading.appendChild(button);
+  render();
+}
+
 function prepareKnockout(main, module) {
   if (module !== 'Knockout') return;
   const manager = main.querySelector('.module-card .knockout-manager');
@@ -150,6 +170,12 @@ function prepareKnockout(main, module) {
   manager.classList.add('admin-knockout-live');
   const setupBlocks = [manager.querySelector(':scope > .ready-banner'), manager.querySelector(':scope > .knockout-exclusions')].filter(Boolean);
   setupBlocks.forEach((block) => block.classList.add('admin-knockout-context'));
+
+  makeKnockoutDisclosure(manager.querySelector(':scope > .schedule-presets'), 'knockout schedule');
+  [...manager.querySelectorAll(':scope > .knockout-bracket-grid > .bracket-section')].forEach((panel) => {
+    const label = panel.querySelector(':scope > h3')?.textContent?.trim() || 'saved knockout results';
+    makeKnockoutDisclosure(panel, label);
+  });
 }
 
 function applyAdminSanitise() {
