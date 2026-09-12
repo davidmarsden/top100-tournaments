@@ -24,6 +24,80 @@ function addSectionIcons(hub) {
   });
 }
 
+function roundCode(label) {
+  const text = String(label || '').trim().toLowerCase();
+  if (text.includes('64')) return 'R64';
+  if (text.includes('32')) return 'R32';
+  if (text.includes('16')) return 'R16';
+  if (text.includes('quarter')) return 'QF';
+  if (text.includes('semi')) return 'SF';
+  if (text.includes('final')) return 'Final';
+  return String(label || '').trim();
+}
+
+function competitionCode(label) {
+  const text = String(label || '').trim().toLowerCase();
+  if (text.includes('shield')) return 'YS';
+  if (text.includes('cup')) return 'YC';
+  return String(label || '').trim();
+}
+
+function nextRoundSummary(hub) {
+  const table = [...hub.querySelectorAll('.schedule-table')].find((candidate) => {
+    const heading = candidate.closest('.schedule-summary')?.querySelector('h3')?.textContent || '';
+    return /knockout/i.test(heading);
+  });
+  if (!table) return '';
+
+  const headers = [...table.querySelectorAll('thead th')].map((cell) => cell.textContent.trim());
+  if (headers.length < 2) return '';
+
+  const heroDetail = hub.querySelector('.tournament-hero .hero-countdown small')?.textContent?.trim() || '';
+  const dateText = heroDetail.split('·')[0]?.trim();
+  if (!dateText) return '';
+  const heroDate = new Date(dateText);
+  if (Number.isNaN(heroDate.getTime())) return '';
+
+  const monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const targetDay = heroDate.getDate();
+  const targetMonth = monthNames[heroDate.getMonth()];
+  const rounds = [];
+
+  table.querySelectorAll('tbody tr').forEach((row) => {
+    const cells = [...row.querySelectorAll('td')];
+    if (!cells.length) return;
+    const round = roundCode(cells[0].textContent);
+    cells.slice(1).forEach((cell, index) => {
+      const text = cell.textContent.trim().toLowerCase();
+      const match = text.match(/(\d{1,2})\s+([a-z]{3})/);
+      if (!match) return;
+      if (Number(match[1]) === targetDay && match[2] === targetMonth) {
+        rounds.push(`${competitionCode(headers[index + 1])} ${round}`);
+      }
+    });
+  });
+
+  return [...new Set(rounds)].join(' / ');
+}
+
+function compactTournamentHero(hub) {
+  const hero = hub.querySelector('.tournament-hero');
+  if (!hero) return;
+  hero.classList.add('compact-round-hero');
+
+  const countdown = hero.querySelector('.hero-countdown');
+  if (!countdown) return;
+  const label = countdown.querySelector('span');
+  const detail = countdown.querySelector('small');
+  if (label) label.textContent = 'Next round';
+
+  const summary = nextRoundSummary(hub);
+  if (summary && detail) {
+    const dateText = detail.textContent.split('·')[0]?.trim();
+    detail.textContent = `${dateText} · ${summary}`;
+  }
+}
+
 function makeCollapsible(element, label, storageKey, defaultOpen = false, persist = true) {
   if (!element || element.dataset.collapsibleReady) return;
   const header = element.querySelector(':scope > .public-section-toolbar, :scope > .fixture-section-header, :scope > .fixtures-toolbar, :scope > h2, :scope > h3');
@@ -83,6 +157,7 @@ function ensurePublicFixtureNav() {
     link.href = '#schedule'; link.dataset.fixtureFirst = 'schedule'; link.textContent = 'Schedule';
     nav.insertBefore(link, nav.firstChild);
   }
+  compactTournamentHero(hub);
   addSectionIcons(hub);
   addCollapsibles(hub);
 
