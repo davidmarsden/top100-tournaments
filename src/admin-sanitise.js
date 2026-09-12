@@ -104,7 +104,7 @@ function prepareFixtureSections(main, module) {
     section.dataset.adminFixtureDisclosure = 'true';
     section.classList.add('admin-fixture-disclosure');
     const inCompletedDesk = Boolean(section.closest('.results-card'));
-    const defaultCollapsed = module === 'Results' || inCompletedDesk;
+    const defaultCollapsed = module === 'Results' || module === 'Knockout' || inCompletedDesk;
     if (defaultCollapsed) section.classList.add('admin-fixture-collapsed');
     const button = document.createElement('button');
     button.type = 'button';
