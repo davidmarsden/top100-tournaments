@@ -3,6 +3,16 @@ const COMPETITIONS = [
   { key: 'shield', label: 'Youth Shield', icon: '🛡️' }
 ];
 
+const BRACKET_ROUNDS = ['R64', 'R32', 'R16', 'QF', 'SF', 'Final'];
+const BRACKET_LABELS = {
+  R64: 'Round of 64',
+  R32: 'Round of 32',
+  R16: 'Round of 16',
+  QF: 'Quarter Finals',
+  SF: 'Semi Finals',
+  Final: 'Final'
+};
+
 function normalise(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -86,6 +96,88 @@ function renderTabs(container, select, contextLabel) {
   sync();
 }
 
+function polishFixtureCallout(hub) {
+  const callout = hub.querySelector('[data-fixture-first="public-callout"]');
+  const copy = callout?.querySelector(':scope > div:first-child');
+  if (!copy || callout.dataset.copyHierarchy === 'v2') return;
+  const existingSpans = [...copy.querySelectorAll('span')];
+  const detail = existingSpans.at(-1)?.textContent?.trim()
+    || 'The tournament schedule is below. For the simple personalised view — who you send a friendly to, and who you are waiting for — use My Matches.';
+  copy.innerHTML = `<strong>Looking for your match?</strong><span class="fixture-first-subhead">Find the date first, then the opponent.</span><span>${detail}</span>`;
+  callout.dataset.copyHierarchy = 'v2';
+}
+
+function roundCodeFromTitle(text) {
+  const value = normalise(text);
+  if (value.includes('64')) return 'R64';
+  if (value.includes('32')) return 'R32';
+  if (value.includes('16')) return 'R16';
+  if (value.includes('quarter')) return 'QF';
+  if (value.includes('semi')) return 'SF';
+  if (value.includes('final')) return 'Final';
+  return null;
+}
+
+function placeholderTie() {
+  const tie = document.createElement('article');
+  tie.className = 'bracket-tie bracket-placeholder';
+  tie.dataset.projectedTie = 'true';
+  tie.innerHTML = '<div class="bracket-team"><strong class="bracket-team-name">TBC</strong><span></span></div><div class="bracket-team"><strong class="bracket-team-name">TBC</strong><span></span></div><small>Awaiting previous round</small>';
+  return tie;
+}
+
+function projectedRound(round, tieCount) {
+  const column = document.createElement('div');
+  column.className = 'bracket-round-column bracket-round-projected';
+  column.dataset.projectedRound = round;
+  const title = document.createElement('div');
+  title.className = 'bracket-round-title';
+  title.textContent = BRACKET_LABELS[round] || round;
+  const stack = document.createElement('div');
+  stack.className = 'bracket-tie-stack';
+  for (let index = 0; index < tieCount; index += 1) stack.appendChild(placeholderTie());
+  column.append(title, stack);
+  return column;
+}
+
+function projectedChampion() {
+  const column = document.createElement('div');
+  column.className = 'bracket-champion-column bracket-round-projected';
+  column.dataset.projectedChampion = 'true';
+  column.innerHTML = '<div class="bracket-round-title">Champion</div><div class="champion-card"><div class="champion-trophy">🏆</div><span>Awaiting winner</span><strong>TBC</strong></div>';
+  return column;
+}
+
+function completeShieldBracket(hub) {
+  const bracketCards = [...hub.querySelectorAll('#brackets .visual-bracket-card, .public-bracket-stack .visual-bracket-card')];
+  const shieldCard = bracketCards.find((card) => /shield/i.test(card.querySelector('.visual-bracket-header h3')?.textContent || ''));
+  if (!shieldCard) return;
+  const grid = shieldCard.querySelector('.visual-bracket');
+  if (!grid) return;
+
+  grid.querySelectorAll('[data-projected-round], [data-projected-champion]').forEach((node) => node.remove());
+
+  const realColumns = [...grid.querySelectorAll(':scope > .bracket-round-column:not(.bracket-round-projected)')];
+  if (!realColumns.length) return;
+  const realRoundCodes = realColumns.map((column) => roundCodeFromTitle(column.querySelector('.bracket-round-title')?.textContent)).filter(Boolean);
+  if (!realRoundCodes.length || realRoundCodes.includes('Final')) return;
+
+  const lastRound = realRoundCodes[realRoundCodes.length - 1];
+  let roundIndex = BRACKET_ROUNDS.indexOf(lastRound);
+  if (roundIndex < 0) return;
+  let previousCount = realColumns.at(-1)?.querySelectorAll('.bracket-tie').length || 1;
+
+  for (let index = roundIndex + 1; index < BRACKET_ROUNDS.length; index += 1) {
+    previousCount = Math.max(1, Math.ceil(previousCount / 2));
+    grid.appendChild(projectedRound(BRACKET_ROUNDS[index], previousCount));
+  }
+  grid.appendChild(projectedChampion());
+
+  const columns = grid.querySelectorAll(':scope > .bracket-round-column, :scope > .bracket-champion-column').length;
+  grid.style.gridTemplateColumns = `repeat(${columns}, minmax(210px, 1fr))`;
+  shieldCard.dataset.fullBracketProjection = 'true';
+}
+
 function addCompetitionTabs() {
   const hub = document.querySelector('.tournament-hub');
   if (!hub) return;
@@ -107,6 +199,9 @@ function addCompetitionTabs() {
     const select = findCompetitionSelect(brackets);
     if (select) renderTabs(brackets, select, 'Bracket');
   }
+
+  polishFixtureCallout(hub);
+  completeShieldBracket(hub);
 }
 
 let queued = false;
