@@ -52,7 +52,7 @@ function isVotingPath() {
 }
 
 function ManagerShell({ children }) {
-  return <Top100BrandShell product="Manager Portal" current="manager">{children}</Top100BrandShell>;
+  return <Top100BrandShell product="My Matches" current="manager">{children}</Top100BrandShell>;
 }
 
 function forwardManagerHostPathToTournaments() {
