@@ -17,8 +17,14 @@ function label(row) {
 export default function PublicRegistrationsPortal({ tournamentId }) {
   const [host, setHost] = useState(null);
   const [data, setData] = useState(null);
+  const shouldShow = Boolean(data && (data.window?.open || data.registrations?.length));
 
   useEffect(() => {
+    if (!shouldShow) {
+      setHost(null);
+      return undefined;
+    }
+
     let portalHost = null;
     let observer = null;
     const mount = () => {
@@ -36,12 +42,13 @@ export default function PublicRegistrationsPortal({ tournamentId }) {
       observer = new MutationObserver(() => { if (mount()) observer?.disconnect(); });
       observer.observe(document.body, { childList: true, subtree: true });
     }
-    return () => { observer?.disconnect(); portalHost?.remove(); setHost(null); };
-  }, [tournamentId]);
+    return () => { observer?.disconnect(); portalHost?.remove(); };
+  }, [tournamentId, shouldShow]);
 
   useEffect(() => {
     if (!tournamentId) return;
     let active = true;
+    setData(null);
     fetch(`/.netlify/functions/registration?tournamentId=${encodeURIComponent(tournamentId)}`)
       .then((response) => response.json().then((payload) => ({ response, payload })))
       .then(({ response, payload }) => {
@@ -53,7 +60,7 @@ export default function PublicRegistrationsPortal({ tournamentId }) {
     return () => { active = false; };
   }, [tournamentId]);
 
-  if (!host || !data || (!data.window?.open && !data.registrations?.length)) return null;
+  if (!host || !shouldShow) return null;
 
   return createPortal(<>
     <div className="public-section-toolbar">
@@ -61,6 +68,6 @@ export default function PublicRegistrationsPortal({ tournamentId }) {
       {data.window?.open && <a className="public-link-button" href={registrationPath(data.tournament)}>Register your team</a>}
     </div>
     {!data.registrations?.length ? <p className="muted">Registration is open. Be the first team on the list.</p> : <div className="entrant-list">{data.registrations.map((row) => <article className="entrant-row registration-row" key={row.id}><div className="registration-details"><strong>{row.club_name}</strong><span>{row.manager_name} · rating {row.rating}</span></div><span className="status-pill">{label(row)}</span></article>)}</div>}
-    {data.window?.open && <p className="muted">No account or email address is needed to register. A Manager Portal account is optional and can be created afterwards.</p>}
+    {data.window?.open && <p className="muted">No account or email address is needed to register. A My Matches account is optional and can be created afterwards.</p>}
   </>, host);
 }
