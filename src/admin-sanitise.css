@@ -1,0 +1,114 @@
+.admin-sanitised { padding-top: 22px; }
+
+/* Compact context banner: useful, but no longer the largest thing on the page. */
+.admin-sanitised > .hero.admin-hero-compact { padding: 18px 20px; border-radius: 22px; margin-bottom: 12px; }
+.admin-sanitised > .hero.admin-hero-compact h1 { font-size: clamp(1.8rem, 3vw, 2.7rem); line-height: 1.02; }
+.admin-sanitised > .hero.admin-hero-compact p:not(.eyebrow) { margin: 8px 0 0; max-width: 900px; font-size: .96rem; line-height: 1.45; }
+.admin-sanitised > .hero.admin-hero-compact .eyebrow { margin-bottom: 5px; }
+.admin-sanitised > .hero.admin-hero-compact .admin-logout { padding: .65rem .9rem; }
+
+/* Workflow is context, not the main event. Keep a one-line summary until requested. */
+.admin-sanitised > .progress-card { padding: 13px 16px; border-radius: 18px; margin-bottom: 14px; }
+.admin-sanitised > .progress-card .progress-header { margin: 0; }
+.admin-sanitised > .progress-card .progress-header h2 { font-size: 1rem; }
+.admin-sanitised > .progress-card .progress-track,
+.admin-sanitised > .progress-card .progress-steps { display: none; }
+.admin-sanitised > .progress-card.admin-progress-open .progress-track { display: block; margin-top: 12px; }
+.admin-sanitised > .progress-card.admin-progress-open .progress-steps { display: grid; }
+.admin-progress-toggle { margin-left: auto; padding: .55rem .78rem; font-size: .78rem; }
+
+/* The active job gets the space; navigation becomes a compact grouped tool rail. */
+.admin-sanitised .dashboard-layout { grid-template-columns: 205px minmax(0,1fr); gap: 16px; }
+.admin-sanitised .sidebar { padding: 14px; gap: 5px; border-radius: 20px; }
+.admin-sanitised .sidebar > .eyebrow { margin: 0 0 4px; }
+.admin-sanitised .sidebar .nav-pill { position: relative; padding: .64rem .72rem; border-radius: 12px; font-size: .86rem; }
+.admin-sanitised .sidebar .nav-pill.admin-group-start { margin-top: 18px; }
+.admin-sanitised .sidebar .nav-pill.admin-group-start:first-of-type { margin-top: 20px; }
+.admin-sanitised .sidebar .nav-pill.admin-group-start::before { content: attr(data-admin-group-label); position: absolute; left: 3px; bottom: calc(100% + 5px); color: #71809a; font-size: .63rem; line-height: 1; font-weight: 950; letter-spacing: .11em; text-transform: uppercase; pointer-events: none; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Matchday"] { background: #eefbf5; color: #135c46; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Matchday"].active { background: #0f8a68; color: #fff; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Setup"] { background: #f7f5ff; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Publish"] { background: #fff8ec; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Platform"] { background: #f5f6f8; }
+.admin-sanitised .sidebar .nav-pill.active { box-shadow: 0 6px 14px rgba(29,78,216,.16); }
+
+/* Creation, workflow status and builder belong on Overview, not above every task. */
+.admin-sanitised:not(.admin-module-overview) .workspace > .grid.two-columns.compact { display: none; }
+.admin-sanitised:not(.admin-module-overview) .workspace > .tournament-builder,
+.admin-sanitised:not(.admin-module-overview) .workspace > [class*="tournament-builder"] { display: none; }
+
+/* On Overview, creation/configuration and the full workflow are secondary. */
+.admin-sanitised.admin-module-overview .admin-overview-secondary { position: relative; }
+.admin-sanitised.admin-module-overview .admin-overview-secondary > .card-header { display: flex; align-items: center; gap: 10px; }
+.admin-sanitised.admin-module-overview .admin-overview-secondary > .card-header .admin-card-toggle { margin-left: auto; padding: .5rem .72rem; font-size: .76rem; }
+.admin-sanitised.admin-module-overview .admin-overview-secondary.admin-overview-collapsed > :not(.card-header) { display: none !important; }
+.admin-sanitised.admin-module-overview .admin-overview-secondary.admin-overview-collapsed { padding-bottom: 14px; }
+.admin-sanitised.admin-module-overview .admin-overview-secondary.admin-overview-collapsed > .card-header { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+
+/* Make the selected module read like the page, rather than another card halfway down it. */
+.admin-sanitised .module-card { margin-bottom: 18px; border-radius: 20px; min-height: 0; padding: 18px; }
+.admin-sanitised .module-card > .card-header { padding-bottom: 13px; margin-bottom: 16px; border-bottom: 1px solid #e7edf7; }
+.admin-sanitised .module-card > .card-header h2 { font-size: clamp(1.3rem, 2vw, 1.7rem); }
+.admin-sanitised .module-card > .card-header .secondary { padding: .62rem .85rem; font-size: .82rem; }
+
+/* Matchday is the frequent-use workspace. */
+.admin-sanitised.admin-module-fixtures .module-card,
+.admin-sanitised.admin-module-results .module-card,
+.admin-sanitised.admin-module-forfeits .module-card,
+.admin-sanitised.admin-module-result-approvals .module-card { border-top: 5px solid #0f9f78; }
+
+/* Results archives collapse by round/group. Outstanding Fixtures stay open. */
+.admin-sanitised .fixture-section.admin-fixture-disclosure > .fixture-section-header { display: flex; align-items: center; gap: 10px; }
+.admin-sanitised .fixture-section.admin-fixture-disclosure > .fixture-section-header > span { margin-left: auto; }
+.admin-sanitised .fixture-section.admin-fixture-disclosure .admin-fixture-toggle { padding: .38rem .58rem; font-size: .72rem; flex: 0 0 auto; }
+.admin-sanitised .fixture-section.admin-fixture-collapsed > .fixture-card-list { display: none !important; }
+.admin-sanitised .fixture-section.admin-fixture-collapsed { padding-bottom: 0; }
+
+/* Test helpers are still available, but no longer compete with real matchday actions. */
+.admin-sanitised .module-card .admin-test-tool { display: none !important; }
+.admin-sanitised .module-card.admin-test-tools-open .admin-test-tool { display: inline-flex !important; }
+.admin-sanitised .admin-test-toggle { margin-left: 8px; }
+
+/* Once knockout is live, operational fixtures/results dominate the setup machinery. */
+.admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live > .knockout-desk-grid { margin-top: 18px; grid-template-columns: 1fr; }
+.admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live > .knockout-bracket-grid { margin-top: 16px; }
+.admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live .knockout-desk-card { border-top: 4px solid #0f9f78; }
+.admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live > .admin-knockout-context { font-size: .9rem; }
+
+/* Inside live knockout work, Cup and Shield get their own clearly separated columns. */
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-sections { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; align-items: start; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup { grid-column: 1; border: 1px solid #b9d7ff; border-top: 4px solid #2563eb; background: #f7fbff; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield { grid-column: 2; border: 1px solid #f2d59a; border-top: 4px solid #d69e2e; background: #fffaf0; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup > .fixture-section-header { background: #eef6ff; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield > .fixture-section-header { background: #fff3d6; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup > .fixture-section-header h3 { color: #1d4ed8; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield > .fixture-section-header h3 { color: #9a6700; }
+
+/* Schedule editing and saved bracket history are secondary during live knockout play. */
+.admin-sanitised.admin-module-knockout .admin-knockout-disclosure > h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 0; }
+.admin-sanitised.admin-module-knockout .admin-knockout-disclosure > h3 .admin-knockout-toggle { margin-left: auto; padding: .38rem .58rem; font-size: .72rem; flex: 0 0 auto; }
+.admin-sanitised.admin-module-knockout .admin-knockout-disclosure.admin-knockout-collapsed > :not(h3) { display: none !important; }
+.admin-sanitised.admin-module-knockout .admin-knockout-disclosure.admin-knockout-collapsed { padding-bottom: 14px; min-height: 0; }
+.admin-sanitised.admin-module-knockout .knockout-bracket-grid > .admin-knockout-disclosure { align-self: start; }
+
+@media (max-width: 900px) {
+  .admin-sanitised .dashboard-layout { grid-template-columns: 1fr; }
+  .admin-sanitised .sidebar { position: static; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 7px; }
+  .admin-sanitised .sidebar > .eyebrow { flex: 0 0 100%; }
+  .admin-sanitised .sidebar .nav-pill { width: auto; }
+  .admin-sanitised .sidebar .nav-pill.admin-group-start { margin-top: 18px; }
+}
+
+@media (max-width: 760px) {
+  .admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-sections { grid-template-columns: 1fr; }
+  .admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup,
+  .admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield { grid-column: 1; }
+}
+
+@media (max-width: 640px) {
+  .admin-sanitised > .hero.admin-hero-compact .hero-row { align-items: stretch; }
+  .admin-sanitised > .hero.admin-hero-compact .admin-logout { align-self: flex-start; }
+  .admin-sanitised > .progress-card .progress-header { align-items: center; }
+  .admin-sanitised .fixture-section.admin-fixture-disclosure > .fixture-section-header { flex-wrap: wrap; }
+  .admin-sanitised .fixture-section.admin-fixture-disclosure > .fixture-section-header > span { margin-left: 0; }
+}
