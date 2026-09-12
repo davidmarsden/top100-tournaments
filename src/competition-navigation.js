@@ -155,27 +155,30 @@ function completeShieldBracket(hub) {
   const grid = shieldCard.querySelector('.visual-bracket');
   if (!grid) return;
 
-  grid.querySelectorAll('[data-projected-round], [data-projected-champion]').forEach((node) => node.remove());
-
   const realColumns = [...grid.querySelectorAll(':scope > .bracket-round-column:not(.bracket-round-projected)')];
   if (!realColumns.length) return;
   const realRoundCodes = realColumns.map((column) => roundCodeFromTitle(column.querySelector('.bracket-round-title')?.textContent)).filter(Boolean);
   if (!realRoundCodes.length || realRoundCodes.includes('Final')) return;
 
   const lastRound = realRoundCodes[realRoundCodes.length - 1];
-  let roundIndex = BRACKET_ROUNDS.indexOf(lastRound);
+  const roundIndex = BRACKET_ROUNDS.indexOf(lastRound);
   if (roundIndex < 0) return;
-  let previousCount = realColumns.at(-1)?.querySelectorAll('.bracket-tie').length || 1;
+  const previousCount = realColumns.at(-1)?.querySelectorAll('.bracket-tie').length || 1;
+  const signature = `${lastRound}:${previousCount}:${realColumns.length}`;
+  if (shieldCard.dataset.bracketProjectionSignature === signature && grid.querySelector('[data-projected-round]')) return;
 
+  grid.querySelectorAll('[data-projected-round], [data-projected-champion]').forEach((node) => node.remove());
+
+  let tieCount = previousCount;
   for (let index = roundIndex + 1; index < BRACKET_ROUNDS.length; index += 1) {
-    previousCount = Math.max(1, Math.ceil(previousCount / 2));
-    grid.appendChild(projectedRound(BRACKET_ROUNDS[index], previousCount));
+    tieCount = Math.max(1, Math.ceil(tieCount / 2));
+    grid.appendChild(projectedRound(BRACKET_ROUNDS[index], tieCount));
   }
   grid.appendChild(projectedChampion());
 
   const columns = grid.querySelectorAll(':scope > .bracket-round-column, :scope > .bracket-champion-column').length;
   grid.style.gridTemplateColumns = `repeat(${columns}, minmax(210px, 1fr))`;
-  shieldCard.dataset.fullBracketProjection = 'true';
+  shieldCard.dataset.bracketProjectionSignature = signature;
 }
 
 function addCompetitionTabs() {
