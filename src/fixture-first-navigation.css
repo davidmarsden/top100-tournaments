@@ -37,6 +37,9 @@
 .collapsible-block.is-collapsed .collapsible-heading { margin-bottom:0; }
 .fixture-section.collapsible-block,.group-card.collapsible-block,.group-table-card.collapsible-block,.standings-card.collapsible-block,.bracket-round.collapsible-block { --section-accent:currentColor; overflow:visible; }
 
+/* Some existing component CSS explicitly sets display, which can override the browser's [hidden] rule. */
+.tournament-hub [hidden] { display:none!important; }
+
 @media(max-width:700px){
 .fixture-first-callout,.fixture-first-manager-card{align-items:stretch;flex-direction:column}.fixture-first-callout::before,.fixture-first-manager-card::before{align-self:flex-start}.fixture-first-actions{width:100%}.fixture-first-actions .button{flex:1 1 160px;text-align:center}.tournament-hub>section[id]{border-left-width:5px}.tournament-hub>section[id]::after{width:56px}.public-section-nav{gap:6px}.public-section-nav a[data-section-icon]{font-size:.9rem}.collapse-toggle{padding:6px 9px;font-size:.72rem}
 }
