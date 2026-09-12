@@ -163,6 +163,15 @@ function makeKnockoutDisclosure(panel, label) {
   render();
 }
 
+function tagKnockoutBracketSections(manager) {
+  [...manager.querySelectorAll('.knockout-desk-grid .fixture-section')].forEach((section) => {
+    const label = section.querySelector(':scope > .fixture-section-header h3')?.textContent?.trim() || '';
+    section.classList.remove('admin-bracket-cup', 'admin-bracket-shield');
+    if (/^Cup\b/i.test(label)) section.classList.add('admin-bracket-cup');
+    if (/^Shield\b/i.test(label)) section.classList.add('admin-bracket-shield');
+  });
+}
+
 function prepareKnockout(main, module) {
   if (module !== 'Knockout') return;
   const manager = main.querySelector('.module-card .knockout-manager');
@@ -176,6 +185,8 @@ function prepareKnockout(main, module) {
     const label = panel.querySelector(':scope > h3')?.textContent?.trim() || 'saved knockout results';
     makeKnockoutDisclosure(panel, label);
   });
+
+  tagKnockoutBracketSections(manager);
 }
 
 function applyAdminSanitise() {
