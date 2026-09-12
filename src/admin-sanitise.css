@@ -70,10 +70,19 @@
 .admin-sanitised .admin-test-toggle { margin-left: 8px; }
 
 /* Once knockout is live, operational fixtures/results dominate the setup machinery. */
-.admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live > .knockout-desk-grid { margin-top: 18px; }
+.admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live > .knockout-desk-grid { margin-top: 18px; grid-template-columns: 1fr; }
 .admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live > .knockout-bracket-grid { margin-top: 16px; }
 .admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live .knockout-desk-card { border-top: 4px solid #0f9f78; }
 .admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live > .admin-knockout-context { font-size: .9rem; }
+
+/* Inside live knockout work, Cup and Shield get their own clearly separated columns. */
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-sections { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; align-items: start; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup { grid-column: 1; border: 1px solid #b9d7ff; border-top: 4px solid #2563eb; background: #f7fbff; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield { grid-column: 2; border: 1px solid #f2d59a; border-top: 4px solid #d69e2e; background: #fffaf0; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup > .fixture-section-header { background: #eef6ff; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield > .fixture-section-header { background: #fff3d6; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup > .fixture-section-header h3 { color: #1d4ed8; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield > .fixture-section-header h3 { color: #9a6700; }
 
 /* Schedule editing and saved bracket history are secondary during live knockout play. */
 .admin-sanitised.admin-module-knockout .admin-knockout-disclosure > h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 0; }
@@ -88,6 +97,12 @@
   .admin-sanitised .sidebar > .eyebrow { flex: 0 0 100%; }
   .admin-sanitised .sidebar .nav-pill { width: auto; }
   .admin-sanitised .sidebar .nav-pill.admin-group-start { margin-top: 18px; }
+}
+
+@media (max-width: 760px) {
+  .admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-sections { grid-template-columns: 1fr; }
+  .admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup,
+  .admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield { grid-column: 1; }
 }
 
 @media (max-width: 640px) {
