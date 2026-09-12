@@ -18,6 +18,14 @@
 .tournament-hero.compact-round-hero > .hero-countdown { grid-column:2; grid-row:1 / span 3; align-self:center; margin:0; min-width:0; }
 .tournament-hero.compact-round-hero .hero-countdown small { line-height:1.35; }
 
+/* Tournament header: four visual rows, all aligned to the same right edge. */
+.top100-brand-header--tournaments .top100-brand-header__tournament-stack { justify-items:end; text-align:right; gap:6px; }
+.top100-brand-header--tournaments .top100-brand-header__product { justify-items:end; min-width:0; text-align:right; }
+.top100-brand-header--tournaments .top100-brand-header__product span,
+.top100-brand-header--tournaments .top100-brand-header__product strong { text-align:right; }
+.top100-brand-header--tournaments .top100-brand-header__tournament-primary,
+.top100-brand-header--tournaments .top100-brand-header__local--competitions { width:auto; justify-content:flex-end; justify-self:end; }
+
 /* My Matches turns fixture data into the simple action language managers actually use. */
 .my-matches-action-centre { display:grid; grid-template-columns:1fr; align-items:stretch; }
 .my-matches-action-centre::before { content:"ACTION"; }
@@ -61,6 +69,10 @@
 
 /* Some existing component CSS explicitly sets display, which can override the browser's [hidden] rule. */
 .tournament-hub [hidden] { display:none!important; }
+
+@media(max-width:900px){
+.top100-brand-header--tournaments .top100-brand-header__tournament-stack{align-items:flex-end!important;justify-items:end;text-align:right}.top100-brand-header--tournaments .top100-brand-header__product{display:grid!important;justify-items:end}.top100-brand-header--tournaments .top100-brand-header__tournament-primary,.top100-brand-header--tournaments .top100-brand-header__local--competitions{justify-content:flex-end;width:100%}
+}
 
 @media(max-width:700px){
 .fixture-first-callout,.fixture-first-manager-card{align-items:stretch;flex-direction:column}.fixture-first-callout::before,.fixture-first-manager-card::before{align-self:flex-start}.fixture-first-actions{width:100%}.fixture-first-actions .button{flex:1 1 160px;text-align:center}.my-match-action{grid-template-columns:1fr;align-items:start}.my-match-action__badge{justify-self:start;min-width:0}.tournament-hero.compact-round-hero{grid-template-columns:1fr;grid-template-rows:auto}.tournament-hero.compact-round-hero>.eyebrow,.tournament-hero.compact-round-hero>h1,.tournament-hero.compact-round-hero>h1+p,.tournament-hero.compact-round-hero>.hero-countdown{grid-column:1;grid-row:auto}.tournament-hero.compact-round-hero>.hero-countdown{margin-top:14px}.tournament-hub>section[id]{border-left-width:5px}.tournament-hub>section[id]::after{width:56px}.public-section-nav{gap:6px}.public-section-nav a[data-section-icon]{font-size:.9rem}.collapse-toggle{padding:6px 9px;font-size:.72rem}
