@@ -125,7 +125,7 @@
 
 .top100-brand-header__local {
   grid-column: 2 / -1;
-  justify-content: flex-start;
+  justify-content: flex-end;
   padding-top: 2px;
 }
 
@@ -172,13 +172,15 @@
   background: var(--top100-emerald);
 }
 
-.top100-brand-header__utility .top100-brand-header__manager-link {
+.top100-brand-header__utility .top100-brand-header__manager-link,
+.top100-brand-header__local .top100-brand-header__manager-link {
   color: var(--top100-navy);
   border-color: var(--top100-emerald);
   background: var(--top100-emerald);
 }
 
-.top100-brand-header__utility .top100-brand-header__manager-link:hover {
+.top100-brand-header__utility .top100-brand-header__manager-link:hover,
+.top100-brand-header__local .top100-brand-header__manager-link:hover {
   background: #34d399;
 }
 
@@ -261,17 +263,22 @@
 
 @media (max-width: 1280px) {
   .top100-brand-header__inner {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .top100-brand-header__product {
     justify-self: end;
   }
 
-  .top100-brand-header__nav,
-  .top100-brand-header__local {
-    grid-column: 1 / -1;
+  .top100-brand-header__nav {
+    grid-column: 1;
     justify-content: flex-start;
+  }
+
+  .top100-brand-header__local {
+    grid-column: 2;
+    justify-content: flex-end;
+    padding-top: 0;
   }
 
   .top100-brand-header__utility {
