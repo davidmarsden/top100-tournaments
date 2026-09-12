@@ -104,13 +104,11 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
 
           {isTournament ? (
             <div className="top100-brand-header__tournament-stack">
-              <div className="top100-brand-header__tournament-topline">
-                <div className="top100-brand-header__product"><span>Top 100</span><strong>{product}</strong></div>
-                <nav className="top100-brand-header__tournament-primary" aria-label="Tournament shortcuts">
-                  <a className={resolvedCurrent === tournamentPrimary.key ? 'is-current' : undefined} href={tournamentPrimary.href}>{tournamentPrimary.label}</a>
-                  <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a>
-                </nav>
-              </div>
+              <div className="top100-brand-header__product"><span>Top 100</span><strong>{product}</strong></div>
+              <nav className="top100-brand-header__tournament-primary" aria-label="Tournament shortcuts">
+                <a className={resolvedCurrent === tournamentPrimary.key ? 'is-current' : undefined} href={tournamentPrimary.href}>{tournamentPrimary.label}</a>
+                <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a>
+              </nav>
               <nav className="top100-brand-header__local top100-brand-header__local--competitions" aria-label="Tournament competitions">
                 {tournamentCompetitions.map((link) => <a key={link.key} className={resolvedCurrent === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>)}
               </nav>
