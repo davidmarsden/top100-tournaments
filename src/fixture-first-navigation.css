@@ -10,6 +10,20 @@
 .fixture-first-manager-card { border-left-width:8px; }
 .public-section-nav a[data-fixture-first="schedule"] { padding:8px 13px; border:2px solid var(--top100-emerald,#10b981); border-radius:999px; background:var(--top100-emerald,#10b981); color:#071711; font-weight:950; text-decoration:none; }
 
+/* My Matches turns fixture data into the simple action language managers actually use. */
+.my-matches-action-centre { display:grid; grid-template-columns:1fr; align-items:stretch; }
+.my-matches-action-centre::before { content:"ACTION"; }
+.my-matches-action-centre__intro { max-width:760px; }
+.my-match-action-list { display:grid; gap:10px; width:100%; }
+.my-match-action { display:grid; grid-template-columns:auto minmax(180px,1fr) minmax(240px,1.5fr); gap:14px; align-items:center; padding:14px 16px; border:1px solid #dbe5f4; border-radius:16px; background:#fff; }
+.my-match-action.is-next { box-shadow:0 0 0 3px rgba(16,185,129,.08); }
+.my-match-action__badge { min-width:112px; padding:7px 10px; border-radius:999px; text-align:center; font-size:.76rem; font-weight:950; letter-spacing:.05em; }
+.my-match-action.you-send .my-match-action__badge { background:#dcfce7; color:#166534; }
+.my-match-action.they-send .my-match-action__badge { background:#dbeafe; color:#1d4ed8; }
+.my-match-action__main strong { display:block; font-size:1.06rem; }
+.my-match-action__main span,.my-match-action__main time { display:block; margin-top:3px; color:#64748b; font-size:.82rem; font-weight:800; }
+.my-match-action p { margin:0; line-height:1.45; }
+
 /* Major sections: colour + icon form a repeatable mini-identity. */
 .tournament-hub>section[id] { position:relative; overflow:hidden; border-left:6px solid var(--section-accent,#64748b); background:linear-gradient(135deg,var(--section-tint,rgba(100,116,139,.08)),rgba(255,255,255,0) 38%),var(--surface,#fff); }
 .tournament-hub>section[id]::after { content:""; position:absolute; top:0; right:0; width:88px; height:6px; border-radius:0 0 0 999px; background:var(--section-accent,#64748b); opacity:.9; }
@@ -41,5 +55,5 @@
 .tournament-hub [hidden] { display:none!important; }
 
 @media(max-width:700px){
-.fixture-first-callout,.fixture-first-manager-card{align-items:stretch;flex-direction:column}.fixture-first-callout::before,.fixture-first-manager-card::before{align-self:flex-start}.fixture-first-actions{width:100%}.fixture-first-actions .button{flex:1 1 160px;text-align:center}.tournament-hub>section[id]{border-left-width:5px}.tournament-hub>section[id]::after{width:56px}.public-section-nav{gap:6px}.public-section-nav a[data-section-icon]{font-size:.9rem}.collapse-toggle{padding:6px 9px;font-size:.72rem}
+.fixture-first-callout,.fixture-first-manager-card{align-items:stretch;flex-direction:column}.fixture-first-callout::before,.fixture-first-manager-card::before{align-self:flex-start}.fixture-first-actions{width:100%}.fixture-first-actions .button{flex:1 1 160px;text-align:center}.my-match-action{grid-template-columns:1fr;align-items:start}.my-match-action__badge{justify-self:start;min-width:0}.tournament-hub>section[id]{border-left-width:5px}.tournament-hub>section[id]::after{width:56px}.public-section-nav{gap:6px}.public-section-nav a[data-section-icon]{font-size:.9rem}.collapse-toggle{padding:6px 9px;font-size:.72rem}
 }
