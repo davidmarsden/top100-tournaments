@@ -10,6 +10,14 @@
 .fixture-first-manager-card { border-left-width:8px; }
 .public-section-nav a[data-fixture-first="schedule"] { padding:8px 13px; border:2px solid var(--top100-emerald,#10b981); border-radius:999px; background:var(--top100-emerald,#10b981); color:#071711; font-weight:950; text-decoration:none; }
 
+/* Keep the main blue hero useful without making it consume half the first screen. */
+.tournament-hero.compact-round-hero { display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,.55fr); grid-template-rows:auto auto auto; column-gap:28px; align-items:center; }
+.tournament-hero.compact-round-hero > .eyebrow { grid-column:1; grid-row:1; margin-bottom:4px; }
+.tournament-hero.compact-round-hero > h1 { grid-column:1; grid-row:2; margin-bottom:4px; }
+.tournament-hero.compact-round-hero > h1 + p { grid-column:1; grid-row:3; margin:0; }
+.tournament-hero.compact-round-hero > .hero-countdown { grid-column:2; grid-row:1 / span 3; align-self:center; margin:0; min-width:0; }
+.tournament-hero.compact-round-hero .hero-countdown small { line-height:1.35; }
+
 /* My Matches turns fixture data into the simple action language managers actually use. */
 .my-matches-action-centre { display:grid; grid-template-columns:1fr; align-items:stretch; }
 .my-matches-action-centre::before { content:"ACTION"; }
@@ -55,5 +63,5 @@
 .tournament-hub [hidden] { display:none!important; }
 
 @media(max-width:700px){
-.fixture-first-callout,.fixture-first-manager-card{align-items:stretch;flex-direction:column}.fixture-first-callout::before,.fixture-first-manager-card::before{align-self:flex-start}.fixture-first-actions{width:100%}.fixture-first-actions .button{flex:1 1 160px;text-align:center}.my-match-action{grid-template-columns:1fr;align-items:start}.my-match-action__badge{justify-self:start;min-width:0}.tournament-hub>section[id]{border-left-width:5px}.tournament-hub>section[id]::after{width:56px}.public-section-nav{gap:6px}.public-section-nav a[data-section-icon]{font-size:.9rem}.collapse-toggle{padding:6px 9px;font-size:.72rem}
+.fixture-first-callout,.fixture-first-manager-card{align-items:stretch;flex-direction:column}.fixture-first-callout::before,.fixture-first-manager-card::before{align-self:flex-start}.fixture-first-actions{width:100%}.fixture-first-actions .button{flex:1 1 160px;text-align:center}.my-match-action{grid-template-columns:1fr;align-items:start}.my-match-action__badge{justify-self:start;min-width:0}.tournament-hero.compact-round-hero{grid-template-columns:1fr;grid-template-rows:auto}.tournament-hero.compact-round-hero>.eyebrow,.tournament-hero.compact-round-hero>h1,.tournament-hero.compact-round-hero>h1+p,.tournament-hero.compact-round-hero>.hero-countdown{grid-column:1;grid-row:auto}.tournament-hero.compact-round-hero>.hero-countdown{margin-top:14px}.tournament-hub>section[id]{border-left-width:5px}.tournament-hub>section[id]::after{width:56px}.public-section-nav{gap:6px}.public-section-nav a[data-section-icon]{font-size:.9rem}.collapse-toggle{padding:6px 9px;font-size:.72rem}
 }
