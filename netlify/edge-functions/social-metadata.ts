@@ -55,6 +55,8 @@ export default async (request: Request, context: any) => {
 
   const headers = new Headers(response.headers);
   headers.delete('content-length');
+  headers.delete('etag');
+  headers.delete('last-modified');
 
   return new Response(html, {
     status: response.status,
