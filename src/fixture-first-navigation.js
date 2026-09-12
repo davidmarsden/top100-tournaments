@@ -77,13 +77,19 @@ function nextRoundSummary(hub) {
     });
   });
 
-  return [...new Set(rounds)].join(' / ');
+  return [...new Set(rounds)].sort((a, b) => {
+    const priority = (value) => value.startsWith('YC ') ? 0 : value.startsWith('YS ') ? 1 : 2;
+    return priority(a) - priority(b) || a.localeCompare(b);
+  }).join(' / ');
 }
 
 function compactTournamentHero(hub) {
   const hero = hub.querySelector('.tournament-hero');
   if (!hero) return;
   hero.classList.add('compact-round-hero');
+
+  const eyebrow = hero.querySelector(':scope > .eyebrow');
+  if (eyebrow) eyebrow.textContent = 'Top 100 · Tournament centre';
 
   const countdown = hero.querySelector('.hero-countdown');
   if (!countdown) return;
