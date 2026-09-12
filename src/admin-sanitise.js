@@ -75,9 +75,12 @@ function applyAdminSanitise() {
   const main = [...document.querySelectorAll('main.app-shell')].find((node) => node.querySelector('.dashboard-layout'));
   if (!main) return;
   main.classList.add('admin-sanitised');
-  const module = activeModule(main);
-  [...main.classList].filter((name) => name.startsWith('admin-module-')).forEach((name) => main.classList.remove(name));
-  main.classList.add(`admin-module-${slug(module)}`);
+  const moduleClass = `admin-module-${slug(activeModule(main))}`;
+  const currentModuleClass = [...main.classList].find((name) => name.startsWith('admin-module-'));
+  if (currentModuleClass !== moduleClass) {
+    if (currentModuleClass) main.classList.remove(currentModuleClass);
+    main.classList.add(moduleClass);
+  }
   prepareSidebar(main);
   prepareProgress(main);
   prepareHero(main);
