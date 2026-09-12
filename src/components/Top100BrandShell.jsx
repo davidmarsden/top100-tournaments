@@ -71,6 +71,8 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
   const isManager = resolvedCurrent === 'manager';
   const isTournament = current === 'tournaments';
   const localLinks = isVoting ? POLL_LINKS : isManager ? [] : TOURNAMENT_LINKS;
+  const tournamentPrimary = TOURNAMENT_LINKS.find((link) => link.key === 'tournament-centre');
+  const tournamentCompetitions = TOURNAMENT_LINKS.filter((link) => link.key !== 'tournament-centre');
 
   useEffect(() => {
     const shell = document.querySelector('.top100-site-shell');
@@ -88,19 +90,38 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
 
   return (
     <div className="top100-site-shell">
-      <header className="top100-brand-header">
+      <header className={`top100-brand-header${isTournament ? ' top100-brand-header--tournaments' : ''}`}>
         <div className="top100-brand-header__inner">
           <a className="top100-brand-header__identity" href={MAIN_SITE_URL} aria-label="Visit the Top 100 main site">
             <div className="top100-brand-header__wordmark" aria-hidden="true"><span>Top</span><strong>100</strong></div>
             <div className="top100-brand-header__pitch-line" aria-hidden="true"><span /><i /><span /></div>
             <div className="top100-brand-header__tagline">Managers. Stories. A bigger game.</div>
           </a>
-          <div className="top100-brand-header__product"><span>Top 100</span><strong>{product}</strong></div>
+
           <nav className="top100-brand-header__nav" aria-label="Top 100 public navigation">
             {GLOBAL_LINKS.map((link) => <a key={link.key} href={link.href}>{link.label}</a>)}
           </nav>
-          {!isManager && !isTournament && <nav className="top100-brand-header__utility" aria-label="Manager account"><a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a></nav>}
-          {localLinks.length > 0 && <nav className="top100-brand-header__local" aria-label={`${product} navigation`}>{localLinks.map((link) => <a key={link.key} className={resolvedCurrent === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>)}{isTournament && <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a>}</nav>}
+
+          {isTournament ? (
+            <div className="top100-brand-header__tournament-stack">
+              <div className="top100-brand-header__tournament-topline">
+                <div className="top100-brand-header__product"><span>Top 100</span><strong>{product}</strong></div>
+                <nav className="top100-brand-header__tournament-primary" aria-label="Tournament shortcuts">
+                  <a className={resolvedCurrent === tournamentPrimary.key ? 'is-current' : undefined} href={tournamentPrimary.href}>{tournamentPrimary.label}</a>
+                  <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a>
+                </nav>
+              </div>
+              <nav className="top100-brand-header__local top100-brand-header__local--competitions" aria-label="Tournament competitions">
+                {tournamentCompetitions.map((link) => <a key={link.key} className={resolvedCurrent === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>)}
+              </nav>
+            </div>
+          ) : (
+            <>
+              <div className="top100-brand-header__product"><span>Top 100</span><strong>{product}</strong></div>
+              {!isManager && <nav className="top100-brand-header__utility" aria-label="Manager account"><a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a></nav>}
+              {localLinks.length > 0 && <nav className="top100-brand-header__local" aria-label={`${product} navigation`}>{localLinks.map((link) => <a key={link.key} className={resolvedCurrent === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>)}</nav>}
+            </>
+          )}
         </div>
       </header>
       {children}
