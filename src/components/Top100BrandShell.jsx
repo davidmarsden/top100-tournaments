@@ -110,7 +110,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
 
           {!isManager && (
             <nav className="top100-brand-header__utility" aria-label="Manager account">
-              <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">Manager sign-in</a>
+              <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a>
             </nav>
           )}
 
@@ -139,12 +139,12 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
             <a href={`${MAIN_SITE_URL}explore/`}>Explore</a>
             <a href={`${MAIN_SITE_URL}support/`}>Support</a>
             <a href={`${MAIN_SITE_URL}subscribe/`}>Subscribe</a>
-            <a href="https://manager.smtop100.blog/">Manager portal</a>
+            <a href="https://manager.smtop100.blog/">My Matches</a>
           </nav>
         </div>
         <div className="top100-footer__note">
           {isManager
-            ? 'Your verified Top 100 identity and manager-only tools, with the wider Top 100 resources always available publicly.'
+            ? 'Your fixtures, actions and tournament progress in one place, with the wider Top 100 resources always available publicly.'
             : isVoting
               ? 'Community Polls help managers shape how the Top 100 game world is run.'
               : 'Youth Cup, World Club Cup and other Top 100 competitions.'}
