@@ -2,7 +2,7 @@ const MANAGER_URL = 'https://manager.smtop100.blog/';
 
 const SECTION_ICONS = {
   schedule: '📅', summary: '📋', featured: '⭐', winners: '🏆', groups: '👥',
-  knockout: '⚔️', rankings: '📊', 'fair-play': '🤝', seedings: '🎯', brackets: '🌳'
+  knockout: '⚔️', rankings: '📊', statistics: '🔢', 'fair-play': '🤝', seedings: '🎯', brackets: '🌳'
 };
 
 function escapeHtml(value) {
@@ -135,8 +135,13 @@ function makeCollapsible(element, label, storageKey, defaultOpen = false, persis
 }
 
 function addCollapsibles(hub) {
-  const majorIds = ['summary', 'featured', 'winners', 'groups', 'knockout', 'rankings', 'seedings', 'brackets'];
-  majorIds.forEach((id) => { const section = hub.querySelector(`#${id}`); if (section) makeCollapsible(section, id.replace('-', ' '), `section:${id}`, false, true); });
+  const majorIds = ['summary', 'featured', 'winners', 'groups', 'knockout', 'rankings', 'statistics', 'seedings', 'brackets'];
+  majorIds.forEach((id) => {
+    const section = hub.querySelector(`#${id}`);
+    if (!section) return;
+    const title = section.querySelector(':scope > .public-section-toolbar h2, :scope > h2, :scope > h3')?.textContent?.trim();
+    makeCollapsible(section, title || id.replace('-', ' '), `section:${id}`, false, true);
+  });
   // Fair Play owns its own React state. Do not mutate or inject controls into it here.
   hub.querySelectorAll('.fixture-section').forEach((section, index) => {
     const label = section.querySelector('.fixture-section-header h3')?.textContent?.trim() || `fixtures ${index + 1}`;
