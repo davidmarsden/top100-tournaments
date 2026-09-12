@@ -112,14 +112,16 @@
 
 .top100-brand-header__nav,
 .top100-brand-header__utility,
-.top100-brand-header__local {
+.top100-brand-header__local,
+.top100-brand-header__tournament-primary {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .top100-brand-header__nav,
-.top100-brand-header__utility {
+.top100-brand-header__utility,
+.top100-brand-header__tournament-primary {
   justify-content: flex-end;
 }
 
@@ -131,7 +133,8 @@
 
 .top100-brand-header__nav a,
 .top100-brand-header__utility a,
-.top100-brand-header__local a {
+.top100-brand-header__local a,
+.top100-brand-header__tournament-primary a {
   display: inline-flex;
   align-items: center;
   min-height: 42px;
@@ -147,7 +150,8 @@
   transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
-.top100-brand-header__local a {
+.top100-brand-header__local a,
+.top100-brand-header__tournament-primary a {
   min-height: 34px;
   padding: 7px 12px;
   border-color: rgba(203,213,225,0.4);
@@ -160,28 +164,67 @@
 .top100-brand-header__utility a:hover,
 .top100-brand-header__utility a:focus-visible,
 .top100-brand-header__local a:hover,
-.top100-brand-header__local a:focus-visible {
+.top100-brand-header__local a:focus-visible,
+.top100-brand-header__tournament-primary a:hover,
+.top100-brand-header__tournament-primary a:focus-visible {
   border-color: #fff;
   color: #fff;
   transform: translateY(-1px);
 }
 
-.top100-brand-header__local a.is-current {
+.top100-brand-header__local a.is-current,
+.top100-brand-header__tournament-primary a.is-current {
   color: var(--top100-navy);
   border-color: var(--top100-emerald);
   background: var(--top100-emerald);
 }
 
 .top100-brand-header__utility .top100-brand-header__manager-link,
-.top100-brand-header__local .top100-brand-header__manager-link {
+.top100-brand-header__local .top100-brand-header__manager-link,
+.top100-brand-header__tournament-primary .top100-brand-header__manager-link {
   color: var(--top100-navy);
   border-color: var(--top100-emerald);
   background: var(--top100-emerald);
 }
 
 .top100-brand-header__utility .top100-brand-header__manager-link:hover,
-.top100-brand-header__local .top100-brand-header__manager-link:hover {
+.top100-brand-header__local .top100-brand-header__manager-link:hover,
+.top100-brand-header__tournament-primary .top100-brand-header__manager-link:hover {
   background: #34d399;
+}
+
+.top100-brand-header--tournaments .top100-brand-header__inner {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.top100-brand-header--tournaments .top100-brand-header__nav {
+  grid-column: 2;
+  justify-content: flex-start;
+  align-self: end;
+}
+
+.top100-brand-header__tournament-stack {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  align-self: center;
+}
+
+.top100-brand-header__tournament-topline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.top100-brand-header__local--competitions {
+  grid-column: auto;
+  justify-content: flex-end;
+  width: 100%;
+  padding-top: 0;
 }
 
 .tournament-hub .tournament-hero {
@@ -286,6 +329,18 @@
     right: 20px;
     bottom: 18px;
   }
+
+  .top100-brand-header--tournaments .top100-brand-header__inner {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .top100-brand-header--tournaments .top100-brand-header__nav {
+    grid-column: 2;
+  }
+
+  .top100-brand-header__tournament-stack {
+    grid-column: 3;
+  }
 }
 
 @media (max-width: 900px) {
@@ -314,7 +369,8 @@
   }
 
   .top100-brand-header__nav,
-  .top100-brand-header__local {
+  .top100-brand-header__local,
+  .top100-brand-header__tournament-primary {
     width: 100%;
     justify-content: flex-start;
     flex-wrap: nowrap;
@@ -325,12 +381,14 @@
   }
 
   .top100-brand-header__nav::-webkit-scrollbar,
-  .top100-brand-header__local::-webkit-scrollbar {
+  .top100-brand-header__local::-webkit-scrollbar,
+  .top100-brand-header__tournament-primary::-webkit-scrollbar {
     display: none;
   }
 
   .top100-brand-header__nav a,
-  .top100-brand-header__local a {
+  .top100-brand-header__local a,
+  .top100-brand-header__tournament-primary a {
     flex: 0 0 auto;
     white-space: nowrap;
     scroll-snap-align: start;
@@ -348,6 +406,22 @@
     min-height: 38px;
     padding: 9px 12px;
     font-size: 0.8rem;
+  }
+
+  .top100-brand-header__tournament-stack {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .top100-brand-header__tournament-topline {
+    width: 100%;
+  }
+
+  .top100-brand-header__local--competitions {
+    width: 100%;
   }
 }
 
