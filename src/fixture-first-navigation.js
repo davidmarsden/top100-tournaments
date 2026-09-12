@@ -1,5 +1,14 @@
 const MANAGER_URL = 'https://manager.smtop100.blog/';
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function ensurePublicFixtureNav() {
   const hub = document.querySelector('.tournament-hub');
   if (!hub) return;
@@ -16,7 +25,6 @@ function ensurePublicFixtureNav() {
     nav.insertBefore(link, nav.firstChild);
   }
 
-  const switcher = hub.querySelector('.public-tournament-switcher');
   const existing = hub.querySelector('[data-fixture-first="public-callout"]');
   if (!existing && nav) {
     const callout = document.createElement('section');
@@ -39,26 +47,38 @@ function ensurePublicFixtureNav() {
 function ensureManagerNextAction() {
   const shell = document.querySelector('.manager-portal-shell');
   if (!shell) return;
-  const existing = shell.querySelector('[data-fixture-first="manager-next"]');
+
   const firstFixture = shell.querySelector('.portal-panel .portal-fixture');
-  if (existing || !firstFixture) return;
+  const existing = shell.querySelector('[data-fixture-first="manager-next"]');
+  if (!firstFixture) {
+    existing?.remove();
+    return;
+  }
 
   const primary = firstFixture.querySelector('strong')?.textContent?.trim() || '';
   const date = firstFixture.querySelector('time')?.textContent?.trim() || 'Date TBC';
+  const signature = `${primary}|${date}`;
+  if (existing?.dataset.fixtureSignature === signature) return;
+  existing?.remove();
+
   const isHome = /^Home\b/i.test(primary);
   const opponent = primary.replace(/^(Home|Away)\s+vs\s+/i, '').trim() || 'opponent';
+  const safePrimary = escapeHtml(primary || 'Upcoming fixture');
+  const safeDate = escapeHtml(date);
+  const safeOpponent = escapeHtml(opponent);
 
   const card = document.createElement('section');
   card.className = 'card fixture-first-manager-card';
   card.dataset.fixtureFirst = 'manager-next';
+  card.dataset.fixtureSignature = signature;
   card.innerHTML = `
     <div>
       <p class="eyebrow">Your next match</p>
-      <h2>${primary || 'Upcoming fixture'}</h2>
-      <p class="fixture-first-date">${date}</p>
+      <h2>${safePrimary}</h2>
+      <p class="fixture-first-date">${safeDate}</p>
       <p>${isHome
-        ? `You are <strong>HOME</strong> — send the Soccer Manager friendly request to ${opponent} as soon as the fixture appears.`
-        : `You are <strong>AWAY</strong> — check that ${opponent} has sent the friendly request. If not, chase them rather than waiting until the deadline.`}</p>
+        ? `You are <strong>HOME</strong> — send the Soccer Manager friendly request to ${safeOpponent} as soon as the fixture appears.`
+        : `You are <strong>AWAY</strong> — check that ${safeOpponent} has sent the friendly request. If not, chase them rather than waiting until the deadline.`}</p>
     </div>
     <div class="fixture-first-actions">
       <a class="button secondary" href="https://tournaments.smtop100.blog/#schedule">Full schedule</a>
