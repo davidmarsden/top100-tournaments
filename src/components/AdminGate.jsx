@@ -86,5 +86,32 @@ export default function AdminGate({ children, requireGlobal = false }) {
 
   if (hasAccess && requireGlobal) return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Platform admin only</h1><p>Your organiser account is deliberately restricted to its assigned tournament. Manager-account administration remains available only to the platform administrator.</p></section><section className="card"><a className="button" href="/admin">Return to tournament admin</a></section></main>;
 
-  return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Administration login</h1><p>Platform administrators use the private admin login. Tournament organisers sign in through the Manager Portal first, then open this administration page.</p></section><section className="card admin-login-card"><form onSubmit={login}><label>Admin username<input type="text" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoCapitalize="none" autoFocus /></label><label>Admin password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label><button type="submit" disabled={checking}>Log in as platform admin</button>{error && <p className="status error-text">{error}</p>}</form>{userEmail && <p className="muted">Signed in as {userEmail}, but this account has not been assigned tournament administration.</p>}<div className="button-row"><a className="button secondary" href="/manager">Manager Portal sign-in</a></div><p className="muted">Admin username: {configuredUsername}</p></section></main>;
+  return <main className="app-shell">
+    <section className="hero">
+      <p className="eyebrow">Top 100 Tournament Manager</p>
+      <h1>Tournament administration</h1>
+      <p>Tournament organisers use their normal Manager Portal email sign-in. The username and password login is only for the platform administrator.</p>
+    </section>
+
+    <section className="card admin-login-card">
+      <h2>Tournament organiser</h2>
+      <p>Sign in with the same email you use for the Manager Portal. You do not need a separate admin username or password.</p>
+      {userEmail && <p className="muted">Signed in as {userEmail}, but this account has not been assigned tournament administration.</p>}
+      <div className="button-row">
+        <a className="button" href="/manager">Sign in through Manager Portal</a>
+      </div>
+    </section>
+
+    <section className="card admin-login-card">
+      <h2>Platform administrator</h2>
+      <p className="muted">Private login for the overall Top 100 Tournament Manager administrator.</p>
+      <form onSubmit={login}>
+        <label>Admin username<input type="text" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoCapitalize="none" /></label>
+        <label>Admin password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
+        <button type="submit" disabled={checking}>Log in as platform admin</button>
+        {error && <p className="status error-text">{error}</p>}
+      </form>
+      <p className="muted">Admin username: {configuredUsername}</p>
+    </section>
+  </main>;
 }
