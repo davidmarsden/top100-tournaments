@@ -24,7 +24,7 @@ function addSectionIcons(hub) {
   });
 }
 
-function makeCollapsible(element, label, storageKey, defaultOpen = false) {
+function makeCollapsible(element, label, storageKey, defaultOpen = false, persist = true) {
   if (!element || element.dataset.collapsibleReady) return;
 
   const header = element.querySelector(':scope > .public-section-toolbar, :scope > .fixture-section-header, :scope > .fixtures-toolbar, :scope > h2, :scope > h3');
@@ -38,15 +38,16 @@ function makeCollapsible(element, label, storageKey, defaultOpen = false) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'collapse-toggle';
-  button.dataset.collapseControl = storageKey;
   header.classList.add('collapsible-heading');
   header.appendChild(button);
 
   let open = defaultOpen;
-  try {
-    const saved = sessionStorage.getItem(`top100-collapse:${storageKey}`);
-    if (saved !== null) open = saved !== 'closed';
-  } catch (_) {}
+  if (persist) {
+    try {
+      const saved = sessionStorage.getItem(`top100-collapse-v2:${storageKey}`);
+      if (saved !== null) open = saved !== 'closed';
+    } catch (_) {}
+  }
 
   const render = () => {
     bodyNodes.forEach((node) => { node.hidden = !open; });
@@ -55,46 +56,41 @@ function makeCollapsible(element, label, storageKey, defaultOpen = false) {
     button.textContent = open ? '− Hide' : '+ Show';
     button.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${label}`);
   };
-
   button.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    open = !open;
-    try { sessionStorage.setItem(`top100-collapse:${storageKey}`, open ? 'open' : 'closed'); } catch (_) {}
+    event.preventDefault(); event.stopPropagation(); open = !open;
+    if (persist) {
+      try { sessionStorage.setItem(`top100-collapse-v2:${storageKey}`, open ? 'open' : 'closed'); } catch (_) {}
+    }
     render();
   });
-
   render();
 }
 
 function addCollapsibles(hub) {
-  // Dense tournament pages start compact: users deliberately open what they need.
   const majorIds = ['summary', 'featured', 'winners', 'groups', 'knockout', 'rankings', 'seedings', 'brackets'];
   majorIds.forEach((id) => {
     const section = hub.querySelector(`#${id}`);
-    if (section) makeCollapsible(section, id.replace('-', ' '), `section:${id}`, false);
+    if (section) makeCollapsible(section, id.replace('-', ' '), `section:${id}`, false, true);
   });
 
-  // Fair Play is mounted into a portal after the public page renders, so target its actual content wrapper.
+  // Fair Play is mounted later through a React portal. Always start it closed on a fresh page load;
+  // don't let an earlier session-state experiment keep the very long discipline table open.
   const fairPlay = hub.querySelector('#fair-play .manager-forfeit-register');
-  if (fairPlay) makeCollapsible(fairPlay, 'Fair Play', 'section:fair-play', false);
+  if (fairPlay) makeCollapsible(fairPlay, 'Fair Play', 'section:fair-play', false, false);
 
-  // Fixture/result subsections are already grouped by Group, or by Competition · Round.
   hub.querySelectorAll('.fixture-section').forEach((section, index) => {
     const label = section.querySelector('.fixture-section-header h3')?.textContent?.trim() || `fixtures ${index + 1}`;
-    makeCollapsible(section, label, `fixtures:${label}`, false);
+    makeCollapsible(section, label, `fixtures:${label}`, false, true);
   });
 
-  // Group tables/cards: each group can be opened independently.
   hub.querySelectorAll('#groups .group-table-card, #groups .group-card, #groups .standings-card').forEach((section, index) => {
     const label = section.querySelector('h3, h4')?.textContent?.trim() || `group ${index + 1}`;
-    makeCollapsible(section, label, `group:${label}`, false);
+    makeCollapsible(section, label, `group:${label}`, false, true);
   });
 
-  // Knockout/bracket competition and round containers start closed too.
   hub.querySelectorAll('#knockout [data-bracket], #knockout [data-round], #brackets [data-bracket], #brackets [data-round], .bracket-round').forEach((section, index) => {
     const label = section.querySelector('h3, h4, h5')?.textContent?.trim() || section.dataset.bracket || section.dataset.round || `bracket ${index + 1}`;
-    makeCollapsible(section, label, `bracket:${label}`, false);
+    makeCollapsible(section, label, `bracket:${label}`, false, true);
   });
 }
 
@@ -103,24 +99,19 @@ function ensurePublicFixtureNav() {
   if (!hub) return;
   const nav = hub.querySelector('.public-section-nav');
   const schedule = hub.querySelector('.schedule-summary');
-
   if (nav && schedule && !nav.querySelector('a[data-fixture-first="schedule"]')) {
     if (!schedule.id) schedule.id = 'schedule';
     const link = document.createElement('a');
-    link.href = '#schedule';
-    link.dataset.fixtureFirst = 'schedule';
-    link.textContent = 'Schedule';
+    link.href = '#schedule'; link.dataset.fixtureFirst = 'schedule'; link.textContent = 'Schedule';
     nav.insertBefore(link, nav.firstChild);
   }
-
   addSectionIcons(hub);
   addCollapsibles(hub);
 
   const existing = hub.querySelector('[data-fixture-first="public-callout"]');
-  if (!existing && nav && nav.parentNode) {
+  if (!existing && nav) {
     const callout = document.createElement('section');
-    callout.className = 'fixture-first-callout';
-    callout.dataset.fixtureFirst = 'public-callout';
+    callout.className = 'fixture-first-callout'; callout.dataset.fixtureFirst = 'public-callout';
     callout.innerHTML = `<div><p class="eyebrow">Looking for your match?</p><strong>Find the date first, then the opponent.</strong><span>The tournament schedule is below. Managers with an account can see their own next fixture and what they need to do.</span></div><div class="fixture-first-actions"><a class="button" href="#schedule">View schedule</a><a class="button secondary" href="${MANAGER_URL}">My fixtures</a></div>`;
     nav.parentNode.insertBefore(callout, nav);
   }
@@ -132,45 +123,24 @@ function ensureManagerNextAction() {
   const firstFixture = shell.querySelector('.portal-panel .portal-fixture');
   const existing = shell.querySelector('[data-fixture-first="manager-next"]');
   if (!firstFixture) { existing?.remove(); return; }
-
   const primary = firstFixture.querySelector('strong')?.textContent?.trim() || '';
   const date = firstFixture.querySelector('time')?.textContent?.trim() || 'Date TBC';
   const signature = `${primary}|${date}`;
   if (existing?.dataset.fixtureSignature === signature) return;
   existing?.remove();
-
   const isHome = /^Home\b/i.test(primary);
   const opponent = primary.replace(/^(Home|Away)\s+vs\s+/i, '').trim() || 'opponent';
-  const safePrimary = escapeHtml(primary || 'Upcoming fixture');
-  const safeDate = escapeHtml(date);
-  const safeOpponent = escapeHtml(opponent);
-
+  const safePrimary = escapeHtml(primary || 'Upcoming fixture'), safeDate = escapeHtml(date), safeOpponent = escapeHtml(opponent);
   const card = document.createElement('section');
-  card.className = 'card fixture-first-manager-card';
-  card.dataset.fixtureFirst = 'manager-next';
-  card.dataset.fixtureSignature = signature;
+  card.className = 'card fixture-first-manager-card'; card.dataset.fixtureFirst = 'manager-next'; card.dataset.fixtureSignature = signature;
   card.innerHTML = `<div><p class="eyebrow">Your next match</p><h2>${safePrimary}</h2><p class="fixture-first-date">${safeDate}</p><p>${isHome ? `You are <strong>HOME</strong> — send the Soccer Manager friendly request to ${safeOpponent} as soon as the fixture appears.` : `You are <strong>AWAY</strong> — check that ${safeOpponent} has sent the friendly request. If not, chase them rather than waiting until the deadline.`}</p></div><div class="fixture-first-actions"><a class="button secondary" href="https://tournaments.smtop100.blog/#schedule">Full schedule</a></div>`;
-
   const metrics = shell.querySelector('.portal-metrics');
-  if (metrics?.parentNode) metrics.parentNode.insertBefore(card, metrics.nextSibling);
-  else shell.prepend(card);
+  if (metrics?.parentNode) metrics.parentNode.insertBefore(card, metrics.nextSibling); else shell.prepend(card);
 }
 
-function applyFixtureFirstNavigation() {
-  ensurePublicFixtureNav();
-  ensureManagerNextAction();
-}
-
+function applyFixtureFirstNavigation() { ensurePublicFixtureNav(); ensureManagerNextAction(); }
 let queued = false;
-function queueApply() {
-  if (queued) return;
-  queued = true;
-  requestAnimationFrame(() => {
-    queued = false;
-    applyFixtureFirstNavigation();
-  });
-}
-
+function queueApply() { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; applyFixtureFirstNavigation(); }); }
 queueApply();
 const observer = new MutationObserver(queueApply);
 observer.observe(document.documentElement, { childList: true, subtree: true });
