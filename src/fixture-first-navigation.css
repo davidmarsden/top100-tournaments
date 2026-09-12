@@ -82,6 +82,109 @@
   content: "📅 ";
 }
 
+/* Give each public tournament section a small, memorable visual identity. */
+.tournament-hub > section[id] {
+  position: relative;
+  overflow: hidden;
+  border-left: 6px solid var(--section-accent, #64748b);
+  background:
+    linear-gradient(135deg, var(--section-tint, rgba(100, 116, 139, 0.08)), rgba(255,255,255,0) 38%),
+    var(--surface, #fff);
+}
+
+.tournament-hub > section[id]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 88px;
+  height: 6px;
+  border-radius: 0 0 0 999px;
+  background: var(--section-accent, #64748b);
+  opacity: 0.9;
+}
+
+.tournament-hub > section[id] > .eyebrow,
+.tournament-hub > section[id] .card-header > .eyebrow,
+.tournament-hub > section[id] .public-section-toolbar .eyebrow {
+  color: var(--section-accent-dark, var(--section-accent, #475569));
+  font-weight: 950;
+}
+
+#summary {
+  --section-accent: #2563eb;
+  --section-accent-dark: #1d4ed8;
+  --section-tint: rgba(37, 99, 235, 0.10);
+}
+
+#featured {
+  --section-accent: #d97706;
+  --section-accent-dark: #b45309;
+  --section-tint: rgba(217, 119, 6, 0.11);
+}
+
+#winners {
+  --section-accent: #ca8a04;
+  --section-accent-dark: #a16207;
+  --section-tint: rgba(202, 138, 4, 0.12);
+}
+
+#groups {
+  --section-accent: #7c3aed;
+  --section-accent-dark: #6d28d9;
+  --section-tint: rgba(124, 58, 237, 0.10);
+}
+
+#knockout {
+  --section-accent: #dc2626;
+  --section-accent-dark: #b91c1c;
+  --section-tint: rgba(220, 38, 38, 0.09);
+}
+
+#rankings {
+  --section-accent: #4f46e5;
+  --section-accent-dark: #4338ca;
+  --section-tint: rgba(79, 70, 229, 0.09);
+}
+
+#fair-play {
+  --section-accent: #059669;
+  --section-accent-dark: #047857;
+  --section-tint: rgba(5, 150, 105, 0.10);
+}
+
+#seedings {
+  --section-accent: #475569;
+  --section-accent-dark: #334155;
+  --section-tint: rgba(71, 85, 105, 0.09);
+}
+
+#brackets {
+  --section-accent: #0891b2;
+  --section-accent-dark: #0e7490;
+  --section-tint: rgba(8, 145, 178, 0.10);
+}
+
+/* Echo those identities in the sticky/inline section navigation without making it noisy. */
+.public-section-nav a[href="#summary"] { --nav-accent: #2563eb; }
+.public-section-nav a[href="#featured"] { --nav-accent: #d97706; }
+.public-section-nav a[href="#winners"] { --nav-accent: #ca8a04; }
+.public-section-nav a[href="#groups"] { --nav-accent: #7c3aed; }
+.public-section-nav a[href="#knockout"] { --nav-accent: #dc2626; }
+.public-section-nav a[href="#rankings"] { --nav-accent: #4f46e5; }
+.public-section-nav a[href="#fair-play"] { --nav-accent: #059669; }
+.public-section-nav a[href="#seedings"] { --nav-accent: #475569; }
+.public-section-nav a[href="#brackets"] { --nav-accent: #0891b2; }
+
+.public-section-nav a[href^="#"]:not([data-fixture-first="schedule"]) {
+  border-bottom: 3px solid transparent;
+}
+
+.public-section-nav a[href^="#"]:not([data-fixture-first="schedule"]):hover,
+.public-section-nav a[href^="#"]:not([data-fixture-first="schedule"]):focus-visible {
+  border-bottom-color: var(--nav-accent, #64748b);
+}
+
 @media (max-width: 700px) {
   .fixture-first-callout,
   .fixture-first-manager-card {
@@ -101,5 +204,13 @@
   .fixture-first-actions .button {
     flex: 1 1 160px;
     text-align: center;
+  }
+
+  .tournament-hub > section[id] {
+    border-left-width: 5px;
+  }
+
+  .tournament-hub > section[id]::after {
+    width: 56px;
   }
 }
