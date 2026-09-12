@@ -69,6 +69,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
   const resolvedCurrent = current === 'tournaments' ? tournamentCurrentFromPath(window.location.pathname) : current;
   const isVoting = resolvedCurrent === 'vote' || resolvedCurrent === 'voting-results';
   const isManager = resolvedCurrent === 'manager';
+  const isTournament = current === 'tournaments';
   const localLinks = isVoting ? POLL_LINKS : isManager ? [] : TOURNAMENT_LINKS;
 
   useEffect(() => {
@@ -98,8 +99,8 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
           <nav className="top100-brand-header__nav" aria-label="Top 100 public navigation">
             {GLOBAL_LINKS.map((link) => <a key={link.key} href={link.href}>{link.label}</a>)}
           </nav>
-          {!isManager && <nav className="top100-brand-header__utility" aria-label="Manager account"><a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a></nav>}
-          {localLinks.length > 0 && <nav className="top100-brand-header__local" aria-label={`${product} navigation`}>{localLinks.map((link) => <a key={link.key} className={resolvedCurrent === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>)}</nav>}
+          {!isManager && !isTournament && <nav className="top100-brand-header__utility" aria-label="Manager account"><a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a></nav>}
+          {localLinks.length > 0 && <nav className="top100-brand-header__local" aria-label={`${product} navigation`}>{localLinks.map((link) => <a key={link.key} className={resolvedCurrent === link.key ? 'is-current' : undefined} href={link.href}>{link.label}</a>)}{isTournament && <a className="top100-brand-header__manager-link" href="https://manager.smtop100.blog/">👤 My Matches</a>}</nav>}
         </div>
       </header>
       {children}
