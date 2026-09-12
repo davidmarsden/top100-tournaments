@@ -24,6 +24,9 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
   const [managerProfiles, setManagerProfiles] = useState([]);
   const [status, setStatus] = useState('Loading manager forfeit register...');
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(admin);
+
+  useEffect(() => { setExpanded(admin); }, [tournamentId, admin]);
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase || !tournamentId) return undefined;
@@ -129,19 +132,25 @@ export default function ManagerForfeitRegister({ selectedTournament, tournamentI
   if (!hasSupabaseConfig || !supabase) return <p className="muted">Supabase is not connected yet.</p>;
 
   return (
-    <div className="manager-forfeit-register">
-      <div className="fixtures-toolbar">
+    <div className={`manager-forfeit-register ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
+      <div className="fixtures-toolbar collapsible-heading">
         <div>
           <p className="eyebrow">Fair Play</p>
           <h3>Manager discipline</h3>
-          <p className="muted">Forfeits stay with the responsible manager. The club keeps the forfeited match result, while a replacement manager starts with their own disciplinary record. Any manager who forfeits a match is ineligible for the end-of-season prize draw.</p>
+          {!expanded && <p className="muted">Forfeits, knockout eligibility and prize-draw status.</p>}
         </div>
-        {admin && <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload register</button>}
+        <div className="button-row">
+          {admin && <button type="button" className="secondary" onClick={loadData} disabled={loading}>Reload register</button>}
+          <button type="button" className="collapse-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? '− Hide' : '+ Show'}</button>
+        </div>
       </div>
-      {status && <p className="status">{status}</p>}
-      {!status && rows.length === 0 && <p className="muted">No manager forfeits have been recorded.</p>}
-      {rows.length > 0 && <div className="standings-wrap"><table className="standings-table forfeit-register-table"><thead><tr><th>Manager</th><th>Current club</th><th>Group</th><th>Group F</th><th>Total F</th><th>Knockout</th><th>Prize draw</th>{admin && <th>Details</th>}</tr></thead><tbody>{rows.map((row) => <tr key={row.managerId} className={row.knockoutIneligible ? 'forfeit-ineligible-row' : row.groupForfeits === 2 ? 'forfeit-warning-row' : ''}><td><strong>{row.managerName}</strong></td><td>{row.currentClub}</td><td>{row.groupCode}</td><td><strong>{row.groupForfeits}</strong></td><td>{row.totalForfeits}</td><td>{row.knockoutIneligible ? <span className="eligibility-pill ineligible">Ineligible</span> : row.groupForfeits === 2 ? <span className="eligibility-pill warning">Warning</span> : <span className="eligibility-pill eligible">Eligible</span>}</td><td>{row.prizeDrawExcluded ? <span className="eligibility-pill ineligible">Excluded</span> : <span className="eligibility-pill eligible">Eligible</span>}</td>{admin && <td><details><summary>{row.records.length} fixture{row.records.length === 1 ? '' : 's'}</summary><ul className="forfeit-detail-list">{row.records.map((record) => <li key={record.id}><strong>{record.match?.stage === 'group' ? 'Group stage' : 'Knockout'} · {record.match?.round || 'Round'}</strong><span>{formatDate(record.match?.fixture_date || record.created_at)} · {record.reason || 'Forfeit recorded'}{record.affects_prize_draw === false ? ' · prize-draw exception' : ''}</span></li>)}</ul></details></td>}</tr>)}</tbody></table></div>}
-      <p className="muted register-note">Three or more group-stage forfeits make the manager ineligible for the knockout draw. Any forfeit affecting the prize draw excludes that manager from the end-of-season free-player-pick draw.</p>
+      {expanded && <>
+        <p className="muted">Forfeits stay with the responsible manager. The club keeps the forfeited match result, while a replacement manager starts with their own disciplinary record. Any manager who forfeits a match is ineligible for the end-of-season prize draw.</p>
+        {status && <p className="status">{status}</p>}
+        {!status && rows.length === 0 && <p className="muted">No manager forfeits have been recorded.</p>}
+        {rows.length > 0 && <div className="standings-wrap"><table className="standings-table forfeit-register-table"><thead><tr><th>Manager</th><th>Current club</th><th>Group</th><th>Group F</th><th>Total F</th><th>Knockout</th><th>Prize draw</th>{admin && <th>Details</th>}</tr></thead><tbody>{rows.map((row) => <tr key={row.managerId} className={row.knockoutIneligible ? 'forfeit-ineligible-row' : row.groupForfeits === 2 ? 'forfeit-warning-row' : ''}><td><strong>{row.managerName}</strong></td><td>{row.currentClub}</td><td>{row.groupCode}</td><td><strong>{row.groupForfeits}</strong></td><td>{row.totalForfeits}</td><td>{row.knockoutIneligible ? <span className="eligibility-pill ineligible">Ineligible</span> : row.groupForfeits === 2 ? <span className="eligibility-pill warning">Warning</span> : <span className="eligibility-pill eligible">Eligible</span>}</td><td>{row.prizeDrawExcluded ? <span className="eligibility-pill ineligible">Excluded</span> : <span className="eligibility-pill eligible">Eligible</span>}</td>{admin && <td><details><summary>{row.records.length} fixture{row.records.length === 1 ? '' : 's'}</summary><ul className="forfeit-detail-list">{row.records.map((record) => <li key={record.id}><strong>{record.match?.stage === 'group' ? 'Group stage' : 'Knockout'} · {record.match?.round || 'Round'}</strong><span>{formatDate(record.match?.fixture_date || record.created_at)} · {record.reason || 'Forfeit recorded'}{record.affects_prize_draw === false ? ' · prize-draw exception' : ''}</span></li>)}</ul></details></td>}</tr>)}</tbody></table></div>}
+        <p className="muted register-note">Three or more group-stage forfeits make the manager ineligible for the knockout draw. Any forfeit affecting the prize draw excludes that manager from the end-of-season free-player-pick draw.</p>
+      </>}
     </div>
   );
 }
