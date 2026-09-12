@@ -193,20 +193,28 @@
   background: #34d399;
 }
 
+/* Tournament header: brand + global links on the left; tournament controls as a true two-row stack on the right. */
 .top100-brand-header--tournaments .top100-brand-header__inner {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "identity tournament"
+    "global tournament";
   align-items: center;
+  column-gap: 40px;
+  row-gap: 12px;
+}
+
+.top100-brand-header--tournaments .top100-brand-header__identity {
+  grid-area: identity;
 }
 
 .top100-brand-header--tournaments .top100-brand-header__nav {
-  grid-column: 2;
+  grid-area: global;
   justify-content: flex-start;
-  align-self: end;
 }
 
 .top100-brand-header__tournament-stack {
-  grid-column: 3;
-  grid-row: 1 / span 2;
+  grid-area: tournament;
   display: grid;
   gap: 8px;
   justify-items: end;
@@ -331,15 +339,14 @@
   }
 
   .top100-brand-header--tournaments .top100-brand-header__inner {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "identity tournament"
+      "global tournament";
   }
 
   .top100-brand-header--tournaments .top100-brand-header__nav {
-    grid-column: 2;
-  }
-
-  .top100-brand-header__tournament-stack {
-    grid-column: 3;
+    grid-column: auto;
   }
 }
 
