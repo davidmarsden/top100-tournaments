@@ -75,6 +75,13 @@
 .admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live .knockout-desk-card { border-top: 4px solid #0f9f78; }
 .admin-sanitised.admin-module-knockout .knockout-manager.admin-knockout-live > .admin-knockout-context { font-size: .9rem; }
 
+/* Schedule editing and saved bracket history are secondary during live knockout play. */
+.admin-sanitised.admin-module-knockout .admin-knockout-disclosure > h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 0; }
+.admin-sanitised.admin-module-knockout .admin-knockout-disclosure > h3 .admin-knockout-toggle { margin-left: auto; padding: .38rem .58rem; font-size: .72rem; flex: 0 0 auto; }
+.admin-sanitised.admin-module-knockout .admin-knockout-disclosure.admin-knockout-collapsed > :not(h3) { display: none !important; }
+.admin-sanitised.admin-module-knockout .admin-knockout-disclosure.admin-knockout-collapsed { padding-bottom: 14px; min-height: 0; }
+.admin-sanitised.admin-module-knockout .knockout-bracket-grid > .admin-knockout-disclosure { align-self: start; }
+
 @media (max-width: 900px) {
   .admin-sanitised .dashboard-layout { grid-template-columns: 1fr; }
   .admin-sanitised .sidebar { position: static; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 7px; }
