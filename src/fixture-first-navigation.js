@@ -73,10 +73,7 @@ function addCollapsibles(hub) {
     if (section) makeCollapsible(section, id.replace('-', ' '), `section:${id}`, false, true);
   });
 
-  // Fair Play is mounted later through a React portal. Always start it closed on a fresh page load;
-  // don't let an earlier session-state experiment keep the very long discipline table open.
-  const fairPlay = hub.querySelector('#fair-play .manager-forfeit-register');
-  if (fairPlay) makeCollapsible(fairPlay, 'Fair Play', 'section:fair-play', false, false);
+  // Fair Play owns its own React state. Do not mutate or inject controls into it here.
 
   hub.querySelectorAll('.fixture-section').forEach((section, index) => {
     const label = section.querySelector('.fixture-section-header h3')?.textContent?.trim() || `fixtures ${index + 1}`;
