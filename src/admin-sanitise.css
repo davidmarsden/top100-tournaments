@@ -1,0 +1,64 @@
+.admin-sanitised { padding-top: 22px; }
+
+/* Compact context banner: useful, but no longer the largest thing on the page. */
+.admin-sanitised > .hero.admin-hero-compact { padding: 18px 20px; border-radius: 22px; margin-bottom: 12px; }
+.admin-sanitised > .hero.admin-hero-compact h1 { font-size: clamp(1.8rem, 3vw, 2.7rem); line-height: 1.02; }
+.admin-sanitised > .hero.admin-hero-compact p:not(.eyebrow) { margin: 8px 0 0; max-width: 900px; font-size: .96rem; line-height: 1.45; }
+.admin-sanitised > .hero.admin-hero-compact .eyebrow { margin-bottom: 5px; }
+.admin-sanitised > .hero.admin-hero-compact .admin-logout { padding: .65rem .9rem; }
+
+/* Workflow is context, not the main event. Keep a one-line summary until requested. */
+.admin-sanitised > .progress-card { padding: 13px 16px; border-radius: 18px; margin-bottom: 14px; }
+.admin-sanitised > .progress-card .progress-header { margin: 0; }
+.admin-sanitised > .progress-card .progress-header h2 { font-size: 1rem; }
+.admin-sanitised > .progress-card .progress-track,
+.admin-sanitised > .progress-card .progress-steps { display: none; }
+.admin-sanitised > .progress-card.admin-progress-open .progress-track { display: block; margin-top: 12px; }
+.admin-sanitised > .progress-card.admin-progress-open .progress-steps { display: grid; }
+.admin-progress-toggle { margin-left: auto; padding: .55rem .78rem; font-size: .78rem; }
+
+/* The active job gets the space; navigation becomes a compact grouped tool rail. */
+.admin-sanitised .dashboard-layout { grid-template-columns: 205px minmax(0,1fr); gap: 16px; }
+.admin-sanitised .sidebar { padding: 14px; gap: 5px; border-radius: 20px; }
+.admin-sanitised .sidebar > .eyebrow { margin: 0 0 4px; }
+.admin-sanitised .sidebar .nav-pill { position: relative; padding: .64rem .72rem; border-radius: 12px; font-size: .86rem; }
+.admin-sanitised .sidebar .nav-pill.admin-group-start { margin-top: 18px; }
+.admin-sanitised .sidebar .nav-pill.admin-group-start:first-of-type { margin-top: 20px; }
+.admin-sanitised .sidebar .nav-pill.admin-group-start::before { content: attr(data-admin-group-label); position: absolute; left: 3px; bottom: calc(100% + 5px); color: #71809a; font-size: .63rem; line-height: 1; font-weight: 950; letter-spacing: .11em; text-transform: uppercase; pointer-events: none; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Matchday"] { background: #eefbf5; color: #135c46; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Matchday"].active { background: #0f8a68; color: #fff; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Setup"] { background: #f7f5ff; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Publish"] { background: #fff8ec; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Platform"] { background: #f5f6f8; }
+.admin-sanitised .sidebar .nav-pill.active { box-shadow: 0 6px 14px rgba(29,78,216,.16); }
+
+/* Creation, workflow status and builder belong on Overview, not above every task. */
+.admin-sanitised:not(.admin-module-overview) .workspace > .grid.two-columns.compact { display: none; }
+.admin-sanitised:not(.admin-module-overview) .workspace > .tournament-builder,
+.admin-sanitised:not(.admin-module-overview) .workspace > [class*="tournament-builder"] { display: none; }
+
+/* Make the selected module read like the page, rather than another card halfway down it. */
+.admin-sanitised .module-card { margin-bottom: 18px; border-radius: 20px; min-height: 0; padding: 18px; }
+.admin-sanitised .module-card > .card-header { padding-bottom: 13px; margin-bottom: 16px; border-bottom: 1px solid #e7edf7; }
+.admin-sanitised .module-card > .card-header h2 { font-size: clamp(1.3rem, 2vw, 1.7rem); }
+.admin-sanitised .module-card > .card-header .secondary { padding: .62rem .85rem; font-size: .82rem; }
+
+/* Matchday is the frequent-use workspace. */
+.admin-sanitised.admin-module-fixtures .module-card,
+.admin-sanitised.admin-module-results .module-card,
+.admin-sanitised.admin-module-forfeits .module-card,
+.admin-sanitised.admin-module-result-approvals .module-card { border-top: 5px solid #0f9f78; }
+
+@media (max-width: 900px) {
+  .admin-sanitised .dashboard-layout { grid-template-columns: 1fr; }
+  .admin-sanitised .sidebar { position: static; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 7px; }
+  .admin-sanitised .sidebar > .eyebrow { flex: 0 0 100%; }
+  .admin-sanitised .sidebar .nav-pill { width: auto; }
+  .admin-sanitised .sidebar .nav-pill.admin-group-start { margin-top: 18px; }
+}
+
+@media (max-width: 640px) {
+  .admin-sanitised > .hero.admin-hero-compact .hero-row { align-items: stretch; }
+  .admin-sanitised > .hero.admin-hero-compact .admin-logout { align-self: flex-start; }
+  .admin-sanitised > .progress-card .progress-header { align-items: center; }
+}
