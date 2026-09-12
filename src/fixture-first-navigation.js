@@ -24,15 +24,16 @@ function addSectionIcons(hub) {
   });
 }
 
-function makeCollapsible(element, label, storageKey, defaultOpen = true) {
+function makeCollapsible(element, label, storageKey, defaultOpen = false) {
   if (!element || element.dataset.collapsibleReady) return;
-  element.dataset.collapsibleReady = 'true';
-  element.classList.add('collapsible-block');
 
-  const header = element.querySelector(':scope > .public-section-toolbar, :scope > .fixture-section-header, :scope > h2, :scope > h3');
+  const header = element.querySelector(':scope > .public-section-toolbar, :scope > .fixture-section-header, :scope > .fixtures-toolbar, :scope > h2, :scope > h3');
   if (!header) return;
   const bodyNodes = [...element.children].filter((child) => child !== header);
   if (!bodyNodes.length) return;
+
+  element.dataset.collapsibleReady = 'true';
+  element.classList.add('collapsible-block');
 
   const body = document.createElement('div');
   body.className = 'collapsible-body';
@@ -42,7 +43,6 @@ function makeCollapsible(element, label, storageKey, defaultOpen = true) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'collapse-toggle';
-  button.setAttribute('aria-label', `Hide ${label}`);
   header.classList.add('collapsible-heading');
   header.appendChild(button);
 
@@ -68,28 +68,33 @@ function makeCollapsible(element, label, storageKey, defaultOpen = true) {
 }
 
 function addCollapsibles(hub) {
-  const majorIds = ['summary', 'featured', 'winners', 'groups', 'knockout', 'rankings', 'fair-play', 'seedings', 'brackets'];
+  // Dense tournament pages now start compact: users deliberately open what they need.
+  const majorIds = ['summary', 'featured', 'winners', 'groups', 'knockout', 'rankings', 'seedings', 'brackets'];
   majorIds.forEach((id) => {
     const section = hub.querySelector(`#${id}`);
-    if (section) makeCollapsible(section, id.replace('-', ' '), `section:${id}`, true);
+    if (section) makeCollapsible(section, id.replace('-', ' '), `section:${id}`, false);
   });
+
+  // Fair Play is mounted into a portal after the public page renders, so target its actual content wrapper.
+  const fairPlay = hub.querySelector('#fair-play .manager-forfeit-register');
+  if (fairPlay) makeCollapsible(fairPlay, 'Fair Play', 'section:fair-play', false);
 
   // Fixture/result subsections are already grouped by Group, or by Competition · Round.
   hub.querySelectorAll('.fixture-section').forEach((section, index) => {
     const label = section.querySelector('.fixture-section-header h3')?.textContent?.trim() || `fixtures ${index + 1}`;
-    makeCollapsible(section, label, `fixtures:${label}`, true);
+    makeCollapsible(section, label, `fixtures:${label}`, false);
   });
 
-  // Group tables/cards: allow each individual group to disappear independently on long pages.
+  // Group tables/cards: each group can be opened independently.
   hub.querySelectorAll('#groups .group-table-card, #groups .group-card, #groups .standings-card').forEach((section, index) => {
     const label = section.querySelector('h3, h4')?.textContent?.trim() || `group ${index + 1}`;
-    makeCollapsible(section, label, `group:${label}`, true);
+    makeCollapsible(section, label, `group:${label}`, false);
   });
 
-  // Bracket implementations vary, so progressively enhance any explicit competition/round containers.
+  // Knockout/bracket competition and round containers start closed too.
   hub.querySelectorAll('#knockout [data-bracket], #knockout [data-round], #brackets [data-bracket], #brackets [data-round], .bracket-round').forEach((section, index) => {
     const label = section.querySelector('h3, h4, h5')?.textContent?.trim() || section.dataset.bracket || section.dataset.round || `bracket ${index + 1}`;
-    makeCollapsible(section, label, `bracket:${label}`, true);
+    makeCollapsible(section, label, `bracket:${label}`, false);
   });
 }
 
