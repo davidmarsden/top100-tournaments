@@ -17,7 +17,8 @@ export default function AdminGate({ children, requireGlobal = false }) {
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
   const [organiserAssignments, setOrganiserAssignments] = useState([]);
   const [userEmail, setUserEmail] = useState('');
-  const [error, setError] = useState('');
+  const [accessError, setAccessError] = useState('');
+  const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setChecking(false); return undefined; }
@@ -41,7 +42,7 @@ export default function AdminGate({ children, requireGlobal = false }) {
 
   async function checkAccess(user, background = false) {
     if (!user) {
-      setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setChecking(false); return;
+      setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setAccessError(''); setChecking(false); return;
     }
     if (!background) setChecking(true);
     const [adminResult, accessResult, assignmentsResult] = await Promise.all([
@@ -55,26 +56,26 @@ export default function AdminGate({ children, requireGlobal = false }) {
     setIsGlobalAdmin(global);
     setOrganiserAssignments(assignments);
     setHasAccess((Boolean(accessResult.data) && !accessResult.error) || global);
-    const accessError = adminResult.error || accessResult.error || assignmentsResult.error;
-    setError(accessError ? 'Could not verify tournament permissions: ' + accessError.message : '');
+    const permissionError = adminResult.error || accessResult.error || assignmentsResult.error;
+    setAccessError(permissionError ? 'Could not verify tournament permissions: ' + permissionError.message : '');
     setChecking(false);
   }
 
   async function login(event) {
     event.preventDefault();
-    setError('');
+    setLoginError('');
     const cleanUsername = username.trim();
-    if (cleanUsername.toLowerCase() !== configuredUsername.toLowerCase()) { setError('Incorrect username.'); return; }
-    if (!configuredEmail) { setError('Admin login email is not configured. Add VITE_ADMIN_LOGIN_EMAIL in Netlify.'); return; }
+    if (cleanUsername.toLowerCase() !== configuredUsername.toLowerCase()) { setLoginError('Incorrect username.'); return; }
+    if (!configuredEmail) { setLoginError('Admin login email is not configured. Add VITE_ADMIN_LOGIN_EMAIL in Netlify.'); return; }
     setChecking(true);
     const { error: signInError } = await supabase.auth.signInWithPassword({ email: configuredEmail, password });
-    if (signInError) { setError(`Supabase login failed for ${configuredEmail}: ${signInError.message}`); setChecking(false); return; }
+    if (signInError) { setLoginError(`Supabase login failed for ${configuredEmail}: ${signInError.message}`); setChecking(false); return; }
     setPassword('');
   }
 
   async function logout() {
     await supabase.auth.signOut();
-    setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail('');
+    setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setAccessError(''); setLoginError('');
   }
 
   const managedTournamentIds = organiserAssignments.map((row) => row.tournament_id);
@@ -86,5 +87,33 @@ export default function AdminGate({ children, requireGlobal = false }) {
 
   if (hasAccess && requireGlobal) return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Platform admin only</h1><p>Your organiser account is deliberately restricted to its assigned tournament. Manager-account administration remains available only to the platform administrator.</p></section><section className="card"><a className="button" href="/admin">Return to tournament admin</a></section></main>;
 
-  return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Administration login</h1><p>Platform administrators use the private admin login. Tournament organisers sign in through the Manager Portal first, then open this administration page.</p></section><section className="card admin-login-card"><form onSubmit={login}><label>Admin username<input type="text" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoCapitalize="none" autoFocus /></label><label>Admin password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label><button type="submit" disabled={checking}>Log in as platform admin</button>{error && <p className="status error-text">{error}</p>}</form>{userEmail && <p className="muted">Signed in as {userEmail}, but this account has not been assigned tournament administration.</p>}<div className="button-row"><a className="button secondary" href="/manager">Manager Portal sign-in</a></div><p className="muted">Admin username: {configuredUsername}</p></section></main>;
+  return <main className="app-shell">
+    <section className="hero">
+      <p className="eyebrow">Top 100 Tournament Manager</p>
+      <h1>Tournament administration</h1>
+      <p>Tournament organisers use their normal Manager Portal email sign-in. The username and password login is only for the platform administrator.</p>
+    </section>
+
+    <section className="card admin-login-card">
+      <h2>Tournament organiser</h2>
+      <p>Sign in with the same email you use for the Manager Portal. You do not need a separate admin username or password.</p>
+      {accessError && <p className="status error-text">{accessError}</p>}
+      {userEmail && !accessError && <p className="muted">Signed in as {userEmail}, but this account has not been assigned tournament administration.</p>}
+      <div className="button-row">
+        <a className="button" href="/manager">Sign in through Manager Portal</a>
+      </div>
+    </section>
+
+    <section className="card admin-login-card">
+      <h2>Platform administrator</h2>
+      <p className="muted">Private login for the overall Top 100 Tournament Manager administrator.</p>
+      <form onSubmit={login}>
+        <label>Admin username<input type="text" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoCapitalize="none" /></label>
+        <label>Admin password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
+        <button type="submit" disabled={checking}>Log in as platform admin</button>
+        {loginError && <p className="status error-text">{loginError}</p>}
+      </form>
+      <p className="muted">Admin username: {configuredUsername}</p>
+    </section>
+  </main>;
 }
