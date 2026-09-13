@@ -1,0 +1,18 @@
+{
+  "name": "Top 100 Tournaments",
+  "short_name": "Tournaments",
+  "description": "Top 100 tournament fixtures, results, tables, knockout draws and archives.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0B1F3B",
+  "theme_color": "#0B1F3B",
+  "icons": [
+    {
+      "src": "/top100-app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
