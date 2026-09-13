@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import ManagerResultCentre from './ManagerResultCentre.jsx';
 
@@ -24,6 +24,8 @@ function buildStandings(entries, matches) {
 
 export default function ManagerPortal() {
   const [session, setSession] = useState(null), [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
+  const [magicLinkCooldown, setMagicLinkCooldown] = useState(false);
+  const magicLinkRequestId = useRef(0);
   const [account, setAccount] = useState(null), [claim, setClaim] = useState(null), [claimForm, setClaimForm] = useState({ gameWorldId: '', managerName: '', clubName: '' });
   const [gameWorlds, setGameWorlds] = useState([]), [worldClubs, setWorldClubs] = useState([]);
   const [entries, setEntries] = useState([]), [matches, setMatches] = useState([]), [groupEntries, setGroupEntries] = useState([]), [selectedEntryId, setSelectedEntryId] = useState('');
@@ -64,18 +66,23 @@ export default function ManagerPortal() {
 
   function sendMagicLink(event) {
     event.preventDefault();
+    if (magicLinkCooldown) return;
+
     const address = email.trim();
+    const requestId = ++magicLinkRequestId.current;
     setLoading(false);
+    setMagicLinkCooldown(true);
     setMessage('Check your email for your secure Manager Portal sign-in link.');
+    window.setTimeout(() => setMagicLinkCooldown(false), 15000);
 
     window.setTimeout(() => {
       supabase.auth.signInWithOtp({
         email: address,
         options: { emailRedirectTo: `${window.location.origin}/manager`, shouldCreateUser: true },
       }).then(({ error }) => {
-        if (error) setMessage(error.message);
+        if (requestId === magicLinkRequestId.current && error) setMessage(error.message);
       }).catch((error) => {
-        setMessage(error?.message || 'We could not send the sign-in link. Please try again.');
+        if (requestId === magicLinkRequestId.current) setMessage(error?.message || 'We could not send the sign-in link. Please try again.');
       });
     }, 0);
   }
@@ -130,7 +137,7 @@ export default function ManagerPortal() {
   function venue(match) { return match.home_entry_id === selectedEntry?.id ? 'Home' : 'Away'; }
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Manager Portal unavailable.</strong><span>Supabase is not connected.</span></section></main>;
-  if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Manager Portal</h1><p>Your fixtures, results, group table and tournament progress in one place.</p></section><section className="card manager-login-card"><h2>Sign in securely</h2><p className="muted">Enter your email address. We’ll send a one-time sign-in link.</p><form onSubmit={sendMagicLink}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button type="submit" disabled={loading}>{loading ? 'Sending...' : 'Email me a sign-in link'}</button></form>{message && <p className="status">{message}</p>}</section></main>;
+  if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Manager Portal</h1><p>Your fixtures, results, group table and tournament progress in one place.</p></section><section className="card manager-login-card"><h2>Sign in securely</h2><p className="muted">Enter your email address. We’ll send a one-time sign-in link.</p><form onSubmit={sendMagicLink}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button type="submit" disabled={loading || magicLinkCooldown}>{loading ? 'Sending...' : magicLinkCooldown ? 'Email sent' : 'Email me a sign-in link'}</button></form>{message && <p className="status">{message}</p>}</section></main>;
   if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading Manager Portal...</h1></section></main>;
   if (!account) return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal</p><h1>{claim?.status === 'pending' ? 'Claim awaiting approval' : 'Claim your profile'}</h1><p>Signed in securely as {session.user.email}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section><section className="card manager-login-card">{claim?.status === 'pending' ? <><h2>We’ve got your claim</h2><p><strong>{claim.claimed_manager_name}</strong> · {claim.claimed_club_name} · {claim.game_worlds?.name || 'Game world'}</p><button type="button" onClick={loadPortal}>Check approval</button></> : <form onSubmit={submitClaim}><h2>Match your Soccer Manager identity</h2><label>Game world<select value={claimForm.gameWorldId} onChange={(event) => setClaimForm({ gameWorldId: event.target.value, managerName: '', clubName: '' })} required><option value="">Choose game world</option>{gameWorlds.map((world) => <option key={world.id} value={world.id}>{world.name}</option>)}</select></label><label>Current club<select value={claimForm.clubName} onChange={(event) => { const club = worldClubs.find((item) => item.club_name === event.target.value); setClaimForm((current) => ({ ...current, clubName: event.target.value, managerName: club?.current_manager_name || '' })); }} required disabled={!claimForm.gameWorldId}><option value="">Choose your club</option>{worldClubs.map((club) => <option key={club.id} value={club.club_name}>{club.club_name}</option>)}</select></label><label>SM manager name<input value={claimForm.managerName} onChange={(event) => setClaimForm((current) => ({ ...current, managerName: event.target.value }))} required /></label>{selectedClaimClub?.current_manager_name && <p className="muted">Directory manager: <strong>{selectedClaimClub.current_manager_name}</strong></p>}<button type="submit">Submit manager claim</button></form>}</section>{message && <section className="card"><p className="status">{message}</p></section>}</main>;
 
