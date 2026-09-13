@@ -4,6 +4,8 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 const AdminAuthContext = createContext({ isGlobalAdmin: false, managedTournamentIds: [], organiserAssignments: [], userEmail: '', logout: async () => {} });
 const configuredUsername = String(import.meta.env.VITE_ADMIN_USERNAME || 'admin').trim();
 const configuredEmail = String(import.meta.env.VITE_ADMIN_LOGIN_EMAIL || import.meta.env.VITE_ADMIN_EMAIL || '').trim();
+const MANAGER_ORIGIN = 'https://manager.smtop100.blog';
+const SESSION_BRIDGE_TIMEOUT_MS = 15000;
 
 export function useAdminAuth() {
   return useContext(AdminAuthContext);
@@ -23,9 +25,68 @@ export default function AdminGate({ children, requireGlobal = false }) {
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setChecking(false); return undefined; }
     let mounted = true;
+    let bridgeFrame;
+    let bridgeTimeout;
+
+    const cleanupBridge = () => {
+      if (bridgeTimeout) {
+        window.clearTimeout(bridgeTimeout);
+        bridgeTimeout = undefined;
+      }
+      window.removeEventListener('message', handleBridgeMessage);
+      if (bridgeFrame?.parentNode) bridgeFrame.parentNode.removeChild(bridgeFrame);
+      bridgeFrame = undefined;
+    };
+
+    const finishWithoutSession = async () => {
+      cleanupBridge();
+      if (mounted) await checkAccess(null, false);
+    };
+
+    const handleBridgeMessage = async (event) => {
+      if (event.origin !== MANAGER_ORIGIN || event.data?.type !== 'top100-manager-session') return;
+
+      const bridgeSession = event.data.session;
+      if (!bridgeSession?.access_token || !bridgeSession?.refresh_token) {
+        await finishWithoutSession();
+        return;
+      }
+
+      const { data, error } = await supabase.auth.setSession(bridgeSession);
+      cleanupBridge();
+      if (!mounted) return;
+      if (error) {
+        setAccessError(`Could not import Manager Portal sign-in: ${error.message}`);
+        await checkAccess(null, false, true);
+        return;
+      }
+      await checkAccess(data.session?.user || null, false);
+    };
+
+    const tryManagerSessionBridge = () => {
+      window.addEventListener('message', handleBridgeMessage);
+      bridgeFrame = document.createElement('iframe');
+      bridgeFrame.src = `${MANAGER_ORIGIN}/auth/session-bridge`;
+      bridgeFrame.title = 'Manager Portal sign-in check';
+      bridgeFrame.setAttribute('aria-hidden', 'true');
+      bridgeFrame.style.display = 'none';
+      document.body.appendChild(bridgeFrame);
+      bridgeTimeout = window.setTimeout(finishWithoutSession, SESSION_BRIDGE_TIMEOUT_MS);
+    };
+
     async function checkSession() {
       const { data } = await supabase.auth.getSession();
-      if (mounted) await checkAccess(data.session?.user || null, false);
+      if (!mounted) return;
+      if (data.session?.user) {
+        await checkAccess(data.session.user, false);
+        return;
+      }
+      const bypassManagerBridge = new URLSearchParams(window.location.search).get('platform') === '1';
+      if (window.location.hostname === 'tournaments.smtop100.blog' && !bypassManagerBridge) {
+        tryManagerSessionBridge();
+        return;
+      }
+      await checkAccess(null, false);
     }
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       // Supabase may emit SIGNED_IN as well as TOKEN_REFRESHED when an already
@@ -37,12 +98,18 @@ export default function AdminGate({ children, requireGlobal = false }) {
       checkAccess(session?.user || null, background);
     });
     checkSession();
-    return () => { mounted = false; listener.subscription.unsubscribe(); };
+    return () => {
+      mounted = false;
+      cleanupBridge();
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
-  async function checkAccess(user, background = false) {
+  async function checkAccess(user, background = false, preserveAccessError = false) {
     if (!user) {
-      setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setAccessError(''); setChecking(false); return;
+      setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail('');
+      if (!preserveAccessError) setAccessError('');
+      setChecking(false); return;
     }
     if (!background) setChecking(true);
     const [adminResult, accessResult, assignmentsResult] = await Promise.all([
@@ -76,6 +143,7 @@ export default function AdminGate({ children, requireGlobal = false }) {
   async function logout() {
     await supabase.auth.signOut();
     setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setAccessError(''); setLoginError('');
+    window.location.replace('/admin?platform=1');
   }
 
   const managedTournamentIds = organiserAssignments.map((row) => row.tournament_id);
@@ -100,7 +168,7 @@ export default function AdminGate({ children, requireGlobal = false }) {
       {accessError && <p className="status error-text">{accessError}</p>}
       {userEmail && !accessError && <p className="muted">Signed in as {userEmail}, but this account has not been assigned tournament administration.</p>}
       <div className="button-row">
-        <a className="button" href="/manager">Sign in through Manager Portal</a>
+        <a className="button" href="https://manager.smtop100.blog/">Sign in through Manager Portal</a>
       </div>
     </section>
 
