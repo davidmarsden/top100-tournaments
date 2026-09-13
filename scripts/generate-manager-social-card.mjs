@@ -95,9 +95,9 @@ function drawText(text, x, y, scale, rgb) {
 }
 
 drawText('TOP 100', 120, 105, 7, [209, 225, 255]);
-drawText('MANAGER PORTAL', 120, 205, 12, [255, 255, 255]);
-drawText('SIGN IN - CLUB TOOLS - TOURNAMENT ADMIN', 120, 365, 5, [223, 232, 255]);
-drawText('MANAGER.SMTOP100.BLOG', 120, 485, 5, [255, 255, 255]);
+drawText('MANAGER PORTAL', 120, 205, 8, [255, 255, 255]);
+drawText('SIGN IN - CLUB TOOLS - TOURNAMENT ADMIN', 120, 420, 4, [223, 232, 255]);
+drawText('MANAGER.SMTOP100.BLOG', 120, 505, 5, [255, 255, 255]);
 drawText('100', 923, 245, 10, [255, 255, 255]);
 
 const crcTable = (() => {
