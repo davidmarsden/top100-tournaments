@@ -62,9 +62,9 @@ export default function ManagerEntry() {
 
   return (
     <>
-      <ManagerResourceHub />
-      <ManagerReminderPreferences />
       <ManagerPortal />
+      <ManagerReminderPreferences />
+      <ManagerResourceHub />
     </>
   );
 }
