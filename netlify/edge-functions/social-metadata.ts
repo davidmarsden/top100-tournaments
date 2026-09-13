@@ -18,6 +18,7 @@ const PROFILES: Record<string, SocialProfile> = {
   'vote.smtop100.blog': {
     title: 'Top 100 Voting',
     description: 'Top 100 community polls and manager voting.',
+    image: 'https://vote.smtop100.blog/top100-social-voting.png',
   },
 };
 
