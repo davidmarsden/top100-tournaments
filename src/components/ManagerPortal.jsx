@@ -78,20 +78,32 @@ export default function ManagerPortal() {
     setLoading(false);
     setMessage('Sending your secure Manager Portal sign-in link…');
 
+    let settled = false;
     const request = supabase.auth.signInWithOtp({
       email: address,
       options: { emailRedirectTo: `${window.location.origin}/manager`, shouldCreateUser: true },
     });
 
-    window.setTimeout(() => {
-      if (requestId === magicLinkRequestId.current) setMessage('Check your email for your secure Manager Portal sign-in link.');
+    const fallbackTimer = window.setTimeout(() => {
+      if (!settled && requestId === magicLinkRequestId.current) setMessage('Check your email for your secure Manager Portal sign-in link.');
     }, 750);
 
     request.then(({ error }) => {
+      settled = true;
+      window.clearTimeout(fallbackTimer);
       if (requestId !== magicLinkRequestId.current) return;
-      setMessage(error ? error.message : 'Check your email for your secure Manager Portal sign-in link.');
+      if (error) {
+        magicLinkCooldownUntil.current = 0;
+        setMessage(error.message);
+        return;
+      }
+      setMessage('Check your email for your secure Manager Portal sign-in link.');
     }).catch((error) => {
-      if (requestId === magicLinkRequestId.current) setMessage(error?.message || 'We could not send the sign-in link. Please try again.');
+      settled = true;
+      window.clearTimeout(fallbackTimer);
+      if (requestId !== magicLinkRequestId.current) return;
+      magicLinkCooldownUntil.current = 0;
+      setMessage(error?.message || 'We could not send the sign-in link. Please try again.');
     });
   }
 
