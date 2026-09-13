@@ -62,32 +62,22 @@ export default function ManagerPortal() {
     if (error) setWorldClubs([]); else setWorldClubs(data || []);
   }
 
-  async function sendMagicLink(event) {
+  function sendMagicLink(event) {
     event.preventDefault();
-    setLoading(true);
-    setMessage('');
+    const address = email.trim();
+    setLoading(false);
+    setMessage('Check your email for your secure Manager Portal sign-in link.');
 
-    let timeoutId;
-    try {
-      const request = supabase.auth.signInWithOtp({
-        email: email.trim(),
+    window.setTimeout(() => {
+      supabase.auth.signInWithOtp({
+        email: address,
         options: { emailRedirectTo: `${window.location.origin}/manager`, shouldCreateUser: true },
-      });
-      const timeout = new Promise((_, reject) => {
-        timeoutId = window.setTimeout(() => reject(new Error('MAGIC_LINK_TIMEOUT')), 15000);
-      });
-      const { error } = await Promise.race([request, timeout]);
-      setMessage(error ? error.message : 'Check your email for your secure Manager Portal sign-in link.');
-    } catch (error) {
-      if (error?.message === 'MAGIC_LINK_TIMEOUT') {
-        setMessage('This is taking longer than expected. The sign-in email may still arrive, so check your inbox before trying again.');
-      } else {
+      }).then(({ error }) => {
+        if (error) setMessage(error.message);
+      }).catch((error) => {
         setMessage(error?.message || 'We could not send the sign-in link. Please try again.');
-      }
-    } finally {
-      if (timeoutId) window.clearTimeout(timeoutId);
-      setLoading(false);
-    }
+      });
+    }, 0);
   }
 
   async function submitClaim(event) {
