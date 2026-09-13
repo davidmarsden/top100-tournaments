@@ -13,6 +13,7 @@ const PROFILES: Record<string, SocialProfile> = {
   'manager.smtop100.blog': {
     title: 'Top 100 Manager Portal',
     description: 'Top 100 manager sign-in, club tools and tournament administration.',
+    image: 'https://manager.smtop100.blog/top100-social-manager.png',
   },
   'vote.smtop100.blog': {
     title: 'Top 100 Voting',
