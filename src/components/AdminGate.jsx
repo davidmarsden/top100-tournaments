@@ -5,7 +5,7 @@ const AdminAuthContext = createContext({ isGlobalAdmin: false, managedTournament
 const configuredUsername = String(import.meta.env.VITE_ADMIN_USERNAME || 'admin').trim();
 const configuredEmail = String(import.meta.env.VITE_ADMIN_LOGIN_EMAIL || import.meta.env.VITE_ADMIN_EMAIL || '').trim();
 const MANAGER_ORIGIN = 'https://manager.smtop100.blog';
-const SESSION_BRIDGE_TIMEOUT_MS = 3000;
+const SESSION_BRIDGE_TIMEOUT_MS = 15000;
 
 export function useAdminAuth() {
   return useContext(AdminAuthContext);
@@ -57,7 +57,7 @@ export default function AdminGate({ children, requireGlobal = false }) {
       if (!mounted) return;
       if (error) {
         setAccessError(`Could not import Manager Portal sign-in: ${error.message}`);
-        await checkAccess(null, false);
+        await checkAccess(null, false, true);
         return;
       }
       await checkAccess(data.session?.user || null, false);
@@ -81,7 +81,8 @@ export default function AdminGate({ children, requireGlobal = false }) {
         await checkAccess(data.session.user, false);
         return;
       }
-      if (window.location.hostname === 'tournaments.smtop100.blog') {
+      const bypassManagerBridge = new URLSearchParams(window.location.search).get('platform') === '1';
+      if (window.location.hostname === 'tournaments.smtop100.blog' && !bypassManagerBridge) {
         tryManagerSessionBridge();
         return;
       }
@@ -104,9 +105,11 @@ export default function AdminGate({ children, requireGlobal = false }) {
     };
   }, []);
 
-  async function checkAccess(user, background = false) {
+  async function checkAccess(user, background = false, preserveAccessError = false) {
     if (!user) {
-      setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setAccessError(''); setChecking(false); return;
+      setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail('');
+      if (!preserveAccessError) setAccessError('');
+      setChecking(false); return;
     }
     if (!background) setChecking(true);
     const [adminResult, accessResult, assignmentsResult] = await Promise.all([
@@ -140,6 +143,7 @@ export default function AdminGate({ children, requireGlobal = false }) {
   async function logout() {
     await supabase.auth.signOut();
     setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setAccessError(''); setLoginError('');
+    window.location.replace('/admin?platform=1');
   }
 
   const managedTournamentIds = organiserAssignments.map((row) => row.tournament_id);
