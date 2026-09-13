@@ -63,9 +63,31 @@ export default function ManagerPortal() {
   }
 
   async function sendMagicLink(event) {
-    event.preventDefault(); setLoading(true); setMessage('');
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: `${window.location.origin}/manager`, shouldCreateUser: true } });
-    setMessage(error ? error.message : 'Check your email for your secure Manager Portal sign-in link.'); setLoading(false);
+    event.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    let timeoutId;
+    try {
+      const request = supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo: `${window.location.origin}/manager`, shouldCreateUser: true },
+      });
+      const timeout = new Promise((_, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error('MAGIC_LINK_TIMEOUT')), 15000);
+      });
+      const { error } = await Promise.race([request, timeout]);
+      setMessage(error ? error.message : 'Check your email for your secure Manager Portal sign-in link.');
+    } catch (error) {
+      if (error?.message === 'MAGIC_LINK_TIMEOUT') {
+        setMessage('This is taking longer than expected. The sign-in email may still arrive, so check your inbox before trying again.');
+      } else {
+        setMessage(error?.message || 'We could not send the sign-in link. Please try again.');
+      }
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      setLoading(false);
+    }
   }
 
   async function submitClaim(event) {
