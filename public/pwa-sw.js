@@ -1,11 +1,11 @@
 const CACHE = 'top100-tournaments-shell-v1';
-const SHELL = [
-  '/',
+const CONTROL_FILES = new Set([
   '/tournaments.webmanifest',
   '/my-matches.webmanifest',
   '/voting.webmanifest',
   '/top100-app-icon.svg',
-];
+]);
+const SHELL = ['/', ...CONTROL_FILES];
 
 async function precacheShell() {
   const cache = await caches.open(CACHE);
@@ -16,6 +16,19 @@ async function precacheShell() {
   const html = await response.text();
   const assets = [...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map(match => match[1]);
   await cache.addAll([...new Set([...SHELL.filter(path => path !== '/'), ...assets])]);
+}
+
+async function networkFirstAndRefresh(request) {
+  const cache = await caches.open(CACHE);
+  try {
+    const response = await fetch(request, { cache: 'no-store' });
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw error;
+  }
 }
 
 self.addEventListener('install', event => {
@@ -48,7 +61,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (url.pathname.startsWith('/assets/') || SHELL.includes(url.pathname)) {
+  if (CONTROL_FILES.has(url.pathname)) {
+    event.respondWith(networkFirstAndRefresh(request));
+    return;
+  }
+
+  if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.match(request).then(cached => cached || fetch(request).then(response => {
         if (response.ok) {
