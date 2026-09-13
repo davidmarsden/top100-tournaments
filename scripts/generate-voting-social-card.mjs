@@ -103,7 +103,6 @@ drawText('TOP 100', 120, 105, 7, [209, 225, 255]);
 drawText('VOTING', 120, 205, 12, [255, 255, 255]);
 drawText('ONE MANAGER - ONE VOTE', 120, 365, 5, [223, 232, 255]);
 drawText('VOTE.SMTOP100.BLOG', 120, 485, 5, [255, 255, 255]);
-drawText('100', 923, 245, 10, [255, 255, 255]);
 
 const crcTable = (() => {
   const table = new Uint32Array(256);
