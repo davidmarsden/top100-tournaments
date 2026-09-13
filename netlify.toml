@@ -3,3 +3,13 @@
   # secret scanner otherwise flags them when they legitimately appear in the
   # repository, function responses, or generated client assets.
   SECRETS_SCAN_OMIT_KEYS = "WORDPRESS_SITE_URL,WORDPRESS_SITE_ID,WORDPRESS_USERNAME,WORDPRESS_CLIENT_ID,CHALLONGE_CLIENT_ID"
+
+[[headers]]
+  for = "/pwa-sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/*.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"

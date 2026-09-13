@@ -60,3 +60,9 @@ if (rootElement) {
 } else {
   document.body.innerHTML = '<p>Top 100 Tournaments could not find the root element.</p>';
 }
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/pwa-sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => undefined);
+  });
+}
