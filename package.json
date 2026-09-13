@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "node scripts/generate-tournaments-social-card.mjs && node scripts/generate-manager-social-card.mjs && node scripts/generate-voting-social-card.mjs && vite build",
+    "build": "node scripts/generate-tournaments-social-card.mjs && node scripts/generate-my-matches-social-card.mjs && node scripts/generate-voting-social-card.mjs && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
