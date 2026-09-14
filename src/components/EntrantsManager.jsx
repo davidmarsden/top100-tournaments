@@ -4,16 +4,29 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 const demoTeams = ['Genoa', 'Espanyol', 'Bayern Munich', 'Barcelona', 'CSKA', 'Hertha Berlin', 'Independiente', 'River Plate', 'Montpellier', 'West Brom', 'Club Brugge', 'Juventus', 'Leicester Youth', 'Levante', 'Dortmund', 'Hamburg', 'Stoke City', 'Sao Paulo', 'FC Porto', 'Sampdoria', 'Sporting', 'SC Internacional', 'Chelsea', 'Anderlecht', 'Celtic Factory', 'Dynamo Moskva', 'Besiktas', 'PSV', 'AC Milan', 'Crystal Palace', 'Fenerbahce', 'Monaco', 'Benfica', 'Cruzeiro', 'Liverpool', 'Athletic Club', 'Tottenham', 'Werder Bremen', 'Villarreal', 'Real Madrid', 'Udinese', 'Valencia', 'Wolfsburg', 'CR Flamengo', 'Leverkusen', 'Swansea', 'Newcastle United', 'Saint Etienne', 'Ajax', 'Roma', 'Lazio', 'Marseille', 'Fiorentina', 'Lyon', 'Sevilla', 'Porto B', 'Everton', 'Napoli', 'Atalanta', 'Boca Juniors', 'Palmeiras', 'Flamengo Youth', 'Galatasaray', 'Rangers'];
 
 function parseCsv(text) {
-  const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const lines = String(text || '')
+    .split(/\r?\n/)
+    .map((line, index) => ({ text: line.trim(), row_number: index + 1 }))
+    .filter((line) => line.text);
   if (!lines.length) return [];
-  const hasHeader = /manager|team|rating/i.test(lines[0]);
+
+  const hasHeader = /manager|team|rating/i.test(lines[0].text);
   const dataLines = hasHeader ? lines.slice(1) : lines;
-  return dataLines.map((line, index) => {
-    const parts = line.split(/\t|,/).map((part) => part.trim()).filter(Boolean);
-    if (parts.length < 3) return null;
-    const [manager_name, team_name, rating] = parts;
-    return { manager_name, team_name, rating: Number(rating), row_number: index + (hasHeader ? 2 : 1) };
-  }).filter((row) => row && row.manager_name && row.team_name && Number.isFinite(row.rating));
+
+  return dataLines.map(({ text: line, row_number }) => {
+    const parts = line.split(/\t|,/).map((part) => part.trim());
+    if (parts.length !== 3) throw new Error(`Row ${row_number}: expected exactly manager, team, rating.`);
+
+    const [manager_name, team_name, ratingText] = parts;
+    if (!manager_name) throw new Error(`Row ${row_number}: manager name is missing.`);
+    if (!team_name) throw new Error(`Row ${row_number}: team name is missing.`);
+    if (!ratingText) throw new Error(`Row ${row_number}: rating is missing.`);
+
+    const rating = Number(ratingText);
+    if (!Number.isFinite(rating)) throw new Error(`Row ${row_number}: rating “${ratingText}” is not a valid number.`);
+
+    return { manager_name, team_name, rating, row_number };
+  });
 }
 
 function normaliseDirectoryName(value) {
@@ -126,39 +139,86 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
       if (teamError) throw teamError;
       const { data: managerDirectory, error: managerError } = await supabase.from('managers').select('id, name, display_name, canonical_name').eq('active', true).order('name', { ascending: true });
       if (managerError) throw managerError;
+      const { data: currentEntries, error: entriesError } = await supabase.from('tournament_entries').select('team_id, seed').eq('tournament_id', tournamentId);
+      if (entriesError) throw entriesError;
 
-      const sortedRows = [...rows].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || a.team_name.localeCompare(b.team_name)).slice(0, maxEntries);
-      const selectedTeamIds = new Set(entries.map((entry) => entry.team_id));
-
-      for (let index = 0; index < sortedRows.length; index += 1) {
-        const row = sortedRows[index];
+      const sortedRows = [...rows].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || a.team_name.localeCompare(b.team_name));
+      const resolvedRows = sortedRows.map((row, index) => {
         const rowLabel = row.row_number ? `Row ${row.row_number}` : `Import row ${index + 1}`;
-        let team;
-        let manager;
         try {
-          team = resolveUniqueDirectoryMatch(row.team_name, teamDirectory || [], ['name'], 'Team');
-          manager = resolveUniqueDirectoryMatch(row.manager_name, managerDirectory || [], ['name', 'display_name', 'canonical_name'], 'Manager');
+          return {
+            row,
+            rowLabel,
+            team: resolveUniqueDirectoryMatch(row.team_name, teamDirectory || [], ['name'], 'Team'),
+            manager: resolveUniqueDirectoryMatch(row.manager_name, managerDirectory || [], ['name', 'display_name', 'canonical_name'], 'Manager'),
+          };
         } catch (error) {
           throw new Error(`${rowLabel}: ${error.message}`);
         }
+      });
 
-        if (selectedTeamIds.has(team.id)) continue;
-        const seed = entries.length + selectedTeamIds.size - entries.length + 1;
-        const { error } = await supabase.from('tournament_entries').insert({ tournament_id: tournamentId, team_id: team.id, manager_id: manager.id, seed, rating: row.rating, entry_status: 'active', prize_draw_eligible: true });
-        if (error && !String(error.message).includes('duplicate')) throw new Error(`${rowLabel}: ${error.message}`);
-        selectedTeamIds.add(team.id);
+      const selectedTeamIds = new Set((currentEntries || []).map((entry) => entry.team_id));
+      const batchTeamIds = new Set();
+      const newRows = resolvedRows.filter(({ team }) => {
+        if (selectedTeamIds.has(team.id) || batchTeamIds.has(team.id)) return false;
+        batchTeamIds.add(team.id);
+        return true;
+      });
+      const remainingSlots = Math.max(0, maxEntries - (currentEntries || []).length);
+      const rowsToInsert = newRows.slice(0, remainingSlots);
+
+      if (!rowsToInsert.length) {
+        await loadEntrants();
+        setStatus(remainingSlots === 0 ? 'Import checked successfully, but this tournament is already at its entrant limit.' : 'Import checked successfully. All listed teams are already entered.');
+        return;
       }
+
+      const nextSeed = Math.max(0, ...(currentEntries || []).map((entry) => Number(entry.seed) || 0)) + 1;
+      const payload = rowsToInsert.map(({ row, team, manager }, index) => ({
+        tournament_id: tournamentId,
+        team_id: team.id,
+        manager_id: manager.id,
+        seed: nextSeed + index,
+        rating: row.rating,
+        entry_status: 'active',
+        prize_draw_eligible: true,
+      }));
+      const { error: insertError } = await supabase.from('tournament_entries').insert(payload);
+      if (insertError) throw insertError;
+
       await loadTeams();
       await loadEntrants();
-      setStatus('Imported and seeded by average rating. Existing directory records were reused; no global teams or managers were created.');
+      setStatus(`Imported ${payload.length} entrant${payload.length === 1 ? '' : 's'} after validating the full batch. Existing directory records were reused; no global teams or managers were created.`);
     } catch (error) {
-      setStatus('Import failed: ' + error.message);
+      await loadEntrants();
+      setStatus('Import failed before any new entrants were added: ' + error.message);
     } finally {
       setLoading(false);
     }
   }
-  async function importBulkText() { await importRows(parseCsv(bulkText)); }
-  async function importSheetCsv() { if (!sheetCsvUrl) return setStatus('Paste a published Google Sheet CSV URL first.'); setLoading(true); setStatus('Fetching Google Sheet CSV...'); try { const response = await fetch(sheetCsvUrl); if (!response.ok) throw new Error('CSV fetch failed: ' + response.status); const text = await response.text(); setBulkText(text); await importRows(parseCsv(text)); } catch (error) { setStatus('Google Sheet import failed: ' + error.message); } finally { setLoading(false); } }
+  async function importBulkText() {
+    try {
+      await importRows(parseCsv(bulkText));
+    } catch (error) {
+      setStatus('Import failed before any new entrants were added: ' + error.message);
+    }
+  }
+  async function importSheetCsv() {
+    if (!sheetCsvUrl) return setStatus('Paste a published Google Sheet CSV URL first.');
+    setLoading(true);
+    setStatus('Fetching Google Sheet CSV...');
+    try {
+      const response = await fetch(sheetCsvUrl);
+      if (!response.ok) throw new Error('CSV fetch failed: ' + response.status);
+      const text = await response.text();
+      setBulkText(text);
+      await importRows(parseCsv(text));
+    } catch (error) {
+      setStatus('Google Sheet import failed before any new entrants were added: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
   function buildEntrantPreview() { const previewEntries = entries.map((entry) => ({ id: entry.id, team_name: entry.teams?.name || 'Unknown team', manager_name: entry.managers?.display_name || entry.managers?.name || 'TBC', seed: entry.seed, rating: entry.rating })); onPreviewGenerated(previewEntries); }
 
   if (!selectedTournament) return <p className="muted">Create or select a tournament first.</p>;
