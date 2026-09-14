@@ -1,19 +1,6 @@
 -- Keep the legacy teams directory used by tournament_entries in sync with
 -- the canonical game-world club directory used by registration and manager identity.
 
-create sequence if not exists public.teams_id_seq as bigint;
-
-select setval(
-  'public.teams_id_seq',
-  greatest(coalesce((select max(id) from public.teams), 0), 1),
-  coalesce((select max(id) from public.teams), 0) > 0
-);
-
-alter table public.teams
-  alter column id set default nextval('public.teams_id_seq');
-
-alter sequence public.teams_id_seq owned by public.teams.id;
-
 -- Remove old automated test clubs, but only when nothing in production refers to them.
 delete from public.teams t
 where t.name ilike 'Test Club %'
