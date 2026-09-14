@@ -8,12 +8,43 @@ function parseCsv(text) {
   if (!lines.length) return [];
   const hasHeader = /manager|team|rating/i.test(lines[0]);
   const dataLines = hasHeader ? lines.slice(1) : lines;
-  return dataLines.map((line) => {
+  return dataLines.map((line, index) => {
     const parts = line.split(/\t|,/).map((part) => part.trim()).filter(Boolean);
     if (parts.length < 3) return null;
     const [manager_name, team_name, rating] = parts;
-    return { manager_name, team_name, rating: Number(rating) };
+    return { manager_name, team_name, rating: Number(rating), row_number: index + (hasHeader ? 2 : 1) };
   }).filter((row) => row && row.manager_name && row.team_name && Number.isFinite(row.rating));
+}
+
+function normaliseDirectoryName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function resolveUniqueDirectoryMatch(value, records, fields, label) {
+  const clean = String(value || '').trim();
+  const needle = normaliseDirectoryName(clean);
+  if (!needle) throw new Error(label + ' name is required.');
+
+  const exactMatches = records.filter((record) => fields.some((field) => normaliseDirectoryName(record?.[field]) === needle));
+  if (exactMatches.length === 1) return exactMatches[0];
+  if (exactMatches.length > 1) throw new Error(`${label} “${clean}” matches more than one directory record.`);
+
+  const partialMatches = records.filter((record) => fields.some((field) => {
+    const haystack = normaliseDirectoryName(record?.[field]);
+    return haystack && (haystack.includes(needle) || needle.includes(haystack));
+  }));
+  if (partialMatches.length === 1) return partialMatches[0];
+  if (partialMatches.length > 1) {
+    const examples = partialMatches.slice(0, 4).map((record) => record.name || record.display_name).filter(Boolean).join(', ');
+    throw new Error(`${label} “${clean}” is ambiguous${examples ? ` (${examples})` : ''}. Use the full directory name.`);
+  }
+  throw new Error(`${label} “${clean}” was not found in the existing directory.`);
 }
 
 function makeEditForm(entry) {
@@ -39,7 +70,7 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
   const maxEntries = Number(selectedTournament?.max_entries || 64);
 
   useEffect(() => { if (hasSupabaseConfig && supabase && tournamentId) { loadEntrants(); loadTeams(); } }, [tournamentId, selectedTournament?.tournament_structure]);
-  const filteredTeams = useMemo(() => { const selectedTeamIds = new Set(entries.map((entry) => entry.team_id)); const needle = query.trim().toLowerCase(); return teams.filter((team) => !selectedTeamIds.has(team.id)).filter((team) => !needle || team.name.toLowerCase().includes(needle)).slice(0, 80); }, [entries, teams, query]);
+  const filteredTeams = useMemo(() => { const selectedTeamIds = new Set(entries.map((entry) => entry.team_id)); const needle = query.trim().toLowerCase(); return teams.filter((team) => !selectedTeamIds.has(team.id)).filter((team) => !needle || team.name.toLowerCase().includes(needle)); }, [entries, teams, query]);
 
   async function loadTeams() { const { data, error } = await supabase.from('teams').select('id, name').order('name', { ascending: true }); if (error) return setStatus('Could not load teams: ' + error.message); setTeams(data || []); }
   async function loadEntrants() {
@@ -86,11 +117,50 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
   }
 
   async function seedDemoEntrants() { if (!tournamentId) return; setLoading(true); setStatus('Creating demo entrant set...'); try { for (let index = 0; index < Math.min(maxEntries, demoTeams.length); index += 1) { const teamName = demoTeams[index]; const teamId = await findOrCreateTeam(teamName); const managerId = await findOrCreateManager('Manager ' + (index + 1)); const seed = index + 1; if (!entries.some((entry) => entry.team_id === teamId)) { const { error } = await supabase.from('tournament_entries').insert({ tournament_id: tournamentId, team_id: teamId, manager_id: managerId, seed, rating: 100 - Math.floor(index / 4), entry_status: 'active', prize_draw_eligible: true }); if (error && !String(error.message).includes('duplicate')) throw error; } } await loadTeams(); await loadEntrants(); setStatus('Demo entrant set created.'); } catch (error) { setStatus('Demo import failed: ' + error.message); } finally { setLoading(false); } }
-  async function importRows(rows) { if (!rows.length) return setStatus('No valid rows found. Use: manager, team, average rating.'); setLoading(true); setStatus('Importing ' + rows.length + ' entrants...'); try { const sortedRows = rows.sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || a.team_name.localeCompare(b.team_name)).slice(0, maxEntries); for (let index = 0; index < sortedRows.length; index += 1) { const row = sortedRows[index]; const teamId = await findOrCreateTeam(row.team_name); const managerId = await findOrCreateManager(row.manager_name); const seed = index + 1; const alreadySelected = entries.some((entry) => entry.team_id === teamId); if (!alreadySelected) { const { error } = await supabase.from('tournament_entries').insert({ tournament_id: tournamentId, team_id: teamId, manager_id: managerId, seed, rating: row.rating, entry_status: 'active', prize_draw_eligible: true }); if (error && !String(error.message).includes('duplicate')) throw error; } } await loadTeams(); await loadEntrants(); setStatus('Imported and seeded by average rating.'); } catch (error) { setStatus('Import failed: ' + error.message); } finally { setLoading(false); } }
+  async function importRows(rows) {
+    if (!rows.length) return setStatus('No valid rows found. Use: manager, team, average rating.');
+    setLoading(true);
+    setStatus('Checking ' + rows.length + ' entrants against the team and manager directories...');
+    try {
+      const { data: teamDirectory, error: teamError } = await supabase.from('teams').select('id, name').order('name', { ascending: true });
+      if (teamError) throw teamError;
+      const { data: managerDirectory, error: managerError } = await supabase.from('managers').select('id, name, display_name, canonical_name').order('name', { ascending: true });
+      if (managerError) throw managerError;
+
+      const sortedRows = [...rows].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || a.team_name.localeCompare(b.team_name)).slice(0, maxEntries);
+      const selectedTeamIds = new Set(entries.map((entry) => entry.team_id));
+
+      for (let index = 0; index < sortedRows.length; index += 1) {
+        const row = sortedRows[index];
+        const rowLabel = row.row_number ? `Row ${row.row_number}` : `Import row ${index + 1}`;
+        let team;
+        let manager;
+        try {
+          team = resolveUniqueDirectoryMatch(row.team_name, teamDirectory || [], ['name'], 'Team');
+          manager = resolveUniqueDirectoryMatch(row.manager_name, managerDirectory || [], ['name', 'display_name', 'canonical_name'], 'Manager');
+        } catch (error) {
+          throw new Error(`${rowLabel}: ${error.message}`);
+        }
+
+        if (selectedTeamIds.has(team.id)) continue;
+        const seed = entries.length + selectedTeamIds.size - entries.length + 1;
+        const { error } = await supabase.from('tournament_entries').insert({ tournament_id: tournamentId, team_id: team.id, manager_id: manager.id, seed, rating: row.rating, entry_status: 'active', prize_draw_eligible: true });
+        if (error && !String(error.message).includes('duplicate')) throw new Error(`${rowLabel}: ${error.message}`);
+        selectedTeamIds.add(team.id);
+      }
+      await loadTeams();
+      await loadEntrants();
+      setStatus('Imported and seeded by average rating. Existing directory records were reused; no global teams or managers were created.');
+    } catch (error) {
+      setStatus('Import failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
   async function importBulkText() { await importRows(parseCsv(bulkText)); }
   async function importSheetCsv() { if (!sheetCsvUrl) return setStatus('Paste a published Google Sheet CSV URL first.'); setLoading(true); setStatus('Fetching Google Sheet CSV...'); try { const response = await fetch(sheetCsvUrl); if (!response.ok) throw new Error('CSV fetch failed: ' + response.status); const text = await response.text(); setBulkText(text); await importRows(parseCsv(text)); } catch (error) { setStatus('Google Sheet import failed: ' + error.message); } finally { setLoading(false); } }
   function buildEntrantPreview() { const previewEntries = entries.map((entry) => ({ id: entry.id, team_name: entry.teams?.name || 'Unknown team', manager_name: entry.managers?.display_name || entry.managers?.name || 'TBC', seed: entry.seed, rating: entry.rating })); onPreviewGenerated(previewEntries); }
 
   if (!selectedTournament) return <p className="muted">Create or select a tournament first.</p>;
-  return <div className="entrants-manager"><div className="entrant-toolbar"><div><p className="eyebrow">Selected</p><h3>{entries.length} / {maxEntries} entrants</h3><p className="muted">{knockoutOnly ? 'Knockout seeding uses average rating, highest first. The tournament entrant count is synchronized directly from this list.' : 'Group seeding uses average rating, highest first. Use Replace/Edit after fixtures are approved so the entry ID, assigned group, seed, pot and fixtures stay intact.'}</p></div><div className="button-row"><button type="button" className="secondary" onClick={loadEntrants} disabled={loading}>Reload</button><button type="button" className="secondary" onClick={seedDemoEntrants} disabled={loading}>Seed demo 64</button><button type="button" onClick={buildEntrantPreview} disabled={entries.length === 0}>{knockoutOnly ? 'Prepare Knockout Draw' : 'Generate Groups'}</button></div></div><p className="status">{status}</p>{editing && <section className="entrant-panel replacement-panel"><h3>Replace / edit entrant safely</h3><p className="muted">This updates only team, manager and rating on the existing tournament entry. It does not change fixtures, group, seed or pot.</p><form onSubmit={saveEntrantEdit}><div className="mini-grid"><label>Manager name<input value={editing.manager_name} onChange={(event) => setEditing((current) => ({ ...current, manager_name: event.target.value }))} /></label><label>Team name<input value={editing.team_name} onChange={(event) => setEditing((current) => ({ ...current, team_name: event.target.value }))} /></label><label>Team rating<input type="number" step="0.1" value={editing.rating} onChange={(event) => setEditing((current) => ({ ...current, rating: event.target.value }))} /></label></div><div className="button-row"><button type="submit" disabled={loading}>Save replacement</button><button type="button" className="secondary" onClick={() => setEditing(null)} disabled={loading}>Cancel</button></div></form></section>}<div className="entrant-panels"><section className="entrant-panel"><h3>Selected entrants</h3>{entries.length === 0 ? <p className="muted">No entrants yet. Add teams one by one, seed the demo 64, paste rows, or import a published Google Sheet CSV.</p> : <div className="entrant-list">{entries.map((entry) => <article className="entrant-row selected" key={entry.id}><div><strong>{entry.seed}. {entry.teams?.name || 'Unknown team'}</strong><span>{entry.managers?.display_name || entry.managers?.name || 'TBC Manager'} · rating {entry.rating || '-'} · pot {entry.pot || '-'} · group {entry.group_code || '-'}</span></div><div className="button-row"><button type="button" className="secondary" onClick={() => setEditing(makeEditForm(entry))} disabled={loading}>Replace/Edit</button><button type="button" className="danger" onClick={() => removeEntrant(entry)} disabled={loading}>Remove</button></div></article>)}</div>}</section><section className="entrant-panel"><h3>Bulk import</h3><p className="muted">Paste rows as: manager, team, average rating. A header row is fine.</p><textarea rows="8" value={bulkText} onChange={(event) => setBulkText(event.target.value)} placeholder="Manager, Team, Rating&#10;David Marsden, Hamburg, 89.4" /><div className="button-row"><button type="button" className="secondary" onClick={importBulkText} disabled={loading}>Import pasted rows</button></div><label>Published Google Sheet CSV URL<input value={sheetCsvUrl} onChange={(event) => setSheetCsvUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv" /></label><button type="button" className="secondary" onClick={importSheetCsv} disabled={loading}>Import from Google Sheet CSV</button></section><section className="entrant-panel"><h3>Add teams</h3><input placeholder="Search teams..." value={query} onChange={(event) => setQuery(event.target.value)} /><div className="entrant-list">{filteredTeams.map((team) => <article className="entrant-row" key={team.id}><div><strong>{team.name}</strong><span>Available for selection</span></div><button type="button" className="secondary" onClick={() => addTeamAsEntrant(team)} disabled={loading || entries.length >= maxEntries}>Add</button></article>)}</div></section></div></div>;
+  return <div className="entrants-manager"><div className="entrant-toolbar"><div><p className="eyebrow">Selected</p><h3>{entries.length} / {maxEntries} entrants</h3><p className="muted">{knockoutOnly ? 'Knockout seeding uses average rating, highest first. The tournament entrant count is synchronized directly from this list.' : 'Group seeding uses average rating, highest first. Use Replace/Edit after fixtures are approved so the entry ID, assigned group, seed, pot and fixtures stay intact.'}</p></div><div className="button-row"><button type="button" className="secondary" onClick={loadEntrants} disabled={loading}>Reload</button><button type="button" className="secondary" onClick={seedDemoEntrants} disabled={loading}>Seed demo 64</button><button type="button" onClick={buildEntrantPreview} disabled={entries.length === 0}>{knockoutOnly ? 'Prepare Knockout Draw' : 'Generate Groups'}</button></div></div><p className="status">{status}</p>{editing && <section className="entrant-panel replacement-panel"><h3>Replace / edit entrant safely</h3><p className="muted">This updates only team, manager and rating on the existing tournament entry. It does not change fixtures, group, seed or pot.</p><form onSubmit={saveEntrantEdit}><div className="mini-grid"><label>Manager name<input value={editing.manager_name} onChange={(event) => setEditing((current) => ({ ...current, manager_name: event.target.value }))} /></label><label>Team name<input value={editing.team_name} onChange={(event) => setEditing((current) => ({ ...current, team_name: event.target.value }))} /></label><label>Team rating<input type="number" step="0.1" value={editing.rating} onChange={(event) => setEditing((current) => ({ ...current, rating: event.target.value }))} /></label></div><div className="button-row"><button type="submit" disabled={loading}>Save replacement</button><button type="button" className="secondary" onClick={() => setEditing(null)} disabled={loading}>Cancel</button></div></form></section>}<div className="entrant-panels"><section className="entrant-panel"><h3>Selected entrants</h3>{entries.length === 0 ? <p className="muted">No entrants yet. Add teams one by one, seed the demo 64, paste rows, or import a published Google Sheet CSV.</p> : <div className="entrant-list">{entries.map((entry) => <article className="entrant-row selected" key={entry.id}><div><strong>{entry.seed}. {entry.teams?.name || 'Unknown team'}</strong><span>{entry.managers?.display_name || entry.managers?.name || 'TBC Manager'} · rating {entry.rating || '-'} · pot {entry.pot || '-'} · group {entry.group_code || '-'}</span></div><div className="button-row"><button type="button" className="secondary" onClick={() => setEditing(makeEditForm(entry))} disabled={loading}>Replace/Edit</button><button type="button" className="danger" onClick={() => removeEntrant(entry)} disabled={loading}>Remove</button></div></article>)}</div>}</section><section className="entrant-panel"><h3>Bulk import</h3><p className="muted">Paste rows as: manager, team, average rating. A header row is fine. Team and manager names are matched to the existing directories; unique short names such as Nice can match OGC Nice.</p><textarea rows="8" value={bulkText} onChange={(event) => setBulkText(event.target.value)} placeholder="Manager, Team, Rating&#10;Zé Quim, Nice, 89.4" /><div className="button-row"><button type="button" className="secondary" onClick={importBulkText} disabled={loading}>Import pasted rows</button></div><label>Published Google Sheet CSV URL<input value={sheetCsvUrl} onChange={(event) => setSheetCsvUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv" /></label><button type="button" className="secondary" onClick={importSheetCsv} disabled={loading}>Import from Google Sheet CSV</button></section><section className="entrant-panel"><h3>Add teams</h3><input placeholder="Search teams..." value={query} onChange={(event) => setQuery(event.target.value)} /><div className="entrant-list">{filteredTeams.map((team) => <article className="entrant-row" key={team.id}><div><strong>{team.name}</strong><span>Available for selection</span></div><button type="button" className="secondary" onClick={() => addTeamAsEntrant(team)} disabled={loading || entries.length >= maxEntries}>Add</button></article>)}</div></section></div></div>;
 }
