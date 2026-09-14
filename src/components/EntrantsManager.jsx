@@ -21,7 +21,7 @@ function normaliseDirectoryName(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .replace(/\s+/g, ' ');
 }
@@ -124,7 +124,7 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
     try {
       const { data: teamDirectory, error: teamError } = await supabase.from('teams').select('id, name').order('name', { ascending: true });
       if (teamError) throw teamError;
-      const { data: managerDirectory, error: managerError } = await supabase.from('managers').select('id, name, display_name, canonical_name').order('name', { ascending: true });
+      const { data: managerDirectory, error: managerError } = await supabase.from('managers').select('id, name, display_name, canonical_name').eq('active', true).order('name', { ascending: true });
       if (managerError) throw managerError;
 
       const sortedRows = [...rows].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || a.team_name.localeCompare(b.team_name)).slice(0, maxEntries);
