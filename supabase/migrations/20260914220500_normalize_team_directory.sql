@@ -25,12 +25,12 @@ $$;
 
 -- Consolidate existing logical duplicates. Prefer the ID with the most existing
 -- production references so historical rows move as little as possible; ties use
--- the oldest/smallest ID. No current duplicate identity appears twice in the same
--- tournament, so repointing tournament entries is safe.
+-- the oldest/smallest ID. Build this mapping once so every FK table uses the same
+-- keeper even after references start moving.
+create temporary table team_duplicate_map on commit drop as
 with ranked as (
   select
     t.id,
-    public.team_directory_key(t.name) as team_key,
     row_number() over (
       partition by public.team_directory_key(t.name)
       order by (
@@ -57,86 +57,45 @@ with ranked as (
     ) as keeper_id
   from public.teams t
   where public.team_directory_key(t.name) <> ''
-), duplicate_map as (
-  select id as duplicate_id, keeper_id
-  from ranked
-  where rn > 1
 )
+select id as duplicate_id, keeper_id
+from ranked
+where rn > 1;
+
 update public.tournament_entries te
 set team_id = d.keeper_id
-from duplicate_map d
+from team_duplicate_map d
 where te.team_id = d.duplicate_id;
 
-with ranked as (
-  select t.id,
-    row_number() over (partition by public.team_directory_key(t.name) order by t.id) as rn,
-    first_value(t.id) over (partition by public.team_directory_key(t.name) order by t.id) as keeper_id
-  from public.teams t
-  where public.team_directory_key(t.name) <> ''
-), duplicate_map as (
-  select id as duplicate_id, keeper_id from ranked where rn > 1
-)
-update public.tournament_registrations tr set team_id = d.keeper_id
-from duplicate_map d where tr.team_id = d.duplicate_id;
+update public.tournament_registrations tr
+set team_id = d.keeper_id
+from team_duplicate_map d
+where tr.team_id = d.duplicate_id;
 
-with ranked as (
-  select t.id,
-    row_number() over (partition by public.team_directory_key(t.name) order by t.id) as rn,
-    first_value(t.id) over (partition by public.team_directory_key(t.name) order by t.id) as keeper_id
-  from public.teams t
-  where public.team_directory_key(t.name) <> ''
-), duplicate_map as (
-  select id as duplicate_id, keeper_id from ranked where rn > 1
-)
-update public.achievements a set team_id = d.keeper_id
-from duplicate_map d where a.team_id = d.duplicate_id;
+update public.achievements a
+set team_id = d.keeper_id
+from team_duplicate_map d
+where a.team_id = d.duplicate_id;
 
-with ranked as (
-  select t.id,
-    row_number() over (partition by public.team_directory_key(t.name) order by t.id) as rn,
-    first_value(t.id) over (partition by public.team_directory_key(t.name) order by t.id) as keeper_id
-  from public.teams t
-  where public.team_directory_key(t.name) <> ''
-), duplicate_map as (
-  select id as duplicate_id, keeper_id from ranked where rn > 1
-)
-update public.manager_clubs mc set team_id = d.keeper_id
-from duplicate_map d where mc.team_id = d.duplicate_id;
+update public.manager_clubs mc
+set team_id = d.keeper_id
+from team_duplicate_map d
+where mc.team_id = d.duplicate_id;
 
-with ranked as (
-  select t.id,
-    row_number() over (partition by public.team_directory_key(t.name) order by t.id) as rn,
-    first_value(t.id) over (partition by public.team_directory_key(t.name) order by t.id) as keeper_id
-  from public.teams t
-  where public.team_directory_key(t.name) <> ''
-), duplicate_map as (
-  select id as duplicate_id, keeper_id from ranked where rn > 1
-)
-update public.manager_team_aliases mta set team_id = d.keeper_id
-from duplicate_map d where mta.team_id = d.duplicate_id;
+update public.manager_team_aliases mta
+set team_id = d.keeper_id
+from team_duplicate_map d
+where mta.team_id = d.duplicate_id;
 
-with ranked as (
-  select t.id,
-    row_number() over (partition by public.team_directory_key(t.name) order by t.id) as rn,
-    first_value(t.id) over (partition by public.team_directory_key(t.name) order by t.id) as keeper_id
-  from public.teams t
-  where public.team_directory_key(t.name) <> ''
-), duplicate_map as (
-  select id as duplicate_id, keeper_id from ranked where rn > 1
-)
-update public.team_aliases ta set team_id = d.keeper_id
-from duplicate_map d where ta.team_id = d.duplicate_id;
+update public.team_aliases ta
+set team_id = d.keeper_id
+from team_duplicate_map d
+where ta.team_id = d.duplicate_id;
 
 -- Remove duplicate team rows once every known reference has been repointed.
-with ranked as (
-  select t.id,
-    row_number() over (partition by public.team_directory_key(t.name) order by t.id) as rn
-  from public.teams t
-  where public.team_directory_key(t.name) <> ''
-)
 delete from public.teams t
-using ranked r
-where t.id = r.id and r.rn > 1;
+using team_duplicate_map d
+where t.id = d.duplicate_id;
 
 -- Backfill canonical active clubs using the normalized key, not lower(name).
 insert into public.teams (name, active)
