@@ -24,6 +24,7 @@ function parseCsv(text) {
 
     const rating = Number(ratingText);
     if (!Number.isFinite(rating)) throw new Error(`Row ${row_number}: rating “${ratingText}” is not a valid number.`);
+    if (!Number.isInteger(rating)) throw new Error(`Row ${row_number}: rating must be a whole number.`);
 
     return { manager_name, team_name, rating, row_number };
   });
@@ -80,8 +81,9 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
   const [editing, setEditing] = useState(null);
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
+
   const tournamentId = selectedTournament?.id;
-  const gameWorldId = selectedTournament?.game_world_id;
+  const gameWorldId = selectedTournament?.game_world_id || selectedTournament?.game_worlds?.id;
   const knockoutOnly = selectedTournament?.tournament_structure === 'knockout_only';
   const maxEntries = Number(selectedTournament?.max_entries || 64);
 
@@ -123,8 +125,13 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
 
   async function loadEntrants() {
     if (!tournamentId) return;
-    const { data, error } = await supabase.from('tournament_entries').select('id, tournament_id, team_id, manager_id, seed, rating, entry_status, group_code, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true });
+    const { data, error } = await supabase
+      .from('tournament_entries')
+      .select('id, tournament_id, team_id, manager_id, seed, rating, entry_status, group_code, pot, teams(id, name), managers(id, name, display_name)')
+      .eq('tournament_id', tournamentId)
+      .order('seed', { ascending: true });
     if (error) return setStatus('Could not load entrants: ' + error.message);
+
     const loaded = data || [];
     setEntries(loaded);
     if (knockoutOnly) {
@@ -188,7 +195,8 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
 
     const rating = Number(editing.rating);
     if (!Number.isFinite(rating)) return setStatus('Rating must be a number.');
-    if (rating < 65 || rating > 95) return setStatus('Rating must be between 65 and 95.');
+    if (!Number.isInteger(rating)) return setStatus('Rating must be a whole number.');
+    if (editing.is_new && (rating < 65 || rating > 95)) return setStatus('New entrant rating must be between 65 and 95.');
 
     setLoading(true);
     setStatus(editing.is_new ? 'Adding entrant...' : 'Updating entrant without changing group, seed, pot or fixtures...');
@@ -226,10 +234,11 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
         if (error) throw error;
       }
 
+      const wasNew = editing.is_new;
       setEditing(null);
       await loadTeams();
       await loadEntrants();
-      setStatus(editing.is_new ? 'Entrant added.' : 'Entrant updated. Group, seed, pot and fixtures were preserved.');
+      setStatus(wasNew ? 'Entrant added.' : 'Entrant updated. Group, seed, pot and fixtures were preserved.');
     } catch (error) {
       setStatus((editing.is_new ? 'Add failed: ' : 'Entrant update failed: ') + error.message);
     } finally {
@@ -248,7 +257,15 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
         const managerId = await findOrCreateManager('Manager ' + (index + 1));
         const seed = index + 1;
         if (!entries.some((entry) => entry.team_id === teamId)) {
-          const { error } = await supabase.from('tournament_entries').insert({ tournament_id: tournamentId, team_id: teamId, manager_id: managerId, seed, rating: 100 - Math.floor(index / 4), entry_status: 'active', prize_draw_eligible: true });
+          const { error } = await supabase.from('tournament_entries').insert({
+            tournament_id: tournamentId,
+            team_id: teamId,
+            manager_id: managerId,
+            seed,
+            rating: Math.min(95, 100 - Math.floor(index / 4)),
+            entry_status: 'active',
+            prize_draw_eligible: true,
+          });
           if (error && !String(error.message).includes('duplicate')) throw error;
         }
       }
@@ -390,7 +407,7 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
         <div className="mini-grid">
           <label>Manager name<input value={editing.manager_name} onChange={(event) => setEditing((current) => ({ ...current, manager_name: event.target.value }))} /></label>
           <label>Team name<input value={editing.team_name} readOnly={editing.is_new} onChange={(event) => setEditing((current) => ({ ...current, team_name: event.target.value }))} /></label>
-          <label>Team rating<input type="number" min="65" max="95" step="0.1" value={editing.rating} onChange={(event) => setEditing((current) => ({ ...current, rating: event.target.value }))} /></label>
+          <label>Team rating<input type="number" min={editing.is_new ? 65 : undefined} max={editing.is_new ? 95 : undefined} step="1" value={editing.rating} onChange={(event) => setEditing((current) => ({ ...current, rating: event.target.value }))} /></label>
         </div>
         <div className="button-row">
           <button type="submit" disabled={loading}>{editing.is_new ? 'Add entrant' : 'Save replacement'}</button>
@@ -410,8 +427,8 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
 
       <section className="entrant-panel">
         <h3>Bulk import</h3>
-        <p className="muted">Paste rows as: manager, team, average rating. A header row is fine. Team and manager names are matched to the existing directories; unique short names such as Nice can match OGC Nice.</p>
-        <textarea rows="8" value={bulkText} onChange={(event) => setBulkText(event.target.value)} placeholder="Manager, Team, Rating&#10;Zé Quim, Nice, 89.4" />
+        <p className="muted">Paste rows as: manager, team, average rating. Ratings must be whole numbers. A header row is fine. Team and manager names are matched to the existing directories; unique short names such as Nice can match OGC Nice.</p>
+        <textarea rows="8" value={bulkText} onChange={(event) => setBulkText(event.target.value)} placeholder="Manager, Team, Rating&#10;Zé Quim, Nice, 89" />
         <div className="button-row"><button type="button" className="secondary" onClick={importBulkText} disabled={loading}>Import pasted rows</button></div>
         <label>Published Google Sheet CSV URL<input value={sheetCsvUrl} onChange={(event) => setSheetCsvUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv" /></label>
         <button type="button" className="secondary" onClick={importSheetCsv} disabled={loading}>Import from Google Sheet CSV</button>
@@ -419,7 +436,7 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
 
       <section className="entrant-panel">
         <h3>Add teams</h3>
-        <p className="muted">Choose a team, then confirm its manager and average rating before adding it.</p>
+        <p className="muted">Choose a team, then confirm its manager and whole-number average rating before adding it.</p>
         <input placeholder="Search teams..." value={query} onChange={(event) => setQuery(event.target.value)} />
         <div className="entrant-list">{filteredTeams.map((team) => <article className="entrant-row" key={team.id}>
           <div><strong>{team.name}</strong><span>{team.current_manager_name ? `Manager: ${team.current_manager_name}` : 'Available for selection'}</span></div>
