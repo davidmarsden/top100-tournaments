@@ -7,6 +7,18 @@ function isPlayed(match) { return match.status === 'played' || match.status === 
 function matchDate(match) { if (!match.fixture_date) return 'Date TBC'; const [year, month, day] = match.fixture_date.split('-').map(Number); return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }); }
 function ordinal(value) { if (!value) return 'TBC'; return `${value}${value === 1 ? 'st' : value === 2 ? 'nd' : value === 3 ? 'rd' : 'th'}`; }
 function entryTeamName(entry, fallback = 'TBC') { return entry?.teams?.name || fallback || 'TBC'; }
+const PORTAL_LOAD_TIMEOUT_MS = 8000;
+
+function withPortalTimeout(promise, label = 'Manager Portal request', ms = PORTAL_LOAD_TIMEOUT_MS) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = window.setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), ms);
+    }),
+  ]).finally(() => window.clearTimeout(timer));
+}
+
 function buildStandings(entries, matches) {
   const rows = new Map(entries.map((entry) => [entry.id, { id: entry.id, team: entry.teams?.name || 'Unknown team', played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, gd: 0, points: 0 }]));
   matches.filter(isPlayed).forEach((match) => {
@@ -24,6 +36,7 @@ function buildStandings(entries, matches) {
 
 export default function ManagerPortal() {
   const [session, setSession] = useState(null), [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const magicLinkCooldownUntil = useRef(0);
   const magicLinkRequestId = useRef(0);
   const [account, setAccount] = useState(null), [claim, setClaim] = useState(null), [claimForm, setClaimForm] = useState({ gameWorldId: '', managerName: '', clubName: '' });
@@ -34,8 +47,18 @@ export default function ManagerPortal() {
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
     let active = true;
-    supabase.auth.getSession().then(({ data }) => { if (active) setSession(data.session || null); });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
+    withPortalTimeout(supabase.auth.getSession(), 'Sign-in check').then(({ data, error }) => {
+      if (!active) return;
+      if (error) throw error;
+      setSession(data.session || null);
+    }).catch((error) => {
+      if (!active) return;
+      setMessage(error?.message || 'We could not check your sign-in. Please try again.');
+      setLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
   useEffect(() => { if (session?.user) { loadIdentityDirectory(); loadPortal(); } else { setLoading(false); setAccount(null); setClaim(null); setEntries([]); setAdminAssignments([]); } }, [session?.user?.id]);
@@ -124,29 +147,63 @@ export default function ManagerPortal() {
   }
 
   async function loadPortal() {
-    setLoading(true); setMessage('Loading your Manager Portal...');
-    const { data: accountRow, error: accountError } = await supabase.from('manager_portal_accounts').select('id, manager_id, game_world_id, email, active, managers(id, name, display_name), game_worlds(id, name, slug)').eq('auth_user_id', session.user.id).eq('active', true).maybeSingle();
-    if (accountError) { setMessage(accountError.message); setLoading(false); return; }
-    if (!accountRow) {
-      const { data: claimRow, error: claimError } = await supabase.from('manager_portal_claims').select('*, game_worlds(name)').eq('auth_user_id', session.user.id).maybeSingle();
-      setAccount(null); setClaim(claimRow || null); setAdminAssignments([]); setMessage(claimError ? claimError.message : claimRow?.status === 'pending' ? 'Your manager profile claim is awaiting approval.' : claimRow?.status === 'rejected' ? claimRow.review_notes || 'Your claim was not approved. You may correct it and submit again.' : 'Choose your game world and claim your manager profile to continue.'); setLoading(false); return;
+    setLoading(true);
+    setLoadError('');
+    setMessage('Loading your Manager Portal...');
+    try {
+      const { data: accountRow, error: accountError } = await withPortalTimeout(
+        supabase.from('manager_portal_accounts').select('id, manager_id, game_world_id, email, active, managers(id, name, display_name), game_worlds(id, name, slug)').eq('auth_user_id', session.user.id).eq('active', true).maybeSingle(),
+        'Manager account lookup',
+      );
+      if (accountError) throw new Error(accountError.message);
+      if (!accountRow) {
+        const { data: claimRow, error: claimError } = await withPortalTimeout(
+          supabase.from('manager_portal_claims').select('*, game_worlds(name)').eq('auth_user_id', session.user.id).maybeSingle(),
+          'Manager claim lookup',
+        );
+        if (claimError) throw new Error(claimError.message);
+        setAccount(null);
+        setClaim(claimRow || null);
+        setAdminAssignments([]);
+        setMessage(claimRow?.status === 'pending' ? 'Your manager profile claim is awaiting approval.' : claimRow?.status === 'rejected' ? claimRow.review_notes || 'Your claim was not approved. You may correct it and submit again.' : 'Choose your game world and claim your manager profile to continue.');
+        return;
+      }
+
+      const [entryResult, accessResult] = await withPortalTimeout(Promise.all([
+        supabase.from('tournament_entries').select('id, tournament_id, manager_id, group_code, seed, pot, teams(id, name), tournaments!inner(id, name, status, season_number, public_slug, is_public, game_world_id)').eq('manager_id', accountRow.manager_id).eq('tournaments.game_world_id', accountRow.game_world_id),
+        supabase.from('tournament_organisers').select('tournament_id, role, tournaments(id, name)').eq('auth_user_id', session.user.id).eq('active', true),
+      ]), 'Tournament access lookup');
+      if (entryResult.error) throw new Error('Could not load your tournament entries: ' + entryResult.error.message);
+
+      const entryRows = entryResult.data || [];
+      const orderedEntries = [...entryRows].sort((a, b) => Number(b.tournaments?.season_number || 0) - Number(a.tournaments?.season_number || 0));
+      const tournamentIds = [...new Set(orderedEntries.map((entry) => entry.tournament_id))];
+      let matchRows = [], peerEntries = [];
+      if (tournamentIds.length) {
+        const [matchResult, peerResult] = await withPortalTimeout(Promise.all([
+          supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))').in('tournament_id', tournamentIds),
+          supabase.from('tournament_entries').select('id, tournament_id, group_code, teams(name)').in('tournament_id', tournamentIds),
+        ]), 'Tournament fixtures lookup');
+        if (matchResult.error) throw new Error('Could not load your fixtures: ' + matchResult.error.message);
+        if (peerResult.error) throw new Error('Could not load your group table: ' + peerResult.error.message);
+        matchRows = matchResult.data || [];
+        peerEntries = peerResult.data || [];
+      }
+
+      setAccount(accountRow);
+      setClaim(null);
+      setEntries(orderedEntries);
+      setSelectedEntryId((current) => current || orderedEntries[0]?.id || '');
+      setMatches(matchRows);
+      setGroupEntries(peerEntries);
+      setAdminAssignments(accessResult.error ? [] : (accessResult.data || []));
+      setMessage('Portal loaded.');
+    } catch (error) {
+      setLoadError(error?.message || 'We could not finish loading your Manager Portal.');
+      setMessage('');
+    } finally {
+      setLoading(false);
     }
-    const [entryResult, accessResult] = await Promise.all([
-      supabase.from('tournament_entries').select('id, tournament_id, manager_id, group_code, seed, pot, teams(id, name), tournaments!inner(id, name, status, season_number, public_slug, is_public, game_world_id)').eq('manager_id', accountRow.manager_id).eq('tournaments.game_world_id', accountRow.game_world_id),
-      supabase.from('tournament_organisers').select('tournament_id, role, tournaments(id, name)').eq('auth_user_id', session.user.id).eq('active', true),
-    ]);
-    if (entryResult.error) { setMessage('Could not load your tournament entries: ' + entryResult.error.message); setLoading(false); return; }
-    const entryRows = entryResult.data || [];
-    const orderedEntries = [...entryRows].sort((a, b) => Number(b.tournaments?.season_number || 0) - Number(a.tournaments?.season_number || 0));
-    const tournamentIds = [...new Set(orderedEntries.map((entry) => entry.tournament_id))]; let matchRows = [], peerEntries = [];
-    if (tournamentIds.length) {
-      const [matchResult, peerResult] = await Promise.all([
-        supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))').in('tournament_id', tournamentIds),
-        supabase.from('tournament_entries').select('id, tournament_id, group_code, teams(name)').in('tournament_id', tournamentIds),
-      ]);
-      if (!matchResult.error) matchRows = matchResult.data || []; if (!peerResult.error) peerEntries = peerResult.data || [];
-    }
-    setAccount(accountRow); setClaim(null); setEntries(orderedEntries); setSelectedEntryId((current) => current || orderedEntries[0]?.id || ''); setMatches(matchRows); setGroupEntries(peerEntries); setAdminAssignments(accessResult.error ? [] : (accessResult.data || [])); setMessage('Portal loaded.'); setLoading(false);
   }
 
   async function logout() { await supabase.auth.signOut(); setMessage('Signed out.'); }
@@ -158,7 +215,8 @@ export default function ManagerPortal() {
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Manager Portal unavailable.</strong><span>Supabase is not connected.</span></section></main>;
   if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Manager Portal</h1><p>Your fixtures, results, group table and tournament progress in one place.</p></section><section className="card manager-login-card"><h2>Sign in securely</h2><p className="muted">Enter your email address. We’ll send a one-time sign-in link.</p><form onSubmit={sendMagicLink}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button type="submit" disabled={loading}>{loading ? 'Sending...' : 'Email me a sign-in link'}</button></form>{message && <p className="status">{message}</p>}</section></main>;
-  if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading Manager Portal...</h1></section></main>;
+  if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading Manager Portal...</h1><p className="muted">This should only take a few seconds.</p></section></main>;
+  if (loadError) return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal</p><h1>We couldn’t finish loading your portal</h1><p>Your sign-in is still valid. The data request may have timed out or been interrupted.</p></div></section><section className="card manager-login-card"><p className="status">{loadError}</p><div className="button-row"><button type="button" onClick={loadPortal}>Try again</button><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section></main>;
   if (!account) return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal</p><h1>{claim?.status === 'pending' ? 'Claim awaiting approval' : 'Claim your profile'}</h1><p>Signed in securely as {session.user.email}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section><section className="card manager-login-card">{claim?.status === 'pending' ? <><h2>We’ve got your claim</h2><p><strong>{claim.claimed_manager_name}</strong> · {claim.claimed_club_name} · {claim.game_worlds?.name || 'Game world'}</p><button type="button" onClick={loadPortal}>Check approval</button></> : <form onSubmit={submitClaim}><h2>Match your Soccer Manager identity</h2><label>Game world<select value={claimForm.gameWorldId} onChange={(event) => setClaimForm({ gameWorldId: event.target.value, managerName: '', clubName: '' })} required><option value="">Choose game world</option>{gameWorlds.map((world) => <option key={world.id} value={world.id}>{world.name}</option>)}</select></label><label>Current club<select value={claimForm.clubName} onChange={(event) => { const club = worldClubs.find((item) => item.club_name === event.target.value); setClaimForm((current) => ({ ...current, clubName: event.target.value, managerName: club?.current_manager_name || '' })); }} required disabled={!claimForm.gameWorldId}><option value="">Choose your club</option>{worldClubs.map((club) => <option key={club.id} value={club.club_name}>{club.club_name}</option>)}</select></label><label>SM manager name<input value={claimForm.managerName} onChange={(event) => setClaimForm((current) => ({ ...current, managerName: event.target.value }))} required /></label>{selectedClaimClub?.current_manager_name && <p className="muted">Directory manager: <strong>{selectedClaimClub.current_manager_name}</strong></p>}<button type="submit">Submit manager claim</button></form>}</section>{message && <section className="card"><p className="status">{message}</p></section>}</main>;
 
   return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal · {account.game_worlds?.name || 'Top 100'}</p><h1>{account.managers?.display_name || account.managers?.name || 'Top 100 Manager'}</h1><p>{selectedEntry ? `${selectedEntry.teams?.name} · ${selectedEntry.tournaments?.name}` : 'No active tournament entry found'}</p></div><div className="button-row">{organiserAssignments.length > 0 && <a className="button" href="/admin">{adminAssignments.length === 1 && organiserAssignments.length === 1 ? `Manage ${organiserAssignments[0].tournaments?.name || 'tournament'}` : 'Manage tournaments'}</a>}<a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
