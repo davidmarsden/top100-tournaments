@@ -22,6 +22,28 @@ const formatDate = (dateString) => { const date = parseDate(dateString); return 
 const formatShortDate = (dateString) => { const date = parseDate(dateString); return date ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : (dateString || ''); };
 const dateKey = (bracket, round) => `${bracket || 'Cup'}|${round || 'Round'}`;
 
+const PUBLIC_LOAD_TIMEOUT_MS = 6000;
+
+function withTimeout(promise, ms = PUBLIC_LOAD_TIMEOUT_MS) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = window.setTimeout(() => reject(new Error('Tournament data request timed out.')), ms);
+    }),
+  ]).finally(() => window.clearTimeout(timer));
+}
+
+async function fetchPublicTournamentSnapshot(tournamentId) {
+  const response = await fetch(`/api/public-tournament-data?id=${encodeURIComponent(tournamentId)}`, {
+    headers: { accept: 'application/json' },
+    cache: 'no-store',
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Tournament data request failed (${response.status}).`);
+  return payload;
+}
+
 function roundSort(a, b) {
   return String(a.bracket || '').localeCompare(String(b.bracket || '')) || roundIndex(a.round) - roundIndex(b.round) || Number(a.match_order || 0) - Number(b.match_order || 0) || Number(a.leg || 1) - Number(b.leg || 1);
 }
@@ -204,31 +226,87 @@ export default function PublicTournamentPage({ tournamentId, routeRows = [] }) {
 
   async function loadTournament() {
     setStatus('Loading tournament page...');
-    let tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, tournament_structure, season_number, public_slug, slug, is_public, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)').eq('id', tournamentId).maybeSingle();
-    if (tournamentResult.error) tournamentResult = await supabase.from('tournaments').select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams').eq('id', tournamentId).maybeSingle();
-    if (tournamentResult.error || !tournamentResult.data) { setStatus('Tournament not found.'); return; }
-    const knockoutOnlyResult = tournamentResult.data.tournament_structure === 'knockout_only';
-    const [matchesResult, entriesResult, roundDatesResult, finalResolutionResult] = await Promise.all([
-      supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
-      supabase.from('tournament_entries').select('id, seed, rating, pot, group_code, prize_draw_eligible, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
-      supabase.from('tournament_round_dates').select('id, bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
-      knockoutOnlyResult ? supabase.rpc('public_knockout_final_resolved', { target_tournament_id: tournamentId }) : Promise.resolve({ data: false, error: null }),
-    ]);
-    setTournament(tournamentResult.data);
-    setMatches(matchesResult.error ? [] : (matchesResult.data || []));
-    setEntries(entriesResult.error ? [] : (entriesResult.data || []));
-    setRoundDates(roundDatesResult.error ? [] : (roundDatesResult.data || []));
-    setKnockoutFinalPublicResolved(!finalResolutionResult.error && Boolean(finalResolutionResult.data));
-    setSelectedGroup('all'); setSelectedBracket('all'); setSelectedRound('all');
-    if (matchesResult.error) { setStatus('Could not load fixtures: ' + matchesResult.error.message); return; }
-    setStatus('Tournament page loaded.');
-    Promise.all([
-      supabase.from('honours').select('id, honour, position, tournament_id, tournaments(id, name), entry:tournament_entries!honours_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))').order('tournament_id', { ascending: false }),
-      supabase.from('forfeits').select('id, reason, penalty, affects_prize_draw, match_id, forfeiting_entry:tournament_entries!forfeits_forfeiting_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))'),
-    ]).then(([honoursResult, forfeitsResult]) => {
-      if (!honoursResult.error) setHonours(honoursResult.data || []);
-      if (!forfeitsResult.error) { const currentMatchIds = new Set((matchesResult.data || []).map((match) => match.id)); setForfeits((forfeitsResult.data || []).filter((row) => currentMatchIds.has(row.match_id))); }
-    }).catch(() => {});
+
+    const applySnapshot = (snapshot) => {
+      const loadedMatches = snapshot.matches || [];
+      setTournament(snapshot.tournament);
+      setMatches(loadedMatches);
+      setEntries(snapshot.entries || []);
+      setRoundDates(snapshot.roundDates || []);
+      setKnockoutFinalPublicResolved(Boolean(snapshot.knockoutFinalPublicResolved));
+      setHonours(snapshot.honours || []);
+      setForfeits(snapshot.forfeits || []);
+      setSelectedGroup('all');
+      setSelectedBracket('all');
+      setSelectedRound('all');
+      setStatus('Tournament page loaded.');
+    };
+
+    try {
+      let tournamentResult = await withTimeout(
+        supabase
+          .from('tournaments')
+          .select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, tournament_structure, season_number, public_slug, slug, is_public, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)')
+          .eq('id', tournamentId)
+          .maybeSingle()
+      );
+
+      if (tournamentResult.error) {
+        tournamentResult = await withTimeout(
+          supabase
+            .from('tournaments')
+            .select('id, name, status, rules_notes, secondary_bracket_name, max_entries, actual_entries, group_count, teams_per_group, knockout_teams')
+            .eq('id', tournamentId)
+            .maybeSingle()
+        );
+      }
+
+      if (tournamentResult.error || !tournamentResult.data) {
+        throw new Error(tournamentResult.error?.message || 'Tournament not found.');
+      }
+
+      const knockoutOnlyResult = tournamentResult.data.tournament_structure === 'knockout_only';
+      const [matchesResult, entriesResult, roundDatesResult, finalResolutionResult] = await withTimeout(Promise.all([
+        supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
+        supabase.from('tournament_entries').select('id, seed, rating, pot, group_code, prize_draw_eligible, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
+        supabase.from('tournament_round_dates').select('id, bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
+        knockoutOnlyResult ? supabase.rpc('public_knockout_final_resolved', { target_tournament_id: tournamentId }) : Promise.resolve({ data: false, error: null }),
+      ]));
+
+      if (matchesResult.error) throw matchesResult.error;
+
+      setTournament(tournamentResult.data);
+      setMatches(matchesResult.data || []);
+      setEntries(entriesResult.error ? [] : (entriesResult.data || []));
+      setRoundDates(roundDatesResult.error ? [] : (roundDatesResult.data || []));
+      setKnockoutFinalPublicResolved(!finalResolutionResult.error && Boolean(finalResolutionResult.data));
+      setSelectedGroup('all');
+      setSelectedBracket('all');
+      setSelectedRound('all');
+      setStatus('Tournament page loaded.');
+
+      Promise.all([
+        supabase.from('honours').select('id, honour, position, tournament_id, tournaments(id, name), entry:tournament_entries!honours_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))').order('tournament_id', { ascending: false }),
+        supabase.from('forfeits').select('id, reason, penalty, affects_prize_draw, match_id, forfeiting_entry:tournament_entries!forfeits_forfeiting_entry_id_fkey(id, teams(id, name), managers(id, name, display_name))'),
+      ]).then(([honoursResult, forfeitsResult]) => {
+        if (!honoursResult.error) setHonours(honoursResult.data || []);
+        if (!forfeitsResult.error) {
+          const currentMatchIds = new Set((matchesResult.data || []).map((match) => match.id));
+          setForfeits((forfeitsResult.data || []).filter((row) => currentMatchIds.has(row.match_id)));
+        }
+      }).catch(() => {});
+    } catch (directError) {
+      console.warn('Direct Supabase tournament load failed; trying same-origin fallback.', directError);
+      setStatus('Direct data connection is slow; retrying through the tournament server...');
+
+      try {
+        const snapshot = await withTimeout(fetchPublicTournamentSnapshot(tournamentId), 12000);
+        applySnapshot(snapshot);
+      } catch (fallbackError) {
+        console.error('Tournament fallback load failed.', fallbackError);
+        setStatus(`Could not load tournament data: ${fallbackError.message || directError.message}`);
+      }
+    }
   }
 
   if (!hasSupabaseConfig || !supabase) return <main className="app-shell"><section className="warning-card"><strong>Supabase is not connected.</strong></section></main>;
