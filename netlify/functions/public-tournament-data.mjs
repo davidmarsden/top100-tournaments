@@ -9,8 +9,8 @@ function json(body, status = 200) {
 
 function publicSupabaseClient() {
   const url = Netlify.env.get('VITE_SUPABASE_URL');
-  const key = Netlify.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !key) throw new Error('Supabase server configuration is missing.');
+  const key = Netlify.env.get('VITE_SUPABASE_ANON_KEY');
+  if (!url || !key) throw new Error('Supabase public server configuration is missing.');
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
