@@ -57,7 +57,6 @@ export default function ManagerPortal() {
       setLoading(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setLoadError('');
       setSession(nextSession);
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
