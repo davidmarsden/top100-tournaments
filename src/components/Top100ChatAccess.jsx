@@ -3,6 +3,43 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const CHAT_SESSION_TIMEOUT_MS = 8000;
 
+function readHashAccessToken() {
+  if (typeof window === 'undefined' || !window.location.hash) return '';
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  return params.get('access_token') || '';
+}
+
+function readStoredAccessToken() {
+  if (typeof window === 'undefined') return '';
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key || !/^sb-.*-auth-token$/.test(key)) continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const token = parsed?.access_token || parsed?.currentSession?.access_token || '';
+      if (!token) continue;
+
+      // Avoid handing an already-expired JWT to chat-ticket. If decoding fails,
+      // let the server validate it rather than treating it as authenticated here.
+      try {
+        const payloadPart = token.split('.')[1];
+        if (payloadPart) {
+          const payload = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')));
+          if (payload?.exp && Number(payload.exp) <= Math.floor(Date.now() / 1000) + 15) continue;
+        }
+      } catch {
+        // The ticket endpoint remains the source of truth for JWT validity.
+      }
+      return token;
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
 function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSION_TIMEOUT_MS) {
   let timer;
   return Promise.race([
@@ -46,6 +83,26 @@ export default function Top100ChatAccess() {
     if (!hasSupabaseConfig || !supabase) {
       setBusy(false);
       setStatus('My Matches sign-in is unavailable.');
+      return undefined;
+    }
+
+    // Magic-link callbacks return the short-lived Supabase access token in the
+    // URL fragment. Use it directly for the server-validated chat ticket before
+    // auth-js has a chance to block on browser session recovery.
+    const callbackToken = readHashAccessToken();
+    if (callbackToken) {
+      window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      launchChat(callbackToken);
+      return undefined;
+    }
+
+    // Likewise, an already-signed-in browser already has the access token in
+    // Supabase's persisted browser storage. Using it directly avoids making the
+    // auth Web Lock a prerequisite for opening chat; chat-ticket still verifies
+    // the JWT and manager membership server-side.
+    const storedToken = readStoredAccessToken();
+    if (storedToken) {
+      launchChat(storedToken);
       return undefined;
     }
 
