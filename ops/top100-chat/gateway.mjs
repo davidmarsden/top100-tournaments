@@ -104,7 +104,7 @@ function bootstrapHtml(user) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>Opening Top 100 Chat…</title></head>
 <body><p>Opening Top 100 Chat…</p><script>
-localStorage.rssNetworkMemory = ${JSON.stringify(memory)};
+localStorage.rssNetworkMemory = ${memory};
 location.replace('/');
 </script></body></html>`;
 }
