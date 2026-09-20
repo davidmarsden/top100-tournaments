@@ -16,8 +16,8 @@ function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSIO
 export default function Top100ChatAccess() {
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState('Checking your Top 100 sign-in…');
-  const [busy, setBusy] = useState(true);
+  const [status, setStatus] = useState('Checking whether you are already signed in…');
+  const [busy, setBusy] = useState(false);
   const launchedForToken = useRef('');
 
   async function launchChat(token) {
@@ -53,18 +53,18 @@ export default function Top100ChatAccess() {
       if (!active) return;
       if (error) throw error;
       setSession(data.session || null);
-      setBusy(false);
       if (!data.session) setStatus('');
     }).catch((error) => {
       if (!active) return;
       setSession(null);
-      setBusy(false);
-      setStatus(error?.message || 'We could not check your sign-in. Please try again.');
+      setStatus('We could not check an existing sign-in automatically. You can still sign in below.');
+      console.warn('Top 100 Chat session check failed:', error);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!active) return;
       setSession(nextSession);
-      setBusy(false);
+      if (!nextSession) setStatus('');
     });
 
     return () => {
@@ -84,15 +84,25 @@ export default function Top100ChatAccess() {
     if (!email.trim()) return;
     setBusy(true);
     setStatus('Sending your secure sign-in link…');
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: 'https://manager.smtop100.blog/chat',
-        shouldCreateUser: true,
-      },
-    });
-    setBusy(false);
-    setStatus(error ? error.message : 'Check your email for your secure My Matches sign-in link.');
+    try {
+      const { error } = await withChatTimeout(
+        supabase.auth.signInWithOtp({
+          email: email.trim(),
+          options: {
+            emailRedirectTo: 'https://manager.smtop100.blog/chat',
+            shouldCreateUser: true,
+          },
+        }),
+        'Sign-in link request',
+        12000,
+      );
+      if (error) throw error;
+      setStatus('Check your email for your secure My Matches sign-in link.');
+    } catch (error) {
+      setStatus(error?.message || 'We could not send the sign-in link. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function signOut() {
