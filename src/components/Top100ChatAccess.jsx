@@ -142,7 +142,9 @@ export default function Top100ChatAccess() {
         chatAuthClient.auth.signInWithOtp({
           email: email.trim(),
           options: {
-            emailRedirectTo: 'https://manager.smtop100.blog/chat',
+            emailRedirectTo: window.location.hostname.endsWith('.netlify.app')
+              ? `${window.location.origin}/chat`
+              : 'https://manager.smtop100.blog/chat',
             shouldCreateUser: true,
           },
         }),
