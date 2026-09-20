@@ -5,7 +5,9 @@ base="${1:-https://chat.smtop100.blog}"
 resolve_ip="${TOP100_CHAT_RESOLVE_IP:-}"
 curl_extra=()
 if [[ -n "${resolve_ip}" ]]; then
-  host="$(printf '%s' "${base}" | sed -E 's#^https?://([^/:]+).*#\\1#')"
+  host="${base#*://}"
+  host="${host%%/*}"
+  host="${host%%:*}"
   curl_extra+=(--resolve "${host}:443:${resolve_ip}")
 fi
 
