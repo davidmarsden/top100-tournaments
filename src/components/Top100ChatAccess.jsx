@@ -21,35 +21,42 @@ function readHashAccessToken() {
   return params.get('access_token') || '';
 }
 
-function readStoredAccessToken() {
-  if (typeof window === 'undefined') return '';
+function getConfiguredStorageKey() {
   try {
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (!key || !/^sb-.*-auth-token$/.test(key)) continue;
-      const raw = window.localStorage.getItem(key);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
-      const token = parsed?.access_token || parsed?.currentSession?.access_token || '';
-      if (!token) continue;
-
-      // Avoid handing an already-expired JWT to chat-ticket. If decoding fails,
-      // let the server validate it rather than treating it as authenticated here.
-      try {
-        const payloadPart = token.split('.')[1];
-        if (payloadPart) {
-          const payload = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')));
-          if (payload?.exp && Number(payload.exp) <= Math.floor(Date.now() / 1000) + 15) continue;
-        }
-      } catch {
-        // The ticket endpoint remains the source of truth for JWT validity.
-      }
-      return token;
-    }
+    const hostname = new URL(String(import.meta.env.VITE_SUPABASE_URL || '').trim()).hostname;
+    const projectRef = hostname.split('.')[0] || '';
+    return projectRef ? `sb-${projectRef}-auth-token` : '';
   } catch {
     return '';
   }
-  return '';
+}
+
+function readStoredAccessToken() {
+  if (typeof window === 'undefined') return '';
+  try {
+    const key = getConfiguredStorageKey();
+    if (!key) return '';
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return '';
+    const parsed = JSON.parse(raw);
+    const token = parsed?.access_token || parsed?.currentSession?.access_token || '';
+    if (!token) return '';
+
+    // Avoid handing an already-expired JWT to chat-ticket. If decoding fails,
+    // let the server validate it rather than treating it as authenticated here.
+    try {
+      const payloadPart = token.split('.')[1];
+      if (payloadPart) {
+        const payload = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload?.exp && Number(payload.exp) <= Math.floor(Date.now() / 1000) + 15) return '';
+      }
+    } catch {
+      // The ticket endpoint remains the source of truth for JWT validity.
+    }
+    return token;
+  } catch {
+    return '';
+  }
 }
 
 function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSION_TIMEOUT_MS) {
@@ -68,6 +75,7 @@ export default function Top100ChatAccess() {
   const [status, setStatus] = useState('Checking whether you are already signed in…');
   const [busy, setBusy] = useState(false);
   const launchedForToken = useRef('');
+  const callbackTokenRef = useRef('');
   const foregroundAuthStarted = useRef(false);
 
   async function launchChat(token) {
@@ -83,6 +91,10 @@ export default function Top100ChatAccess() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.url) throw new Error(body.error || 'Could not open Top 100 Chat.');
+      callbackTokenRef.current = '';
+      if (window.location.hash) {
+        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      }
       window.location.assign(body.url);
     } catch (error) {
       launchedForToken.current = '';
@@ -103,7 +115,8 @@ export default function Top100ChatAccess() {
     // auth-js has a chance to block on browser session recovery.
     const callbackToken = readHashAccessToken();
     if (callbackToken) {
-      window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      callbackTokenRef.current = callbackToken;
+      setSession({ access_token: callbackToken });
       launchChat(callbackToken);
       return undefined;
     }
@@ -193,6 +206,7 @@ export default function Top100ChatAccess() {
     await supabase.auth.signOut();
     setSession(null);
     launchedForToken.current = '';
+    callbackTokenRef.current = '';
     foregroundAuthStarted.current = false;
     setStatus('');
   }
@@ -235,7 +249,7 @@ export default function Top100ChatAccess() {
       </section>
       <section className="card manager-login-card">
         <p className="status">{status || 'Checking access…'}</p>
-        {!busy && <div className="button-row"><button type="button" onClick={() => launchChat(session.access_token)}>Try again</button><button type="button" className="secondary" onClick={signOut}>Sign out</button></div>}
+        {!busy && <div className="button-row"><button type="button" onClick={() => launchChat(callbackTokenRef.current || session.access_token)}>Try again</button><button type="button" className="secondary" onClick={signOut}>Sign out</button></div>}
       </section>
     </main>
   );
