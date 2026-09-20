@@ -188,12 +188,15 @@ getent ahosts chat.smtop100.blog
 dig +short chat.smtop100.blog @1.1.1.1
 ```
 
-To bypass the local resolver and test the real Caddy/TLS endpoint directly:
+To bypass the local resolver and test the Caddy/TLS endpoint returned by authoritative DNS, capture the current address first:
 
 ```bash
-curl -vk --resolve chat.smtop100.blog:443:161.35.41.163 \
+CHAT_IP="$(dig +short chat.smtop100.blog @1.1.1.1 | head -1)"
+curl -vk --resolve "chat.smtop100.blog:443:${CHAT_IP}" \
   https://chat.smtop100.blog/login
 ```
+
+Check that `CHAT_IP` is the expected current Droplet address before relying on the result.
 
 If that succeeds while `getent` shows an old address, flush the local resolver cache rather than changing DNS or Caddy:
 
