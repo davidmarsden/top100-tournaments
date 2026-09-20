@@ -37,6 +37,9 @@ function buildStandings(entries, matches) {
 export default function ManagerPortal() {
   const [session, setSession] = useState(null), [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [magicLinkStatus, setMagicLinkStatus] = useState('idle');
+  const [magicLinkSentTo, setMagicLinkSentTo] = useState('');
+  const [magicLinkResendIn, setMagicLinkResendIn] = useState(0);
   const magicLinkCooldownUntil = useRef(0);
   const magicLinkRequestId = useRef(0);
   const [account, setAccount] = useState(null), [claim, setClaim] = useState(null), [claimForm, setClaimForm] = useState({ gameWorldId: '', managerName: '', clubName: '' });
@@ -63,6 +66,13 @@ export default function ManagerPortal() {
   }, []);
   useEffect(() => { if (session?.user) { loadIdentityDirectory(); loadPortal(); } else { setLoading(false); setAccount(null); setClaim(null); setEntries([]); setAdminAssignments([]); } }, [session?.user?.id]);
   useEffect(() => { loadWorldClubs(claimForm.gameWorldId); }, [claimForm.gameWorldId]);
+  useEffect(() => {
+    if (magicLinkResendIn <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      setMagicLinkResendIn((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [magicLinkResendIn]);
 
   const selectedEntry = useMemo(() => entries.find((entry) => String(entry.id) === String(selectedEntryId)) || entries[0] || null, [entries, selectedEntryId]);
   const selectedTournamentMatches = useMemo(() => selectedEntry ? matches.filter((match) => match.tournament_id === selectedEntry.tournament_id) : [], [matches, selectedEntry]);
@@ -87,47 +97,47 @@ export default function ManagerPortal() {
     if (error) setWorldClubs([]); else setWorldClubs(data || []);
   }
 
-  function sendMagicLink(event) {
-    event.preventDefault();
+  async function sendMagicLink(event) {
+    event?.preventDefault();
     const now = Date.now();
     if (now < magicLinkCooldownUntil.current) {
-      setMessage('A sign-in email was just requested. Please check your inbox before trying again.');
+      setMagicLinkResendIn(Math.max(1, Math.ceil((magicLinkCooldownUntil.current - now) / 1000)));
       return;
     }
 
     const address = email.trim();
+    if (!address) return;
+
     const requestId = ++magicLinkRequestId.current;
-    magicLinkCooldownUntil.current = now + 15000;
-    setLoading(false);
-    setMessage('Sending your secure Manager Portal sign-in link…');
+    magicLinkCooldownUntil.current = now + 60000;
+    setMagicLinkStatus('sending');
+    setMagicLinkSentTo(address);
+    setMagicLinkResendIn(60);
+    setMessage('');
 
-    let settled = false;
-    const request = supabase.auth.signInWithOtp({
-      email: address,
-      options: { emailRedirectTo: `${window.location.origin}/manager`, shouldCreateUser: true },
-    });
-
-    const fallbackTimer = window.setTimeout(() => {
-      if (!settled && requestId === magicLinkRequestId.current) setMessage('Check your email for your secure Manager Portal sign-in link.');
-    }, 750);
-
-    request.then(({ error }) => {
-      settled = true;
-      window.clearTimeout(fallbackTimer);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: address,
+        options: { emailRedirectTo: `${window.location.origin}/manager`, shouldCreateUser: true },
+      });
       if (requestId !== magicLinkRequestId.current) return;
-      if (error) {
-        magicLinkCooldownUntil.current = 0;
-        setMessage(error.message);
-        return;
-      }
-      setMessage('Check your email for your secure Manager Portal sign-in link.');
-    }).catch((error) => {
-      settled = true;
-      window.clearTimeout(fallbackTimer);
+      if (error) throw error;
+      setMagicLinkStatus('sent');
+    } catch (error) {
       if (requestId !== magicLinkRequestId.current) return;
       magicLinkCooldownUntil.current = 0;
+      setMagicLinkResendIn(0);
+      setMagicLinkStatus('error');
       setMessage(error?.message || 'We could not send the sign-in link. Please try again.');
-    });
+    }
+  }
+
+  function resetMagicLink() {
+    magicLinkCooldownUntil.current = 0;
+    setMagicLinkResendIn(0);
+    setMagicLinkStatus('idle');
+    setMagicLinkSentTo('');
+    setMessage('');
   }
 
   async function submitClaim(event) {
@@ -214,7 +224,7 @@ export default function ManagerPortal() {
   function venue(match) { return match.home_entry_id === selectedEntry?.id ? 'Home' : 'Away'; }
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Manager Portal unavailable.</strong><span>Supabase is not connected.</span></section></main>;
-  if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Manager Portal</h1><p>Your fixtures, results, group table and tournament progress in one place.</p></section><section className="card manager-login-card"><h2>Sign in securely</h2><p className="muted">Enter your email address. We’ll send a one-time sign-in link.</p><form onSubmit={sendMagicLink}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button type="submit" disabled={loading}>{loading ? 'Sending...' : 'Email me a sign-in link'}</button></form>{message && <p className="status">{message}</p>}</section></main>;
+  if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Manager Portal</h1><p>Your fixtures, results, group table and tournament progress in one place.</p></section><section className="card manager-login-card"><h2>Sign in securely</h2><p className="muted">Enter your email address. We’ll send a one-time sign-in link.</p>{magicLinkStatus === 'sent' ? <div className="magic-link-confirmation" role="status" aria-live="polite"><h3>✓ Sign-in link sent</h3><p>We’ve sent a secure sign-in link to <strong>{magicLinkSentTo}</strong>.</p><p className="muted">It can take a few minutes to arrive. Check your inbox and spam folder. You can leave this page open while you wait.</p><div className="button-row"><button type="button" onClick={sendMagicLink} disabled={magicLinkResendIn > 0}>{magicLinkResendIn > 0 ? `Send another link in ${magicLinkResendIn}s` : 'Send another link'}</button><button type="button" className="secondary" onClick={resetMagicLink}>Use a different email</button></div></div> : <form onSubmit={sendMagicLink}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={magicLinkStatus === 'sending'} /></label><button type="submit" disabled={magicLinkStatus === 'sending'}>{magicLinkStatus === 'sending' ? 'Sending…' : magicLinkStatus === 'error' ? 'Try again' : 'Email me a sign-in link'}</button>{magicLinkStatus === 'sending' && <p className="status" role="status" aria-live="polite">Sending your secure sign-in link…</p>}{magicLinkStatus === 'error' && message && <p className="status" role="alert">{message}</p>}</form>}</section></main>;
   if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading Manager Portal...</h1><p className="muted">This should only take a few seconds.</p></section></main>;
   if (loadError) return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal</p><h1>We couldn’t finish loading your portal</h1><p>Your sign-in is still valid. The data request may have timed out or been interrupted.</p></div></section><section className="card manager-login-card"><p className="status">{loadError}</p><div className="button-row"><button type="button" onClick={loadPortal}>Try again</button><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section></main>;
   if (!account) return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal</p><h1>{claim?.status === 'pending' ? 'Claim awaiting approval' : 'Claim your profile'}</h1><p>Signed in securely as {session.user.email}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section><section className="card manager-login-card">{claim?.status === 'pending' ? <><h2>We’ve got your claim</h2><p><strong>{claim.claimed_manager_name}</strong> · {claim.claimed_club_name} · {claim.game_worlds?.name || 'Game world'}</p><button type="button" onClick={loadPortal}>Check approval</button></> : <form onSubmit={submitClaim}><h2>Match your Soccer Manager identity</h2><label>Game world<select value={claimForm.gameWorldId} onChange={(event) => setClaimForm({ gameWorldId: event.target.value, managerName: '', clubName: '' })} required><option value="">Choose game world</option>{gameWorlds.map((world) => <option key={world.id} value={world.id}>{world.name}</option>)}</select></label><label>Current club<select value={claimForm.clubName} onChange={(event) => { const club = worldClubs.find((item) => item.club_name === event.target.value); setClaimForm((current) => ({ ...current, clubName: event.target.value, managerName: club?.current_manager_name || '' })); }} required disabled={!claimForm.gameWorldId}><option value="">Choose your club</option>{worldClubs.map((club) => <option key={club.id} value={club.club_name}>{club.club_name}</option>)}</select></label><label>SM manager name<input value={claimForm.managerName} onChange={(event) => setClaimForm((current) => ({ ...current, managerName: event.target.value }))} required /></label>{selectedClaimClub?.current_manager_name && <p className="muted">Directory manager: <strong>{selectedClaimClub.current_manager_name}</strong></p>}<button type="submit">Submit manager claim</button></form>}</section>{message && <section className="card"><p className="status">{message}</p></section>}</main>;
