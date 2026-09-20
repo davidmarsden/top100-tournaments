@@ -13,7 +13,7 @@ function numberOrNull(value) {
 }
 
 export default function TournamentFormatManager({ selectedTournament, onTournamentUpdated }) {
-  const [form, setForm] = useState({ structure: 'group_knockout', maxEntries: '', groupCount: '', teamsPerGroup: '', knockoutTeams: '', secondaryBracketName: '' });
+  const [form, setForm] = useState({ structure: 'group_knockout', maxEntries: '', groupCount: '', teamsPerGroup: '', knockoutTeams: '', knockoutLegCount: '1', secondaryBracketName: '' });
   const [status, setStatus] = useState('Ready');
   const [loading, setLoading] = useState(false);
 
@@ -24,23 +24,27 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
       groupCount: inputValue(selectedTournament?.group_count),
       teamsPerGroup: inputValue(selectedTournament?.teams_per_group),
       knockoutTeams: inputValue(selectedTournament?.knockout_teams),
+      knockoutLegCount: String(selectedTournament?.knockout_leg_count || 1),
       secondaryBracketName: selectedTournament?.secondary_bracket_name || '',
     });
-  }, [selectedTournament?.id, selectedTournament?.tournament_structure, selectedTournament?.max_entries, selectedTournament?.group_count, selectedTournament?.teams_per_group, selectedTournament?.knockout_teams, selectedTournament?.secondary_bracket_name]);
+  }, [selectedTournament?.id, selectedTournament?.tournament_structure, selectedTournament?.max_entries, selectedTournament?.group_count, selectedTournament?.teams_per_group, selectedTournament?.knockout_teams, selectedTournament?.knockout_leg_count, selectedTournament?.secondary_bracket_name]);
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function canChangeFormat(nextStructure, nextMaxEntries) {
+  async function canChangeFormat(nextStructure, nextMaxEntries, nextLegCount) {
     const currentStructure = selectedTournament?.tournament_structure || 'group_knockout';
     const currentMaxEntries = numberOrNull(selectedTournament?.max_entries);
     const structureChanged = nextStructure !== currentStructure;
     const knockoutFieldChanged = currentStructure === 'knockout_only'
       && nextStructure === 'knockout_only'
       && nextMaxEntries !== currentMaxEntries;
+    const knockoutLegCountChanged = currentStructure === 'knockout_only'
+      && nextStructure === 'knockout_only'
+      && Number(nextLegCount || 1) !== Number(selectedTournament?.knockout_leg_count || 1);
 
-    if (!structureChanged && !knockoutFieldChanged) return true;
+    if (!structureChanged && !knockoutFieldChanged && !knockoutLegCountChanged) return true;
 
     const [groupsResult, matchesResult] = await Promise.all([
       supabase.from('groups').select('id', { count: 'exact', head: true }).eq('tournament_id', selectedTournament.id),
@@ -55,8 +59,8 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
       setStatus('Tournament structure cannot be changed after groups or fixtures have been created.');
       return false;
     }
-    if (knockoutFieldChanged && hasMatches) {
-      setStatus('The knockout field size is locked after the opening draw has been generated. Remove the saved draw before changing the field size.');
+    if ((knockoutFieldChanged || knockoutLegCountChanged) && hasMatches) {
+      setStatus('The knockout field size and leg format are locked after the opening draw has been generated. Roll back the draw before changing them.');
       return false;
     }
     return true;
@@ -71,11 +75,16 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
       const knockoutOnly = form.structure === 'knockout_only';
       const maxEntries = numberOrNull(form.maxEntries);
       const knockoutTeams = knockoutOnly ? maxEntries : numberOrNull(form.knockoutTeams);
+      const knockoutLegCount = knockoutOnly ? Number(form.knockoutLegCount || 1) : 1;
       if (!maxEntries || !knockoutTeams) {
         setStatus(knockoutOnly ? 'Set the final entrant count before saving the knockout-only format.' : 'Set the final entry count and knockout field before saving the format.');
         return;
       }
-      if (!(await canChangeFormat(form.structure, maxEntries))) return;
+      if (![1, 2].includes(knockoutLegCount)) {
+        setStatus('Knockout ties must be configured as one leg or two legs.');
+        return;
+      }
+      if (!(await canChangeFormat(form.structure, maxEntries, knockoutLegCount))) return;
       if (knockoutTeams > maxEntries) {
         setStatus('Knockout teams cannot exceed the final entry count.');
         return;
@@ -86,6 +95,7 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
         group_count: knockoutOnly ? null : numberOrNull(form.groupCount),
         teams_per_group: knockoutOnly ? null : numberOrNull(form.teamsPerGroup),
         knockout_teams: knockoutTeams,
+        knockout_leg_count: knockoutLegCount,
         secondary_bracket_name: knockoutOnly ? null : String(form.secondaryBracketName || '').trim() || null,
       };
       if (!knockoutOnly && (!payload.group_count || !payload.teams_per_group)) {
@@ -125,8 +135,9 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
         {!knockoutOnly && <label>Groups<input type="number" min="1" value={form.groupCount} onChange={(event) => update('groupCount', event.target.value)} placeholder="TBC" /></label>}
         {!knockoutOnly && <label>Teams/group<input type="number" min="2" value={form.teamsPerGroup} onChange={(event) => update('teamsPerGroup', event.target.value)} placeholder="TBC" /></label>}
         {!knockoutOnly && <label>Knockout teams<input type="number" min="2" value={form.knockoutTeams} onChange={(event) => update('knockoutTeams', event.target.value)} placeholder="TBC" /></label>}
+        {knockoutOnly && <label>Tie format<select value={form.knockoutLegCount} onChange={(event) => update('knockoutLegCount', event.target.value)}><option value="1">One leg</option><option value="2">Two legs (home & away)</option></select></label>}
       </div>
-      {knockoutOnly ? <p className="muted">Every accepted entrant goes into the knockout field, so there is only one field size to set. The opening draw uses entrant seeds directly; when the field is not a power of two, the highest seeds receive the required byes. Once the draw exists, this field size is locked unless the draw is removed. Knockout-only currently uses a single Cup bracket.</p> : <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => update('secondaryBracketName', event.target.value)} placeholder="Optional — e.g. Shield" /></label>}
+      {knockoutOnly ? <p className="muted">Every accepted entrant goes into the knockout field, so there is only one field size to set. The opening draw uses entrant seeds directly; when the field is not a power of two, the highest seeds receive the required byes. Once the draw exists, this field size is locked unless the draw is removed. Knockout-only currently uses a single Cup bracket. Two-leg ties create a home and away leg for every real pairing; automatic byes remain a single resolved slot.</p> : <label>Secondary bracket<input value={form.secondaryBracketName} onChange={(event) => update('secondaryBracketName', event.target.value)} placeholder="Optional — e.g. Shield" /></label>}
       <div className="button-row"><button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save tournament shape'}</button></div>
       <p className="status">{status}</p>
     </section>
