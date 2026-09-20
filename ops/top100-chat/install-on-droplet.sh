@@ -70,6 +70,8 @@ node "${tmpdir}/verify-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
 # Older installs may leave this directory owned by www-data. Harden the
 # destination before installing any executable into it so the running gateway
 # cannot replace a root-owned helper between install and execution.
+chown root:root "${GATEWAY_DIR}"
+chmod 0755 "${GATEWAY_DIR}"
 
 # Only after all root-executed deployment helpers have run do we replace the
 # live gateway files. This avoids ever executing service-writable code as root
@@ -108,8 +110,6 @@ JSON
 
 install -d -m 0750 "${RSS_DIR}/data"
 chown -R www-data:www-data "${RSS_DIR}"
-chown root:root "${GATEWAY_DIR}"
-chmod 0755 "${GATEWAY_DIR}"
 
 echo "Installing rss.chat dependencies..."
 (
