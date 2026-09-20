@@ -193,7 +193,7 @@ To bypass the local resolver and test the Caddy/TLS endpoint returned by authori
 ```bash
 AUTH_NS="$(dig +short NS smtop100.blog | head -1)"
 CHAT_IP="$(dig +short chat.smtop100.blog @"${AUTH_NS}" | head -1)"
-curl -vk --resolve "chat.smtop100.blog:443:${CHAT_IP}" \
+curl -v --resolve "chat.smtop100.blog:443:${CHAT_IP}" \
   https://chat.smtop100.blog/login
 ```
 
