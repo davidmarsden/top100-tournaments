@@ -125,7 +125,7 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
       setStatus('Round rollback failed: ' + error.message);
     } else {
       const rolledBack = data || {};
-      setStatus(`${rolledBack.round || latestRound.name} rolled back (${Number(rolledBack.deleted_matches || 0)} ties removed).`);
+      setStatus(`${rolledBack.round || latestRound.name} rolled back (${Number(rolledBack.deleted_matches || 0)} fixture(s) removed).`);
       await loadData();
       await onDataChanged?.();
     }
