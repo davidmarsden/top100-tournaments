@@ -3,7 +3,13 @@ import { groupRouteRows, routePath } from '../lib/publicTournamentRoutes';
 
 function currentParts(pathname = window.location.pathname) {
   const parts = pathname.split('/').map((part) => part.trim()).filter(Boolean);
-  return { worldSlug: parts[0] || 'top-100', competitionSlug: parts[1] || 'youth-cup', seasonSlug: parts[2] || null };
+  const isLegacyExplicit = /^\/(?:tournaments|public)\/\d+\/?$/.test(pathname);
+  return {
+    worldSlug: parts[0] || 'top-100',
+    competitionSlug: parts[1] || 'youth-cup',
+    seasonSlug: parts[2] || null,
+    isLiveAlias: !isLegacyExplicit && parts.length === 2,
+  };
 }
 function labelSeason(row) {
   if (row.season_number) return `S${row.season_number}`;
@@ -29,13 +35,15 @@ function livePathFor(world, competition) {
   return live ? routePath(live, { live: true }) : `/${world?.slug || 'top-100'}/${competition?.slug || 'youth-cup'}`;
 }
 
-export default function PublicTournamentSwitcher({ routes = [], currentTournament }) {
+export default function PublicTournamentSwitcher({ routes = [], currentTournament, currentPhaseLabel }) {
   const worlds = useMemo(() => groupRouteRows(routes), [routes]);
   if (!worlds.length) return null;
   const parts = currentParts();
   const currentWorld = findWorld(worlds, currentTournament?.game_worlds?.slug || parts.worldSlug);
   const currentCompetition = findCompetition(currentWorld, currentTournament?.competition_types?.slug || parts.competitionSlug);
-  const currentSeasonPath = currentTournament ? routePath(currentTournament) : window.location.pathname;
+  const currentSeasonPath = parts.isLiveAlias
+    ? livePathFor(currentWorld, currentCompetition)
+    : (currentTournament ? routePath(currentTournament) : window.location.pathname);
 
   function goTo(path) {
     if (path && path !== window.location.pathname) window.location.href = path;
@@ -56,6 +64,6 @@ export default function PublicTournamentSwitcher({ routes = [], currentTournamen
   return <section className="public-tournament-switcher" aria-label="Tournament selector">
     <label>World<select value={currentWorld?.slug || ''} onChange={onWorldChange}>{worlds.map((world) => <option key={world.slug} value={world.slug}>{world.name}</option>)}</select></label>
     <label>Competition<select value={currentCompetition?.slug || ''} onChange={onCompetitionChange}>{(currentWorld?.competitions || []).map((competition) => <option key={competition.slug} value={competition.slug}>{competition.name}</option>)}</select></label>
-    <label>Season<select value={currentSeasonPath} onChange={onSeasonChange}>{currentCompetition && <option value={livePathFor(currentWorld, currentCompetition)}>Latest / live</option>}{(currentCompetition?.seasons || []).map((row) => <option key={row.id} value={routePath(row)}>{labelSeason(row)} · {row.status}</option>)}</select></label>
+    <label>Season<select value={currentSeasonPath} onChange={onSeasonChange}>{currentCompetition && <option value={livePathFor(currentWorld, currentCompetition)}>Latest / live</option>}{(currentCompetition?.seasons || []).map((row) => <option key={row.id} value={routePath(row)}>{labelSeason(row)} · {Number(row.id) === Number(currentTournament?.id) && currentPhaseLabel ? currentPhaseLabel : row.status}</option>)}</select></label>
   </section>;
 }
