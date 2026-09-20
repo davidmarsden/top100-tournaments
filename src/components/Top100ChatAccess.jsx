@@ -19,6 +19,7 @@ export default function Top100ChatAccess() {
   const [status, setStatus] = useState('Checking whether you are already signed in…');
   const [busy, setBusy] = useState(false);
   const launchedForToken = useRef('');
+  const foregroundAuthStarted = useRef(false);
 
   async function launchChat(token) {
     if (!token) return;
@@ -53,11 +54,13 @@ export default function Top100ChatAccess() {
       if (!active) return;
       if (error) throw error;
       setSession(data.session || null);
-      if (!data.session) setStatus('');
+      if (!data.session && !foregroundAuthStarted.current) setStatus('');
     }).catch((error) => {
       if (!active) return;
       setSession(null);
-      setStatus('We could not check an existing sign-in automatically. You can still sign in below.');
+      if (!foregroundAuthStarted.current) {
+        setStatus('We could not check an existing sign-in automatically. You can still sign in below.');
+      }
       console.warn('Top 100 Chat session check failed:', error);
     });
 
@@ -82,6 +85,7 @@ export default function Top100ChatAccess() {
   async function sendMagicLink(event) {
     event.preventDefault();
     if (!email.trim()) return;
+    foregroundAuthStarted.current = true;
     setBusy(true);
     setStatus('Sending your secure sign-in link…');
     try {
@@ -109,6 +113,7 @@ export default function Top100ChatAccess() {
     await supabase.auth.signOut();
     setSession(null);
     launchedForToken.current = '';
+    foregroundAuthStarted.current = false;
     setStatus('');
   }
 
