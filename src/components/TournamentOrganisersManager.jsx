@@ -57,7 +57,7 @@ export default function TournamentOrganisersManager({ selectedTournament }) {
     }
     const rows = data || [];
     setTournaments(rows);
-    if (!targetTournamentIdRef.current && rows[0]) selectTournament(rows[0].id);
+    if (!targetTournamentIdRef.current && selectedTournament?.id) selectTournament(selectedTournament.id);
   }
 
   async function loadAccess(tournamentId, requestId = ++accessRequestRef.current) {
@@ -128,9 +128,7 @@ export default function TournamentOrganisersManager({ selectedTournament }) {
 
   return <div className="registration-manager">
     <section className="entrant-panel"><p className="eyebrow">Tournament-scoped access</p><h3>{targetTournament?.name || 'Choose tournament'}</h3>
-      <div className="mini-grid">
-        <label>Tournament<select value={targetTournamentId} onChange={(event) => selectTournament(event.target.value)} required><option value="">Choose tournament</option>{tournaments.map((tournament) => <option key={tournament.id} value={tournament.id}>{tournament.name} · {tournament.status || 'draft'}{tournament.registration_status ? ` · registration ${tournament.registration_status}` : ''}</option>)}</select></label>
-      </div>
+      <div className="active-tournament-context"><span>Active tournament</span><strong>{targetTournament?.name || selectedTournament?.name || 'No tournament selected'}</strong><small>Change the active tournament from Overview. Organiser access always follows that selection.</small></div>
       {targetTournament && <p className="muted"><strong>{targetTournament.game_worlds?.name || 'Game world'}</strong> · Tournament status: <strong>{targetTournament.status || 'draft'}</strong>{targetTournament.registration_status ? <> · Registration: <strong>{targetTournament.registration_status}</strong></> : null}. A draft tournament can still have live registration; these are separate states.</p>}
       <p className="muted"><strong>Organiser</strong> has full operational control of this tournament: registration, format, entrants, groups, fixtures, results, knockout and publishing. <strong>Assistant</strong> is a matchday helper: fixtures and results, plus read access to tables, forfeits and reports. Neither role gets platform administration, manager-account approval, tournament creation or access to other private tournaments.</p>
       <form onSubmit={assign}><div className="mini-grid"><label>Manager Portal account<select value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)} required disabled={!targetTournamentId}><option value="">Choose manager</option>{availableAccounts.map((account) => <option key={account.id} value={account.id}>{account.managers?.display_name || account.managers?.name || account.email} · {account.email}</option>)}</select></label><label>Role<select value={role} onChange={(event) => setRole(event.target.value)} disabled={!targetTournamentId}><option value="organiser">Organiser — full tournament control</option><option value="assistant">Assistant — fixtures & results</option></select></label></div><button type="submit" disabled={loading || !targetTournamentId || !selectedAccountId}>Assign access</button></form>
