@@ -170,10 +170,28 @@ function publicTournamentPhase(tournament, matches) {
   if (pendingKnockout.length) return `${roundLabel(pendingKnockout[0].round)} underway`;
 
   if (knockoutMatches.length) {
-    const latestRound = [...knockoutMatches]
-      .sort((a, b) => roundIndex(b.round) - roundIndex(a.round) || roundSort(b, a))[0]?.round;
-    if (latestRound === 'Final') return 'Tournament complete';
-    if (latestRound) return `${roundLabel(latestRound)} complete`;
+    const byBracket = knockoutMatches.reduce((map, match) => {
+      const bracket = match.bracket || 'Cup';
+      if (!map.has(bracket)) map.set(bracket, []);
+      map.get(bracket).push(match);
+      return map;
+    }, new Map());
+
+    const bracketProgress = [...byBracket.values()].map((bracketMatches) => {
+      const latestRound = [...bracketMatches]
+        .sort((a, b) => roundIndex(b.round) - roundIndex(a.round) || roundSort(b, a))[0]?.round;
+      const finalMatches = bracketMatches.filter((match) => match.round === 'Final');
+      const finalComplete = finalMatches.length > 0 && finalMatches.every(isCompleted);
+      return { latestRound, finalComplete };
+    });
+
+    if (bracketProgress.length && bracketProgress.every((progress) => progress.finalComplete)) return 'Tournament complete';
+
+    const leastAdvancedRound = bracketProgress
+      .map((progress) => progress.latestRound)
+      .filter(Boolean)
+      .sort((a, b) => roundIndex(a) - roundIndex(b))[0];
+    if (leastAdvancedRound) return `${roundLabel(leastAdvancedRound)} complete`;
   }
 
   const groupMatches = matches.filter((match) => match.stage === 'group');
