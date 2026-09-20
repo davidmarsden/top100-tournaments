@@ -7,6 +7,7 @@ import ManagerRegistrationPortal from './components/ManagerRegistrationPortal.js
 import PublicVotingResults from './components/PublicVotingResults.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
 import Top100BrandShell from './components/Top100BrandShell.jsx';
+import Top100ChatAccess from './components/Top100ChatAccess.jsx';
 import TournamentRouter, { isAdminPath } from './components/TournamentRouter.jsx';
 import VotingEntry from './components/VotingEntry.jsx';
 import { TournamentProvider } from './context/TournamentProvider.jsx';
@@ -19,8 +20,20 @@ function isManagerRegistrationPath() {
   return /^\/manager\/registrations?\/?$/.test(window.location.pathname);
 }
 
+function isManagerChatPath() {
+  return /^\/manager\/chat\/?$/.test(window.location.pathname);
+}
+
+function isChatPath() {
+  return /^\/chat\/?$/.test(window.location.pathname);
+}
+
 function isManagerHostRegistrationPath() {
   return /^\/(?:manager\/)?registrations?\/?$/.test(window.location.pathname);
+}
+
+function isManagerHostChatPath() {
+  return /^\/(?:manager\/)?chat\/?$/.test(window.location.pathname);
 }
 
 function isManagerHostPortalPath() {
@@ -71,6 +84,7 @@ export default function App() {
 
   if (isManagerHost()) {
     if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
+    if (isManagerHostChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
     if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerRegistrationPortal /></ManagerShell>;
     if (isManagerHostPortalPath()) return <ManagerShell><ManagerEntry /></ManagerShell>;
     forwardManagerHostPathToTournaments();
@@ -78,6 +92,11 @@ export default function App() {
   }
 
   if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
+  if (isChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
+  if (isManagerChatPath()) {
+    window.location.replace('https://manager.smtop100.blog/chat');
+    return null;
+  }
   if (isManagerPath()) {
     window.location.replace('https://manager.smtop100.blog/');
     return null;

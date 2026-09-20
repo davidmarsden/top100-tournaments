@@ -1,0 +1,22 @@
+[Unit]
+Description=Top 100 Chat authentication gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/top100-chat
+EnvironmentFile=/etc/top100-chat.env
+ExecStart=/usr/bin/node /opt/top100-chat/gateway.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/top100-chat
+
+[Install]
+WantedBy=multi-user.target

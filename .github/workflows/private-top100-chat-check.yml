@@ -1,0 +1,42 @@
+name: Private Top 100 Chat check
+
+on:
+  pull_request:
+    paths:
+      - "src/App.jsx"
+      - "src/components/Top100ChatAccess.jsx"
+      - "netlify/functions/chat-ticket.js"
+      - "ops/top100-chat/**"
+      - ".github/workflows/private-top100-chat-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install app dependencies
+        run: npm install
+
+      - name: Build tournament app
+        run: npm run build
+
+      - name: Check gateway syntax
+        run: node --check ops/top100-chat/gateway.mjs
+
+      - name: Check ticket function syntax
+        run: node --check netlify/functions/chat-ticket.js
+
+      - name: Apply Top 100 overlay to pinned rss.chat
+        run: |
+          curl -fsSL             https://raw.githubusercontent.com/scripting/rss.chat/0a77f7b0cdb6d61291248ded69daa6b78f10860a/server/code/rssnetwork.js             -o /tmp/rssnetwork.js
+          node ops/top100-chat/apply-overlay.mjs /tmp/rssnetwork.js
+          node ops/top100-chat/verify-overlay.mjs /tmp/rssnetwork.js

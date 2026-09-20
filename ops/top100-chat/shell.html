@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Top 100 Chat</title>
+  <meta name="description" content="Private community chat for Top 100 Soccer Manager World managers.">
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#111; color:#f5f5f5; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(circle at top,#2b2b2b,#111 58%); }
+    main { width:min(760px,calc(100% - 32px)); padding:48px 0; }
+    .card { background:#191919; border:1px solid #343434; border-radius:22px; padding:clamp(26px,5vw,48px); box-shadow:0 24px 70px rgba(0,0,0,.35); }
+    .eyebrow { text-transform:uppercase; letter-spacing:.15em; font-weight:800; font-size:.78rem; opacity:.72; }
+    h1 { margin:.2em 0; font-size:clamp(2.3rem,8vw,4.5rem); line-height:.95; }
+    p { line-height:1.6; font-size:1.04rem; }
+    .muted { color:#c9c9c9; }
+    .button { display:inline-block; margin-top:16px; padding:13px 20px; border-radius:999px; background:#f5f5f5; color:#111; text-decoration:none; font-weight:800; }
+    .notice { border-left:4px solid #fff; padding:10px 14px; background:#262626; }
+    footer { margin-top:22px; color:#aaa; font-size:.9rem; }
+    footer a { color:inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <p class="eyebrow">Top 100 Soccer Manager Worlds</p>
+      <h1>The clubhouse.</h1>
+      <p>Top 100 Chat is a private conversation space for approved Top 100 managers. The front door is public; the conversations, member activity, feeds and archives behind it are not.</p>
+      <p class="muted">Sign in using the same secure My Matches account you already use for fixtures and tournament tools.</p>
+      {{ERROR}}
+      <a class="button" href="https://manager.smtop100.blog/chat">Sign in with My Matches</a>
+      <footer>Top 100 Chat is run as part of <a href="https://smtop100.blog/">Top 100 Soccer Manager Worlds</a>.</footer>
+    </section>
+  </main>
+</body>
+</html>
