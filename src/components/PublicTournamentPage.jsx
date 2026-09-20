@@ -162,6 +162,30 @@ function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
   if (decidingLeg.home_penalty_score !== null || decidingLeg.away_penalty_score !== null) return `penalties ${decidingLeg.home_penalty_score ?? 0}-${decidingLeg.away_penalty_score ?? 0}`;
   return String(decidingLeg.decided_by || 'tie-break').replace(/_/g, ' ');
 }
+function publicTournamentPhase(tournament, matches) {
+  const knockoutMatches = matches.filter((match) => match.stage === 'knockout');
+  const pendingKnockout = knockoutMatches
+    .filter((match) => !isCompleted(match))
+    .sort((a, b) => roundIndex(a.round) - roundIndex(b.round) || roundSort(a, b));
+  if (pendingKnockout.length) return `${roundLabel(pendingKnockout[0].round)} underway`;
+
+  if (knockoutMatches.length) {
+    const latestRound = [...knockoutMatches]
+      .sort((a, b) => roundIndex(b.round) - roundIndex(a.round) || roundSort(b, a))[0]?.round;
+    if (latestRound === 'Final') return 'Tournament complete';
+    if (latestRound) return `${roundLabel(latestRound)} complete`;
+  }
+
+  const groupMatches = matches.filter((match) => match.stage === 'group');
+  if (groupMatches.some((match) => !isCompleted(match))) return 'Group stage underway';
+  if (groupMatches.length) return 'Knockout draw pending';
+
+  const status = String(tournament?.status || 'draft').toLowerCase();
+  if (status === 'groups_approved') return 'Group stage underway';
+  if (status === 'completed' || status === 'archived') return 'Tournament complete';
+  return status.replaceAll('_', ' ');
+}
+
 function finalSummary(matches, bracket) {
   const finals = matches.filter((match) => match.stage === 'knockout' && match.bracket === bracket && match.round === 'Final').sort((a, b) => Number(a.leg || 1) - Number(b.leg || 1));
   if (!finals.length || finals.some((match) => !isCompleted(match))) return null;
@@ -200,6 +224,7 @@ export default function PublicTournamentPage({ tournamentId, routeRows = [] }) {
       ? { ...match, home_score: null, away_score: null, winner_entry_id: null, loser_entry_id: null, status: 'scheduled' }
       : match);
   }, [datedMatches, knockoutOnly, knockoutFinalPublicResolved]);
+  const publicPhaseLabel = useMemo(() => publicTournamentPhase(tournament, publicMatches), [tournament, publicMatches]);
   const winners = useMemo(() => bracketsFrom(publicMatches).map((bracket) => finalSummary(publicMatches, bracket)).filter(Boolean), [publicMatches]);
   const hasHistoricWinners = honours.some((row) => Number(row.tournament_id) !== Number(tournamentId) && String(row.honour || '').toLowerCase().includes('winner'));
   const groupOptions = useMemo(() => groupCodesFrom(publicMatches), [publicMatches]);
@@ -318,8 +343,8 @@ export default function PublicTournamentPage({ tournamentId, routeRows = [] }) {
   const heroNextDetail = nextFixture ? `${formatDate(nextFixture.fixture_date)} · ${fixtureTitle(nextFixture)}` : finalReviewPending ? 'A provisional Final result is awaiting confirmation, admin review or appeal resolution.' : awaitingKnockoutDraw ? (stats.fixtures > 0 ? 'The current round is complete; the next round has not been generated yet.' : 'The knockout draw has not been generated yet.') : 'No upcoming fixtures listed';
 
   return <main className="app-shell public-archive tournament-hub">
-    <section className="hero tournament-hero"><p className="eyebrow">{tournament.game_worlds?.name || 'Top 100'} · {tournament.competition_types?.name || 'Youth Cup'} Hub</p><h1>{tournament.name}</h1><p>{tournament.status || 'draft'} · {stats.played} results · {heroRemaining} · {stats.goals} goals</p><div className="hero-countdown"><span>Next fixture</span><strong>{heroNextLabel}</strong><small>{heroNextDetail}</small></div></section>
-    <PublicTournamentSwitcher routes={routeRows} currentTournament={tournament} />
+    <section className="hero tournament-hero"><p className="eyebrow">{tournament.game_worlds?.name || 'Top 100'} · {tournament.competition_types?.name || 'Youth Cup'} Hub</p><h1>{tournament.name}</h1><p>{publicPhaseLabel} · {stats.played} results · {heroRemaining} · {stats.goals} goals</p><div className="hero-countdown"><span>Next fixture</span><strong>{heroNextLabel}</strong><small>{heroNextDetail}</small></div></section>
+    <PublicTournamentSwitcher routes={routeRows} currentTournament={tournament} currentPhaseLabel={publicPhaseLabel} />
     <nav className="public-section-nav" aria-label="Tournament sections"><a href="#summary">Summary</a><a href="#featured">Featured</a>{showWinners && <a href="#winners">Winners</a>}{!knockoutOnly && <a href="#groups">Groups</a>}<a href="#knockout">Knockout</a>{!knockoutOnly && <a href="#rankings">Best placed tables</a>}<a href="#fair-play">Fair Play</a><a href="#seedings">Seedings</a><a href="#brackets">Bracket</a></nav>
     <section id="summary" className="card format-summary-card"><div className="public-section-toolbar"><div><p className="eyebrow">Competition summary</p><h2>Tournament overview</h2></div>{!knockoutOnly && <a className="public-link-button" href={RULES_URL} target="_blank" rel="noreferrer">Read full rules</a>}</div><div className="hub-stat-grid"><StatCard label="Teams" value={tournament.actual_entries || entries.length || tournament.max_entries || '—'} note={knockoutOnly ? `Knockout only · ${tournament.knockout_teams || tournament.max_entries || 'TBC'}-team field` : tournament.group_count && tournament.teams_per_group ? `${tournament.group_count} groups of ${tournament.teams_per_group}` : 'Registered entrants'} /><StatCard label="Fixtures" value={stats.fixtures} note={finalReviewPending ? `${stats.played} confirmed · ${remainingNote}` : awaitingKnockoutDraw ? `${stats.played} played · ${remainingNote}` : `${stats.played} played, ${stats.remaining} remaining`} /><StatCard label="Goals" value={stats.goals} note={`${stats.avgGoals} per completed match`} /><StatCard label="Forfeits" value={stats.forfeits} note="Fair Play / prize draw watch" /></div><p className="muted">{knockoutOnly ? 'Teams are seeded directly into a single-elimination Cup draw by their saved rating seed. If the final field is not a power of two, the highest seeds receive the required byes.' : 'Teams are seeded by average rating into pots for the group draw. Knockout seeding is explained by the best 1st, 2nd and 3rd place tables below.'}</p>{!knockoutOnly && groupScheduleRows.length > 0 && <GroupSchedule rows={groupScheduleRows} />}{scheduleRows.length > 0 && <KnockoutSchedule rows={scheduleRows} />}</section>
     <section id="featured" className="card"><p className="eyebrow">Spotlight fixtures</p><h2>This week's storylines</h2><div className="featured-match-grid">{featured.length ? featured.map((match) => <FeaturedMatch key={match.id} match={match} tournamentId={tournamentId} />) : <p className="muted">No upcoming featured fixtures yet.</p>}</div></section>
