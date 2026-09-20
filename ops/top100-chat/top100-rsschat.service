@@ -8,6 +8,8 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=/opt/top100-rsschat
+Environment=HOME=/opt/top100-rsschat
+ExecStartPre=/opt/top100-chat/ensure-native-deps.sh
 ExecStart=/usr/bin/node /opt/top100-rsschat/rssnetwork.js
 Restart=on-failure
 RestartSec=3
