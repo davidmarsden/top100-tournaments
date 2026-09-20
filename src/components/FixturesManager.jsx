@@ -42,6 +42,17 @@ function knockoutResultLockReason(fixture, fixtures, knockoutOnly) {
   const legacyBye = !fixture.away_entry_id && String(fixture.away_placeholder || '').trim().toUpperCase() === 'BYE';
   if (explicitBye || legacyBye) return 'Automatic BYE result — fixed by the draw.';
 
+  if (Number(fixture.leg || 1) === 1) {
+    const decidingLeg = fixtures.find((other) =>
+      other.stage === 'knockout'
+      && (other.bracket || 'Cup') === (fixture.bracket || 'Cup')
+      && other.round === fixture.round
+      && Number(other.match_order || 0) === Number(fixture.match_order || 0)
+      && Number(other.leg || 1) === 2
+      && isCompleted(other));
+    if (decidingLeg) return 'Reset the completed 2nd leg before changing the 1st-leg result.';
+  }
+
   const currentRank = roundSortValue(fixture.round);
   if (currentRank === 99) return '';
   const bracket = fixture.bracket || 'Cup';
