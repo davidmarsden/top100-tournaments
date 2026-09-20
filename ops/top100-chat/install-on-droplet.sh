@@ -67,6 +67,10 @@ fetch_top100_file "ops/top100-chat/Caddyfile.example" "${tmpdir}/top100-chat.cad
 node "${tmpdir}/apply-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
 node "${tmpdir}/verify-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
 
+# Older installs may leave this directory owned by www-data. Harden the
+# destination before installing any executable into it so the running gateway
+# cannot replace a root-owned helper between install and execution.
+
 # Only after all root-executed deployment helpers have run do we replace the
 # live gateway files. This avoids ever executing service-writable code as root
 # during upgrades from older installations.
