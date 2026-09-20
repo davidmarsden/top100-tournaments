@@ -51,15 +51,6 @@ replaceOnce(
   '\t\theadElements.description = "Posts by " + userRec.screenname + " on " + config.productNameForDisplay; // TOP100 CHAT OVERLAY\n'
 );
 
-replaceOnce(
-  'private chat sign-out',
-  '\tfunction signOut () {\n\t\tdelete localStorage.rssNetworkMemory;\n\t\tlocation.reload ();\n\t\t}\n',
-  '\tfunction signOut () { // TOP100 CHAT OVERLAY -- leave through the private auth gateway\n' +
-  '\t\tdelete localStorage.rssNetworkMemory;\n' +
-  '\t\tlocation.href = "/auth/logout";\n' +
-  '\t\t}\n'
-);
-
 const helperAnchor='\tfunction httpRequest (url, timeout, headers, callback) { //7/30/26 by DW\n';
 const helperIndex=source.indexOf(helperAnchor);
 if (helperIndex < 0) throw new Error('Overlay anchor not found: helper insertion');
