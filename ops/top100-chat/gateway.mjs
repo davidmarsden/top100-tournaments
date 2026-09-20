@@ -15,6 +15,8 @@ const sessionLifetimeSeconds = Number(process.env.TOP100_CHAT_SESSION_SECONDS ||
 const here = path.dirname(fileURLToPath(import.meta.url));
 const shellHtml = fs.readFileSync(path.join(here, 'shell.html'), 'utf8');
 const usedNonces = new Map();
+const upstreamClientHome = 'https://code.scripting.com/rsschat/index.html';
+let clientHomeCache = '';
 
 if (ssoSecret.length < 32) {
   console.error('TOP100_CHAT_SSO_SECRET must be at least 32 characters.');
@@ -114,6 +116,52 @@ location.replace(${JSON.stringify(target)});
 </script></body></html>`;
 }
 
+async function getTop100ClientHome() {
+  if (clientHomeCache) return clientHomeCache;
+
+  const upstream = await fetch(upstreamClientHome, {
+    headers: { 'User-Agent': 'Top100Chat/1.0' },
+  });
+  if (!upstream.ok) throw new Error(`Could not fetch rss.chat client source: HTTP ${upstream.status}`);
+
+  const html = await upstream.text();
+  const marker = '</body>';
+  if (!html.includes(marker)) throw new Error('rss.chat client source is missing </body>.');
+
+  const logoutShim = `
+<script>
+(function () {
+  function top100Logout () {
+    try { localStorage.removeItem('rssNetworkMemory'); } catch (e) {}
+    location.href = '/auth/logout';
+  }
+
+  window.signOutCommand = function () {
+    if (typeof confirmDialog === 'function') {
+      confirmDialog('OK to sign out?', top100Logout);
+    } else if (window.confirm('OK to sign out?')) {
+      top100Logout();
+    }
+  };
+
+  var attempts = 0;
+  var timer = setInterval(function () {
+    attempts += 1;
+    if (window.globals && globals.myRssNetwork) {
+      globals.myRssNetwork.signOut = top100Logout;
+      clearInterval(timer);
+    } else if (attempts >= 200) {
+      clearInterval(timer);
+    }
+  }, 50);
+})();
+</script>
+`;
+
+  clientHomeCache = html.replace(marker, logoutShim + marker);
+  return clientHomeCache;
+}
+
 async function claim(request, response, url) {
   try {
     cleanExpiredNonces();
@@ -156,6 +204,17 @@ async function claim(request, response, url) {
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, 'https://chat.smtop100.blog');
+
+  if (url.pathname === '/client-home') {
+    try {
+      const html = await getTop100ClientHome();
+      send(response, 200, html, { 'Content-Type': 'text/html; charset=utf-8' });
+    } catch (error) {
+      console.error('client-home:', error.message);
+      send(response, 502, 'Top 100 Chat client source unavailable.', { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    return;
+  }
 
   if (url.pathname === '/login' || url.pathname === '/login/') {
     send(response, 200, shellHtml.replace('{{ERROR}}', url.searchParams.get('error') ? '<p class="notice">That sign-in link could not be used. Please sign in again.</p>' : ''), {
