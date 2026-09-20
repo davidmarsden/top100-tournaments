@@ -138,7 +138,7 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
     <section className="entrant-panel">
       <p className="eyebrow">Knockout-only tournament</p>
       <h3>Seeded Cup draw</h3>
-      <p className="muted">There is no group stage. The saved entrant seeds determine a fixed single-elimination bracket. Fields that are not powers of two receive automatic byes for the highest seeds. Each real tie is ${legCount === 2 ? 'two legs, home and away' : 'one leg'}. ${legCount === 2 ? 'The app resolves aggregate, then away goals, then Fictional Extra Time if needed.' : 'Enter the final score including any Fictional Extra Time resolution so a winner is recorded.'}</p>
+      <p className="muted">There is no group stage. The saved entrant seeds determine a fixed single-elimination bracket. Fields that are not powers of two receive automatic byes for the highest seeds. Each real tie is {legCount === 2 ? 'two legs, home and away' : 'one leg'}. {legCount === 2 ? 'The app resolves aggregate, then away goals, then Fictional Extra Time if needed.' : 'Enter the final score including any Fictional Extra Time resolution so a winner is recorded.'}</p>
       <div className="overview-metrics compact-metrics">
         <article><span>Entrants</span><strong>{entries.length}/{configuredEntrants || 'TBC'}</strong></article>
         <article><span>Opening round</span><strong>{configuredEntrants ? roundForSize(nextPowerOfTwo(configuredEntrants))?.name || 'TBC' : 'TBC'}</strong></article>
