@@ -36,13 +36,17 @@ This avoids collisions and prevents a user choosing another manager's identity.
 
 The existing Commons Chat Droplet can host this as a second, isolated instance if capacity is acceptable:
 
-- Commons rss.chat: existing service/ports
+- Commons rss.chat HTTP: `127.0.0.1:1420`
+- Commons Chat WebSocket: `1462`
 - Top 100 rss.chat HTTP: `127.0.0.1:1430`
+- Top 100 Chat WebSocket: `1463`
 - Top 100 auth gateway: `127.0.0.1:1470`
 - Top 100 database: a separate SQLite database under `/opt/top100-rsschat/data/`
 - Public hostname: `chat.smtop100.blog`
 
 Do not point Top 100 at the Commons Chat database.
+
+Port `2587` is unrelated to web traffic: it is the Resend STARTTLS SMTP port used because DigitalOcean blocks the usual outbound SMTP ports. Caddy continues to terminate public HTTPS on port 443 for both chat hostnames.
 
 Before enabling the second Node instance on the 1 GB Droplet, check current memory/swap pressure. If it is tight, resize the existing Droplet rather than silently risking both communities.
 
@@ -79,6 +83,17 @@ Use at least 32 random bytes. Never commit it.
 
 The gateway derives a separate cookie-signing key from this secret using HMAC-SHA256.
 
+## One-command Droplet install
+
+After the matching `TOP100_CHAT_SSO_SECRET` has been set in Netlify, run the version-controlled installer as root on the existing Commons Chat Droplet:
+
+```bash
+TOP100_CHAT_SSO_SECRET='<same secret as Netlify>' \
+  bash /path/to/top100-tournaments/ops/top100-chat/install-on-droplet.sh
+```
+
+The installer deliberately leaves the Commons Chat service and its ports alone. It installs a second pinned rss.chat copy, a separate SQLite database, the Top 100 auth gateway, two systemd units, and appends a validated `chat.smtop100.blog` site block to Caddy. It backs up the Caddyfile before changing it and restores the backup if validation fails.
+
 ## Applying the rss.chat overlay
 
 The pinned upstream is:
@@ -107,11 +122,10 @@ A request without a valid clubhouse cookie is redirected to the public login she
 Logged out:
 
 ```bash
-curl -I https://chat.smtop100.blog/
-curl -I https://chat.smtop100.blog/getrecentitems
-curl -I https://chat.smtop100.blog/data/subs.opml
-curl -I https://chat.smtop100.blog/users/manager1/rss.xml
+bash ops/top100-chat/smoke-test.sh
 ```
+
+The smoke test covers the root, recent-items API, thread API, OPML, user RSS and feed endpoint.
 
 All content-bearing requests must redirect to `/login` (or otherwise return no chat data).
 
