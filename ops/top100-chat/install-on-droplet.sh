@@ -115,14 +115,39 @@ install -m 0644 "${tmpdir}/top100-rsschat.service" /etc/systemd/system/top100-rs
 install -m 0644 "${tmpdir}/top100-chat-gateway.service" /etc/systemd/system/top100-chat-gateway.service
 
 systemctl daemon-reload
-systemctl enable --now top100-rsschat.service
-systemctl enable --now top100-chat-gateway.service
+systemctl enable top100-rsschat.service
+systemctl enable top100-chat-gateway.service
+systemctl restart top100-rsschat.service
+systemctl restart top100-chat-gateway.service
 
-sleep 2
+wait_for_url () {
+  local name="$1"
+  local url="$2"
+  local attempts="${3:-20}"
+  local delay="${4:-1}"
+  local attempt
+
+  for ((attempt=1; attempt<=attempts; attempt++)); do
+    if curl -fsS --max-time 3 "${url}" >/dev/null 2>&1; then
+      echo "${name} is ready."
+      return 0
+    fi
+    if ! systemctl --quiet is-active top100-rsschat.service || ! systemctl --quiet is-active top100-chat-gateway.service; then
+      echo "A Top 100 Chat service stopped while waiting for readiness." >&2
+      systemctl status top100-rsschat.service top100-chat-gateway.service --no-pager -l >&2 || true
+      return 1
+    fi
+    sleep "${delay}"
+  done
+
+  echo "${name} did not become ready after ${attempts} attempts." >&2
+  return 1
+}
+
 systemctl --quiet is-active top100-rsschat.service
 systemctl --quiet is-active top100-chat-gateway.service
-curl -fsS --max-time 5 http://127.0.0.1:1470/login >/dev/null
-curl -fsS --max-time 5 http://127.0.0.1:1430/ >/dev/null
+wait_for_url "Top 100 auth gateway" "http://127.0.0.1:1470/login"
+wait_for_url "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/"
 
 if ! ss -lnt | grep -Eq '127\.0\.0\.1:1430|0\.0\.0\.0:1430|\[::\]:1430'; then
   echo "Top 100 rss.chat HTTP port 1430 is not listening." >&2
@@ -132,8 +157,21 @@ if ! ss -lnt | grep -Eq '127\.0\.0\.1:1470|0\.0\.0\.0:1470|\[::\]:1470'; then
   echo "Top 100 auth gateway port 1470 is not listening." >&2
   exit 1
 fi
-if ! ss -lnt | grep -Eq ':1463[[:space:]]'; then
-  echo "Top 100 rss.chat WebSocket port 1463 is not listening." >&2
+
+websocket_ready=false
+for attempt in {1..20}; do
+  if ss -lnt | grep -Eq ':1463[[:space:]]'; then
+    websocket_ready=true
+    break
+  fi
+  if ! systemctl --quiet is-active top100-rsschat.service; then
+    break
+  fi
+  sleep 1
+done
+if [[ "${websocket_ready}" != "true" ]]; then
+  echo "Top 100 rss.chat WebSocket port 1463 did not become ready." >&2
+  systemctl status top100-rsschat.service --no-pager -l >&2 || true
   exit 1
 fi
 
@@ -142,18 +180,57 @@ if [[ ! -f "${CADDY_FILE}" ]]; then
   exit 1
 fi
 
-if ! grep -q 'chat\.smtop100\.blog' "${CADDY_FILE}"; then
-  cp -a "${CADDY_FILE}" "${CADDY_FILE}.pre-top100-chat-${timestamp}"
-  printf '\n# Top 100 private chat — added %s\n' "${timestamp}" >> "${CADDY_FILE}"
-  cat "${tmpdir}/top100-chat.caddy" >> "${CADDY_FILE}"
-  caddy fmt --overwrite "${CADDY_FILE}"
-fi
+backup="${CADDY_FILE}.pre-top100-chat-${timestamp}"
+cp -a "${CADDY_FILE}" "${backup}"
+
+# Replace the actual chat.smtop100.blog site block on every deployment rather
+# than assuming any mention of the hostname means the current block is right.
+# This upgrades older installs and ignores comments containing the hostname.
+awk '
+  BEGIN { skipping=0; depth=0 }
+  {
+    if (!skipping && $0 ~ /^[[:space:]]*chat\.smtop100\.blog[[:space:]]*\{[[:space:]]*$/) {
+      skipping=1
+      line=$0
+      opens=gsub(/\{/, "{", line)
+      closes=gsub(/\}/, "}", line)
+      depth=opens-closes
+      next
+    }
+    if (skipping) {
+      line=$0
+      opens=gsub(/\{/, "{", line)
+      closes=gsub(/\}/, "}", line)
+      depth += opens-closes
+      if (depth <= 0) {
+        skipping=0
+        depth=0
+      }
+      next
+    }
+    print
+  }
+  END {
+    if (skipping) exit 42
+  }
+' "${CADDY_FILE}" > "${tmpdir}/Caddyfile.without-top100" || {
+  status=$?
+  cp -a "${backup}" "${CADDY_FILE}"
+  if [[ "${status}" -eq 42 ]]; then
+    echo "Existing chat.smtop100.blog Caddy block is unbalanced; left Caddy unchanged." >&2
+  else
+    echo "Could not rewrite the Caddyfile; left Caddy unchanged." >&2
+  fi
+  exit 1
+}
+
+cat "${tmpdir}/Caddyfile.without-top100" > "${CADDY_FILE}"
+printf '\n# Top 100 private chat — managed by install-on-droplet.sh (%s)\n' "${timestamp}" >> "${CADDY_FILE}"
+cat "${tmpdir}/top100-chat.caddy" >> "${CADDY_FILE}"
+caddy fmt --overwrite "${CADDY_FILE}"
 
 if ! caddy validate --config "${CADDY_FILE}"; then
-  backup="${CADDY_FILE}.pre-top100-chat-${timestamp}"
-  if [[ -f "${backup}" ]]; then
-    cp -a "${backup}" "${CADDY_FILE}"
-  fi
+  cp -a "${backup}" "${CADDY_FILE}"
   echo "Caddy validation failed. Restored the previous Caddyfile." >&2
   exit 1
 fi
