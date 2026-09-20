@@ -26,7 +26,7 @@ function resolveFinal(matches, bracket) {
   const secondName = teamNameFromEntry(first.away_entry, first.away_placeholder);
   let firstAgg = 0, secondAgg = 0, firstAway = 0, secondAway = 0;
   ordered.forEach((leg) => {
-    const home = Number(leg.home_score || 0), away = Number(leg.away_score || 0);
+    const home = Number(leg.home_normal_time_score ?? leg.home_score ?? 0), away = Number(leg.away_normal_time_score ?? leg.away_score ?? 0);
     if (leg.home_entry_id === firstId) { firstAgg += home; secondAgg += away; secondAway += away; }
     else { firstAgg += away; secondAgg += home; firstAway += away; }
   });
@@ -58,7 +58,7 @@ export default function PublicPageManager({ selectedTournament, onTournamentUpda
     if (!tournamentId) return;
     setLoading(true); setStatus('Loading tournament summary...');
     const [matchesResult, submissionsResult] = await Promise.all([
-      supabase.from('matches').select('id, stage, status, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
+      supabase.from('matches').select('id, stage, status, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
       supabase.from('manager_result_submissions').select('match_id, status'),
     ]);
     const error = matchesResult.error || submissionsResult.error;
