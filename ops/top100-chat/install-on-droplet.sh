@@ -93,7 +93,10 @@ cat > "${RSS_DIR}/config.json" <<'JSON'
 JSON
 
 install -d -m 0750 "${RSS_DIR}/data"
-chown -R www-data:www-data "${RSS_DIR}" "${GATEWAY_DIR}"
+chown -R www-data:www-data "${RSS_DIR}"
+chown -R root:root "${GATEWAY_DIR}"
+find "${GATEWAY_DIR}" -type d -exec chmod 0755 {} +
+find "${GATEWAY_DIR}" -type f -exec chmod 0644 {} +
 chmod 0755 "${GATEWAY_DIR}/ensure-native-deps.sh" "${GATEWAY_DIR}/smoke-test.sh"
 
 echo "Installing rss.chat dependencies..."
@@ -128,18 +131,18 @@ systemctl enable top100-chat-gateway.service
 systemctl restart top100-chat-gateway.service
 systemctl restart top100-rsschat.service
 
-wait_for_url () {
+wait_for_http_status () {
   local name="$1"
   local url="$2"
-  local attempts="${3:-20}"
-  local delay="${4:-1}"
-  local attempt
+  local expected_status="$3"
+  local attempts="${4:-20}"
+  local delay="${5:-1}"
+  local attempt status
 
   for ((attempt=1; attempt<=attempts; attempt++)); do
-    # Any HTTP response proves the listener is up. rss.chat intentionally
-    # answers 404 at /, so curl -f would misclassify a healthy service.
-    if curl -sS --max-time 3 "${url}" >/dev/null 2>&1; then
-      echo "${name} is ready."
+    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "${url}" 2>/dev/null || true)"
+    if [[ "${status}" == "${expected_status}" ]]; then
+      echo "${name} is ready (${status})."
       return 0
     fi
     if ! systemctl --quiet is-active top100-rsschat.service || ! systemctl --quiet is-active top100-chat-gateway.service; then
@@ -150,14 +153,14 @@ wait_for_url () {
     sleep "${delay}"
   done
 
-  echo "${name} did not become ready after ${attempts} attempts." >&2
+  echo "${name} did not return expected HTTP ${expected_status} after ${attempts} attempts (last status: ${status:-none})." >&2
   return 1
 }
 
 systemctl --quiet is-active top100-rsschat.service
 systemctl --quiet is-active top100-chat-gateway.service
-wait_for_url "Top 100 auth gateway" "http://127.0.0.1:1470/login"
-wait_for_url "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/"
+wait_for_http_status "Top 100 auth gateway" "http://127.0.0.1:1470/login" "200"
+wait_for_http_status "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/" "404"
 
 if ! ss -lnt | grep -Eq '127\.0\.0\.1:1430|0\.0\.0\.0:1430|\[::\]:1430'; then
   echo "Top 100 rss.chat HTTP port 1430 is not listening." >&2
