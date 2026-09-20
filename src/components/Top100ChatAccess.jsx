@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
+const CHAT_SESSION_TIMEOUT_MS = 8000;
+
+function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSION_TIMEOUT_MS) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = window.setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), ms);
+    }),
+  ]).finally(() => window.clearTimeout(timer));
+}
+
 export default function Top100ChatAccess() {
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState('');
@@ -37,16 +49,17 @@ export default function Top100ChatAccess() {
     }
 
     let active = true;
-    supabase.auth.getSession().then(({ data, error }) => {
+    withChatTimeout(supabase.auth.getSession(), 'Sign-in check').then(({ data, error }) => {
       if (!active) return;
-      if (error) {
-        setStatus(error.message);
-        setBusy(false);
-        return;
-      }
+      if (error) throw error;
       setSession(data.session || null);
       setBusy(false);
       if (!data.session) setStatus('');
+    }).catch((error) => {
+      if (!active) return;
+      setSession(null);
+      setBusy(false);
+      setStatus(error?.message || 'We could not check your sign-in. Please try again.');
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
