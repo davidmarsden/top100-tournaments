@@ -1,0 +1,21 @@
+chat.smtop100.blog {
+    encode zstd gzip
+
+    @public path /login /login/* /auth/claim /auth/check /auth/logout
+    handle @public {
+        reverse_proxy 127.0.0.1:1470
+    }
+
+    handle {
+        forward_auth 127.0.0.1:1470 {
+            uri /auth/check
+        }
+
+        header {
+            X-Robots-Tag "noindex, nofollow, noarchive"
+            Referrer-Policy "same-origin"
+        }
+
+        reverse_proxy 127.0.0.1:1430
+    }
+}
