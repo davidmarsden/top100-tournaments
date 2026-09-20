@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const CHAT_SESSION_TIMEOUT_MS = 8000;
+const chatAuthClient = hasSupabaseConfig ? createClient(
+  String(import.meta.env.VITE_SUPABASE_URL || '').trim(),
+  String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim(),
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  },
+) : null;
 
 function readHashAccessToken() {
   if (typeof window === 'undefined' || !window.location.hash) return '';
@@ -158,7 +170,7 @@ export default function Top100ChatAccess() {
     setStatus('Sending your secure sign-in link…');
     try {
       const { error } = await withChatTimeout(
-        supabase.auth.signInWithOtp({
+        chatAuthClient.auth.signInWithOtp({
           email: email.trim(),
           options: {
             emailRedirectTo: 'https://manager.smtop100.blog/chat',
