@@ -59,9 +59,12 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
       setStatus('Tournament structure cannot be changed after groups or fixtures have been created.');
       return false;
     }
-    if ((knockoutFieldChanged || knockoutLegCountChanged) && hasMatches) {
-      setStatus('The knockout field size and leg format are locked after the opening draw has been generated. Roll back the draw before changing them.');
+    if (knockoutFieldChanged && hasMatches) {
+      setStatus('The knockout field size is locked after the opening draw has been generated. Roll back the draw before changing it.');
       return false;
+    }
+    if (knockoutLegCountChanged && hasMatches) {
+      setStatus('The app will convert the existing opening draw only if it is still pristine: one round and no real result or ruling recorded.');
     }
     return true;
   }
@@ -89,6 +92,18 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
         setStatus('Knockout teams cannot exceed the final entry count.');
         return;
       }
+      const legCountChanged = knockoutOnly && Number(selectedTournament?.knockout_leg_count || 1) !== knockoutLegCount;
+      if (legCountChanged) {
+        const { error: legError } = await supabase.rpc('set_knockout_leg_count_atomic', {
+          p_tournament_id: selectedTournament.id,
+          p_leg_count: knockoutLegCount,
+        });
+        if (legError) {
+          setStatus('Could not change knockout leg format: ' + legError.message);
+          return;
+        }
+      }
+
       const payload = {
         tournament_structure: form.structure,
         max_entries: maxEntries,
