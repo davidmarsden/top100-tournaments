@@ -3,6 +3,7 @@ const ROUND_LABELS = { R64: 'Round of 64', R32: 'Round of 32', R16: 'Round of 16
 
 const key = (value) => String(value || '');
 const isCompleted = (match) => match.status === 'played' || match.status === 'forfeit';
+const isResolved = (match) => isCompleted(match) || match.status === 'voided';
 const roundIndex = (round) => { const index = ROUND_ORDER.indexOf(round); return index >= 0 ? index : 99; };
 const roundLabel = (round) => ROUND_LABELS[round] || round || 'Round';
 const managerName = (entry) => entry?.managers?.display_name || entry?.managers?.name || 'TBC';
@@ -149,7 +150,7 @@ export function fixtureSpotlights(matches, entries, honours, tables) {
   const completed = matches.filter((match) => isCompleted(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date) <= today).sort((a, b) => sortMatches(b, a));
   const latestCompletedDate = completed[0]?.fixture_date;
   const recentResults = latestCompletedDate ? completed.filter((match) => match.fixture_date === latestCompletedDate) : [];
-  const upcoming = matches.filter((match) => !isCompleted(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date) >= today).sort(sortMatches);
+  const upcoming = matches.filter((match) => !isResolved(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date) >= today).sort(sortMatches);
   const nextDate = upcoming[0]?.fixture_date;
   const nextFixtures = nextDate ? upcoming.filter((match) => match.fixture_date === nextDate) : [];
 
