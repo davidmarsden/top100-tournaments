@@ -1,0 +1,6 @@
+{
+  "repository": "scripting/rss.chat",
+  "commit": "0a77f7b0cdb6d61291248ded69daa6b78f10860a",
+  "version": "0.6.14",
+  "serverFile": "server/code/rssnetwork.js"
+}
