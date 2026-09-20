@@ -103,9 +103,9 @@ export function TournamentProvider({ children }) {
   async function loadTournaments() {
     setLoading(true);
     setStatus('Loading tournaments...');
-    const fullSelect = 'id, name, status, source, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, tournament_structure, created_at, season_number, public_slug, slug, is_public, archive_quality, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)';
+    const fullSelect = 'id, name, status, source, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, tournament_structure, knockout_leg_count, created_at, season_number, public_slug, slug, is_public, archive_quality, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)';
     let result = await supabase.from('tournaments').select(fullSelect).order('created_at', { ascending: false });
-    if (result.error) result = await supabase.from('tournaments').select('id, name, status, source, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, created_at, season_number, public_slug, slug, is_public, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)').order('created_at', { ascending: false });
+    if (result.error) result = await supabase.from('tournaments').select('id, name, status, source, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, knockout_leg_count, created_at, season_number, public_slug, slug, is_public, registration_status, game_worlds(id, name, slug), competition_types(id, name, slug)').order('created_at', { ascending: false });
     if (result.error) result = await supabase.from('tournaments').select('id, name, status, max_entries, actual_entries, group_count, teams_per_group, knockout_teams, secondary_bracket_name, created_at').order('created_at', { ascending: false });
     const { data, error } = result;
     if (error) setStatus('Could not load tournaments: ' + error.message);
@@ -129,7 +129,7 @@ export function TournamentProvider({ children }) {
       groupPlayed: groupMatches.filter(completed).length,
       knockoutTotal: knockoutMatches.length,
       knockoutPlayed: knockoutMatches.filter(completed).length,
-      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => ['played', 'forfeit'].includes(match.status) && Boolean(match.winner_entry_id)) && !finalUnderReview,
+      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => ['played', 'forfeit'].includes(match.status)) && finalMatches.some((match) => Boolean(match.winner_entry_id)) && !finalUnderReview,
     });
   }
   async function refreshTournamentData() { await loadTournaments(); const tournamentId = selectedTournament?.id || selectedTournamentId; if (tournamentId) await loadProgressStats(tournamentId); }

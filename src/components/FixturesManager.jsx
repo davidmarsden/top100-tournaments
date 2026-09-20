@@ -42,6 +42,17 @@ function knockoutResultLockReason(fixture, fixtures, knockoutOnly) {
   const legacyBye = !fixture.away_entry_id && String(fixture.away_placeholder || '').trim().toUpperCase() === 'BYE';
   if (explicitBye || legacyBye) return 'Automatic BYE result — fixed by the draw.';
 
+  if (Number(fixture.leg || 1) === 1) {
+    const decidingLeg = fixtures.find((other) =>
+      other.stage === 'knockout'
+      && (other.bracket || 'Cup') === (fixture.bracket || 'Cup')
+      && other.round === fixture.round
+      && Number(other.match_order || 0) === Number(fixture.match_order || 0)
+      && Number(other.leg || 1) === 2
+      && isCompleted(other));
+    if (decidingLeg) return 'Reset the completed 2nd leg before changing the 1st-leg result.';
+  }
+
   const currentRank = roundSortValue(fixture.round);
   if (currentRank === 99) return '';
   const bracket = fixture.bracket || 'Cup';
@@ -200,6 +211,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
   const [roundDate, setRoundDate] = useState('');
   const tournamentId = selectedTournament?.id;
   const knockoutOnly = selectedTournament?.tournament_structure === 'knockout_only';
+  const knockoutLegCount = Number(selectedTournament?.knockout_leg_count || 1);
   const allowTestAutofill = !knockoutOnly;
 
   useEffect(() => {
@@ -285,9 +297,9 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
   }
 
   function knockoutDraft(fixture, homeScore, awayScore) {
-    if (stage !== 'knockout' || ruling !== 'played') return { requiresFet: false, snapshot: null, oneLeg: false };
+    if (stage !== 'knockout' || ruling === 'double_forfeit') return { requiresFet: false, snapshot: null, oneLeg: false };
     const legs = tieLegs(fixtures, fixture);
-    const oneLeg = knockoutOnly || !hasSecondLeg(fixture.bracket, fixture.round) || legs.length === 1;
+    const oneLeg = legs.length === 1 || (!knockoutOnly && !hasSecondLeg(fixture.bracket, fixture.round));
     const override = new Map([[fixture.id, { home_score: homeScore, away_score: awayScore }]]);
     const snapshot = tieSnapshot(legs, override);
     if (!snapshot) return { requiresFet: oneLeg && homeScore === awayScore, snapshot: null, oneLeg };
@@ -348,6 +360,21 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     const draft = knockoutDraft(fixture, homeScore, awayScore);
     let resolution = {};
     let confirmationExtra = '';
+
+    if (stage === 'knockout' && !draft.oneLeg && draft.snapshot) {
+      const decidingLegNumber = Math.max(...draft.snapshot.ordered.map((leg) => Number(leg.leg || 1)));
+      const currentIsDecidingLeg = Number(fixture.leg || 1) === decidingLegNumber;
+      if (!currentIsDecidingLeg) {
+        resolution = { overrideWinner: true, winner_entry_id: null, loser_entry_id: null };
+      } else if (draft.snapshot.winnerId) {
+        resolution = {
+          overrideWinner: true,
+          winner_entry_id: draft.snapshot.winnerId,
+          loser_entry_id: draft.snapshot.loserId,
+          decided_by: draft.snapshot.reason,
+        };
+      }
+    }
 
     if (draft.requiresFet) {
       const fet = calculateFetFromStats({
@@ -468,7 +495,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
 
     if (stage === 'knockout') {
       const results = await Promise.all(targets.map((fixture) => {
-        const oneLegOnly = knockoutOnly || !hasSecondLeg(fixture.bracket, fixture.round);
+        const oneLegOnly = knockoutOnly ? tieLegs(fixtures, fixture).length < 2 : !hasSecondLeg(fixture.bracket, fixture.round);
         const fixtureDate = oneLegOnly || Number(fixture.leg || 1) === 1 ? roundDate : addDays(roundDate, 7);
         return supabase.from('matches').update({ fixture_date: fixtureDate }).eq('id', fixture.id);
       }));
@@ -476,7 +503,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       if (error) setStatus(`Date save failed: ${error.message}`);
       else {
         const sample = targets[0];
-        const oneLegOnly = knockoutOnly || (sample && !hasSecondLeg(sample.bracket, sample.round));
+        const oneLegOnly = knockoutOnly ? (sample ? tieLegs(fixtures, sample).length < 2 : knockoutLegCount === 1) : (sample && !hasSecondLeg(sample.bracket, sample.round));
         setStatus(oneLegOnly ? `Date applied: ${formatDate(roundDate)}.` : `Dates applied: 1st legs ${formatDate(roundDate)}, 2nd legs ${formatDate(addDays(roundDate, 7))}.`);
         await loadFixtures();
       }
@@ -533,7 +560,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
     : onlyOutstanding
       ? stage === 'knockout'
         ? knockoutOnly
-          ? 'Only unplayed knockout fixtures are shown here. Every tie is one leg.'
+          ? (knockoutLegCount === 2 ? 'Only unplayed knockout fixtures are shown here. Real ties are home-and-away; choose a 1st-leg date and the 2nd leg is dated seven days later.' : 'Only unplayed knockout fixtures are shown here. Every tie is one leg.')
           : 'Only unplayed knockout fixtures are shown here. R32 is one leg; two-legged rounds use the chosen date for 1st legs and seven days later for 2nd legs.'
         : 'Only unplayed fixtures are shown here. Results move to the Results page once saved.'
       : 'Load saved fixtures, enter official results, record forfeits, and resolve knockout ties through aggregate, away goals and progressive Fictional Extra Time.';
@@ -566,7 +593,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
           </select>
         </label>
         {!onlyCompleted && <>
-          <label>{stage === 'knockout' ? (knockoutOnly ? 'Apply date to visible ties' : 'Apply 1st-leg date to visible ties') : 'Apply date to visible fixtures'}
+          <label>{stage === 'knockout' ? (knockoutOnly && knockoutLegCount === 1 ? 'Apply date to visible ties' : 'Apply 1st-leg date to visible ties') : 'Apply date to visible fixtures'}
             <input type="date" value={roundDate} onChange={(event) => setRoundDate(event.target.value)} />
           </label>
           <button type="button" className="secondary" onClick={setVisibleRoundDate} disabled={loading}>Set date</button>
@@ -618,7 +645,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
                         <span className="score-pill">{scoreLabel(fixture)}</span>
                         <strong>{awayName}</strong>
                       </div>
-                      <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {knockoutOnly && stage === 'knockout' ? 'single leg' : legLabel(fixture.leg || 1)}</p>
+                      <p className="eyebrow">{fixture.status?.replaceAll('_', ' ') || 'scheduled'} · {knockoutOnly && stage === 'knockout' && knockoutLegCount === 1 ? 'single leg' : legLabel(fixture.leg || 1)}</p>
                       {(fixture.decided_by === 'fictional_extra_time' || fixture.decided_by === 'manual') && <p className="muted">Normal time: {fixture.home_normal_time_score ?? fixture.home_score}–{fixture.away_normal_time_score ?? fixture.away_score} · FET goals: {fixture.home_extra_time_score ?? 0}–{fixture.away_extra_time_score ?? 0} · Final: {fixture.home_score}–{fixture.away_score}{fixture.decided_by === 'manual' ? ' · manual decider' : ''}</p>}
                       {doubleForfeit && <p className="muted">{stage === 'knockout' ? 'Double forfeit: 0–0, both teams eliminated. No team advances or drops into the consolation bracket.' : 'Double forfeit: 0–0, both teams receive a loss and zero points.'}</p>}
                       {fixture.status === 'forfeit' && !doubleForfeit && <p className="muted">Forfeit ruling recorded.</p>}

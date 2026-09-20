@@ -153,7 +153,7 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
       knockoutMatches: knockoutMatches.length,
       knockoutPlayed: knockoutMatches.filter(isPlayed).length,
       finalUnderReview,
-      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => isPlayed(match) && Boolean(match.winner_entry_id)) && !finalUnderReview,
+      finalComplete: finalMatches.length > 0 && finalMatches.every((match) => isPlayed(match)) && finalMatches.some((match) => Boolean(match.winner_entry_id)) && !finalUnderReview,
       pendingRegistrations: registrations.filter((row) => row.status === 'pending').length,
       approvedUnpromoted: registrations.filter((row) => row.status === 'approved' && !row.promoted_entry_id).length,
     });

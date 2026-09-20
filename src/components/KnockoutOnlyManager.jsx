@@ -59,6 +59,7 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
   const roundsPresent = useMemo(() => ROUND_SEQUENCE.filter((round) => cupMatches.some((match) => match.round === round.name)), [cupMatches]);
   const latestRound = roundsPresent[roundsPresent.length - 1] || null;
   const configuredEntrants = Number(selectedTournament?.knockout_teams || 0);
+  const legCount = Number(selectedTournament?.knockout_leg_count || 1);
 
   async function generateOpeningRound() {
     if (cupMatches.length) return setStatus('The knockout draw already exists.');
@@ -124,7 +125,7 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
       setStatus('Round rollback failed: ' + error.message);
     } else {
       const rolledBack = data || {};
-      setStatus(`${rolledBack.round || latestRound.name} rolled back (${Number(rolledBack.deleted_matches || 0)} ties removed).`);
+      setStatus(`${rolledBack.round || latestRound.name} rolled back (${Number(rolledBack.deleted_matches || 0)} fixture(s) removed).`);
       await loadData();
       await onDataChanged?.();
     }
@@ -137,10 +138,11 @@ export default function KnockoutOnlyManager({ selectedTournament, onDataChanged 
     <section className="entrant-panel">
       <p className="eyebrow">Knockout-only tournament</p>
       <h3>Seeded Cup draw</h3>
-      <p className="muted">There is no group stage. The saved entrant seeds determine a fixed single-elimination bracket. Fields that are not powers of two receive automatic byes for the highest seeds. Each tie is one leg; enter the final score including any fictional extra-time resolution so a winner is recorded.</p>
+      <p className="muted">There is no group stage. The saved entrant seeds determine a fixed single-elimination bracket. Fields that are not powers of two receive automatic byes for the highest seeds. Each real tie is {legCount === 2 ? 'two legs, home and away' : 'one leg'}. {legCount === 2 ? 'The app resolves aggregate, then away goals, then Fictional Extra Time if needed.' : 'Enter the final score including any Fictional Extra Time resolution so a winner is recorded.'}</p>
       <div className="overview-metrics compact-metrics">
         <article><span>Entrants</span><strong>{entries.length}/{configuredEntrants || 'TBC'}</strong></article>
         <article><span>Opening round</span><strong>{configuredEntrants ? roundForSize(nextPowerOfTwo(configuredEntrants))?.name || 'TBC' : 'TBC'}</strong></article>
+        <article><span>Tie format</span><strong>{legCount === 2 ? 'Two legs' : 'One leg'}</strong></article>
         <article><span>Draw</span><strong>{cupMatches.length ? 'Live' : 'Not generated'}</strong></article>
         <article><span>Current round</span><strong>{latestRound?.name || 'TBC'}</strong></article>
       </div>

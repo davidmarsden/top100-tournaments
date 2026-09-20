@@ -24,9 +24,22 @@ function resolveFinal(matches, bracket) {
   const secondId = first.away_entry_id;
   const firstName = teamNameFromEntry(first.home_entry, first.home_placeholder);
   const secondName = teamNameFromEntry(first.away_entry, first.away_placeholder);
+  const decidingLeg = [...ordered].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
+  if (ordered.length === 1) {
+    const leg = ordered[0];
+    const winnerId = leg.winner_entry_id || null;
+    const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : 'FET/manual winner needed';
+    const finalHome = Number(leg.home_score ?? 0);
+    const finalAway = Number(leg.away_score ?? 0);
+    const decision = leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null
+      ? decisionText(winnerName, 0, 0, leg)
+      : null;
+    return { bracket, winnerName, firstName, secondName, aggregate: `${finalHome}-${finalAway}`, decision, needsFet: !winnerId, legs: ordered };
+  }
+
   let firstAgg = 0, secondAgg = 0, firstAway = 0, secondAway = 0;
   ordered.forEach((leg) => {
-    const home = Number(leg.home_score || 0), away = Number(leg.away_score || 0);
+    const home = Number(leg.home_normal_time_score ?? leg.home_score ?? 0), away = Number(leg.away_normal_time_score ?? leg.away_score ?? 0);
     if (leg.home_entry_id === firstId) { firstAgg += home; secondAgg += away; secondAway += away; }
     else { firstAgg += away; secondAgg += home; firstAway += away; }
   });
@@ -37,7 +50,6 @@ function resolveFinal(matches, bracket) {
   else if (secondAway > firstAway) winnerId = secondId;
   else winnerId = latestWinner(ordered);
   const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : 'FET/manual winner needed';
-  const decidingLeg = [...ordered].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
   const decision = firstAgg === secondAgg ? decisionText(winnerName, firstAway, secondAway, decidingLeg) : null;
   return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, needsFet: !winnerId, legs: ordered };
 }
@@ -58,7 +70,7 @@ export default function PublicPageManager({ selectedTournament, onTournamentUpda
     if (!tournamentId) return;
     setLoading(true); setStatus('Loading tournament summary...');
     const [matchesResult, submissionsResult] = await Promise.all([
-      supabase.from('matches').select('id, stage, status, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
+      supabase.from('matches').select('id, stage, status, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, home_placeholder, away_placeholder, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
       supabase.from('manager_result_submissions').select('match_id, status'),
     ]);
     const error = matchesResult.error || submissionsResult.error;

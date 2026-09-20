@@ -211,11 +211,23 @@ function finalSummary(matches, bracket) {
   if (!finals.length || finals.some((match) => !isCompleted(match))) return null;
   const first = finals[0], firstId = first.home_entry_id, secondId = first.away_entry_id;
   const firstName = teamName(first.home_entry, first.home_placeholder), secondName = teamName(first.away_entry, first.away_placeholder);
+  const decidingLeg = [...finals].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
+  if (finals.length === 1) {
+    const leg = finals[0];
+    const winnerId = leg.winner_entry_id || null;
+    const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : 'FET/manual winner needed';
+    const finalHome = Number(leg.home_score ?? 0);
+    const finalAway = Number(leg.away_score ?? 0);
+    const decision = leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null
+      ? decisionText(winnerName, 0, 0, leg)
+      : null;
+    return { bracket, winnerName, firstName, secondName, aggregate: `${finalHome}-${finalAway}`, decision, legs: finals };
+  }
+
   let firstAgg = 0, secondAgg = 0, firstAway = 0, secondAway = 0;
-  finals.forEach((leg) => { const home = Number(leg.home_score || 0), away = Number(leg.away_score || 0); if (leg.home_entry_id === firstId) { firstAgg += home; secondAgg += away; secondAway += away; } else { firstAgg += away; secondAgg += home; firstAway += away; } });
+  finals.forEach((leg) => { const home = Number(leg.home_normal_time_score ?? leg.home_score ?? 0), away = Number(leg.away_normal_time_score ?? leg.away_score ?? 0); if (leg.home_entry_id === firstId) { firstAgg += home; secondAgg += away; secondAway += away; } else { firstAgg += away; secondAgg += home; firstAway += away; } });
   const winnerId = firstAgg > secondAgg ? firstId : secondAgg > firstAgg ? secondId : firstAway > secondAway ? firstId : secondAway > firstAway ? secondId : latestWinner(finals);
   const winnerName = winnerId === firstId ? firstName : winnerId === secondId ? secondName : 'FET/manual winner needed';
-  const decidingLeg = [...finals].reverse().find((leg) => leg.decided_by || leg.home_extra_time_score !== null || leg.away_extra_time_score !== null || leg.home_penalty_score !== null || leg.away_penalty_score !== null);
   const decision = firstAgg === secondAgg ? decisionText(winnerName, firstAway, secondAway, decidingLeg) : null;
   return { bracket, winnerName, firstName, secondName, aggregate: `${firstAgg}-${secondAgg}`, decision, legs: finals };
 }
@@ -312,7 +324,7 @@ export default function PublicTournamentPage({ tournamentId, routeRows = [] }) {
 
       const knockoutOnlyResult = tournamentResult.data.tournament_structure === 'knockout_only';
       const [matchesResult, entriesResult, roundDatesResult, finalResolutionResult] = await withTimeout(Promise.all([
-        supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
+        supabase.from('matches').select('id, stage, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, winner_entry_id, loser_entry_id, decided_by, home_extra_time_score, away_extra_time_score, home_penalty_score, away_penalty_score, status, bracket, home_placeholder, away_placeholder, groups(id, code, name), home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(id, name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(id, name))').eq('tournament_id', tournamentId),
         supabase.from('tournament_entries').select('id, seed, rating, pot, group_code, prize_draw_eligible, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId).order('seed', { ascending: true }),
         supabase.from('tournament_round_dates').select('id, bracket, round, leg1_date, leg2_date').eq('tournament_id', tournamentId),
         knockoutOnlyResult ? supabase.rpc('public_knockout_final_resolved', { target_tournament_id: tournamentId }) : Promise.resolve({ data: false, error: null }),
