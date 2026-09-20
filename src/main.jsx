@@ -16,7 +16,6 @@ import './fixture-first-navigation.css';
 import './competition-navigation.css';
 import './admin-sanitise.css';
 import './public-matchday-boundaries.js';
-import './public-forfeit-badges.js';
 import './public-double-forfeit-badges.js';
 import './fixture-first-navigation.js';
 import './competition-navigation.js';
@@ -64,15 +63,16 @@ async function renderApplication() {
 
   let content;
   if (isIsolatedChatPath) {
-    // Deliberately avoid importing App.jsx here. The main application imports
-    // the persistent Supabase client, whose automatic URL-session detection can
-    // consume a magic-link fragment before the chat handoff sees it.
+    // Deliberately avoid importing App.jsx or any Supabase-dependent enhancer
+    // here. The persistent Supabase client must not exist before the chat
+    // handoff reads a magic-link fragment.
     const [{ default: Top100ChatAccess }, { default: Top100BrandShell }] = await Promise.all([
       import('./components/Top100ChatAccess.jsx'),
       import('./components/Top100BrandShell.jsx'),
     ]);
     content = <Top100BrandShell product="My Matches" current="manager"><Top100ChatAccess /></Top100BrandShell>;
   } else {
+    await import('./public-forfeit-badges.js');
     const { default: App } = await import('./App.jsx');
     content = <App />;
   }
