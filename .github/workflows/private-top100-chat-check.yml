@@ -39,6 +39,13 @@ jobs:
         run: |
           bash -n ops/top100-chat/install-on-droplet.sh
           bash -n ops/top100-chat/smoke-test.sh
+          bash -n ops/top100-chat/ensure-native-deps.sh
+
+      - name: Check runtime hardening wiring
+        run: |
+          grep -Fq 'urlServerHomePageSource": "https://code.scripting.com/rsschat/index.html"' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'ExecStartPre=/opt/top100-chat/ensure-native-deps.sh' ops/top100-chat/top100-rsschat.service
+          grep -Fq 'TOP100_CHAT_RESOLVE_IP=127.0.0.1' ops/top100-chat/install-on-droplet.sh
 
       - name: Apply Top 100 overlay to pinned rss.chat
         run: |
