@@ -95,17 +95,22 @@ function getJson(url) {
 }
 
 function bootstrapHtml(user) {
-  const memory = JSON.stringify({
+  const params = new URLSearchParams({
+    emailconfirmed: 'true',
     email: user.emailAddress,
     code: user.emailSecret,
     screenname: user.screenname,
-  }).replace(/</g, '\\u003c');
+  });
+
+  // Hand the identity to rss.chat through its own confirmation callback path.
+  // The rss.chat client persists rssNetworkMemory itself and immediately strips
+  // these one-time query parameters from the visible URL.
+  const target = '/?' + params.toString();
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>Opening Top 100 Chat…</title></head>
 <body><p>Opening Top 100 Chat…</p><script>
-localStorage.rssNetworkMemory = ${JSON.stringify(memory)};
-location.replace('/');
+location.replace(${JSON.stringify(target)});
 </script></body></html>`;
 }
 
