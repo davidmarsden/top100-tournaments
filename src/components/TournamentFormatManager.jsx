@@ -92,7 +92,7 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
         setStatus('Knockout teams cannot exceed the final entry count.');
         return;
       }
-      const legCountChanged = knockoutOnly && Number(selectedTournament?.knockout_leg_count || 1) !== knockoutLegCount;
+      const legCountChanged = knockoutOnly && selectedTournament?.tournament_structure === 'knockout_only' && Number(selectedTournament?.knockout_leg_count || 1) !== knockoutLegCount;
       if (legCountChanged) {
         const { error: legError } = await supabase.rpc('set_knockout_leg_count_atomic', {
           p_tournament_id: selectedTournament.id,
