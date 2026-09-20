@@ -54,18 +54,28 @@ fetch_top100_file () {
 }
 
 echo "Fetching Top 100 privacy gateway and reproducible rss.chat overlay..."
-fetch_top100_file "ops/top100-chat/gateway.mjs" "${GATEWAY_DIR}/gateway.mjs"
-fetch_top100_file "ops/top100-chat/shell.html" "${GATEWAY_DIR}/shell.html"
-fetch_top100_file "ops/top100-chat/apply-overlay.mjs" "${GATEWAY_DIR}/apply-overlay.mjs"
-fetch_top100_file "ops/top100-chat/verify-overlay.mjs" "${GATEWAY_DIR}/verify-overlay.mjs"
+fetch_top100_file "ops/top100-chat/gateway.mjs" "${tmpdir}/gateway.mjs"
+fetch_top100_file "ops/top100-chat/shell.html" "${tmpdir}/shell.html"
+fetch_top100_file "ops/top100-chat/apply-overlay.mjs" "${tmpdir}/apply-overlay.mjs"
+fetch_top100_file "ops/top100-chat/verify-overlay.mjs" "${tmpdir}/verify-overlay.mjs"
 fetch_top100_file "ops/top100-chat/top100-chat-gateway.service" "${tmpdir}/top100-chat-gateway.service"
 fetch_top100_file "ops/top100-chat/top100-rsschat.service" "${tmpdir}/top100-rsschat.service"
-fetch_top100_file "ops/top100-chat/ensure-native-deps.sh" "${GATEWAY_DIR}/ensure-native-deps.sh"
-fetch_top100_file "ops/top100-chat/smoke-test.sh" "${GATEWAY_DIR}/smoke-test.sh"
+fetch_top100_file "ops/top100-chat/ensure-native-deps.sh" "${tmpdir}/ensure-native-deps.sh"
+fetch_top100_file "ops/top100-chat/smoke-test.sh" "${tmpdir}/smoke-test.sh"
 fetch_top100_file "ops/top100-chat/Caddyfile.example" "${tmpdir}/top100-chat.caddy"
 
-node "${GATEWAY_DIR}/apply-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
-node "${GATEWAY_DIR}/verify-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
+node "${tmpdir}/apply-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
+node "${tmpdir}/verify-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
+
+# Only after all root-executed deployment helpers have run do we replace the
+# live gateway files. This avoids ever executing service-writable code as root
+# during upgrades from older installations.
+install -o root -g root -m 0644 "${tmpdir}/gateway.mjs" "${GATEWAY_DIR}/gateway.mjs"
+install -o root -g root -m 0644 "${tmpdir}/shell.html" "${GATEWAY_DIR}/shell.html"
+install -o root -g root -m 0644 "${tmpdir}/apply-overlay.mjs" "${GATEWAY_DIR}/apply-overlay.mjs"
+install -o root -g root -m 0644 "${tmpdir}/verify-overlay.mjs" "${GATEWAY_DIR}/verify-overlay.mjs"
+install -o root -g root -m 0755 "${tmpdir}/ensure-native-deps.sh" "${GATEWAY_DIR}/ensure-native-deps.sh"
+install -o root -g root -m 0755 "${tmpdir}/smoke-test.sh" "${GATEWAY_DIR}/smoke-test.sh"
 
 cat > "${RSS_DIR}/config.json" <<'JSON'
 {
@@ -94,10 +104,8 @@ JSON
 
 install -d -m 0750 "${RSS_DIR}/data"
 chown -R www-data:www-data "${RSS_DIR}"
-chown -R root:root "${GATEWAY_DIR}"
-find "${GATEWAY_DIR}" -type d -exec chmod 0755 {} +
-find "${GATEWAY_DIR}" -type f -exec chmod 0644 {} +
-chmod 0755 "${GATEWAY_DIR}/ensure-native-deps.sh" "${GATEWAY_DIR}/smoke-test.sh"
+chown root:root "${GATEWAY_DIR}"
+chmod 0755 "${GATEWAY_DIR}"
 
 echo "Installing rss.chat dependencies..."
 (
