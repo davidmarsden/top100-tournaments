@@ -50,6 +50,8 @@ class ErrorBoundary extends React.Component {
 const rootElement = document.getElementById('root');
 
 async function renderApplication() {
+  if (window.__TOP100_CHAT_EARLY_CLAIM__) return;
+
   if (!rootElement) {
     document.body.innerHTML = '<p>Top 100 Tournaments could not find the root element.</p>';
     return;
