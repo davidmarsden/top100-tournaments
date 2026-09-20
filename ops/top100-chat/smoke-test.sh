@@ -2,11 +2,17 @@
 set -euo pipefail
 
 base="${1:-https://chat.smtop100.blog}"
+resolve_ip="${TOP100_CHAT_RESOLVE_IP:-}"
+curl_extra=()
+if [[ -n "${resolve_ip}" ]]; then
+  host="$(printf '%s' "${base}" | sed -E 's#^https?://([^/:]+).*#\\1#')"
+  curl_extra+=(--resolve "${host}:443:${resolve_ip}")
+fi
 
 check_public () {
   local url="$1"
   local code
-  code="$(curl -sS -o /tmp/top100-chat-smoke-body -w '%{http_code}' --max-time 10 "${url}")"
+  code="$(curl "${curl_extra[@]}" -sS -o /tmp/top100-chat-smoke-body -w '%{http_code}' --max-time 10 "${url}")"
   if [[ "${code}" != "200" ]]; then
     echo "FAIL public shell: ${url} returned ${code}" >&2
     exit 1
@@ -19,7 +25,7 @@ check_private () {
   local headers
   headers="$(mktemp)"
   trap 'rm -f "${headers}"' RETURN
-  curl -sS -D "${headers}" -o /tmp/top100-chat-smoke-body --max-time 10 "${base}${path}" || true
+  curl "${curl_extra[@]}" -sS -D "${headers}" -o /tmp/top100-chat-smoke-body --max-time 10 "${base}${path}" || true
   local status location
   status="$(awk 'NR==1 {print $2}' "${headers}")"
   location="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {gsub("\r",""); print $2}' "${headers}" | tail -1)"
