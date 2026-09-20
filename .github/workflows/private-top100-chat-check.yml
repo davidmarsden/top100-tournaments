@@ -35,6 +35,11 @@ jobs:
       - name: Check ticket function syntax
         run: node --check netlify/functions/chat-ticket.js
 
+      - name: Check deployment script syntax
+        run: |
+          bash -n ops/top100-chat/install-on-droplet.sh
+          bash -n ops/top100-chat/smoke-test.sh
+
       - name: Apply Top 100 overlay to pinned rss.chat
         run: |
           curl -fsSL             https://raw.githubusercontent.com/scripting/rss.chat/0a77f7b0cdb6d61291248ded69daa6b78f10860a/server/code/rssnetwork.js             -o /tmp/rssnetwork.js

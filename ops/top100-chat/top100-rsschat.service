@@ -1,0 +1,22 @@
+[Unit]
+Description=Top 100 private rss.chat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/top100-rsschat
+ExecStart=/usr/bin/node /opt/top100-rsschat/rssnetwork.js
+Restart=on-failure
+RestartSec=3
+Environment=NODE_ENV=production
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/top100-rsschat
+
+[Install]
+WantedBy=multi-user.target

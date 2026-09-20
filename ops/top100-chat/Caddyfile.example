@@ -16,6 +16,8 @@ chat.smtop100.blog {
             Referrer-Policy "same-origin"
         }
 
+        @websocket header Upgrade websocket
+        reverse_proxy @websocket 127.0.0.1:1463
         reverse_proxy 127.0.0.1:1430
     }
 }
