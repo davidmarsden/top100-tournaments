@@ -60,6 +60,8 @@ fetch_top100_file "ops/top100-chat/apply-overlay.mjs" "${GATEWAY_DIR}/apply-over
 fetch_top100_file "ops/top100-chat/verify-overlay.mjs" "${GATEWAY_DIR}/verify-overlay.mjs"
 fetch_top100_file "ops/top100-chat/top100-chat-gateway.service" "${tmpdir}/top100-chat-gateway.service"
 fetch_top100_file "ops/top100-chat/top100-rsschat.service" "${tmpdir}/top100-rsschat.service"
+fetch_top100_file "ops/top100-chat/ensure-native-deps.sh" "${GATEWAY_DIR}/ensure-native-deps.sh"
+fetch_top100_file "ops/top100-chat/smoke-test.sh" "${GATEWAY_DIR}/smoke-test.sh"
 fetch_top100_file "ops/top100-chat/Caddyfile.example" "${tmpdir}/top100-chat.caddy"
 
 node "${GATEWAY_DIR}/apply-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
@@ -70,7 +72,7 @@ cat > "${RSS_DIR}/config.json" <<'JSON'
   "note": "Private Top 100 Chat. Separate from Ealing Civic Commons Chat.",
   "productName": "top100Chat",
   "productNameForDisplay": "Top 100 Chat",
-  "urlServerHomePageSource": "http://127.0.0.1:1470/client-home",
+  "urlServerHomePageSource": "https://code.scripting.com/rsschat/index.html",
   "myDomain": "chat.smtop100.blog",
   "urlServerForClient": "https://chat.smtop100.blog/",
   "urlServerForEmail": "https://chat.smtop100.blog/",
@@ -92,6 +94,7 @@ JSON
 
 install -d -m 0750 "${RSS_DIR}/data"
 chown -R www-data:www-data "${RSS_DIR}" "${GATEWAY_DIR}"
+chmod 0755 "${GATEWAY_DIR}/ensure-native-deps.sh" "${GATEWAY_DIR}/smoke-test.sh"
 
 echo "Installing rss.chat dependencies..."
 (
@@ -99,6 +102,11 @@ echo "Installing rss.chat dependencies..."
   npm install --omit=dev --no-audit --no-fund
 )
 chown -R www-data:www-data "${RSS_DIR}"
+
+# better-sqlite3 is a native addon. Verify it against the currently installed
+# Node ABI now, and let the same helper protect future service restarts after
+# unattended Node upgrades.
+"${GATEWAY_DIR}/ensure-native-deps.sh"
 
 umask 077
 cat > "${ENV_FILE}" <<EOF
@@ -128,7 +136,9 @@ wait_for_url () {
   local attempt
 
   for ((attempt=1; attempt<=attempts; attempt++)); do
-    if curl -fsS --max-time 3 "${url}" >/dev/null 2>&1; then
+    # Any HTTP response proves the listener is up. rss.chat intentionally
+    # answers 404 at /, so curl -f would misclassify a healthy service.
+    if curl -sS --max-time 3 "${url}" >/dev/null 2>&1; then
       echo "${name} is ready."
       return 0
     fi
@@ -236,6 +246,10 @@ if ! caddy validate --config "${CADDY_FILE}"; then
 fi
 
 systemctl reload caddy
+
+# Verify the public Caddy routes against loopback so stale resolver state on
+# the Droplet cannot turn a healthy deployment into a false failure.
+TOP100_CHAT_RESOLVE_IP=127.0.0.1 "${GATEWAY_DIR}/smoke-test.sh" "https://chat.smtop100.blog"
 
 echo
 echo "Top 100 Chat services are installed."
