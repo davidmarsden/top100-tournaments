@@ -11,6 +11,7 @@ const RULES_URL = 'https://smtop100.blog/youth-cup-format-rules/';
 const ROUND_LABELS = { R64: 'Round of 64', R32: 'Round of 32', R16: 'Round of 16', QF: 'Quarter-finals', SF: 'Semi-finals', Final: 'Final' };
 
 const isCompleted = (match) => match.status === 'played' || match.status === 'forfeit';
+const isResolved = (match) => isCompleted(match) || match.status === 'voided';
 const isDoubleForfeit = (match) => match.status === 'forfeit' && Number(match.home_score) === 0 && Number(match.away_score) === 0 && !match.winner_entry_id && !match.loser_entry_id;
 const teamName = (entry, fallback) => entry?.teams?.name || fallback || 'TBC';
 const managerName = (entry) => entry?.managers?.display_name || entry?.managers?.name || 'TBC';
@@ -145,14 +146,15 @@ function groupFixtureSchedule(matches) {
   return [...rows.values()].map((row) => ({ ...row, dates: [...row.dates].sort() })).sort((a, b) => String(a.round).localeCompare(String(b.round), undefined, { numeric: true }));
 }
 const groupScheduleDate = (row) => !row.dates.length ? 'Date TBC' : row.dates.length === 1 ? formatShortDate(row.dates[0]) : `${formatShortDate(row.dates[0])} – ${formatShortDate(row.dates[row.dates.length - 1])}`;
-const upcomingMatches = (matches) => { const today = todayUtc(); return matches.filter((match) => !isCompleted(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date) >= today).sort((a, b) => parseDate(a.fixture_date) - parseDate(b.fixture_date) || roundSort(a, b)); };
+const upcomingMatches = (matches) => { const today = todayUtc(); return matches.filter((match) => !isResolved(match) && parseDate(match.fixture_date) && parseDate(match.fixture_date) >= today).sort((a, b) => parseDate(a.fixture_date) - parseDate(b.fixture_date) || roundSort(a, b)); };
 const countdownText = (match) => { const date = parseDate(match?.fixture_date); if (!date) return 'Date TBC'; const days = Math.round((date - todayUtc()) / 86400000); if (days === 0) return 'Today'; if (days === 1) return 'Tomorrow'; return days > 1 ? `${days} days` : 'In progress'; };
 const fixtureTitle = (match) => `${teamName(match.home_entry, match.home_placeholder)} v ${teamName(match.away_entry, match.away_placeholder)}`;
 function competitionStats(matches, entries, tables, forfeits) {
   const played = matches.filter(isCompleted);
   const goals = played.reduce((total, match) => total + Number(match.home_score || 0) + Number(match.away_score || 0), 0);
   const groupLeaders = tables.flatMap((table) => table.rows.filter((row) => row.group_position === 1)).length;
-  return { teams: entries.length, fixtures: matches.length, played: played.length, remaining: matches.length - played.length, goals, avgGoals: played.length ? (goals / played.length).toFixed(2) : '—', groupLeaders, forfeits: forfeits.length };
+  const remaining = matches.filter((match) => !isResolved(match)).length;
+  return { teams: entries.length, fixtures: matches.length, played: played.length, remaining, goals, avgGoals: played.length ? (goals / played.length).toFixed(2) : '—', groupLeaders, forfeits: forfeits.length };
 }
 const latestWinner = (ordered) => [...ordered].reverse().find((leg) => leg.winner_entry_id)?.winner_entry_id || null;
 function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
@@ -165,7 +167,7 @@ function decisionText(winnerName, firstAway, secondAway, decidingLeg) {
 function publicTournamentPhase(tournament, matches) {
   const knockoutMatches = matches.filter((match) => match.stage === 'knockout');
   const pendingKnockout = knockoutMatches
-    .filter((match) => !isCompleted(match))
+    .filter((match) => !isResolved(match))
     .sort((a, b) => roundIndex(a.round) - roundIndex(b.round) || roundSort(a, b));
   if (pendingKnockout.length) return `${roundLabel(pendingKnockout[0].round)} underway`;
 
@@ -195,7 +197,7 @@ function publicTournamentPhase(tournament, matches) {
   }
 
   const groupMatches = matches.filter((match) => match.stage === 'group');
-  if (groupMatches.some((match) => !isCompleted(match))) return 'Group stage underway';
+  if (groupMatches.some((match) => !isResolved(match))) return 'Group stage underway';
   if (groupMatches.length) return 'Knockout draw pending';
 
   const status = String(tournament?.status || 'draft').toLowerCase();
