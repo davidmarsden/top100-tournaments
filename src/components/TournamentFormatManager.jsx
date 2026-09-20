@@ -105,7 +105,7 @@ export default function TournamentFormatManager({ selectedTournament, onTourname
       const { error } = await supabase.from('tournaments').update(payload).eq('id', selectedTournament.id);
       if (error) setStatus('Could not save tournament shape: ' + error.message);
       else {
-        setStatus(knockoutOnly ? `Knockout-only format saved for ${maxEntries} entrants. The same field goes directly into the seeded draw.` : 'Group + knockout format saved. Group generation will use these values.');
+        setStatus(knockoutOnly ? `Knockout-only format saved for ${maxEntries} entrants with ${knockoutLegCount === 2 ? 'two-leg home-and-away ties' : 'one-leg ties'}. The same field goes directly into the seeded draw.` : 'Group + knockout format saved. Group generation will use these values.');
         await onTournamentUpdated?.();
       }
     } catch (error) {
