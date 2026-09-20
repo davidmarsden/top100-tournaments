@@ -36,10 +36,38 @@ export default function ManagerReminderPreferences() {
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
+
     let active = true;
-    supabase.auth.getSession().then(({ data }) => { if (active) setSession(data.session || null); });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
-    return () => { active = false; listener.subscription.unsubscribe(); };
+    let subscription = null;
+
+    async function initialiseAuth() {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!active) return;
+        if (error) throw error;
+        setSession(data.session || null);
+
+        // This component mounts alongside ManagerPortal and shares the same
+        // Supabase client. Do not register an auth listener until initial
+        // session recovery has settled, otherwise the listener can race the
+        // client's browser Web Lock initialization.
+        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+          if (!active) return;
+          setSession(nextSession);
+        });
+        subscription = listener.subscription;
+      } catch (error) {
+        if (!active) return;
+        console.warn('Could not initialise reminder authentication.', error);
+        setLoading(false);
+      }
+    }
+
+    initialiseAuth();
+    return () => {
+      active = false;
+      subscription?.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

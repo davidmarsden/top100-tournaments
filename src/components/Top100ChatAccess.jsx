@@ -50,29 +50,40 @@ export default function Top100ChatAccess() {
     }
 
     let active = true;
-    withChatTimeout(supabase.auth.getSession(), 'Sign-in check').then(({ data, error }) => {
-      if (!active) return;
-      if (error) throw error;
-      setSession(data.session || null);
-      if (!data.session && !foregroundAuthStarted.current) setStatus('');
-    }).catch((error) => {
-      if (!active) return;
-      setSession(null);
-      if (!foregroundAuthStarted.current) {
-        setStatus('We could not check an existing sign-in automatically. You can still sign in below.');
-      }
-      console.warn('Top 100 Chat session check failed:', error);
-    });
+    let subscription = null;
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!active) return;
-      setSession(nextSession);
-      if (!nextSession) setStatus('');
-    });
+    async function initialiseAuth() {
+      try {
+        const { data, error } = await withChatTimeout(supabase.auth.getSession(), 'Sign-in check');
+        if (!active) return;
+        if (error) throw error;
+        setSession(data.session || null);
+        if (!data.session && !foregroundAuthStarted.current) setStatus('');
+
+        // Subscribe only after the initial auth client initialization has
+        // settled. Registering during initialization can deadlock auth-js's
+        // browser Web Lock and make getSession/signIn/signOut hang.
+        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+          if (!active) return;
+          setSession(nextSession);
+          if (!nextSession && !foregroundAuthStarted.current) setStatus('');
+        });
+        subscription = listener.subscription;
+      } catch (error) {
+        if (!active) return;
+        setSession(null);
+        if (!foregroundAuthStarted.current) {
+          setStatus('We could not check an existing sign-in automatically. You can still sign in below.');
+        }
+        console.warn('Top 100 Chat session check failed:', error);
+      }
+    }
+
+    initialiseAuth();
 
     return () => {
       active = false;
-      listener.subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 

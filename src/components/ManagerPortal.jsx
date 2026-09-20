@@ -50,19 +50,32 @@ export default function ManagerPortal() {
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
     let active = true;
-    withPortalTimeout(supabase.auth.getSession(), 'Sign-in check').then(({ data, error }) => {
-      if (!active) return;
-      if (error) throw error;
-      setSession(data.session || null);
-    }).catch((error) => {
-      if (!active) return;
-      setMessage(error?.message || 'We could not check your sign-in. Please try again.');
-      setLoading(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-    });
-    return () => { active = false; listener.subscription.unsubscribe(); };
+    let subscription = null;
+
+    async function initialiseAuth() {
+      try {
+        const { data, error } = await withPortalTimeout(supabase.auth.getSession(), 'Sign-in check');
+        if (!active) return;
+        if (error) throw error;
+        setSession(data.session || null);
+
+        // Wait for the initial session recovery to finish before subscribing.
+        // auth-js can deadlock its browser Web Lock if a listener registers
+        // while initialization/session refresh is still in progress.
+        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+          if (!active) return;
+          setSession(nextSession);
+        });
+        subscription = listener.subscription;
+      } catch (error) {
+        if (!active) return;
+        setMessage(error?.message || 'We could not check your sign-in. Please try again.');
+        setLoading(false);
+      }
+    }
+
+    initialiseAuth();
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
   useEffect(() => { if (session?.user) { loadIdentityDirectory(); loadPortal(); } else { setLoading(false); setAccount(null); setClaim(null); setEntries([]); setAdminAssignments([]); } }, [session?.user?.id]);
   useEffect(() => { loadWorldClubs(claimForm.gameWorldId); }, [claimForm.gameWorldId]);
