@@ -39,6 +39,18 @@ jobs:
         run: |
           bash -n ops/top100-chat/install-on-droplet.sh
           bash -n ops/top100-chat/smoke-test.sh
+          bash -n ops/top100-chat/ensure-native-deps.sh
+
+      - name: Check runtime hardening wiring
+        run: |
+          grep -Fq 'urlServerHomePageSource": "http://127.0.0.1:1470/client-home"' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'ExecStartPre=/opt/top100-chat/ensure-native-deps.sh' ops/top100-chat/top100-rsschat.service
+          grep -Fq 'TOP100_CHAT_RESOLVE_IP=127.0.0.1' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'host="${base#*://}"' ops/top100-chat/smoke-test.sh
+          grep -Fq "new Database(':memory:')" ops/top100-chat/ensure-native-deps.sh
+          grep -Fq 'chown root:root "${GATEWAY_DIR}"' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'wait_for_http_status "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/" "404"' ops/top100-chat/install-on-droplet.sh
+          ! grep -Fq 'ReadWritePaths=/opt/top100-chat' ops/top100-chat/top100-chat-gateway.service
 
       - name: Apply Top 100 overlay to pinned rss.chat
         run: |

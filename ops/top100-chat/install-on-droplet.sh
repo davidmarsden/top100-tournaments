@@ -54,16 +54,34 @@ fetch_top100_file () {
 }
 
 echo "Fetching Top 100 privacy gateway and reproducible rss.chat overlay..."
-fetch_top100_file "ops/top100-chat/gateway.mjs" "${GATEWAY_DIR}/gateway.mjs"
-fetch_top100_file "ops/top100-chat/shell.html" "${GATEWAY_DIR}/shell.html"
-fetch_top100_file "ops/top100-chat/apply-overlay.mjs" "${GATEWAY_DIR}/apply-overlay.mjs"
-fetch_top100_file "ops/top100-chat/verify-overlay.mjs" "${GATEWAY_DIR}/verify-overlay.mjs"
+fetch_top100_file "ops/top100-chat/gateway.mjs" "${tmpdir}/gateway.mjs"
+fetch_top100_file "ops/top100-chat/shell.html" "${tmpdir}/shell.html"
+fetch_top100_file "ops/top100-chat/apply-overlay.mjs" "${tmpdir}/apply-overlay.mjs"
+fetch_top100_file "ops/top100-chat/verify-overlay.mjs" "${tmpdir}/verify-overlay.mjs"
 fetch_top100_file "ops/top100-chat/top100-chat-gateway.service" "${tmpdir}/top100-chat-gateway.service"
 fetch_top100_file "ops/top100-chat/top100-rsschat.service" "${tmpdir}/top100-rsschat.service"
+fetch_top100_file "ops/top100-chat/ensure-native-deps.sh" "${tmpdir}/ensure-native-deps.sh"
+fetch_top100_file "ops/top100-chat/smoke-test.sh" "${tmpdir}/smoke-test.sh"
 fetch_top100_file "ops/top100-chat/Caddyfile.example" "${tmpdir}/top100-chat.caddy"
 
-node "${GATEWAY_DIR}/apply-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
-node "${GATEWAY_DIR}/verify-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
+node "${tmpdir}/apply-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
+node "${tmpdir}/verify-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
+
+# Older installs may leave this directory owned by www-data. Harden the
+# destination before installing any executable into it so the running gateway
+# cannot replace a root-owned helper between install and execution.
+chown root:root "${GATEWAY_DIR}"
+chmod 0755 "${GATEWAY_DIR}"
+
+# Only after all root-executed deployment helpers have run do we replace the
+# live gateway files. This avoids ever executing service-writable code as root
+# during upgrades from older installations.
+install -o root -g root -m 0644 "${tmpdir}/gateway.mjs" "${GATEWAY_DIR}/gateway.mjs"
+install -o root -g root -m 0644 "${tmpdir}/shell.html" "${GATEWAY_DIR}/shell.html"
+install -o root -g root -m 0644 "${tmpdir}/apply-overlay.mjs" "${GATEWAY_DIR}/apply-overlay.mjs"
+install -o root -g root -m 0644 "${tmpdir}/verify-overlay.mjs" "${GATEWAY_DIR}/verify-overlay.mjs"
+install -o root -g root -m 0755 "${tmpdir}/ensure-native-deps.sh" "${GATEWAY_DIR}/ensure-native-deps.sh"
+install -o root -g root -m 0755 "${tmpdir}/smoke-test.sh" "${GATEWAY_DIR}/smoke-test.sh"
 
 cat > "${RSS_DIR}/config.json" <<'JSON'
 {
@@ -91,7 +109,7 @@ cat > "${RSS_DIR}/config.json" <<'JSON'
 JSON
 
 install -d -m 0750 "${RSS_DIR}/data"
-chown -R www-data:www-data "${RSS_DIR}" "${GATEWAY_DIR}"
+chown -R www-data:www-data "${RSS_DIR}"
 
 echo "Installing rss.chat dependencies..."
 (
@@ -99,6 +117,11 @@ echo "Installing rss.chat dependencies..."
   npm install --omit=dev --no-audit --no-fund
 )
 chown -R www-data:www-data "${RSS_DIR}"
+
+# better-sqlite3 is a native addon. Verify it against the currently installed
+# Node ABI now, and let the same helper protect future service restarts after
+# unattended Node upgrades.
+"${GATEWAY_DIR}/ensure-native-deps.sh"
 
 umask 077
 cat > "${ENV_FILE}" <<EOF
@@ -120,16 +143,18 @@ systemctl enable top100-chat-gateway.service
 systemctl restart top100-chat-gateway.service
 systemctl restart top100-rsschat.service
 
-wait_for_url () {
+wait_for_http_status () {
   local name="$1"
   local url="$2"
-  local attempts="${3:-20}"
-  local delay="${4:-1}"
-  local attempt
+  local expected_status="$3"
+  local attempts="${4:-20}"
+  local delay="${5:-1}"
+  local attempt status
 
   for ((attempt=1; attempt<=attempts; attempt++)); do
-    if curl -fsS --max-time 3 "${url}" >/dev/null 2>&1; then
-      echo "${name} is ready."
+    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "${url}" 2>/dev/null || true)"
+    if [[ "${status}" == "${expected_status}" ]]; then
+      echo "${name} is ready (${status})."
       return 0
     fi
     if ! systemctl --quiet is-active top100-rsschat.service || ! systemctl --quiet is-active top100-chat-gateway.service; then
@@ -140,14 +165,14 @@ wait_for_url () {
     sleep "${delay}"
   done
 
-  echo "${name} did not become ready after ${attempts} attempts." >&2
+  echo "${name} did not return expected HTTP ${expected_status} after ${attempts} attempts (last status: ${status:-none})." >&2
   return 1
 }
 
 systemctl --quiet is-active top100-rsschat.service
 systemctl --quiet is-active top100-chat-gateway.service
-wait_for_url "Top 100 auth gateway" "http://127.0.0.1:1470/login"
-wait_for_url "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/"
+wait_for_http_status "Top 100 auth gateway" "http://127.0.0.1:1470/login" "200"
+wait_for_http_status "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/" "404"
 
 if ! ss -lnt | grep -Eq '127\.0\.0\.1:1430|0\.0\.0\.0:1430|\[::\]:1430'; then
   echo "Top 100 rss.chat HTTP port 1430 is not listening." >&2
@@ -236,6 +261,10 @@ if ! caddy validate --config "${CADDY_FILE}"; then
 fi
 
 systemctl reload caddy
+
+# Verify the public Caddy routes against loopback so stale resolver state on
+# the Droplet cannot turn a healthy deployment into a false failure.
+TOP100_CHAT_RESOLVE_IP=127.0.0.1 "${GATEWAY_DIR}/smoke-test.sh" "https://chat.smtop100.blog"
 
 echo
 echo "Top 100 Chat services are installed."
