@@ -1,7 +1,63 @@
 import { useEffect, useRef, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const CHAT_SESSION_TIMEOUT_MS = 8000;
+const chatAuthClient = hasSupabaseConfig ? createClient(
+  String(import.meta.env.VITE_SUPABASE_URL || '').trim(),
+  String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim(),
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  },
+) : null;
+
+function readHashAccessToken() {
+  if (typeof window === 'undefined' || !window.location.hash) return '';
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  return params.get('access_token') || '';
+}
+
+function getConfiguredStorageKey() {
+  try {
+    const hostname = new URL(String(import.meta.env.VITE_SUPABASE_URL || '').trim()).hostname;
+    const projectRef = hostname.split('.')[0] || '';
+    return projectRef ? `sb-${projectRef}-auth-token` : '';
+  } catch {
+    return '';
+  }
+}
+
+function readStoredAccessToken() {
+  if (typeof window === 'undefined') return '';
+  try {
+    const key = getConfiguredStorageKey();
+    if (!key) return '';
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return '';
+    const parsed = JSON.parse(raw);
+    const token = parsed?.access_token || parsed?.currentSession?.access_token || '';
+    if (!token) return '';
+
+    // Avoid handing an already-expired JWT to chat-ticket. If decoding fails,
+    // let the server validate it rather than treating it as authenticated here.
+    try {
+      const payloadPart = token.split('.')[1];
+      if (payloadPart) {
+        const payload = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload?.exp && Number(payload.exp) <= Math.floor(Date.now() / 1000) + 15) return '';
+      }
+    } catch {
+      // The ticket endpoint remains the source of truth for JWT validity.
+    }
+    return token;
+  } catch {
+    return '';
+  }
+}
 
 function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSION_TIMEOUT_MS) {
   let timer;
@@ -19,6 +75,7 @@ export default function Top100ChatAccess() {
   const [status, setStatus] = useState('Checking whether you are already signed in…');
   const [busy, setBusy] = useState(false);
   const launchedForToken = useRef('');
+  const callbackTokenRef = useRef('');
   const foregroundAuthStarted = useRef(false);
 
   async function launchChat(token) {
@@ -34,6 +91,10 @@ export default function Top100ChatAccess() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.url) throw new Error(body.error || 'Could not open Top 100 Chat.');
+      callbackTokenRef.current = '';
+      if (window.location.hash) {
+        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      }
       window.location.assign(body.url);
     } catch (error) {
       launchedForToken.current = '';
@@ -46,6 +107,27 @@ export default function Top100ChatAccess() {
     if (!hasSupabaseConfig || !supabase) {
       setBusy(false);
       setStatus('My Matches sign-in is unavailable.');
+      return undefined;
+    }
+
+    // Magic-link callbacks return the short-lived Supabase access token in the
+    // URL fragment. Use it directly for the server-validated chat ticket before
+    // auth-js has a chance to block on browser session recovery.
+    const callbackToken = readHashAccessToken();
+    if (callbackToken) {
+      callbackTokenRef.current = callbackToken;
+      setSession({ access_token: callbackToken });
+      launchChat(callbackToken);
+      return undefined;
+    }
+
+    // Likewise, an already-signed-in browser already has the access token in
+    // Supabase's persisted browser storage. Using it directly avoids making the
+    // auth Web Lock a prerequisite for opening chat; chat-ticket still verifies
+    // the JWT and manager membership server-side.
+    const storedToken = readStoredAccessToken();
+    if (storedToken) {
+      launchChat(storedToken);
       return undefined;
     }
 
@@ -101,7 +183,7 @@ export default function Top100ChatAccess() {
     setStatus('Sending your secure sign-in link…');
     try {
       const { error } = await withChatTimeout(
-        supabase.auth.signInWithOtp({
+        chatAuthClient.auth.signInWithOtp({
           email: email.trim(),
           options: {
             emailRedirectTo: 'https://manager.smtop100.blog/chat',
@@ -124,6 +206,7 @@ export default function Top100ChatAccess() {
     await supabase.auth.signOut();
     setSession(null);
     launchedForToken.current = '';
+    callbackTokenRef.current = '';
     foregroundAuthStarted.current = false;
     setStatus('');
   }
@@ -166,7 +249,7 @@ export default function Top100ChatAccess() {
       </section>
       <section className="card manager-login-card">
         <p className="status">{status || 'Checking access…'}</p>
-        {!busy && <div className="button-row"><button type="button" onClick={() => launchChat(session.access_token)}>Try again</button><button type="button" className="secondary" onClick={signOut}>Sign out</button></div>}
+        {!busy && <div className="button-row"><button type="button" onClick={() => launchChat(callbackTokenRef.current || session.access_token)}>Try again</button><button type="button" className="secondary" onClick={signOut}>Sign out</button></div>}
       </section>
     </main>
   );
