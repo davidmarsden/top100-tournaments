@@ -115,8 +115,10 @@ install -m 0644 "${tmpdir}/top100-rsschat.service" /etc/systemd/system/top100-rs
 install -m 0644 "${tmpdir}/top100-chat-gateway.service" /etc/systemd/system/top100-chat-gateway.service
 
 systemctl daemon-reload
-systemctl enable --now top100-rsschat.service
-systemctl enable --now top100-chat-gateway.service
+systemctl enable top100-rsschat.service
+systemctl enable top100-chat-gateway.service
+systemctl restart top100-rsschat.service
+systemctl restart top100-chat-gateway.service
 
 sleep 2
 systemctl --quiet is-active top100-rsschat.service
@@ -142,18 +144,57 @@ if [[ ! -f "${CADDY_FILE}" ]]; then
   exit 1
 fi
 
-if ! grep -q 'chat\.smtop100\.blog' "${CADDY_FILE}"; then
-  cp -a "${CADDY_FILE}" "${CADDY_FILE}.pre-top100-chat-${timestamp}"
-  printf '\n# Top 100 private chat — added %s\n' "${timestamp}" >> "${CADDY_FILE}"
-  cat "${tmpdir}/top100-chat.caddy" >> "${CADDY_FILE}"
-  caddy fmt --overwrite "${CADDY_FILE}"
-fi
+backup="${CADDY_FILE}.pre-top100-chat-${timestamp}"
+cp -a "${CADDY_FILE}" "${backup}"
+
+# Replace the actual chat.smtop100.blog site block on every deployment rather
+# than assuming any mention of the hostname means the current block is right.
+# This upgrades older installs and ignores comments containing the hostname.
+awk '
+  BEGIN { skipping=0; depth=0 }
+  {
+    if (!skipping && $0 ~ /^[[:space:]]*chat\.smtop100\.blog[[:space:]]*\{[[:space:]]*$/) {
+      skipping=1
+      line=$0
+      opens=gsub(/\{/, "{", line)
+      closes=gsub(/\}/, "}", line)
+      depth=opens-closes
+      next
+    }
+    if (skipping) {
+      line=$0
+      opens=gsub(/\{/, "{", line)
+      closes=gsub(/\}/, "}", line)
+      depth += opens-closes
+      if (depth <= 0) {
+        skipping=0
+        depth=0
+      }
+      next
+    }
+    print
+  }
+  END {
+    if (skipping) exit 42
+  }
+' "${CADDY_FILE}" > "${tmpdir}/Caddyfile.without-top100" || {
+  status=$?
+  cp -a "${backup}" "${CADDY_FILE}"
+  if [[ "${status}" -eq 42 ]]; then
+    echo "Existing chat.smtop100.blog Caddy block is unbalanced; left Caddy unchanged." >&2
+  else
+    echo "Could not rewrite the Caddyfile; left Caddy unchanged." >&2
+  fi
+  exit 1
+}
+
+cat "${tmpdir}/Caddyfile.without-top100" > "${CADDY_FILE}"
+printf '\n# Top 100 private chat — managed by install-on-droplet.sh (%s)\n' "${timestamp}" >> "${CADDY_FILE}"
+cat "${tmpdir}/top100-chat.caddy" >> "${CADDY_FILE}"
+caddy fmt --overwrite "${CADDY_FILE}"
 
 if ! caddy validate --config "${CADDY_FILE}"; then
-  backup="${CADDY_FILE}.pre-top100-chat-${timestamp}"
-  if [[ -f "${backup}" ]]; then
-    cp -a "${backup}" "${CADDY_FILE}"
-  fi
+  cp -a "${backup}" "${CADDY_FILE}"
   echo "Caddy validation failed. Restored the previous Caddyfile." >&2
   exit 1
 fi
