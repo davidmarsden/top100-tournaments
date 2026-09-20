@@ -8,6 +8,27 @@ export default function Top100ChatAccess() {
   const [busy, setBusy] = useState(true);
   const launchedForToken = useRef('');
 
+  async function launchChat(token) {
+    if (!token) return;
+    launchedForToken.current = token;
+    setBusy(true);
+    setStatus('Opening the Top 100 clubhouse…');
+
+    try {
+      const response = await fetch('/.netlify/functions/chat-ticket', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.url) throw new Error(body.error || 'Could not open Top 100 Chat.');
+      window.location.assign(body.url);
+    } catch (error) {
+      launchedForToken.current = '';
+      setBusy(false);
+      setStatus(error.message || 'Could not open Top 100 Chat.');
+    }
+  }
+
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) {
       setBusy(false);
@@ -42,22 +63,7 @@ export default function Top100ChatAccess() {
   useEffect(() => {
     const token = session?.access_token || '';
     if (!token || launchedForToken.current === token) return;
-    launchedForToken.current = token;
-    setBusy(true);
-    setStatus('Opening the Top 100 clubhouse…');
-
-    fetch('/.netlify/functions/chat-ticket', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(async (response) => {
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body.url) throw new Error(body.error || 'Could not open Top 100 Chat.');
-      window.location.assign(body.url);
-    }).catch((error) => {
-      launchedForToken.current = '';
-      setBusy(false);
-      setStatus(error.message || 'Could not open Top 100 Chat.');
-    });
+    launchChat(token);
   }, [session?.access_token]);
 
   async function sendMagicLink(event) {
@@ -121,7 +127,7 @@ export default function Top100ChatAccess() {
       </section>
       <section className="card manager-login-card">
         <p className="status">{status || 'Checking access…'}</p>
-        {!busy && <div className="button-row"><button type="button" onClick={() => { launchedForToken.current = ''; setSession({ ...session }); }}>Try again</button><button type="button" className="secondary" onClick={signOut}>Sign out</button></div>}
+        {!busy && <div className="button-row"><button type="button" onClick={() => launchChat(session.access_token)}>Try again</button><button type="button" className="secondary" onClick={signOut}>Sign out</button></div>}
       </section>
     </main>
   );
