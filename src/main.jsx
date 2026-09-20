@@ -1,6 +1,5 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.jsx';
 import './styles.css';
 import './workflow-overrides.css';
 import './bracket.css';
@@ -51,15 +50,54 @@ class ErrorBoundary extends React.Component {
 
 const rootElement = document.getElementById('root');
 
-if (rootElement) {
+async function renderApplication() {
+  if (!rootElement) {
+    document.body.innerHTML = '<p>Top 100 Tournaments could not find the root element.</p>';
+    return;
+  }
+
+  const path = window.location.pathname;
+  const isManagerHost = window.location.hostname === 'manager.smtop100.blog';
+  const isIsolatedChatPath =
+    /^\/chat\/?$/.test(path) ||
+    (isManagerHost && /^\/manager\/chat\/?$/.test(path));
+
+  let content;
+  if (isIsolatedChatPath) {
+    // Deliberately avoid importing App.jsx here. The main application imports
+    // the persistent Supabase client, whose automatic URL-session detection can
+    // consume a magic-link fragment before the chat handoff sees it.
+    const [{ default: Top100ChatAccess }, { default: Top100BrandShell }] = await Promise.all([
+      import('./components/Top100ChatAccess.jsx'),
+      import('./components/Top100BrandShell.jsx'),
+    ]);
+    content = <Top100BrandShell product="My Matches" current="manager"><Top100ChatAccess /></Top100BrandShell>;
+  } else {
+    const { default: App } = await import('./App.jsx');
+    content = <App />;
+  }
+
   createRoot(rootElement).render(
     <ErrorBoundary>
-      <App />
+      {content}
     </ErrorBoundary>
   );
-} else {
-  document.body.innerHTML = '<p>Top 100 Tournaments could not find the root element.</p>';
 }
+
+renderApplication().catch((error) => {
+  if (rootElement) {
+    createRoot(rootElement).render(
+      <ErrorBoundary>
+        <main className="app-shell">
+          <section className="warning-card">
+            <strong>The app crashed while loading.</strong>
+            <span>{error.message}</span>
+          </section>
+        </main>
+      </ErrorBoundary>
+    );
+  }
+});
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
