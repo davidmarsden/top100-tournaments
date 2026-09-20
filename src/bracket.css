@@ -84,3 +84,13 @@ button.danger:disabled, .danger:disabled { opacity: 0.5; cursor: not-allowed; }
   .public-filter-pair { flex-direction: column; align-items: stretch; }
   .public-group-filter { min-width: 100%; }
 }
+
+.tournament-select-card { cursor: pointer; }
+.tournament-select-card:focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+.bulk-check-label { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; }
+.active-tournament-badge { display: inline-flex; margin-left: 0.55rem; padding: 0.18rem 0.45rem; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-size: 0.68rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: middle; }
+.activate-tournament-hint { margin-top: 0.25rem; font-size: 0.78rem; font-weight: 800; color: #2563eb; }
+.active-tournament-context { display: grid; gap: 0.2rem; padding: 0.9rem 1rem; margin-bottom: 1rem; border: 1px solid #dbeafe; border-radius: 14px; background: #f8fbff; }
+.active-tournament-context span { font-size: 0.75rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
+.active-tournament-context strong { font-size: 1.05rem; }
+.active-tournament-context small { color: #64748b; }
