@@ -24,6 +24,10 @@ function isManagerChatPath() {
   return /^\/manager\/chat\/?$/.test(window.location.pathname);
 }
 
+function isChatPath() {
+  return /^\/chat\/?$/.test(window.location.pathname);
+}
+
 function isManagerHostRegistrationPath() {
   return /^\/(?:manager\/)?registrations?\/?$/.test(window.location.pathname);
 }
@@ -88,6 +92,7 @@ export default function App() {
   }
 
   if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
+  if (isChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
   if (isManagerChatPath()) {
     window.location.replace('https://manager.smtop100.blog/chat');
     return null;
