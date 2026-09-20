@@ -3,7 +3,13 @@ import { groupRouteRows, routePath } from '../lib/publicTournamentRoutes';
 
 function currentParts(pathname = window.location.pathname) {
   const parts = pathname.split('/').map((part) => part.trim()).filter(Boolean);
-  return { worldSlug: parts[0] || 'top-100', competitionSlug: parts[1] || 'youth-cup', seasonSlug: parts[2] || null };
+  const isLegacyExplicit = /^\/(?:tournaments|public)\/\d+\/?$/.test(pathname);
+  return {
+    worldSlug: parts[0] || 'top-100',
+    competitionSlug: parts[1] || 'youth-cup',
+    seasonSlug: parts[2] || null,
+    isLiveAlias: !isLegacyExplicit && parts.length === 2,
+  };
 }
 function labelSeason(row) {
   if (row.season_number) return `S${row.season_number}`;
@@ -35,9 +41,9 @@ export default function PublicTournamentSwitcher({ routes = [], currentTournamen
   const parts = currentParts();
   const currentWorld = findWorld(worlds, currentTournament?.game_worlds?.slug || parts.worldSlug);
   const currentCompetition = findCompetition(currentWorld, currentTournament?.competition_types?.slug || parts.competitionSlug);
-  const currentSeasonPath = parts.seasonSlug
-    ? (currentTournament ? routePath(currentTournament) : window.location.pathname)
-    : livePathFor(currentWorld, currentCompetition);
+  const currentSeasonPath = parts.isLiveAlias
+    ? livePathFor(currentWorld, currentCompetition)
+    : (currentTournament ? routePath(currentTournament) : window.location.pathname);
 
   function goTo(path) {
     if (path && path !== window.location.pathname) window.location.href = path;
