@@ -70,7 +70,7 @@ cat > "${RSS_DIR}/config.json" <<'JSON'
   "note": "Private Top 100 Chat. Separate from Ealing Civic Commons Chat.",
   "productName": "top100Chat",
   "productNameForDisplay": "Top 100 Chat",
-  "urlServerHomePageSource": "https://code.scripting.com/rsschat/index.html",
+  "urlServerHomePageSource": "http://127.0.0.1:1470/client-home",
   "myDomain": "chat.smtop100.blog",
   "urlServerForClient": "https://chat.smtop100.blog/",
   "urlServerForEmail": "https://chat.smtop100.blog/",
@@ -117,8 +117,8 @@ install -m 0644 "${tmpdir}/top100-chat-gateway.service" /etc/systemd/system/top1
 systemctl daemon-reload
 systemctl enable top100-rsschat.service
 systemctl enable top100-chat-gateway.service
-systemctl restart top100-rsschat.service
 systemctl restart top100-chat-gateway.service
+systemctl restart top100-rsschat.service
 
 wait_for_url () {
   local name="$1"

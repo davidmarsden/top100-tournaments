@@ -1,7 +1,7 @@
 [Unit]
 Description=Top 100 private rss.chat
-After=network-online.target
-Wants=network-online.target
+After=network-online.target top100-chat-gateway.service
+Wants=network-online.target top100-chat-gateway.service
 
 [Service]
 Type=simple

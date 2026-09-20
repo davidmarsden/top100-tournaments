@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
-const CHAT_SESSION_TIMEOUT_MS = 8000;
+const CHAT_SESSION_TIMEOUT_MS = 8000; // Keep magic-link requests bounded even in preview builds.
+const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const hasSupabaseConfig = supabaseUrl.startsWith('https://') && supabaseUrl.includes('.supabase.co') && supabaseAnonKey.length > 20;
 const chatAuthClient = hasSupabaseConfig ? createClient(
-  String(import.meta.env.VITE_SUPABASE_URL || '').trim(),
-  String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim(),
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       persistSession: false,
@@ -23,7 +25,7 @@ function readHashAccessToken() {
 
 function getConfiguredStorageKey() {
   try {
-    const hostname = new URL(String(import.meta.env.VITE_SUPABASE_URL || '').trim()).hostname;
+    const hostname = new URL(supabaseUrl).hostname;
     const projectRef = hostname.split('.')[0] || '';
     return projectRef ? `sb-${projectRef}-auth-token` : '';
   } catch {
@@ -70,17 +72,17 @@ function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSIO
 }
 
 export default function Top100ChatAccess() {
-  const [session, setSession] = useState(null);
+  const [activeToken, setActiveToken] = useState('');
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState('Checking whether you are already signed in…');
   const [busy, setBusy] = useState(false);
   const launchedForToken = useRef('');
   const callbackTokenRef = useRef('');
-  const foregroundAuthStarted = useRef(false);
 
   async function launchChat(token) {
     if (!token) return;
     launchedForToken.current = token;
+    setActiveToken(token);
     setBusy(true);
     setStatus('Opening the Top 100 clubhouse…');
 
@@ -104,81 +106,35 @@ export default function Top100ChatAccess() {
   }
 
   useEffect(() => {
-    if (!hasSupabaseConfig || !supabase) {
+    if (!hasSupabaseConfig || !chatAuthClient) {
       setBusy(false);
       setStatus('My Matches sign-in is unavailable.');
-      return undefined;
+      return;
     }
 
-    // Magic-link callbacks return the short-lived Supabase access token in the
-    // URL fragment. Use it directly for the server-validated chat ticket before
-    // auth-js has a chance to block on browser session recovery.
+    // This route is booted independently from the main application specifically
+    // so no persistent Supabase client can consume the magic-link fragment first.
     const callbackToken = readHashAccessToken();
     if (callbackToken) {
       callbackTokenRef.current = callbackToken;
-      setSession({ access_token: callbackToken });
+      setActiveToken(callbackToken);
       launchChat(callbackToken);
-      return undefined;
+      return;
     }
 
-    // Likewise, an already-signed-in browser already has the access token in
-    // Supabase's persisted browser storage. Using it directly avoids making the
-    // auth Web Lock a prerequisite for opening chat; chat-ticket still verifies
-    // the JWT and manager membership server-side.
     const storedToken = readStoredAccessToken();
     if (storedToken) {
+      setActiveToken(storedToken);
       launchChat(storedToken);
-      return undefined;
+      return;
     }
 
-    let active = true;
-    let subscription = null;
-
-    async function initialiseAuth() {
-      try {
-        const { data, error } = await withChatTimeout(supabase.auth.getSession(), 'Sign-in check');
-        if (!active) return;
-        if (error) throw error;
-        setSession(data.session || null);
-        if (!data.session && !foregroundAuthStarted.current) setStatus('');
-
-        // Subscribe only after the initial auth client initialization has
-        // settled. Registering during initialization can deadlock auth-js's
-        // browser Web Lock and make getSession/signIn/signOut hang.
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (!active) return;
-          setSession(nextSession);
-          if (!nextSession && !foregroundAuthStarted.current) setStatus('');
-        });
-        subscription = listener.subscription;
-      } catch (error) {
-        if (!active) return;
-        setSession(null);
-        if (!foregroundAuthStarted.current) {
-          setStatus('We could not check an existing sign-in automatically. You can still sign in below.');
-        }
-        console.warn('Top 100 Chat session check failed:', error);
-      }
-    }
-
-    initialiseAuth();
-
-    return () => {
-      active = false;
-      subscription?.unsubscribe();
-    };
+    setStatus('');
   }, []);
-
-  useEffect(() => {
-    const token = session?.access_token || '';
-    if (!token || launchedForToken.current === token) return;
-    launchChat(token);
-  }, [session?.access_token]);
 
   async function sendMagicLink(event) {
     event.preventDefault();
     if (!email.trim()) return;
-    foregroundAuthStarted.current = true;
     setBusy(true);
     setStatus('Sending your secure sign-in link…');
     try {
@@ -186,7 +142,9 @@ export default function Top100ChatAccess() {
         chatAuthClient.auth.signInWithOtp({
           email: email.trim(),
           options: {
-            emailRedirectTo: 'https://manager.smtop100.blog/chat',
+            emailRedirectTo: window.location.hostname.endsWith('.netlify.app')
+              ? `${window.location.origin}/chat`
+              : 'https://manager.smtop100.blog/chat',
             shouldCreateUser: true,
           },
         }),
@@ -202,20 +160,28 @@ export default function Top100ChatAccess() {
     }
   }
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    setSession(null);
+  function signOut() {
+    try {
+      const key = getConfiguredStorageKey();
+      if (key) window.localStorage.removeItem(key);
+    } catch {
+      // Local cleanup is best-effort; the chat ticket is short-lived either way.
+    }
+    if (window.location.hash) {
+      window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    }
+    setActiveToken('');
     launchedForToken.current = '';
     callbackTokenRef.current = '';
-    foregroundAuthStarted.current = false;
+    setBusy(false);
     setStatus('');
   }
 
-  if (!hasSupabaseConfig || !supabase) {
+  if (!hasSupabaseConfig || !chatAuthClient) {
     return <main className="manager-portal-shell"><section className="warning-card"><strong>Top 100 Chat unavailable.</strong><span>Manager sign-in is not connected.</span></section></main>;
   }
 
-  if (!session) {
+  if (!activeToken) {
     return (
       <main className="manager-portal-shell">
         <section className="manager-portal-hero">
@@ -249,7 +215,7 @@ export default function Top100ChatAccess() {
       </section>
       <section className="card manager-login-card">
         <p className="status">{status || 'Checking access…'}</p>
-        {!busy && <div className="button-row"><button type="button" onClick={() => launchChat(callbackTokenRef.current || session.access_token)}>Try again</button><button type="button" className="secondary" onClick={signOut}>Sign out</button></div>}
+        {!busy && <div className="button-row"><button type="button" onClick={() => launchChat(callbackTokenRef.current || activeToken)}>Try again</button><button type="button" className="secondary" onClick={signOut}>Sign out</button></div>}
       </section>
     </main>
   );
