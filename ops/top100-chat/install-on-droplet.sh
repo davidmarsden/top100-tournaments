@@ -120,11 +120,34 @@ systemctl enable top100-chat-gateway.service
 systemctl restart top100-rsschat.service
 systemctl restart top100-chat-gateway.service
 
-sleep 2
+wait_for_url () {
+  local name="$1"
+  local url="$2"
+  local attempts="${3:-20}"
+  local delay="${4:-1}"
+  local attempt
+
+  for ((attempt=1; attempt<=attempts; attempt++)); do
+    if curl -fsS --max-time 3 "${url}" >/dev/null 2>&1; then
+      echo "${name} is ready."
+      return 0
+    fi
+    if ! systemctl --quiet is-active top100-rsschat.service || ! systemctl --quiet is-active top100-chat-gateway.service; then
+      echo "A Top 100 Chat service stopped while waiting for readiness." >&2
+      systemctl status top100-rsschat.service top100-chat-gateway.service --no-pager -l >&2 || true
+      return 1
+    fi
+    sleep "${delay}"
+  done
+
+  echo "${name} did not become ready after ${attempts} attempts." >&2
+  return 1
+}
+
 systemctl --quiet is-active top100-rsschat.service
 systemctl --quiet is-active top100-chat-gateway.service
-curl -fsS --max-time 5 http://127.0.0.1:1470/login >/dev/null
-curl -fsS --max-time 5 http://127.0.0.1:1430/ >/dev/null
+wait_for_url "Top 100 auth gateway" "http://127.0.0.1:1470/login"
+wait_for_url "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/"
 
 if ! ss -lnt | grep -Eq '127\.0\.0\.1:1430|0\.0\.0\.0:1430|\[::\]:1430'; then
   echo "Top 100 rss.chat HTTP port 1430 is not listening." >&2
@@ -134,8 +157,21 @@ if ! ss -lnt | grep -Eq '127\.0\.0\.1:1470|0\.0\.0\.0:1470|\[::\]:1470'; then
   echo "Top 100 auth gateway port 1470 is not listening." >&2
   exit 1
 fi
-if ! ss -lnt | grep -Eq ':1463[[:space:]]'; then
-  echo "Top 100 rss.chat WebSocket port 1463 is not listening." >&2
+
+websocket_ready=false
+for attempt in {1..20}; do
+  if ss -lnt | grep -Eq ':1463[[:space:]]'; then
+    websocket_ready=true
+    break
+  fi
+  if ! systemctl --quiet is-active top100-rsschat.service; then
+    break
+  fi
+  sleep 1
+done
+if [[ "${websocket_ready}" != "true" ]]; then
+  echo "Top 100 rss.chat WebSocket port 1463 did not become ready." >&2
+  systemctl status top100-rsschat.service --no-pager -l >&2 || true
   exit 1
 fi
 
