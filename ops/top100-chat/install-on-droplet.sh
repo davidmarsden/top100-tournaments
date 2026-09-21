@@ -178,15 +178,6 @@ systemctl --quiet is-active top100-chat-gateway.service
 wait_for_http_status "Top 100 auth gateway" "http://127.0.0.1:1470/login" "200"
 wait_for_http_status "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/" "200"
 
-if ! ss -lnt | grep -Eq '127\.0\.0\.1:1430|0\.0\.0\.0:1430|\[::\]:1430'; then
-  echo "Top 100 rss.chat HTTP port 1430 is not listening." >&2
-  exit 1
-fi
-if ! ss -lnt | grep -Eq '127\.0\.0\.1:1470|0\.0\.0\.0:1470|\[::\]:1470'; then
-  echo "Top 100 auth gateway port 1470 is not listening." >&2
-  exit 1
-fi
-
 websocket_ready=false
 for attempt in {1..20}; do
   if ss -lnt | grep -Eq ':1463[[:space:]]'; then
