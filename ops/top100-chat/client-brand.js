@@ -11,6 +11,7 @@
 
   var networkPatched = false;
   var sourceBindingAvailable = Boolean(top100ObjectUrl && composeRequested);
+  var sourceContextDismissed = false;
   var originalNewPost = null;
   var sourceComposerActive = false;
   var sourceComposerSeenVisible = false;
@@ -109,7 +110,7 @@
   }
 
   function installContextPanel() {
-    if (!top100ObjectUrl || document.getElementById('idTop100ContextPanel')) return;
+    if (!top100ObjectUrl || sourceContextDismissed || document.getElementById('idTop100ContextPanel')) return;
     var container = document.querySelector('.divChatContainer');
     if (!container || !container.parentNode) return;
 
@@ -153,7 +154,10 @@
     sourceBindingAvailable = false;
     originalNewPost = null;
     sourceComposerActive = false;
-    if (removeContext) removeContextPanel();
+    if (removeContext) {
+      sourceContextDismissed = true;
+      removeContextPanel();
+    }
   }
 
   function patchNetwork() {
