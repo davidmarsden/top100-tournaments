@@ -48,6 +48,8 @@ jobs:
           grep -Fq 'urlServerHomePageSource": "http://127.0.0.1:1470/client-home"' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'ExecStartPre=/opt/top100-chat/ensure-native-deps.sh' ops/top100-chat/top100-rsschat.service
           grep -Fq 'TOP100_CHAT_RESOLVE_IP=127.0.0.1' ops/top100-chat/install-on-droplet.sh
+          grep -Fq '@public path /login /login/* /share /auth/claim /auth/check /auth/logout' ops/top100-chat/Caddyfile.example
+          grep -Fq "if (url.pathname === '/share')" ops/top100-chat/gateway.mjs
           grep -Fq 'client-theme.css' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'client-brand.js' ops/top100-chat/install-on-droplet.sh
           grep -Fq "readFileSync(path.join(here, 'client-theme.css')" ops/top100-chat/gateway.mjs
