@@ -140,7 +140,12 @@
     container.parentNode.insertBefore(panel, container);
   }
 
-  function restoreNetworkBinding() {
+  function removeContextPanel() {
+    var panel = document.getElementById('idTop100ContextPanel');
+    if (panel) panel.remove();
+  }
+
+  function restoreNetworkBinding(removeContext) {
     if (networkPatched && originalNewPost && window.globals && globals.myRssNetwork) {
       globals.myRssNetwork.newPost = originalNewPost;
     }
@@ -148,6 +153,7 @@
     sourceBindingAvailable = false;
     originalNewPost = null;
     sourceComposerActive = false;
+    if (removeContext) removeContextPanel();
   }
 
   function patchNetwork() {
@@ -166,9 +172,20 @@
         postRec.top100ObjectUrl = top100ObjectUrl;
         postRec.top100ObjectType = top100ObjectType;
         postRec.top100ObjectTitle = top100ObjectTitle;
+
         var callOriginal = originalNewPost;
-        restoreNetworkBinding();
-        return callOriginal(postRec, callback);
+        return callOriginal(postRec, function () {
+          var args = arguments;
+          var err = args[0];
+
+          if (!err) {
+            restoreNetworkBinding(false);
+          }
+
+          if (typeof callback === 'function') {
+            return callback.apply(null, args);
+          }
+        });
       }
 
       return originalNewPost(postRec, callback);
@@ -199,7 +216,7 @@
     }
 
     if (sourceComposerSeenVisible) {
-      restoreNetworkBinding();
+      restoreNetworkBinding(true);
     }
   }
 
