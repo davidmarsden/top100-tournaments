@@ -1,13 +1,21 @@
 (function () {
   'use strict';
 
+  var OBJECT_INTENT_KEY = 'top100ChatObjectIntent';
   var params = new URLSearchParams(location.search);
-  var top100ObjectUrl = safeUrl(params.get('top100ObjectUrl') || params.get('shareUrl'));
-  var top100ObjectType = safeText(params.get('top100ObjectType') || 'post', 40) || 'post';
-  var top100ObjectTitle = safeText(params.get('top100ObjectTitle') || params.get('shareTitle') || 'Top 100 post', 180);
-  var composeRequested = params.get('compose') === '1';
+  var storedIntent = readStoredIntent();
+  var top100ObjectUrl = safeUrl((storedIntent && storedIntent.url) || params.get('top100ObjectUrl') || params.get('shareUrl'));
+  var top100ObjectType = normalizeObjectType((storedIntent && storedIntent.type) || params.get('top100ObjectType') || 'post');
+  var top100ObjectTitle = safeText((storedIntent && storedIntent.title) || params.get('top100ObjectTitle') || params.get('shareTitle') || 'Top 100 post', 180);
+  var composeRequested = Boolean((storedIntent && storedIntent.compose) || params.get('compose') === '1');
+
   var networkPatched = false;
+  var originalNewPost = null;
+  var sourceComposerActive = false;
+  var sourceComposerSeenVisible = false;
   var composerOpened = false;
+
+  try { sessionStorage.removeItem(OBJECT_INTENT_KEY); } catch (e) {}
 
   function safeText(value, max) {
     return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max);
@@ -22,6 +30,22 @@
       return parsed.toString();
     } catch (e) {
       return '';
+    }
+  }
+
+  function normalizeObjectType(value) {
+    var clean = safeText(value, 40).toLowerCase();
+    return clean === 'page' ? 'page' : 'post';
+  }
+
+  function readStoredIntent() {
+    try {
+      var raw = sessionStorage.getItem(OBJECT_INTENT_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (e) {
+      return null;
     }
   }
 
@@ -87,25 +111,60 @@
     var panel = document.createElement('section');
     panel.id = 'idTop100ContextPanel';
     panel.className = 'top100-context-panel';
-    panel.innerHTML =
-      '<p class="top100-context-eyebrow">Top 100 discussion</p>' +
-      '<h1 class="top100-context-title"></h1>' +
-      '<p class="top100-context-copy">Start a conversation about this ' + top100ObjectType + '. The discussion stays linked to the source.</p>' +
-      '<a class="top100-context-link" target="_blank" rel="noopener noreferrer">View source on smtop100.blog ↗</a>';
-    panel.querySelector('.top100-context-title').textContent = top100ObjectTitle;
-    panel.querySelector('.top100-context-link').href = top100ObjectUrl;
+
+    var eyebrow = document.createElement('p');
+    eyebrow.className = 'top100-context-eyebrow';
+    eyebrow.textContent = 'Top 100 discussion';
+
+    var title = document.createElement('h1');
+    title.className = 'top100-context-title';
+    title.textContent = top100ObjectTitle;
+
+    var copy = document.createElement('p');
+    copy.className = 'top100-context-copy';
+    copy.append('Start a conversation about this ', document.createTextNode(top100ObjectType), '. The discussion stays linked to the source.');
+
+    var link = document.createElement('a');
+    link.className = 'top100-context-link';
+    link.href = top100ObjectUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'View source on smtop100.blog ↗';
+
+    panel.append(eyebrow, title, copy, link);
     container.parentNode.insertBefore(panel, container);
+  }
+
+  function restoreNetworkBinding() {
+    if (networkPatched && originalNewPost && window.globals && globals.myRssNetwork) {
+      globals.myRssNetwork.newPost = originalNewPost;
+    }
+    networkPatched = false;
+    originalNewPost = null;
+    sourceComposerActive = false;
   }
 
   function patchNetwork() {
     if (!top100ObjectUrl || networkPatched || !window.globals || !globals.myRssNetwork) return;
-    var originalNewPost = globals.myRssNetwork.newPost.bind(globals.myRssNetwork);
+
+    originalNewPost = globals.myRssNetwork.newPost.bind(globals.myRssNetwork);
     globals.myRssNetwork.newPost = function (postRec, callback) {
-      if (postRec && postRec.top100ObjectUrl === undefined && postRec.inReplyTo === undefined) {
+      var shouldBind = Boolean(
+        sourceComposerActive &&
+        postRec &&
+        postRec.top100ObjectUrl === undefined &&
+        postRec.inReplyTo === undefined
+      );
+
+      if (shouldBind) {
         postRec.top100ObjectUrl = top100ObjectUrl;
         postRec.top100ObjectType = top100ObjectType;
         postRec.top100ObjectTitle = top100ObjectTitle;
+        var callOriginal = originalNewPost;
+        restoreNetworkBinding();
+        return callOriginal(postRec, callback);
       }
+
       return originalNewPost(postRec, callback);
     };
     networkPatched = true;
@@ -114,8 +173,28 @@
   function openComposer() {
     if (!composeRequested || composerOpened || !window.globals || !globals.myChatUserInterface || !globals.myRssNetwork) return;
     if (!globals.myRssNetwork.userIsSignedIn()) return;
+
+    patchNetwork();
     globals.myChatUserInterface.editNewItem();
     composerOpened = true;
+    sourceComposerActive = true;
+    sourceComposerSeenVisible = false;
+  }
+
+  function monitorSourceComposer() {
+    if (!sourceComposerActive) return;
+    var overlay = document.querySelector('.divReplyOverlay');
+    if (!overlay) return;
+
+    var visible = window.getComputedStyle(overlay).display !== 'none';
+    if (visible) {
+      sourceComposerSeenVisible = true;
+      return;
+    }
+
+    if (sourceComposerSeenVisible) {
+      restoreNetworkBinding();
+    }
   }
 
   function decorateBoundPosts() {
@@ -138,7 +217,7 @@
       title.textContent = item.top100ObjectTitle || 'Top 100 post';
 
       var link = document.createElement('a');
-      link.href = item.top100ObjectUrl;
+      link.href = safeUrl(item.top100ObjectUrl) || '#';
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.textContent = 'View source ↗';
@@ -156,6 +235,7 @@
     installContextPanel();
     patchNetwork();
     openComposer();
+    monitorSourceComposer();
     decorateBoundPosts();
   }
 
