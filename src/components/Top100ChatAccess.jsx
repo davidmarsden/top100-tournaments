@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const CHAT_SESSION_TIMEOUT_MS = 8000; // Keep magic-link requests bounded even in preview builds.
 const CHAT_SHARE_STORAGE_KEY = 'top100PendingChatShare';
+const CHAT_SHARE_TTL_MS = 30 * 60 * 1000;
 const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
 const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 const hasSupabaseConfig = supabaseUrl.startsWith('https://') && supabaseUrl.includes('.supabase.co') && supabaseAnonKey.length > 20;
@@ -62,15 +63,17 @@ function readStoredAccessToken() {
   }
 }
 
-function normalizeShareIntent(value) {
+function normalizeShareIntent(value, { requireFresh = false } = {}) {
   if (!value || typeof value !== 'object') return null;
   const title = String(value.title || '').trim().slice(0, 180);
   const rawUrl = String(value.url || '').trim().slice(0, 500);
+  const createdAt = Number(value.createdAt || 0);
   if (!rawUrl) return null;
+  if (requireFresh && (!createdAt || Date.now() - createdAt > CHAT_SHARE_TTL_MS)) return null;
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== 'https:' || url.hostname !== 'smtop100.blog') return null;
-    return { title, url: url.toString() };
+    return { title, url: url.toString(), createdAt: createdAt || Date.now() };
   } catch {
     return null;
   }
@@ -88,21 +91,28 @@ function readShareIntentFromQuery() {
 function readStoredShareIntent() {
   if (typeof window === 'undefined') return null;
   try {
-    return normalizeShareIntent(JSON.parse(window.localStorage.getItem(CHAT_SHARE_STORAGE_KEY) || 'null'));
+    const stored = normalizeShareIntent(
+      JSON.parse(window.localStorage.getItem(CHAT_SHARE_STORAGE_KEY) || 'null'),
+      { requireFresh: true },
+    );
+    if (!stored) clearStoredShareIntent();
+    return stored;
   } catch {
     return null;
   }
 }
 
 function rememberShareIntent() {
-  const share = readShareIntentFromQuery() || readStoredShareIntent();
+  const fromQuery = readShareIntentFromQuery();
+  const share = fromQuery || readStoredShareIntent();
   if (!share) return null;
+  const storedShare = fromQuery ? { ...share, createdAt: Date.now() } : share;
   try {
-    window.localStorage.setItem(CHAT_SHARE_STORAGE_KEY, JSON.stringify(share));
+    window.localStorage.setItem(CHAT_SHARE_STORAGE_KEY, JSON.stringify(storedShare));
   } catch {
     // The query string remains a fallback when local storage is unavailable.
   }
-  return share;
+  return storedShare;
 }
 
 function clearStoredShareIntent() {
