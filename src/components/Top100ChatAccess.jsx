@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const CHAT_SESSION_TIMEOUT_MS = 8000; // Keep magic-link requests bounded even in preview builds.
+const CHAT_SHARE_STORAGE_KEY = 'top100PendingChatShare';
+const CHAT_SHARE_TTL_MS = 30 * 60 * 1000;
 const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
 const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 const hasSupabaseConfig = supabaseUrl.startsWith('https://') && supabaseUrl.includes('.supabase.co') && supabaseAnonKey.length > 20;
@@ -61,19 +63,68 @@ function readStoredAccessToken() {
   }
 }
 
-function readShareIntent() {
-  if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search);
-  const title = String(params.get('shareTitle') || '').trim().slice(0, 180);
-  const rawUrl = String(params.get('shareUrl') || '').trim().slice(0, 500);
+function normalizeShareIntent(value, { requireFresh = false } = {}) {
+  if (!value || typeof value !== 'object') return null;
+  const title = String(value.title || '').trim().slice(0, 180);
+  const rawUrl = String(value.url || '').trim().slice(0, 500);
+  const createdAt = Number(value.createdAt || 0);
   if (!rawUrl) return null;
+  if (requireFresh && (!createdAt || Date.now() - createdAt > CHAT_SHARE_TTL_MS)) return null;
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== 'https:' || url.hostname !== 'smtop100.blog') return null;
-    return { title, url: url.toString() };
+    return { title, url: url.toString(), createdAt: createdAt || Date.now() };
   } catch {
     return null;
   }
+}
+
+function readShareIntentFromQuery() {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  return normalizeShareIntent({
+    title: params.get('shareTitle') || '',
+    url: params.get('shareUrl') || '',
+  });
+}
+
+function readStoredShareIntent() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = normalizeShareIntent(
+      JSON.parse(window.localStorage.getItem(CHAT_SHARE_STORAGE_KEY) || 'null'),
+      { requireFresh: true },
+    );
+    if (!stored) clearStoredShareIntent();
+    return stored;
+  } catch {
+    return null;
+  }
+}
+
+function rememberShareIntent() {
+  const fromQuery = readShareIntentFromQuery();
+  const share = fromQuery || readStoredShareIntent();
+  if (!share) return null;
+  const storedShare = fromQuery ? { ...share, createdAt: Date.now() } : share;
+  try {
+    window.localStorage.setItem(CHAT_SHARE_STORAGE_KEY, JSON.stringify(storedShare));
+  } catch {
+    // The query string remains a fallback when local storage is unavailable.
+  }
+  return storedShare;
+}
+
+function clearStoredShareIntent() {
+  try {
+    window.localStorage.removeItem(CHAT_SHARE_STORAGE_KEY);
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
+function readShareIntent() {
+  return readShareIntentFromQuery() || readStoredShareIntent();
 }
 
 function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSION_TIMEOUT_MS) {
@@ -114,6 +165,7 @@ export default function Top100ChatAccess() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.url) throw new Error(body.error || 'Could not open Top 100 Chat.');
       callbackTokenRef.current = '';
+      clearStoredShareIntent();
       if (window.location.hash) {
         window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
       }
@@ -126,6 +178,8 @@ export default function Top100ChatAccess() {
   }
 
   useEffect(() => {
+    rememberShareIntent();
+
     if (!hasSupabaseConfig || !chatAuthClient) {
       setBusy(false);
       setStatus('My Matches sign-in is unavailable.');
@@ -157,6 +211,7 @@ export default function Top100ChatAccess() {
     if (!email.trim()) return;
     setBusy(true);
     setStatus('Sending your secure sign-in link…');
+    rememberShareIntent();
     try {
       const { error } = await withChatTimeout(
         chatAuthClient.auth.signInWithOtp({
@@ -193,6 +248,7 @@ export default function Top100ChatAccess() {
     setActiveToken('');
     launchedForToken.current = '';
     callbackTokenRef.current = '';
+    clearStoredShareIntent();
     setBusy(false);
     setStatus('');
   }

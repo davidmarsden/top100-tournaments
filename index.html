@@ -42,17 +42,41 @@
           }
         });
 
-        const query = new URLSearchParams(window.location.search);
-        const shareUrl = String(query.get('shareUrl') || '').trim().slice(0, 500);
-        const shareTitle = String(query.get('shareTitle') || '').trim().slice(0, 180);
-        let share = null;
-        if (shareUrl) {
+        const CHAT_SHARE_STORAGE_KEY = 'top100PendingChatShare';
+        const CHAT_SHARE_TTL_MS = 30 * 60 * 1000;
+
+        function normalizeShare(value, requireFresh = false) {
+          if (!value || typeof value !== 'object') return null;
+          const title = String(value.title || '').trim().slice(0, 180);
+          const rawUrl = String(value.url || '').trim().slice(0, 500);
+          const createdAt = Number(value.createdAt || 0);
+          if (!rawUrl) return null;
+          if (requireFresh && (!createdAt || Date.now() - createdAt > CHAT_SHARE_TTL_MS)) return null;
           try {
-            const parsed = new URL(shareUrl);
-            if (parsed.protocol === 'https:' && parsed.hostname === 'smtop100.blog') {
-              share = { title: shareTitle, url: parsed.toString() };
-            }
-          } catch {}
+            const parsed = new URL(rawUrl);
+            if (parsed.protocol !== 'https:' || parsed.hostname !== 'smtop100.blog') return null;
+            return { title, url: parsed.toString(), createdAt: createdAt || Date.now() };
+          } catch {
+            return null;
+          }
+        }
+
+        const query = new URLSearchParams(window.location.search);
+        let share = normalizeShare({
+          title: query.get('shareTitle') || '',
+          url: query.get('shareUrl') || '',
+        });
+
+        if (share) {
+          share.createdAt = Date.now();
+          try { localStorage.setItem(CHAT_SHARE_STORAGE_KEY, JSON.stringify(share)); } catch {}
+        } else {
+          try {
+            share = normalizeShare(JSON.parse(localStorage.getItem(CHAT_SHARE_STORAGE_KEY) || 'null'), true);
+            if (!share) localStorage.removeItem(CHAT_SHARE_STORAGE_KEY);
+          } catch {
+            try { localStorage.removeItem(CHAT_SHARE_STORAGE_KEY); } catch {}
+          }
         }
 
         fetch('/.netlify/functions/chat-ticket', {
@@ -67,6 +91,7 @@
           if (!response.ok || !body.url) {
             throw new Error((body && body.error) || ('Chat ticket failed with HTTP ' + response.status));
           }
+          try { localStorage.removeItem(CHAT_SHARE_STORAGE_KEY); } catch {}
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
           window.location.replace(body.url);
         }).catch((error) => {
