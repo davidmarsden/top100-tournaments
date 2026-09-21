@@ -61,6 +61,7 @@ jobs:
           grep -Fq 'client-theme.css' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'client-brand.js' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'migrate-source-bindings.mjs' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'node migrate-source-bindings.mjs /opt/top100-rsschat' ops/top100-chat/README.md
           grep -Fq 'top100ObjectUrl' ops/top100-chat/apply-overlay.mjs
           grep -Fq 'top100ObjectTitle' ops/top100-chat/apply-overlay.mjs
           grep -Fq "readFileSync(path.join(here, 'client-theme.css')" ops/top100-chat/gateway.mjs
