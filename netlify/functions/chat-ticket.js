@@ -22,6 +22,25 @@ function bearerToken(event) {
   return value.toLowerCase().startsWith('bearer ') ? value.slice(7).trim() : '';
 }
 
+function readJsonBody(event) {
+  if (!event.body) return {};
+  try { return JSON.parse(event.body); } catch { return {}; }
+}
+
+function normalizeShare(value) {
+  if (!value || typeof value !== 'object') return null;
+  const title = String(value.title || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 180);
+  const rawUrl = String(value.url || '').trim().slice(0, 500);
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'https:' || url.hostname !== 'smtop100.blog') return null;
+    return { title, url: url.toString() };
+  } catch {
+    return null;
+  }
+}
+
 function base64url(value) {
   return Buffer.from(value).toString('base64url');
 }
@@ -60,6 +79,7 @@ export async function handler(event) {
     }
 
     const now = Math.floor(Date.now() / 1000);
+    const share = normalizeShare(readJsonBody(event).share);
     const displayName = String(account.managers?.display_name || account.managers?.name || 'Top 100 manager').trim();
     const payload = {
       v: 1,
@@ -71,6 +91,7 @@ export async function handler(event) {
       iat: now,
       exp: now + 90,
       nonce: crypto.randomBytes(18).toString('base64url'),
+      ...(share ? { share } : {}),
     };
 
     const ticket = signTicket(payload, secret);

@@ -1,0 +1,254 @@
+:root {
+  --top100-navy: #0B1F3B;
+  --top100-navy-2: #102B4D;
+  --top100-emerald: #10B981;
+  --top100-emerald-dark: #08755c;
+  --top100-bg: #071526;
+  --top100-panel: #0D223A;
+  --top100-panel-2: #122A44;
+  --top100-text: #F8FAFC;
+  --top100-muted: #AAB6C3;
+  --top100-border: rgba(203, 213, 225, .14);
+}
+
+html, body {
+  background: var(--top100-bg) !important;
+  color: var(--top100-text) !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+body { padding-top: 64px !important; }
+
+.navbar .navbar-inner {
+  min-height: 64px !important;
+  background: var(--top100-navy) !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(255,255,255,.08) !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.22) !important;
+}
+
+.navbar .container {
+  width: min(1180px, calc(100% - 28px)) !important;
+}
+
+.navbar .brand,
+.navbar .nav > li > a {
+  color: var(--top100-text) !important;
+  text-shadow: none !important;
+}
+
+.navbar .brand {
+  font-weight: 850 !important;
+  letter-spacing: -.035em;
+}
+
+.divMenuProductName::after {
+  content: " Chat";
+  color: var(--top100-text);
+}
+
+.divMenuProductName { color: var(--top100-emerald); }
+
+.navbar .nav > li > a:hover,
+.navbar .nav > li.open > a,
+.navbar .nav > li.active > a {
+  color: var(--top100-text) !important;
+  background: rgba(16,185,129,.14) !important;
+}
+
+.dropdown-menu {
+  background: #0E2036 !important;
+  border: 1px solid var(--top100-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 40px rgba(0,0,0,.34) !important;
+}
+
+.dropdown-menu a {
+  color: #E7EDF4 !important;
+}
+
+.dropdown-menu li > a:hover,
+.dropdown-menu li > a:focus {
+  color: var(--top100-text) !important;
+  background: rgba(16,185,129,.16) !important;
+  background-image: none !important;
+}
+
+.dropdown-menu .divider {
+  background-color: var(--top100-border) !important;
+  border-bottom: 0 !important;
+}
+
+.divChatContainer {
+  min-height: calc(100vh - 64px);
+  background:
+    radial-gradient(circle at 82% 10%, rgba(16,185,129,.10), transparent 28%),
+    var(--top100-bg) !important;
+  padding: 12px 16px 36px;
+}
+
+.divChat {
+  margin-top: 12px !important;
+  color: var(--top100-text) !important;
+  background: transparent !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.divChat .divChatLeft,
+.divChat .divChatCenter,
+.divChat .divTimeline,
+.divChat .divStory,
+.divChat .divProfile,
+.divChat .divScanner,
+.divChat .divUserProfile {
+  background: var(--top100-panel) !important;
+  color: var(--top100-text) !important;
+}
+
+.divChat .divChatLeft {
+  border-radius: 18px 0 0 18px;
+}
+
+.divChat .divChatCenter {
+  border-color: var(--top100-border) !important;
+  box-shadow: 0 22px 60px rgba(0,0,0,.22);
+}
+
+.divChat .divIconsContainer .divIcon,
+.divChat .divNavItem,
+.divChat .buttonToolbar {
+  color: var(--top100-muted) !important;
+}
+
+.divChat .spanIconLabel,
+.divChat .divBrand,
+.divChat .divProfileName,
+.divChat .divComposerTitle,
+.divChat .spanAuthor,
+.divChat .divTweetTitle,
+.divChat .spanScannerCrumbCurrent,
+.divChat .divProfilePageName,
+.divChat .divProfilePageDescription {
+  color: var(--top100-text) !important;
+}
+
+.divChat .divIconsContainer .divIcon:hover,
+.divChat .divNavItem:hover,
+.divChat .buttonToolbar:hover,
+.divChat .divComposerTitle:hover,
+.divChat .divThread:hover,
+.divChat .divThread.flSelected > .divTweet {
+  background: rgba(16,185,129,.09) !important;
+}
+
+.divChat .divNavActive,
+.divChat .buttonPost,
+.divChat .divAvatar,
+.divChat .divComposerAvatar,
+.divChat .divProfileAvatar {
+  background: var(--top100-emerald) !important;
+  color: #052b22 !important;
+}
+
+.divChat .divNavActive:hover,
+.divChat .buttonPost:hover {
+  background: #16c995 !important;
+}
+
+.divChat .divComposer,
+.divChat .divThread,
+.divChat .divScannerCrumbTrail,
+.divChat .divProfileHeader,
+.divChat .divCenterHeader {
+  border-color: var(--top100-border) !important;
+}
+
+.divChat .divTweetText,
+.divChat .divTweetText *,
+.divChat .inputComposer,
+.divChat .inputComposer *,
+.inputReplyComposer,
+.inputReplyComposer * {
+  color: var(--top100-text) !important;
+}
+
+.divChat .inputComposer,
+.inputReplyComposer {
+  background: #091B2E !important;
+  border-color: rgba(203,213,225,.22) !important;
+  border-radius: 12px !important;
+}
+
+.divChat .inputComposer:focus,
+.inputReplyComposer:focus {
+  border-color: var(--top100-emerald) !important;
+  box-shadow: 0 0 0 3px rgba(16,185,129,.10) !important;
+}
+
+.divChat .inputComposer:empty:not(:focus):before,
+.divChat .spanHandle,
+.divChat .spanTimestamp,
+.divChat .spanFeedIcon,
+.divChat .divReplyingTo,
+.divChat .spanActionCount,
+.divChat .divProfileHandle,
+.divChat .divProfilePageHandle,
+.divChat .divMapLineText {
+  color: var(--top100-muted) !important;
+}
+
+.divChat a,
+.divChat .divTweetText a,
+.divChat .aProfilePageLink,
+.divChat .spanScannerCrumb {
+  color: #48D7AB !important;
+}
+
+.divChat .buttonSignOut {
+  color: var(--top100-text) !important;
+  border-color: rgba(203,213,225,.24) !important;
+  background: rgba(255,255,255,.03) !important;
+}
+
+.divChat .buttonSignOut:hover {
+  border-color: var(--top100-emerald) !important;
+  background: rgba(16,185,129,.10) !important;
+}
+
+.top100-chat-nav-link > a {
+  font-weight: 700;
+}
+
+.top100-chat-nav-link.top100-chat-nav-primary > a {
+  color: #052b22 !important;
+  background: var(--top100-emerald) !important;
+  border-radius: 999px;
+  margin: 11px 4px 0;
+  padding: 7px 12px !important;
+}
+
+.top100-share-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 5000;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 12px 16px;
+  border: 1px solid rgba(16,185,129,.38);
+  border-radius: 12px;
+  background: #0E2036;
+  color: var(--top100-text);
+  box-shadow: 0 18px 48px rgba(0,0,0,.34);
+  font: 600 14px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (max-width: 800px) {
+  body { padding-top: 52px !important; }
+  .navbar .navbar-inner { min-height: 52px !important; }
+  .navbar .container { width: calc(100% - 16px) !important; }
+  .divChatContainer { padding: 0 0 28px; }
+  .divChat { margin-top: 0 !important; }
+  .divChat .divChatCenter { border-left: 0 !important; border-right: 0 !important; box-shadow: none; }
+  .top100-chat-nav-link { display: none !important; }
+}

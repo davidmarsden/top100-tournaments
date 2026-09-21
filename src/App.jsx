@@ -94,7 +94,7 @@ export default function App() {
   if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
   if (isChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
   if (isManagerChatPath()) {
-    window.location.replace('https://manager.smtop100.blog/chat');
+    window.location.replace(`https://manager.smtop100.blog/chat${window.location.search}`);
     return null;
   }
   if (isManagerPath()) {

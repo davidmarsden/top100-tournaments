@@ -42,9 +42,26 @@
           }
         });
 
+        const query = new URLSearchParams(window.location.search);
+        const shareUrl = String(query.get('shareUrl') || '').trim().slice(0, 500);
+        const shareTitle = String(query.get('shareTitle') || '').trim().slice(0, 180);
+        let share = null;
+        if (shareUrl) {
+          try {
+            const parsed = new URL(shareUrl);
+            if (parsed.protocol === 'https:' && parsed.hostname === 'smtop100.blog') {
+              share = { title: shareTitle, url: parsed.toString() };
+            }
+          } catch {}
+        }
+
         fetch('/.netlify/functions/chat-ticket', {
           method: 'POST',
-          headers: { Authorization: 'Bearer ' + token },
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(share ? { share } : {}),
         }).then(async (response) => {
           const body = await response.json().catch(() => ({}));
           if (!response.ok || !body.url) {
