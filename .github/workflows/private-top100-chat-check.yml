@@ -58,6 +58,8 @@ jobs:
           grep -Fq "new Database(':memory:')" ops/top100-chat/ensure-native-deps.sh
           grep -Fq 'chown root:root "${GATEWAY_DIR}"' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'wait_for_http_status "Top 100 rss.chat HTTP" "http://127.0.0.1:1430/" "200"' ops/top100-chat/install-on-droplet.sh
+          ! grep -Fq 'Top 100 rss.chat HTTP port 1430 is not listening.' ops/top100-chat/install-on-droplet.sh
+          ! grep -Fq 'Top 100 auth gateway port 1470 is not listening.' ops/top100-chat/install-on-droplet.sh
           ! grep -Fq 'ReadWritePaths=/opt/top100-chat' ops/top100-chat/top100-chat-gateway.service
 
       - name: Apply Top 100 overlay to pinned rss.chat
