@@ -106,14 +106,15 @@ The pinned upstream is:
 - commit: `0a77f7b0cdb6d61291248ded69daa6b78f10860a`
 - version: `0.6.14`
 
-Apply and verify:
+Apply, migrate the existing database if present, and verify:
 
 ```bash
 node apply-overlay.mjs /opt/top100-rsschat/rssnetwork.js
+node migrate-source-bindings.mjs /opt/top100-rsschat
 node verify-overlay.mjs /opt/top100-rsschat/rssnetwork.js
 ```
 
-The patcher is fail-closed. If upstream moves an anchor, it stops instead of guessing.
+The migration is safe on both upgrade and fresh-install paths: it backs up an existing SQLite database before adding missing source-binding columns, and is a no-op if the database does not exist yet. The patcher is fail-closed. If upstream moves an anchor, it stops instead of guessing.
 
 ## Caddy
 
