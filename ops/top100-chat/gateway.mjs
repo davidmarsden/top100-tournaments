@@ -129,8 +129,9 @@ function bootstrapHtml(user, share) {
 
   if (share?.url) {
     params.set('compose', '1');
-    params.set('shareUrl', String(share.url));
-    if (share.title) params.set('shareTitle', String(share.title));
+    params.set('top100ObjectUrl', String(share.url));
+    params.set('top100ObjectType', 'post');
+    if (share.title) params.set('top100ObjectTitle', String(share.title));
   }
 
   // Hand the identity to rss.chat through its own confirmation callback path.
@@ -238,7 +239,13 @@ const server = http.createServer(async (request, response) => {
     const query = shareQuery(share);
     try {
       verifySession(parseCookies(request)[cookieName]);
-      redirect(response, '/?compose=1&' + query);
+      const params = new URLSearchParams({
+        compose: '1',
+        top100ObjectUrl: share.url,
+        top100ObjectType: 'post',
+      });
+      if (share.title) params.set('top100ObjectTitle', share.title);
+      redirect(response, '/?' + params.toString());
     } catch {
       redirect(response, 'https://manager.smtop100.blog/chat?' + query);
     }
