@@ -57,7 +57,7 @@
 
   function rewriteMenus() {
     var product = document.querySelector('.divMenuProductName');
-    if (product) product.textContent = 'Top 100';
+    if (product && product.textContent !== 'Top 100') product.textContent = 'Top 100';
 
     document.title = 'Top 100 Chat';
 
@@ -65,7 +65,8 @@
     if (docs) docs.innerHTML = 'Top 100&nbsp;<b class="caret"></b>';
 
     var docsMenu = document.querySelector('#idDocsMenu .dropdown-menu');
-    if (docsMenu) {
+    if (docsMenu && !docsMenu.dataset.top100Branded) {
+      docsMenu.dataset.top100Branded = 'true';
       docsMenu.innerHTML = [
         '<li><a href="https://smtop100.blog/">Top 100 website</a></li>',
         '<li><a href="https://manager.smtop100.blog/">My Matches</a></li>',
