@@ -232,23 +232,59 @@
     });
   }
 
-  function tick() {
+  function refreshUi() {
     rewriteMenus();
     installContextPanel();
-    patchNetwork();
-    openComposer();
     monitorSourceComposer();
     decorateBoundPosts();
   }
 
+  function installDomObserver() {
+    if (!document.body || typeof MutationObserver !== 'function') return;
+
+    var scheduled = false;
+    var observer = new MutationObserver(function () {
+      if (scheduled) return;
+      scheduled = true;
+      window.requestAnimationFrame(function () {
+        scheduled = false;
+        refreshUi();
+      });
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
+  }
+
   function boot() {
     installLogout();
-    tick();
+    installDomObserver();
+    refreshUi();
+
     var attempts = 0;
-    var timer = setInterval(function () {
+    var startupTimer = setInterval(function () {
       attempts += 1;
-      tick();
-      if (attempts >= 240) clearInterval(timer);
+      rewriteMenus();
+      installContextPanel();
+      patchNetwork();
+      openComposer();
+      monitorSourceComposer();
+      decorateBoundPosts();
+
+      var ready = Boolean(
+        window.globals &&
+        globals.myRssNetwork &&
+        globals.myChatUserInterface &&
+        (!composeRequested || composerOpened)
+      );
+
+      if (ready || attempts >= 240) {
+        clearInterval(startupTimer);
+      }
     }, 250);
   }
 
