@@ -1,24 +1,29 @@
 (function () {
   'use strict';
 
-  var SHARE_KEY = 'top100ChatShareIntent';
+  var params = new URLSearchParams(location.search);
+  var top100ObjectUrl = safeUrl(params.get('top100ObjectUrl') || params.get('shareUrl'));
+  var top100ObjectType = safeText(params.get('top100ObjectType') || 'post', 40) || 'post';
+  var top100ObjectTitle = safeText(params.get('top100ObjectTitle') || params.get('shareTitle') || 'Top 100 post', 180);
+  var composeRequested = params.get('compose') === '1';
+  var networkPatched = false;
+  var composerOpened = false;
 
   function safeText(value, max) {
     return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max);
   }
 
-  function captureShareIntentFromLocation() {
-    var params = new URLSearchParams(location.search);
-    if (params.get('compose') !== '1') return;
-    var title = safeText(params.get('shareTitle'), 180);
-    var url = safeText(params.get('shareUrl'), 500);
-    if (!url) return;
+  function safeUrl(value) {
+    var raw = safeText(value, 500);
+    if (!raw) return '';
     try {
-      sessionStorage.setItem(SHARE_KEY, JSON.stringify({ title: title, url: url }));
-    } catch (e) {}
+      var parsed = new URL(raw);
+      if (parsed.protocol !== 'https:' || parsed.hostname !== 'smtop100.blog') return '';
+      return parsed.toString();
+    } catch (e) {
+      return '';
+    }
   }
-
-  captureShareIntentFromLocation();
 
   function top100Logout () {
     try { localStorage.removeItem('rssNetworkMemory'); } catch (e) {}
@@ -74,67 +79,95 @@
     }, 50);
   }
 
-  function showToast(message) {
-    var old = document.querySelector('.top100-share-toast');
-    if (old) old.remove();
-    var toast = document.createElement('div');
-    toast.className = 'top100-share-toast';
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(function () { toast.remove(); }, 4500);
+  function installContextPanel() {
+    if (!top100ObjectUrl || document.getElementById('idTop100ContextPanel')) return;
+    var container = document.querySelector('.divChatContainer');
+    if (!container || !container.parentNode) return;
+
+    var panel = document.createElement('section');
+    panel.id = 'idTop100ContextPanel';
+    panel.className = 'top100-context-panel';
+    panel.innerHTML =
+      '<p class="top100-context-eyebrow">Top 100 discussion</p>' +
+      '<h1 class="top100-context-title"></h1>' +
+      '<p class="top100-context-copy">Start a conversation about this ' + top100ObjectType + '. The discussion stays linked to the source.</p>' +
+      '<a class="top100-context-link" target="_blank" rel="noopener noreferrer">View source on smtop100.blog ↗</a>';
+    panel.querySelector('.top100-context-title').textContent = top100ObjectTitle;
+    panel.querySelector('.top100-context-link').href = top100ObjectUrl;
+    container.parentNode.insertBefore(panel, container);
   }
 
-  function openShareComposer() {
-    var raw = '';
-    try {
-      raw = sessionStorage.getItem(SHARE_KEY) || '';
-    } catch (e) {}
-    if (!raw) return;
-
-    var intent;
-    try { intent = JSON.parse(raw); } catch (e) { return; }
-    if (!intent || !intent.url) return;
-
-    var attempts = 0;
-    var opened = false;
-    var timer = setInterval(function () {
-      attempts += 1;
-
-      if (!opened && typeof window.newPostCommand === 'function') {
-        try {
-          window.newPostCommand();
-          opened = true;
-        } catch (e) {}
+  function patchNetwork() {
+    if (!top100ObjectUrl || networkPatched || !window.globals || !globals.myRssNetwork) return;
+    var originalNewPost = globals.myRssNetwork.newPost.bind(globals.myRssNetwork);
+    globals.myRssNetwork.newPost = function (postRec, callback) {
+      if (postRec && postRec.top100ObjectUrl === undefined && postRec.inReplyTo === undefined) {
+        postRec.top100ObjectUrl = top100ObjectUrl;
+        postRec.top100ObjectType = top100ObjectType;
+        postRec.top100ObjectTitle = top100ObjectTitle;
       }
+      return originalNewPost(postRec, callback);
+    };
+    networkPatched = true;
+  }
 
-      var text = intent.title ? intent.title + '\n\n' + intent.url : intent.url;
-      var markdown = document.querySelector('.textareaMarkdown');
-      var wizzy = document.querySelector('.inputReplyComposer');
+  function openComposer() {
+    if (!composeRequested || composerOpened || !window.globals || !globals.myChatUserInterface || !globals.myRssNetwork) return;
+    if (!globals.myRssNetwork.userIsSignedIn()) return;
+    globals.myChatUserInterface.editNewItem();
+    composerOpened = true;
+  }
 
-      if (markdown && window.getComputedStyle(markdown).display !== 'none') {
-        markdown.value = text;
-        markdown.dispatchEvent(new Event('input', { bubbles: true }));
-        markdown.focus();
-        try { sessionStorage.removeItem(SHARE_KEY); } catch (e) {}
-        clearInterval(timer);
-        showToast('Ready to discuss this Top 100 page — edit the post if you want, then send it.');
-      } else if (wizzy && window.getComputedStyle(wizzy).display !== 'none') {
-        wizzy.textContent = text;
-        wizzy.dispatchEvent(new Event('input', { bubbles: true }));
-        wizzy.focus();
-        try { sessionStorage.removeItem(SHARE_KEY); } catch (e) {}
-        clearInterval(timer);
-        showToast('Ready to discuss this Top 100 page — edit the post if you want, then send it.');
-      } else if (attempts >= 160) {
-        clearInterval(timer);
-      }
-    }, 75);
+  function decorateBoundPosts() {
+    if (!window.jQuery) return;
+    window.jQuery('.divThread').each(function () {
+      var thread = window.jQuery(this);
+      var item = thread.data('item');
+      if (!item || !item.top100ObjectUrl || thread.find('.top100-object-card').length) return;
+
+      var body = thread.find('.divTweetBody').first();
+      if (!body.length) return;
+
+      var card = document.createElement('div');
+      card.className = 'top100-object-card';
+
+      var label = document.createElement('strong');
+      label.textContent = 'Linked to Top 100';
+
+      var title = document.createElement('span');
+      title.textContent = item.top100ObjectTitle || 'Top 100 post';
+
+      var link = document.createElement('a');
+      link.href = item.top100ObjectUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'View source ↗';
+
+      card.append(label, title, link);
+
+      var actions = body.find('.divTweetActions').first();
+      if (actions.length) actions.before(card);
+      else body.append(card);
+    });
+  }
+
+  function tick() {
+    rewriteMenus();
+    installContextPanel();
+    patchNetwork();
+    openComposer();
+    decorateBoundPosts();
   }
 
   function boot() {
-    rewriteMenus();
     installLogout();
-    openShareComposer();
+    tick();
+    var attempts = 0;
+    var timer = setInterval(function () {
+      attempts += 1;
+      tick();
+      if (attempts >= 240) clearInterval(timer);
+    }, 250);
   }
 
   if (document.readyState === 'loading') {
