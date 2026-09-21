@@ -10,6 +10,7 @@
   var composeRequested = Boolean((storedIntent && storedIntent.compose) || params.get('compose') === '1');
 
   var networkPatched = false;
+  var sourceBindingAvailable = Boolean(top100ObjectUrl && composeRequested);
   var originalNewPost = null;
   var sourceComposerActive = false;
   var sourceComposerSeenVisible = false;
@@ -140,12 +141,13 @@
       globals.myRssNetwork.newPost = originalNewPost;
     }
     networkPatched = false;
+    sourceBindingAvailable = false;
     originalNewPost = null;
     sourceComposerActive = false;
   }
 
   function patchNetwork() {
-    if (!top100ObjectUrl || networkPatched || !window.globals || !globals.myRssNetwork) return;
+    if (!sourceBindingAvailable || networkPatched || !window.globals || !globals.myRssNetwork) return;
 
     originalNewPost = globals.myRssNetwork.newPost.bind(globals.myRssNetwork);
     globals.myRssNetwork.newPost = function (postRec, callback) {
