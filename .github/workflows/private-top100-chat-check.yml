@@ -33,6 +33,8 @@ jobs:
         run: |
           node --check ops/top100-chat/gateway.mjs
           node --check ops/top100-chat/client-brand.js
+          grep -Fq "document.querySelector('.inputReplyComposer')" ops/top100-chat/client-brand.js
+          grep -Fq "document.querySelector('.textareaMarkdown')" ops/top100-chat/client-brand.js
 
       - name: Check ticket function syntax
         run: node --check netlify/functions/chat-ticket.js
