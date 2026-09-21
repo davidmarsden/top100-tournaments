@@ -96,18 +96,32 @@
     if (!intent || !intent.url) return;
 
     var attempts = 0;
+    var opened = false;
     var timer = setInterval(function () {
       attempts += 1;
-      if (typeof window.newPostCommand === 'function') {
-        try { window.newPostCommand(); } catch (e) {}
+
+      if (!opened && typeof window.newPostCommand === 'function') {
+        try {
+          window.newPostCommand();
+          opened = true;
+        } catch (e) {}
       }
 
-      var composer = document.querySelector('.divChat .inputComposer');
-      if (composer) {
-        var text = intent.title ? intent.title + '\n\n' + intent.url : intent.url;
-        composer.textContent = text;
-        composer.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
-        composer.focus();
+      var text = intent.title ? intent.title + '\n\n' + intent.url : intent.url;
+      var markdown = document.querySelector('.textareaMarkdown');
+      var wizzy = document.querySelector('.inputReplyComposer');
+
+      if (markdown && window.getComputedStyle(markdown).display !== 'none') {
+        markdown.value = text;
+        markdown.dispatchEvent(new Event('input', { bubbles: true }));
+        markdown.focus();
+        try { sessionStorage.removeItem(SHARE_KEY); } catch (e) {}
+        clearInterval(timer);
+        showToast('Ready to discuss this Top 100 page — edit the post if you want, then send it.');
+      } else if (wizzy && window.getComputedStyle(wizzy).display !== 'none') {
+        wizzy.textContent = text;
+        wizzy.dispatchEvent(new Event('input', { bubbles: true }));
+        wizzy.focus();
         try { sessionStorage.removeItem(SHARE_KEY); } catch (e) {}
         clearInterval(timer);
         showToast('Ready to discuss this Top 100 page — edit the post if you want, then send it.');
