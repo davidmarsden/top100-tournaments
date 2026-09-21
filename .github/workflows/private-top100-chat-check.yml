@@ -36,6 +36,9 @@ jobs:
           node --check ops/top100-chat/migrate-source-bindings.mjs
           grep -Fq "postRec.top100ObjectUrl = top100ObjectUrl" ops/top100-chat/client-brand.js
           grep -Fq "top100-object-card" ops/top100-chat/client-brand.js
+          grep -Fq "top100ChatObjectIntent" ops/top100-chat/gateway.mjs
+          grep -Fq "sourceBindingAvailable = false" ops/top100-chat/client-brand.js
+          grep -Fq "database does not exist yet; fresh install" ops/top100-chat/migrate-source-bindings.mjs
 
       - name: Check ticket function syntax
         run: node --check netlify/functions/chat-ticket.js
