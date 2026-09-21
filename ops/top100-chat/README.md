@@ -94,6 +94,10 @@ TOP100_CHAT_SSO_SECRET='<same secret as Netlify>' \
 
 The installer deliberately leaves the Commons Chat service and its ports alone. It installs a second pinned rss.chat copy, a separate SQLite database, the Top 100 auth gateway, two systemd units, and appends a validated `chat.smtop100.blog` site block to Caddy. It backs up the Caddyfile before changing it and restores the backup if validation fails.
 
+Deployment helpers are staged outside the live gateway directory and installed root-owned. The `www-data` services must not be able to replace scripts that are later executed as root.
+
+The installer also verifies the native `better-sqlite3` binding against the currently installed Node runtime. It opens an in-memory SQLite database and runs a query; if that probe fails, the helper rebuilds `better-sqlite3` and verifies it again before rss.chat is allowed to start. This protects the service from a Node ABI change leaving it in a restart loop. The SQLite data files themselves are not rebuilt or replaced.
+
 ## Applying the rss.chat overlay
 
 The pinned upstream is:
@@ -117,6 +121,14 @@ Merge `Caddyfile.example` into the server Caddyfile. Only `/login` and `/auth/*`
 
 A request without a valid clubhouse cookie is redirected to the public login shell before rss.chat sees it.
 
+The rss.chat homepage source must remain:
+
+```json
+"urlServerHomePageSource": "http://127.0.0.1:1470/client-home"
+```
+
+The gateway proxies the upstream rss.chat client through `/client-home` and injects the Top 100 logout hook. The stock rss.chat sign-out only clears its browser state; it does not clear the HttpOnly Top 100 clubhouse cookie. Reverting the homepage source directly to the upstream client therefore breaks proper logout.
+
 ## Smoke tests
 
 Logged out:
@@ -135,7 +147,68 @@ The public shell must remain reachable:
 curl -fsS https://chat.smtop100.blog/login
 ```
 
+On the Droplet, the installer deliberately runs the public smoke test through Caddy on loopback using `curl --resolve`. This prevents stale local DNS from making a healthy deployment appear broken.
+
+Useful direct checks are:
+
+```bash
+curl -I http://127.0.0.1:1470/login
+curl -I http://127.0.0.1:1430/
+```
+
+The expected healthy responses are **200** from the gateway login shell and **404** from the rss.chat root. The 404 is normal for this pinned rss.chat server: the important distinction is between a healthy HTTP response and a connection failure or 5xx error.
+
 On the server itself, the provisioning route must work only over loopback. An external call to `/localtop100sso` must never reach rss.chat because Caddy protects it; the rss.chat route also independently rejects non-loopback requests.
+
+## Runtime recovery
+
+If the public site returns **502**, first determine which local layer is down instead of changing Caddy immediately:
+
+```bash
+systemctl status top100-chat-gateway.service --no-pager -l
+systemctl status top100-rsschat.service --no-pager -l
+curl -I http://127.0.0.1:1470/login
+curl -I http://127.0.0.1:1430/
+journalctl -u top100-rsschat.service -n 80 --no-pager
+```
+
+If port 1430 is not listening and the journal mentions a missing `better_sqlite3.node` binding or an ABI mismatch, run the version-controlled native dependency helper:
+
+```bash
+sudo /opt/top100-chat/ensure-native-deps.sh
+sudo systemctl restart top100-rsschat.service
+```
+
+The systemd unit also runs this probe automatically before rss.chat starts, so a future Node runtime change should repair the binding before the application launches.
+
+If local services are healthy but `curl https://chat.smtop100.blog/...` from the Droplet fails while external clients work, compare local and authoritative DNS:
+
+```bash
+getent ahosts chat.smtop100.blog
+dig +short chat.smtop100.blog @1.1.1.1
+```
+
+To bypass the local resolver and test the Caddy/TLS endpoint returned by authoritative DNS, query one of the zone's authoritative nameservers directly:
+
+```bash
+AUTH_NS="$(dig +short NS smtop100.blog | head -1)"
+CHAT_IP="$(dig +short chat.smtop100.blog @"${AUTH_NS}" | head -1)"
+curl -v --resolve "chat.smtop100.blog:443:${CHAT_IP}" \
+  https://chat.smtop100.blog/login
+```
+
+Check that both `AUTH_NS` and `CHAT_IP` are non-empty and that `CHAT_IP` is the expected current Droplet address before relying on the result.
+
+If that succeeds while `getent` shows an old address, flush the local resolver cache rather than changing DNS or Caddy:
+
+```bash
+sudo resolvectl flush-caches
+sudo systemctl restart systemd-resolved
+```
+
+Then confirm `getent ahosts chat.smtop100.blog` returns the current Droplet address.
+
+Do not downgrade or replace the system-wide Node installation just to repair Top 100 Chat: Commons Chat shares the Droplet and may depend on the same runtime. Prefer the per-service native-module repair first.
 
 ## Logout and revocation
 
