@@ -156,7 +156,7 @@ curl -I http://127.0.0.1:1470/login
 curl -I http://127.0.0.1:1430/
 ```
 
-The expected healthy responses are **200** from the gateway login shell and **404** from the rss.chat root. The 404 is normal for this pinned rss.chat server: the important distinction is between a healthy HTTP response and a connection failure or 5xx error.
+The expected healthy responses are **200** from the gateway login shell and **200** from the rss.chat root. The root now serves the branded client through the gateway's `/client-home` source, so a 200 confirms that the injected client can be loaded.
 
 On the server itself, the provisioning route must work only over loopback. An external call to `/localtop100sso` must never reach rss.chat because Caddy protects it; the rss.chat route also independently rejects non-loopback requests.
 
