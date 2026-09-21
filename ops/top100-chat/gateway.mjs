@@ -129,8 +129,9 @@ function bootstrapHtml(user, share) {
 
   if (share?.url) {
     params.set('compose', '1');
-    params.set('shareUrl', String(share.url));
-    if (share.title) params.set('shareTitle', String(share.title));
+    params.set('top100ObjectUrl', String(share.url));
+    params.set('top100ObjectType', 'post');
+    if (share.title) params.set('top100ObjectTitle', String(share.title));
   }
 
   // Hand the identity to rss.chat through its own confirmation callback path.
@@ -160,7 +161,7 @@ async function getTop100ClientHome() {
 
   const favicon = "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B1F3B'/%3E%3Cpath d='M10 45h44' stroke='%23CBD5E1' stroke-width='2'/%3E%3Ccircle cx='32' cy='45' r='5' fill='%230B1F3B' stroke='%23CBD5E1' stroke-width='2'/%3E%3Ctext x='32' y='35' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='%2310B981'%3E100%3C/text%3E%3C/svg%3E\">";
   const headInjection = favicon + '<meta name="theme-color" content="#0B1F3B"><style>' + clientThemeCss + '</style>' +
-    '<script>(function(){try{var p=new URLSearchParams(location.search);if(p.get("compose")==="1"&&p.get("shareUrl"))sessionStorage.setItem("top100ChatShareIntent",JSON.stringify({title:(p.get("shareTitle")||""),url:p.get("shareUrl")}));}catch(e){}})();</script>';
+    '<script>(function(){try{var p=new URLSearchParams(location.search);var u=p.get("top100ObjectUrl")||p.get("shareUrl")||"";if(p.get("compose")==="1"&&u){sessionStorage.setItem("top100ChatObjectIntent",JSON.stringify({compose:true,url:u,type:(p.get("top100ObjectType")||"post"),title:(p.get("top100ObjectTitle")||p.get("shareTitle")||"Top 100 post")}));}}catch(e){}})();</script>';
 
   html = html.replace('</head>', headInjection + '</head>');
   clientHomeCache = html.replace('</body>', '<script>' + clientBrandJs + '</script></body>');
@@ -238,7 +239,13 @@ const server = http.createServer(async (request, response) => {
     const query = shareQuery(share);
     try {
       verifySession(parseCookies(request)[cookieName]);
-      redirect(response, '/?compose=1&' + query);
+      const params = new URLSearchParams({
+        compose: '1',
+        top100ObjectUrl: share.url,
+        top100ObjectType: 'post',
+      });
+      if (share.title) params.set('top100ObjectTitle', share.title);
+      redirect(response, '/?' + params.toString());
     } catch {
       redirect(response, 'https://manager.smtop100.blog/chat?' + query);
     }

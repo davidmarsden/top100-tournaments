@@ -13,7 +13,11 @@ const required=[
   'TOP100 CHAT OVERLAY: product identity',
   'case "/localtop100sso"',
   'crypto.randomBytes (24)',
-  'requestIsFromThisMachine (theRequest)'
+  'requestIsFromThisMachine (theRequest)',
+  'TOP100 CHAT OVERLAY: source bindings',
+  'top100ObjectUrl',
+  'top100ObjectType',
+  'top100ObjectTitle'
 ];
 const missing=required.filter((marker)=>!source.includes(marker));
 if (missing.length) {

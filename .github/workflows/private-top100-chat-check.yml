@@ -33,8 +33,16 @@ jobs:
         run: |
           node --check ops/top100-chat/gateway.mjs
           node --check ops/top100-chat/client-brand.js
-          grep -Fq "document.querySelector('.inputReplyComposer')" ops/top100-chat/client-brand.js
-          grep -Fq "document.querySelector('.textareaMarkdown')" ops/top100-chat/client-brand.js
+          node --check ops/top100-chat/migrate-source-bindings.mjs
+          grep -Fq "postRec.top100ObjectUrl = top100ObjectUrl" ops/top100-chat/client-brand.js
+          grep -Fq "top100-object-card" ops/top100-chat/client-brand.js
+          grep -Fq "top100ChatObjectIntent" ops/top100-chat/gateway.mjs
+          grep -Fq "sourceBindingAvailable = false" ops/top100-chat/client-brand.js
+          grep -Fq "sourceContextDismissed = true" ops/top100-chat/client-brand.js
+          grep -Fq "if (!err)" ops/top100-chat/client-brand.js
+          grep -Fq "new MutationObserver" ops/top100-chat/client-brand.js
+          grep -Fq "attributeFilter: ['style', 'class']" ops/top100-chat/client-brand.js
+          grep -Fq "database does not exist yet; fresh install" ops/top100-chat/migrate-source-bindings.mjs
 
       - name: Check ticket function syntax
         run: node --check netlify/functions/chat-ticket.js
@@ -54,6 +62,10 @@ jobs:
           grep -Fq "if (url.pathname === '/share')" ops/top100-chat/gateway.mjs
           grep -Fq 'client-theme.css' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'client-brand.js' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'migrate-source-bindings.mjs' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'node migrate-source-bindings.mjs /opt/top100-rsschat' ops/top100-chat/README.md
+          grep -Fq 'top100ObjectUrl' ops/top100-chat/apply-overlay.mjs
+          grep -Fq 'top100ObjectTitle' ops/top100-chat/apply-overlay.mjs
           grep -Fq "readFileSync(path.join(here, 'client-theme.css')" ops/top100-chat/gateway.mjs
           grep -Fq "readFileSync(path.join(here, 'client-brand.js')" ops/top100-chat/gateway.mjs
           grep -Fq 'host="${base#*://}"' ops/top100-chat/smoke-test.sh
@@ -67,5 +79,7 @@ jobs:
       - name: Apply Top 100 overlay to pinned rss.chat
         run: |
           curl -fsSL             https://raw.githubusercontent.com/scripting/rss.chat/0a77f7b0cdb6d61291248ded69daa6b78f10860a/server/code/rssnetwork.js             -o /tmp/rssnetwork.js
+          node ops/top100-chat/apply-overlay.mjs /tmp/rssnetwork.js
+          node ops/top100-chat/verify-overlay.mjs /tmp/rssnetwork.js
           node ops/top100-chat/apply-overlay.mjs /tmp/rssnetwork.js
           node ops/top100-chat/verify-overlay.mjs /tmp/rssnetwork.js

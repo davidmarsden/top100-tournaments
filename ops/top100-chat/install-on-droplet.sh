@@ -64,6 +64,7 @@ fetch_top100_file "ops/top100-chat/top100-chat-gateway.service" "${tmpdir}/top10
 fetch_top100_file "ops/top100-chat/top100-rsschat.service" "${tmpdir}/top100-rsschat.service"
 fetch_top100_file "ops/top100-chat/ensure-native-deps.sh" "${tmpdir}/ensure-native-deps.sh"
 fetch_top100_file "ops/top100-chat/smoke-test.sh" "${tmpdir}/smoke-test.sh"
+fetch_top100_file "ops/top100-chat/migrate-source-bindings.mjs" "${tmpdir}/migrate-source-bindings.mjs"
 fetch_top100_file "ops/top100-chat/Caddyfile.example" "${tmpdir}/top100-chat.caddy"
 
 node "${tmpdir}/apply-overlay.mjs" "${RSS_DIR}/rssnetwork.js"
@@ -86,6 +87,7 @@ install -o root -g root -m 0644 "${tmpdir}/apply-overlay.mjs" "${GATEWAY_DIR}/ap
 install -o root -g root -m 0644 "${tmpdir}/verify-overlay.mjs" "${GATEWAY_DIR}/verify-overlay.mjs"
 install -o root -g root -m 0755 "${tmpdir}/ensure-native-deps.sh" "${GATEWAY_DIR}/ensure-native-deps.sh"
 install -o root -g root -m 0755 "${tmpdir}/smoke-test.sh" "${GATEWAY_DIR}/smoke-test.sh"
+install -o root -g root -m 0644 "${tmpdir}/migrate-source-bindings.mjs" "${GATEWAY_DIR}/migrate-source-bindings.mjs"
 
 cat > "${RSS_DIR}/config.json" <<'JSON'
 {
@@ -126,6 +128,7 @@ chown -R www-data:www-data "${RSS_DIR}"
 # Node ABI now, and let the same helper protect future service restarts after
 # unattended Node upgrades.
 "${GATEWAY_DIR}/ensure-native-deps.sh"
+node "${GATEWAY_DIR}/migrate-source-bindings.mjs" "${RSS_DIR}"
 
 umask 077
 cat > "${ENV_FILE}" <<EOF
