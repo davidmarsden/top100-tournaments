@@ -7,8 +7,8 @@ const rssDir = process.argv[2] || '/opt/top100-rsschat';
 const dbPath = process.argv[3] || path.join(rssDir, 'data', 'data.db');
 
 if (!fs.existsSync(dbPath)) {
-  console.error('Top 100 Chat database not found: ' + dbPath);
-  process.exit(2);
+  console.log('Top 100 Chat database does not exist yet; fresh install will create source-binding columns from the overlaid schema.');
+  process.exit(0);
 }
 
 const requireFromRss = createRequire(path.join(rssDir, 'package.json'));
