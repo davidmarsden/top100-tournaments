@@ -44,6 +44,51 @@ replaceOnce(
 );
 
 replaceOnce(
+  'fresh database source bindings',
+  '"create table if not exists items (id integer primary key, feedUrl text, author text collate nocase, inReplyTo integer, title text, link text, description text, pubDate text, enclosureUrl text, enclosureType text, enclosureLength integer, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, markdowntext text, outlineJsontext text, flDeleted integer not null default 0);",',
+  '"create table if not exists items (id integer primary key, feedUrl text, author text collate nocase, inReplyTo integer, title text, link text, description text, pubDate text, enclosureUrl text, enclosureType text, enclosureLength integer, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, markdowntext text, outlineJsontext text, top100ObjectUrl text, top100ObjectType text, top100ObjectTitle text, flDeleted integer not null default 0);", // TOP100 CHAT OVERLAY: source bindings'
+);
+
+replaceOnce(
+  'convertItem source bindings',
+  '\t\t\tctReplies: convertNumber (theItem.ctReplies), //7/3/26 by CC\n',
+  '\t\t\tctReplies: convertNumber (theItem.ctReplies), //7/3/26 by CC\n' +
+  '\t\t\ttop100ObjectUrl: convertString (theItem.top100ObjectUrl), // TOP100 CHAT OVERLAY\n' +
+  '\t\t\ttop100ObjectType: convertString (theItem.top100ObjectType), // TOP100 CHAT OVERLAY\n' +
+  '\t\t\ttop100ObjectTitle: convertString (theItem.top100ObjectTitle), // TOP100 CHAT OVERLAY\n'
+);
+
+replaceOnce(
+  'addItem source bindings',
+  '\t\t\toutlineJsontext: itemRec.outlineJsontext,\n\t\t\tauthor: itemRec.author, //5/4/26 by DW\n',
+  '\t\t\toutlineJsontext: itemRec.outlineJsontext,\n' +
+  '\t\t\ttop100ObjectUrl: itemRec.top100ObjectUrl, // TOP100 CHAT OVERLAY\n' +
+  '\t\t\ttop100ObjectType: itemRec.top100ObjectType, // TOP100 CHAT OVERLAY\n' +
+  '\t\t\ttop100ObjectTitle: itemRec.top100ObjectTitle, // TOP100 CHAT OVERLAY\n' +
+  '\t\t\tauthor: itemRec.author, //5/4/26 by DW\n'
+);
+
+replaceOnce(
+  'updateItem source bindings',
+  '\t\t\tadd ("outlineJsontext", itemRec.outlineJsontext);\n\t\t\tadd ("author", itemRec.author);\n',
+  '\t\t\tadd ("outlineJsontext", itemRec.outlineJsontext);\n' +
+  '\t\t\tadd ("top100ObjectUrl", itemRec.top100ObjectUrl); // TOP100 CHAT OVERLAY\n' +
+  '\t\t\tadd ("top100ObjectType", itemRec.top100ObjectType); // TOP100 CHAT OVERLAY\n' +
+  '\t\t\tadd ("top100ObjectTitle", itemRec.top100ObjectTitle); // TOP100 CHAT OVERLAY\n' +
+  '\t\t\tadd ("author", itemRec.author);\n'
+);
+
+replaceOnce(
+  'newPost source bindings',
+  '\t\t\t\t\t\t\t\t\tmarkdowntext: trimTrailingBlankLines (postRec.markdowntext), //6/3/26 by DW; 7/20/26 by CC -- #192\n\t\t\t\t\t\t\t\t\tinReplyTo: postRec.inReplyTo,\n',
+  '\t\t\t\t\t\t\t\t\tmarkdowntext: trimTrailingBlankLines (postRec.markdowntext), //6/3/26 by DW; 7/20/26 by CC -- #192\n' +
+  '\t\t\t\t\t\t\t\t\ttop100ObjectUrl: postRec.top100ObjectUrl, // TOP100 CHAT OVERLAY\n' +
+  '\t\t\t\t\t\t\t\t\ttop100ObjectType: postRec.top100ObjectType, // TOP100 CHAT OVERLAY\n' +
+  '\t\t\t\t\t\t\t\t\ttop100ObjectTitle: postRec.top100ObjectTitle, // TOP100 CHAT OVERLAY\n' +
+  '\t\t\t\t\t\t\t\t\tinReplyTo: postRec.inReplyTo,\n'
+);
+
+replaceOnce(
   'feed identity',
   '\t\theadElements.title = userRec.screenname + " on rss.network";\n\t\theadElements.link = config.urlServerForClient; //8/2/26 by DW\n\t\theadElements.description = "Posts by " + userRec.screenname + " on rss.network";\n',
   '\t\theadElements.title = userRec.screenname + " on " + config.productNameForDisplay; // TOP100 CHAT OVERLAY\n' +
