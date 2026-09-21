@@ -62,7 +62,10 @@
     document.title = 'Top 100 Chat';
 
     var docs = document.querySelector('#idDocsMenu > a');
-    if (docs) docs.innerHTML = 'Top 100&nbsp;<b class="caret"></b>';
+    if (docs && !docs.dataset.top100Branded) {
+      docs.dataset.top100Branded = 'true';
+      docs.innerHTML = 'Top 100&nbsp;<b class="caret"></b>';
+    }
 
     var docsMenu = document.querySelector('#idDocsMenu .dropdown-menu');
     if (docsMenu && !docsMenu.dataset.top100Branded) {
