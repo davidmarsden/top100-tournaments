@@ -56,6 +56,17 @@
     location.href = '/auth/logout';
   }
 
+  function rewriteUserDisplayName() {
+    var username = document.getElementById('idUsername');
+    if (!username || typeof window.appPrefs !== 'object' || !window.appPrefs) return;
+
+    var displayName = safeText(window.appPrefs.myFeedTitle, 120);
+    if (displayName && username.textContent !== displayName) {
+      username.textContent = displayName;
+      username.title = 'Top 100 manager';
+    }
+  }
+
   function rewriteMenus() {
     var product = document.querySelector('.divMenuProductName');
     if (product && product.textContent !== 'Top 100') product.textContent = 'Top 100';
@@ -259,6 +270,7 @@
 
   function refreshUi() {
     rewriteMenus();
+    rewriteUserDisplayName();
     installContextPanel();
     monitorSourceComposer();
     decorateBoundPosts();
@@ -294,6 +306,7 @@
     var startupTimer = setInterval(function () {
       attempts += 1;
       rewriteMenus();
+      rewriteUserDisplayName();
       installContextPanel();
       patchNetwork();
       openComposer();
