@@ -78,3 +78,5 @@ jobs:
           curl -fsSL             https://raw.githubusercontent.com/scripting/rss.chat/0a77f7b0cdb6d61291248ded69daa6b78f10860a/server/code/rssnetwork.js             -o /tmp/rssnetwork.js
           node ops/top100-chat/apply-overlay.mjs /tmp/rssnetwork.js
           node ops/top100-chat/verify-overlay.mjs /tmp/rssnetwork.js
+          node ops/top100-chat/apply-overlay.mjs /tmp/rssnetwork.js
+          node ops/top100-chat/verify-overlay.mjs /tmp/rssnetwork.js
