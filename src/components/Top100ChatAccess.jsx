@@ -61,6 +61,21 @@ function readStoredAccessToken() {
   }
 }
 
+function readShareIntent() {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const title = String(params.get('shareTitle') || '').trim().slice(0, 180);
+  const rawUrl = String(params.get('shareUrl') || '').trim().slice(0, 500);
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'https:' || url.hostname !== 'smtop100.blog') return null;
+    return { title, url: url.toString() };
+  } catch {
+    return null;
+  }
+}
+
 function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSION_TIMEOUT_MS) {
   let timer;
   return Promise.race([
@@ -87,9 +102,14 @@ export default function Top100ChatAccess() {
     setStatus('Opening the Top 100 clubhouse…');
 
     try {
+      const share = readShareIntent();
       const response = await fetch('/.netlify/functions/chat-ticket', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(share ? { share } : {}),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.url) throw new Error(body.error || 'Could not open Top 100 Chat.');
@@ -143,8 +163,8 @@ export default function Top100ChatAccess() {
           email: email.trim(),
           options: {
             emailRedirectTo: window.location.hostname.endsWith('.netlify.app')
-              ? `${window.location.origin}/chat`
-              : 'https://manager.smtop100.blog/chat',
+              ? `${window.location.origin}/chat${window.location.search}`
+              : `https://manager.smtop100.blog/chat${window.location.search}`,
             shouldCreateUser: true,
           },
         }),
