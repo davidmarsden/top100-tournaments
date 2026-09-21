@@ -79,6 +79,27 @@ function redirect(response, location, headers = {}) {
   send(response, 302, '', { Location: location, ...headers });
 }
 
+function normalizeShareFromUrl(url) {
+  const title = String(url.searchParams.get('shareTitle') || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 180);
+  const rawUrl = String(url.searchParams.get('shareUrl') || '').trim().slice(0, 500);
+  if (!rawUrl) return null;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'smtop100.blog') return null;
+    return { title, url: parsed.toString() };
+  } catch {
+    return null;
+  }
+}
+
+function shareQuery(share) {
+  const params = new URLSearchParams({
+    shareUrl: share.url,
+  });
+  if (share.title) params.set('shareTitle', share.title);
+  return params.toString();
+}
+
 function getJson(url) {
   return new Promise((resolve, reject) => {
     const request = http.get(url, { timeout: 5000 }, (response) => {
@@ -204,6 +225,23 @@ const server = http.createServer(async (request, response) => {
     send(response, 200, shellHtml.replace('{{ERROR}}', url.searchParams.get('error') ? '<p class="notice">That sign-in link could not be used. Please sign in again.</p>' : ''), {
       'Content-Type': 'text/html; charset=utf-8',
     });
+    return;
+  }
+
+  if (url.pathname === '/share') {
+    const share = normalizeShareFromUrl(url);
+    if (!share) {
+      redirect(response, '/');
+      return;
+    }
+
+    const query = shareQuery(share);
+    try {
+      verifySession(parseCookies(request)[cookieName]);
+      redirect(response, '/?compose=1&' + query);
+    } catch {
+      redirect(response, 'https://manager.smtop100.blog/chat?' + query);
+    }
     return;
   }
 
