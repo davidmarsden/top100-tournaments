@@ -164,6 +164,19 @@ body { padding-top: 64px !important; }
   border-color: var(--top100-border) !important;
 }
 
+.divChat .divThread,
+.divChat .divThread .divThread,
+.divChat .divTweet {
+  background: var(--top100-panel) !important;
+  color: var(--top100-text) !important;
+}
+
+.divChat .divThread:hover,
+.divChat .divThread .divThread:hover,
+.divChat .divThread.flSelected > .divTweet {
+  background: var(--top100-panel-2) !important;
+}
+
 .divChat .divTweetText,
 .divChat .divTweetText *,
 .divChat .inputComposer,
