@@ -14,6 +14,8 @@ const cookieName = 'top100_chat_session';
 const sessionLifetimeSeconds = Number(process.env.TOP100_CHAT_SESSION_SECONDS || 43200);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const shellHtml = fs.readFileSync(path.join(here, 'shell.html'), 'utf8');
+const clientThemeCss = fs.readFileSync(path.join(here, 'client-theme.css'), 'utf8');
+const clientBrandJs = fs.readFileSync(path.join(here, 'client-brand.js'), 'utf8');
 const usedNonces = new Map();
 const upstreamClientHome = 'https://code.scripting.com/rsschat/index.html';
 let clientHomeCache = '';
@@ -96,13 +98,19 @@ function getJson(url) {
   });
 }
 
-function bootstrapHtml(user) {
+function bootstrapHtml(user, share) {
   const params = new URLSearchParams({
     emailconfirmed: 'true',
     email: user.emailAddress,
     code: user.emailSecret,
     screenname: user.screenname,
   });
+
+  if (share?.url) {
+    params.set('compose', '1');
+    params.set('shareUrl', String(share.url));
+    if (share.title) params.set('shareTitle', String(share.title));
+  }
 
   // Hand the identity to rss.chat through its own confirmation callback path.
   // The rss.chat client persists rssNetworkMemory itself and immediately strips
@@ -124,41 +132,17 @@ async function getTop100ClientHome() {
   });
   if (!upstream.ok) throw new Error(`Could not fetch rss.chat client source: HTTP ${upstream.status}`);
 
-  const html = await upstream.text();
-  const marker = '</body>';
-  if (!html.includes(marker)) throw new Error('rss.chat client source is missing </body>.');
-
-  const logoutShim = `
-<script>
-(function () {
-  function top100Logout () {
-    try { localStorage.removeItem('rssNetworkMemory'); } catch (e) {}
-    location.href = '/auth/logout';
+  let html = await upstream.text();
+  if (!html.includes('</head>') || !html.includes('</body>')) {
+    throw new Error('rss.chat client source is missing expected document markers.');
   }
 
-  window.signOutCommand = function () {
-    if (typeof confirmDialog === 'function') {
-      confirmDialog('OK to sign out?', top100Logout);
-    } else if (window.confirm('OK to sign out?')) {
-      top100Logout();
-    }
-  };
+  const favicon = "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B1F3B'/%3E%3Cpath d='M10 45h44' stroke='%23CBD5E1' stroke-width='2'/%3E%3Ccircle cx='32' cy='45' r='5' fill='%230B1F3B' stroke='%23CBD5E1' stroke-width='2'/%3E%3Ctext x='32' y='35' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='%2310B981'%3E100%3C/text%3E%3C/svg%3E\">";
+  const headInjection = favicon + '<meta name="theme-color" content="#0B1F3B"><style>' + clientThemeCss + '</style>' +
+    '<script>(function(){try{var p=new URLSearchParams(location.search);if(p.get("compose")==="1"&&p.get("shareUrl"))sessionStorage.setItem("top100ChatShareIntent",JSON.stringify({title:(p.get("shareTitle")||""),url:p.get("shareUrl")}));}catch(e){}})();<\\/script>';
 
-  var attempts = 0;
-  var timer = setInterval(function () {
-    attempts += 1;
-    if (window.globals && globals.myRssNetwork) {
-      globals.myRssNetwork.signOut = top100Logout;
-      clearInterval(timer);
-    } else if (attempts >= 200) {
-      clearInterval(timer);
-    }
-  }, 50);
-})();
-</script>
-`;
-
-  clientHomeCache = html.replace(marker, logoutShim + marker);
+  html = html.replace('</head>', headInjection + '</head>');
+  clientHomeCache = html.replace('</body>', '<script>' + clientBrandJs.replace(/<\\/script/gi, '<\\\\/script') + '<\\/script></body>');
   return clientHomeCache;
 }
 
@@ -192,7 +176,7 @@ async function claim(request, response, url) {
       exp: now + sessionLifetimeSeconds,
     });
 
-    send(response, 200, bootstrapHtml(user), {
+    send(response, 200, bootstrapHtml(user, payload.share), {
       'Content-Type': 'text/html; charset=utf-8',
       'Set-Cookie': `${cookieName}=${encodeURIComponent(session)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${sessionLifetimeSeconds}`,
     });
