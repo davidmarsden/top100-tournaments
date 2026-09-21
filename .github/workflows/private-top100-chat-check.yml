@@ -41,6 +41,8 @@ jobs:
           grep -Fq "sourceContextDismissed = true" ops/top100-chat/client-brand.js
           grep -Fq "if (!err)" ops/top100-chat/client-brand.js
           grep -Fq "new MutationObserver" ops/top100-chat/client-brand.js
+          grep -Fq "rewriteUserDisplayName" ops/top100-chat/client-brand.js
+          grep -Fq ".divChat .divThread .divThread" ops/top100-chat/client-theme.css
           grep -Fq "attributeFilter: ['style', 'class']" ops/top100-chat/client-brand.js
           grep -Fq "database does not exist yet; fresh install" ops/top100-chat/migrate-source-bindings.mjs
 
