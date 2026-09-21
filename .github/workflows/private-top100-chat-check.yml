@@ -29,8 +29,10 @@ jobs:
       - name: Build tournament app
         run: npm run build
 
-      - name: Check gateway syntax
-        run: node --check ops/top100-chat/gateway.mjs
+      - name: Check gateway and branding syntax
+        run: |
+          node --check ops/top100-chat/gateway.mjs
+          node --check ops/top100-chat/client-brand.js
 
       - name: Check ticket function syntax
         run: node --check netlify/functions/chat-ticket.js
@@ -46,6 +48,10 @@ jobs:
           grep -Fq 'urlServerHomePageSource": "http://127.0.0.1:1470/client-home"' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'ExecStartPre=/opt/top100-chat/ensure-native-deps.sh' ops/top100-chat/top100-rsschat.service
           grep -Fq 'TOP100_CHAT_RESOLVE_IP=127.0.0.1' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'client-theme.css' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'client-brand.js' ops/top100-chat/install-on-droplet.sh
+          grep -Fq "readFileSync(path.join(here, 'client-theme.css')" ops/top100-chat/gateway.mjs
+          grep -Fq "readFileSync(path.join(here, 'client-brand.js')" ops/top100-chat/gateway.mjs
           grep -Fq 'host="${base#*://}"' ops/top100-chat/smoke-test.sh
           grep -Fq "new Database(':memory:')" ops/top100-chat/ensure-native-deps.sh
           grep -Fq 'chown root:root "${GATEWAY_DIR}"' ops/top100-chat/install-on-droplet.sh
