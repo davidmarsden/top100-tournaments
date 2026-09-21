@@ -33,8 +33,9 @@ jobs:
         run: |
           node --check ops/top100-chat/gateway.mjs
           node --check ops/top100-chat/client-brand.js
-          grep -Fq "document.querySelector('.inputReplyComposer')" ops/top100-chat/client-brand.js
-          grep -Fq "document.querySelector('.textareaMarkdown')" ops/top100-chat/client-brand.js
+          node --check ops/top100-chat/migrate-source-bindings.mjs
+          grep -Fq "postRec.top100ObjectUrl = top100ObjectUrl" ops/top100-chat/client-brand.js
+          grep -Fq "top100-object-card" ops/top100-chat/client-brand.js
 
       - name: Check ticket function syntax
         run: node --check netlify/functions/chat-ticket.js
@@ -54,6 +55,9 @@ jobs:
           grep -Fq "if (url.pathname === '/share')" ops/top100-chat/gateway.mjs
           grep -Fq 'client-theme.css' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'client-brand.js' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'migrate-source-bindings.mjs' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'top100ObjectUrl' ops/top100-chat/apply-overlay.mjs
+          grep -Fq 'top100ObjectTitle' ops/top100-chat/apply-overlay.mjs
           grep -Fq "readFileSync(path.join(here, 'client-theme.css')" ops/top100-chat/gateway.mjs
           grep -Fq "readFileSync(path.join(here, 'client-brand.js')" ops/top100-chat/gateway.mjs
           grep -Fq 'host="${base#*://}"' ops/top100-chat/smoke-test.sh
