@@ -16,12 +16,13 @@ While the administrator is already signed into Soccer Manager, the bookmarklet:
 2. inspects the current page's Resource Timing entries for known read-only Soccer Manager JSON endpoints;
 3. opens/reuses the protected Top 100 Sync admin page immediately from the user's click;
 4. refetches those same endpoint URLs from the Soccer Manager tab with the browser's existing authenticated session;
-5. sends only the JSON response bodies and source URLs to the Top 100 Sync tab with cross-origin `postMessage`;
-6. waits for an acknowledgement from the exact `https://tournaments.smtop100.blog` origin.
+5. waits for the newly loaded Sync document to announce readiness with a unique per-run session token;
+6. sends only the JSON response bodies and source URLs to that ready document with cross-origin `postMessage`;
+7. accepts the final acknowledgement only when it comes from the exact Sync window/origin and carries the same session token.
 
 No Soccer Manager password, Cookie header, PHP session id or request headers are transmitted to Top 100.
 
-The receiving page accepts messages only from HTTPS `soccermanager.com` origins, checks the declared source origin against the browser-supplied message origin, normalizes at most 20 responses, and remains behind the existing global administrator gate.
+The receiving page accepts messages only from HTTPS `soccermanager.com` origins, checks the declared source origin against the browser-supplied message origin, requires the per-run collector session token, normalizes at most 20 responses, and remains behind the existing global administrator gate. Normalized downloads preserve the captured source URL so action/world/club query context is not lost.
 
 The collector currently discovers these endpoint families when they have already been requested by the current Soccer Manager page:
 
