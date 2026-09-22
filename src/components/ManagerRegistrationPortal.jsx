@@ -76,6 +76,19 @@ export default function ManagerRegistrationPortal() {
     else { setAccount(null); setRegistrations([]); setTournaments([]); setLoading(false); }
   }, [session?.user?.id]);
 
+  useEffect(() => {
+    if (!loading || !session?.user || account || loadError) return undefined;
+
+    const watchdog = window.setTimeout(() => {
+      loadRequestId.current += 1;
+      setMessage('');
+      setLoadError('The registration portal is taking too long to load. Please try again.');
+      setLoading(false);
+    }, 10000);
+
+    return () => window.clearTimeout(watchdog);
+  }, [loading, session?.user?.id, account, loadError]);
+
   async function load() {
     if (!session?.user) return;
     const requestId = ++loadRequestId.current;
