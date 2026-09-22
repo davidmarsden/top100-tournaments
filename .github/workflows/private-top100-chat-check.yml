@@ -37,6 +37,10 @@ jobs:
           grep -Fq "postRec.top100ObjectUrl = top100ObjectUrl" ops/top100-chat/client-brand.js
           grep -Fq "top100-object-card" ops/top100-chat/client-brand.js
           grep -Fq "top100ChatObjectIntent" ops/top100-chat/gateway.mjs
+          grep -Fq "rel=\"manifest\"" ops/top100-chat/gateway.mjs
+          grep -Fq "navigator.serviceWorker.register" ops/top100-chat/gateway.mjs
+          grep -Fq "Top 100 Chat is private and live" ops/top100-chat/gateway.mjs
+          ! grep -Fq "addEventListener('fetch'" ops/top100-chat/gateway.mjs
           grep -Fq "sourceBindingAvailable = false" ops/top100-chat/client-brand.js
           grep -Fq "sourceContextDismissed = true" ops/top100-chat/client-brand.js
           grep -Fq "if (!err)" ops/top100-chat/client-brand.js
@@ -60,8 +64,11 @@ jobs:
           grep -Fq 'urlServerHomePageSource": "http://127.0.0.1:1470/client-home"' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'ExecStartPre=/opt/top100-chat/ensure-native-deps.sh' ops/top100-chat/top100-rsschat.service
           grep -Fq 'TOP100_CHAT_RESOLVE_IP=127.0.0.1' ops/top100-chat/install-on-droplet.sh
-          grep -Fq '@public path /login /login/* /share /auth/claim /auth/check /auth/logout' ops/top100-chat/Caddyfile.example
+          grep -Fq '@public path /login /login/* /share /manifest.webmanifest /pwa-sw.js /top100-chat-icon.svg /auth/claim /auth/check /auth/logout' ops/top100-chat/Caddyfile.example
           grep -Fq "if (url.pathname === '/share')" ops/top100-chat/gateway.mjs
+          grep -Fq "if (url.pathname === '/manifest.webmanifest')" ops/top100-chat/gateway.mjs
+          grep -Fq "if (url.pathname === '/pwa-sw.js')" ops/top100-chat/gateway.mjs
+          grep -Fq "if (url.pathname === '/top100-chat-icon.svg')" ops/top100-chat/gateway.mjs
           grep -Fq 'client-theme.css' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'client-brand.js' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'migrate-source-bindings.mjs' ops/top100-chat/install-on-droplet.sh
