@@ -102,25 +102,24 @@ export default function SoccerManagerSyncPage() {
   }, []);
 
   useEffect(() => {
-    const collectorSession = new URLSearchParams(window.location.search).get('collectorSession');
-    if (collectorSession && window.opener) {
-      try {
-        window.opener.postMessage({
-          type: soccerManagerCollectorProtocol.readyType,
-          session: collectorSession,
-        }, '*');
-      } catch {
-        // The opener may have been closed; manual import remains available.
-      }
-    }
-
     function handleCollectorMessage(event) {
       if (!isAllowedSoccerManagerOrigin(event.origin)) return;
       const message = event.data;
-      if (!message || message.type !== soccerManagerCollectorProtocol.messageType || message.version !== 1) return;
       const collectorSession = new URLSearchParams(window.location.search).get('collectorSession');
-      if (!collectorSession || message.session !== collectorSession) return;
-      if (message.sourceOrigin !== event.origin || !Array.isArray(message.payloads)) return;
+      if (!collectorSession || !message || message.version !== 1 || message.session !== collectorSession) return;
+      if (message.sourceOrigin !== event.origin) return;
+
+      if (message.type === soccerManagerCollectorProtocol.helloType) {
+        if (event.source && typeof event.source.postMessage === 'function') {
+          event.source.postMessage({
+            type: soccerManagerCollectorProtocol.readyType,
+            session: collectorSession,
+          }, event.origin);
+        }
+        return;
+      }
+
+      if (message.type !== soccerManagerCollectorProtocol.messageType || !Array.isArray(message.payloads)) return;
 
       const entries = message.payloads.slice(0, 20).map((item, index) => {
         let name = `Soccer Manager response ${index + 1}`;
