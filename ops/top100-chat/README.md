@@ -156,7 +156,8 @@ The first version is intentionally restrained:
 - there is no "every new post" notification mode;
 - expired browser push subscriptions are removed automatically;
 - subscriptions are capped at 8 active devices per manager and 500 active devices globally to prevent unbounded store growth or fan-out;
-- expired leases are pruned before quota checks, and account-switch endpoint reassignments must satisfy the destination manager's quota too.
+- expired leases are pruned before quota checks, and account-switch endpoint reassignments must satisfy the destination manager's quota too;
+- when a shared browser changes manager accounts, the previous manager's endpoint ownership is revoked before reassignment is attempted. If the new manager cannot claim the endpoint, the browser unsubscribes locally rather than continuing to receive the previous account's private notifications.
 
 The browser subscription is stored by the auth gateway under `/var/lib/top100-chat/push-subscriptions.json` and is keyed to the authenticated Top 100 manager id. It does not contain chat history. Each subscription also carries the expiry of the current clubhouse session; the client renews that lease when Chat is opened while authenticated. Push delivery therefore stops when Top 100 Chat access expires rather than allowing a stale PWA subscription to receive private notifications indefinitely. Explicit logout revokes all stored push subscriptions for that manager immediately. The gateway also rechecks that each subscription is still registered immediately before each outbound push, so an in-flight fan-out cannot continue delivering to later devices after logout.
 
