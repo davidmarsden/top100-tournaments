@@ -79,7 +79,11 @@ export default function SoccerManagerSyncPage() {
   const [status, setStatus] = useState('Drop Soccer Manager JSON responses here, or send them directly from Soccer Manager with the browser collector. Nothing is written to the database.');
   const [collectorStatus, setCollectorStatus] = useState('');
   const collectorLinkRef = useRef(null);
-  const totalSummary = useMemo(() => payloads.map((entry) => ({ name: entry.name, ...summarizeNormalizedPayload(entry.payload) })), [payloads]);
+  const totalSummary = useMemo(() => payloads.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    ...summarizeNormalizedPayload(entry.payload),
+  })), [payloads]);
 
   function normalizeCapturedEntries(entries) {
     const next = [];
@@ -87,7 +91,12 @@ export default function SoccerManagerSyncPage() {
     for (const entry of entries) {
       try {
         const payload = normalizeSoccerManagerPayload(entry.raw);
-        next.push({ name: entry.name, sourceUrl: entry.sourceUrl || null, payload });
+        next.push({
+          id: entry.id || entry.sourceUrl || entry.name,
+          name: entry.name,
+          sourceUrl: entry.sourceUrl || null,
+          payload,
+        });
       } catch (error) {
         errors.push(`${entry.name}: ${error.message}`);
       }
@@ -129,7 +138,8 @@ export default function SoccerManagerSyncPage() {
         } catch {
           // Keep the generic label; the URL is metadata only.
         }
-        return { name, sourceUrl: typeof item?.url === 'string' ? item.url : null, raw: item?.data };
+        const sourceUrl = typeof item?.url === 'string' ? item.url : null;
+        return { id: sourceUrl || `${name}:${index}`, name, sourceUrl, raw: item?.data };
       });
 
       const { next, errors } = normalizeCapturedEntries(entries);
@@ -217,10 +227,10 @@ export default function SoccerManagerSyncPage() {
 
     {!!totalSummary.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Import summary</p><h2>What we found</h2></div>
-      {totalSummary.map((summary) => <div key={summary.name} className="sm-sync-summary"><strong>{summary.name}</strong><SummaryCards summary={Object.fromEntries(Object.entries(summary).filter(([key]) => key !== 'name'))} /></div>)}
+      {totalSummary.map((summary) => <div key={summary.id} className="sm-sync-summary"><strong>{summary.name}</strong><SummaryCards summary={Object.fromEntries(Object.entries(summary).filter(([key]) => key !== 'name' && key !== 'id'))} /></div>)}
     </section>}
 
-    {payloads.map((entry) => <div key={entry.name}>
+    {payloads.map((entry) => <div key={entry.id}>
       {entry.payload.kind === 'competition' && <CompetitionPreview payload={entry.payload} />}
       {entry.payload.kind === 'playerChanges' && <PlayerChangesPreview payload={entry.payload} />}
       {entry.payload.kind === 'transfers' && <TransfersPreview payload={entry.payload} />}
