@@ -23,7 +23,7 @@ While the administrator is already signed into Soccer Manager, the bookmarklet:
 
 No Soccer Manager password, Cookie header, PHP session id or request headers are transmitted to Top 100.
 
-The receiving page accepts messages only from HTTPS `soccermanager.com` origins, checks the declared source origin against the browser-supplied message origin, requires the per-run collector session token, and replies to readiness probes via the actual message `event.source` rather than `window.opener`. It normalizes at most the 20 most recent responses, so the screen the administrator just opened is not displaced by older Resource Timing history, and remains behind the existing global administrator gate. Normalized downloads preserve the captured source URL so action/world/club query context is not lost.
+The receiving page accepts messages only from HTTPS `soccermanager.com` origins, checks the declared source origin against the browser-supplied message origin, requires the per-run collector session token, and replies to readiness probes via the actual message `event.source` rather than `window.opener`. It normalizes at most the 20 most recent responses, so the screen the administrator just opened is not displaced by older Resource Timing history, and remains behind the existing global administrator gate. Normalized downloads preserve the captured source URL so action/world/club query context is not lost. The UI also uses that full source identity for React keys while keeping the endpoint basename as the human-readable label, preventing previews from being reused across different query variants.
 
 The collector currently discovers these endpoint families when they have already been requested by the current Soccer Manager page:
 
