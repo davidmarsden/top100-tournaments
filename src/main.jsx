@@ -102,7 +102,25 @@ renderApplication().catch((error) => {
 });
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
+  window.addEventListener('load', async () => {
+    const isManagerHost = window.location.hostname === 'manager.smtop100.blog';
+
+    if (isManagerHost) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(
+            keys
+              .filter((key) => key.startsWith('top100-tournaments-shell-'))
+              .map((key) => caches.delete(key)),
+          );
+        }
+      } catch (_) {}
+      return;
+    }
+
     navigator.serviceWorker.register('/pwa-sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => undefined);
   });
 }

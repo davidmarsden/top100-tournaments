@@ -13,3 +13,24 @@
   for = "/*.webmanifest"
   [headers.values]
     Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/manager/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/registration*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/registrations*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
