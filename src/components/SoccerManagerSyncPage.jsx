@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeSoccerManagerPayload, summarizeNormalizedPayload } from '../lib/soccerManagerSync';
+import { collectorBookmarklet, isAllowedSoccerManagerOrigin, soccerManagerCollectorProtocol } from '../lib/soccerManagerCollector';
 
 function formatValue(value) {
   if (value === null || value === undefined || value === '') return '—';
@@ -75,23 +76,111 @@ function FinancePreview({ payload }) {
 export default function SoccerManagerSyncPage() {
   const [payloads, setPayloads] = useState([]);
   const [fileInputKey, setFileInputKey] = useState(0);
-  const [status, setStatus] = useState('Drop Soccer Manager JSON responses here. Nothing is written to the database in v0.1.');
-  const totalSummary = useMemo(() => payloads.map((entry) => ({ name: entry.name, ...summarizeNormalizedPayload(entry.payload) })), [payloads]);
+  const [status, setStatus] = useState('Drop Soccer Manager JSON responses here, or send them directly from Soccer Manager with the browser collector. Nothing is written to the database.');
+  const [collectorStatus, setCollectorStatus] = useState('');
+  const collectorLinkRef = useRef(null);
+  const totalSummary = useMemo(() => payloads.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    ...summarizeNormalizedPayload(entry.payload),
+  })), [payloads]);
 
-  async function importFiles(files) {
+  function normalizeCapturedEntries(entries) {
     const next = [];
     const errors = [];
-    for (const file of Array.from(files || [])) {
+    for (const entry of entries) {
       try {
-        const raw = JSON.parse(await file.text());
-        const payload = normalizeSoccerManagerPayload(raw);
-        next.push({ name: file.name, payload });
+        const payload = normalizeSoccerManagerPayload(entry.raw);
+        next.push({
+          id: entry.id || entry.sourceUrl || entry.name,
+          name: entry.name,
+          sourceUrl: entry.sourceUrl || null,
+          payload,
+        });
       } catch (error) {
-        errors.push(`${file.name}: ${error.message}`);
+        errors.push(`${entry.name}: ${error.message}`);
       }
     }
+    return { next, errors };
+  }
+
+  useEffect(() => {
+    if (collectorLinkRef.current) {
+      collectorLinkRef.current.setAttribute('href', collectorBookmarklet());
+    }
+  }, []);
+
+  useEffect(() => {
+    function handleCollectorMessage(event) {
+      if (!isAllowedSoccerManagerOrigin(event.origin)) return;
+      const message = event.data;
+      const collectorSession = new URLSearchParams(window.location.search).get('collectorSession');
+      if (!collectorSession || !message || message.version !== 1 || message.session !== collectorSession) return;
+      if (message.sourceOrigin !== event.origin) return;
+
+      if (message.type === soccerManagerCollectorProtocol.helloType) {
+        if (event.source && typeof event.source.postMessage === 'function') {
+          event.source.postMessage({
+            type: soccerManagerCollectorProtocol.readyType,
+            session: collectorSession,
+          }, event.origin);
+        }
+        return;
+      }
+
+      if (message.type !== soccerManagerCollectorProtocol.messageType || !Array.isArray(message.payloads)) return;
+
+      const entries = message.payloads.slice(-20).map((item, index) => {
+        let name = `Soccer Manager response ${index + 1}`;
+        try {
+          const url = new URL(item?.url);
+          name = url.pathname.split('/').filter(Boolean).pop() || name;
+        } catch {
+          // Keep the generic label; the URL is metadata only.
+        }
+        const sourceUrl = typeof item?.url === 'string' ? item.url : null;
+        return { id: sourceUrl || `${name}:${index}`, name, sourceUrl, raw: item?.data };
+      });
+
+      const { next, errors } = normalizeCapturedEntries(entries);
+      setPayloads(next);
+      setStatus(errors.length
+        ? `Received ${next.length} supported response(s) from Soccer Manager. ${errors.join(' ')}`
+        : `Received and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'} directly from your logged-in tab.`);
+      setCollectorStatus(`Last browser sync: ${new Date().toLocaleString('en-GB')} · ${event.origin}`);
+
+      if (event.source && typeof event.source.postMessage === 'function') {
+        event.source.postMessage({ type: soccerManagerCollectorProtocol.ackType, session: collectorSession, accepted: next.length, rejected: errors.length }, event.origin);
+      }
+    }
+
+    window.addEventListener('message', handleCollectorMessage);
+    return () => window.removeEventListener('message', handleCollectorMessage);
+  }, []);
+
+  async function copyCollector() {
+    try {
+      await navigator.clipboard.writeText(collectorBookmarklet());
+      setCollectorStatus('Collector bookmarklet copied. Create a browser bookmark and paste it into the bookmark URL/location field.');
+    } catch {
+      setCollectorStatus('Could not copy automatically. Drag the “Top 100 Sync” link to your bookmarks bar instead.');
+    }
+  }
+
+  async function importFiles(files) {
+    const entries = [];
+    const readErrors = [];
+    for (const file of Array.from(files || [])) {
+      try {
+        entries.push({ name: file.name, raw: JSON.parse(await file.text()) });
+      } catch (error) {
+        readErrors.push(`${file.name}: ${error.message}`);
+      }
+    }
+    const { next, errors } = normalizeCapturedEntries(entries);
+    const allErrors = [...readErrors, ...errors];
     setPayloads(next);
-    setStatus(errors.length ? `Loaded ${next.length} file(s). ${errors.join(' ')}` : `Loaded and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'}.`);
+    setStatus(allErrors.length ? `Loaded ${next.length} file(s). ${allErrors.join(' ')}` : `Loaded and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'}.`);
     // Always remount the native input after an import attempt. Browsers often
     // suppress change when the same path is selected twice, including after
     // a malformed/unsupported file is corrected in place.
@@ -99,7 +188,11 @@ export default function SoccerManagerSyncPage() {
   }
 
   function downloadNormalized() {
-    const blob = new Blob([JSON.stringify(payloads.map((entry) => ({ source: entry.name, ...entry.payload })), null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(payloads.map((entry) => ({
+      source: entry.name,
+      sourceUrl: entry.sourceUrl || null,
+      ...entry.payload,
+    })), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -112,7 +205,18 @@ export default function SoccerManagerSyncPage() {
     <section className="hero"><div className="hero-row"><div><p className="eyebrow">Top 100 data tools</p><h1>Soccer Manager Sync</h1><p>Turn Soccer Manager's internal JSON responses into clean Top 100 records before we automate collection or write anything to production.</p></div><div className="button-row"><a className="button secondary" href="/admin">Tournament admin</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div></section>
 
     <section className="card module-card">
-      <div className="card-header"><p className="eyebrow">v0.1 · preview only</p><h2>Import captured JSON</h2></div>
+      <div className="card-header"><p className="eyebrow">v0.2 · browser collector</p><h2>Sync from Soccer Manager</h2></div>
+      <p>Install the collector once, then use it while you are signed into Soccer Manager. It discovers supported JSON requests already made by the current Soccer Manager page, refetches them inside that same logged-in tab, and sends the JSON directly here. Cookies and passwords are never included.</p>
+      <div className="button-row">
+        <a ref={collectorLinkRef} className="button" href="#collector" title="Drag this link to your bookmarks bar" onClick={(event) => event.preventDefault()}>Top 100 Sync</a>
+        <button type="button" className="secondary" onClick={copyCollector}>Copy collector bookmarklet</button>
+      </div>
+      <p className="muted">Desktop: drag “Top 100 Sync” to your bookmarks bar, or copy it and create a bookmark manually. Then visit a league table, club, player changes or transfer-market screen on Soccer Manager and click the bookmark.</p>
+      {collectorStatus && <p className="status">{collectorStatus}</p>}
+    </section>
+
+    <section className="card module-card">
+      <div className="card-header"><p className="eyebrow">Fallback · preview only</p><h2>Import captured JSON</h2></div>
       <div className="sm-sync-drop">
         <input key={fileInputKey} id="sm-sync-files" type="file" accept=".json,application/json" multiple onChange={(event) => importFiles(event.target.files)} />
         <p className="muted">Supported now: competition snapshot, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
@@ -123,10 +227,10 @@ export default function SoccerManagerSyncPage() {
 
     {!!totalSummary.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Import summary</p><h2>What we found</h2></div>
-      {totalSummary.map((summary) => <div key={summary.name} className="sm-sync-summary"><strong>{summary.name}</strong><SummaryCards summary={Object.fromEntries(Object.entries(summary).filter(([key]) => key !== 'name'))} /></div>)}
+      {totalSummary.map((summary) => <div key={summary.id} className="sm-sync-summary"><strong>{summary.name}</strong><SummaryCards summary={Object.fromEntries(Object.entries(summary).filter(([key]) => key !== 'name' && key !== 'id'))} /></div>)}
     </section>}
 
-    {payloads.map((entry) => <div key={entry.name}>
+    {payloads.map((entry) => <div key={entry.id}>
       {entry.payload.kind === 'competition' && <CompetitionPreview payload={entry.payload} />}
       {entry.payload.kind === 'playerChanges' && <PlayerChangesPreview payload={entry.payload} />}
       {entry.payload.kind === 'transfers' && <TransfersPreview payload={entry.payload} />}
