@@ -20,6 +20,57 @@ const usedNonces = new Map();
 const upstreamClientHome = 'https://code.scripting.com/rsschat/index.html';
 let clientHomeCache = '';
 
+const pwaManifest = JSON.stringify({
+  name: 'Top 100 Chat',
+  short_name: 'Top 100 Chat',
+  description: 'Private chat for approved Top 100 Soccer Manager World managers.',
+  id: '/',
+  start_url: '/',
+  scope: '/',
+  display: 'standalone',
+  background_color: '#071526',
+  theme_color: '#0B1F3B',
+  icons: [
+    {
+      src: '/top100-chat-icon.svg',
+      sizes: 'any',
+      type: 'image/svg+xml',
+      purpose: 'any maskable',
+    },
+  ],
+});
+
+const pwaIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0B1F3B"/>
+  <path d="M78 362h356" stroke="#CBD5E1" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="256" cy="362" r="38" fill="#0B1F3B" stroke="#CBD5E1" stroke-width="16"/>
+  <text x="256" y="278" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="174" font-weight="800" fill="#10B981">100</text>
+  <text x="256" y="430" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="52" font-weight="700" fill="#F8FAFC">CHAT</text>
+</svg>`;
+
+const pwaServiceWorker = `'use strict';
+
+// Top 100 Chat is private and live. Deliberately do not cache navigations,
+// API responses, feeds, threads or other chat content.
+self.addEventListener('install', function () {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', function (event) {
+  event.waitUntil(
+    caches.keys()
+      .then(function (keys) {
+        return Promise.all(
+          keys
+            .filter(function (key) { return key.indexOf('top100-chat-') === 0; })
+            .map(function (key) { return caches.delete(key); })
+        );
+      })
+      .then(function () { return self.clients.claim(); })
+  );
+});
+`;
+
 if (ssoSecret.length < 32) {
   console.error('TOP100_CHAT_SSO_SECRET must be at least 32 characters.');
   process.exit(1);
@@ -160,8 +211,17 @@ async function getTop100ClientHome() {
   }
 
   const favicon = "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B1F3B'/%3E%3Cpath d='M10 45h44' stroke='%23CBD5E1' stroke-width='2'/%3E%3Ccircle cx='32' cy='45' r='5' fill='%230B1F3B' stroke='%23CBD5E1' stroke-width='2'/%3E%3Ctext x='32' y='35' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='%2310B981'%3E100%3C/text%3E%3C/svg%3E\">";
-  const headInjection = favicon + '<meta name="theme-color" content="#0B1F3B"><style>' + clientThemeCss + '</style>' +
-    '<script>(function(){try{var p=new URLSearchParams(location.search);var u=p.get("top100ObjectUrl")||p.get("shareUrl")||"";if(p.get("compose")==="1"&&u){sessionStorage.setItem("top100ChatObjectIntent",JSON.stringify({compose:true,url:u,type:(p.get("top100ObjectType")||"post"),title:(p.get("top100ObjectTitle")||p.get("shareTitle")||"Top 100 post")}));}}catch(e){}})();</script>';
+  const headInjection = favicon +
+    '<link rel="manifest" href="/manifest.webmanifest">' +
+    '<link rel="apple-touch-icon" href="/top100-chat-icon.svg">' +
+    '<meta name="theme-color" content="#0B1F3B">' +
+    '<meta name="mobile-web-app-capable" content="yes">' +
+    '<meta name="apple-mobile-web-app-capable" content="yes">' +
+    '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">' +
+    '<meta name="apple-mobile-web-app-title" content="Top 100 Chat">' +
+    '<style>' + clientThemeCss + '</style>' +
+    '<script>(function(){try{var p=new URLSearchParams(location.search);var u=p.get("top100ObjectUrl")||p.get("shareUrl")||"";if(p.get("compose")==="1"&&u){sessionStorage.setItem("top100ChatObjectIntent",JSON.stringify({compose:true,url:u,type:(p.get("top100ObjectType")||"post"),title:(p.get("top100ObjectTitle")||p.get("shareTitle")||"Top 100 post")}));}}catch(e){}})();</script>' +
+    '<script>if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("/pwa-sw.js",{scope:"/",updateViaCache:"none"}).catch(function(){});});}</script>';
 
   html = html.replace('</head>', headInjection + '</head>');
   clientHomeCache = html.replace('</body>', '<script>' + clientBrandJs + '</script></body>');
@@ -210,6 +270,31 @@ async function claim(request, response, url) {
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, 'https://chat.smtop100.blog');
+
+  if (url.pathname === '/manifest.webmanifest') {
+    send(response, 200, pwaManifest, {
+      'Content-Type': 'application/manifest+json; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+    });
+    return;
+  }
+
+  if (url.pathname === '/top100-chat-icon.svg') {
+    send(response, 200, pwaIconSvg, {
+      'Content-Type': 'image/svg+xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    return;
+  }
+
+  if (url.pathname === '/pwa-sw.js') {
+    send(response, 200, pwaServiceWorker, {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Service-Worker-Allowed': '/',
+    });
+    return;
+  }
 
   if (url.pathname === '/client-home') {
     try {
