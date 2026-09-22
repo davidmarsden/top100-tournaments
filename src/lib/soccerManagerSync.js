@@ -25,6 +25,12 @@ function booleanFlag(value) {
   return false;
 }
 
+function nonZeroId(value) {
+  const text = textOrNull(value);
+  if (!text || text === '0') return null;
+  return text;
+}
+
 function stripHtml(value) {
   return String(value || '')
     .replace(/<[^>]*>/g, ' ')
@@ -240,8 +246,8 @@ export function normalizeTransfers(input) {
       illegal: booleanFlag(record.Ilegal),
       illegalReason: textOrNull(record.IlegalReason),
       playerOffers: [
-        record.PlayerOffer1DataID ? { playerId: textOrNull(record.PlayerOffer1DataID), name: textOrNull(record.PlayerOffer1Name) } : null,
-        record.PlayerOffer2DataID ? { playerId: textOrNull(record.PlayerOffer2DataID), name: textOrNull(record.PlayerOffer2Name) } : null,
+        nonZeroId(record.PlayerOffer1DataID) ? { playerId: nonZeroId(record.PlayerOffer1DataID), name: textOrNull(record.PlayerOffer1Name) } : null,
+        nonZeroId(record.PlayerOffer2DataID) ? { playerId: nonZeroId(record.PlayerOffer2DataID), name: textOrNull(record.PlayerOffer2Name) } : null,
       ].filter(Boolean),
     })),
   };
