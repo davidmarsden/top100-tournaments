@@ -141,8 +141,8 @@ function addCollapsibles(hub) {
     const section = hub.querySelector(`#${id}`);
     if (!section) return;
     const title = section.querySelector(':scope > .public-section-toolbar h2, :scope > h2, :scope > h3')?.textContent?.trim();
-    const primaryBracket = knockoutOnly && id === 'brackets';
-    makeCollapsible(section, title || id.replace('-', ' '), `section:${id}`, primaryBracket, !primaryBracket);
+    const primaryFixtures = knockoutOnly && id === 'knockout';
+    makeCollapsible(section, title || id.replace('-', ' '), `section:${id}`, primaryFixtures, !primaryFixtures);
   });
   // Fair Play owns its own React state. Do not mutate or inject controls into it here.
   hub.querySelectorAll('.fixture-section').forEach((section, index) => {
