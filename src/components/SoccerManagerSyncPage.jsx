@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeSoccerManagerPayload, summarizeNormalizedPayload } from '../lib/soccerManagerSync';
 import { collectorBookmarklet, isAllowedSoccerManagerOrigin, soccerManagerCollectorProtocol } from '../lib/soccerManagerCollector';
 
@@ -78,6 +78,7 @@ export default function SoccerManagerSyncPage() {
   const [fileInputKey, setFileInputKey] = useState(0);
   const [status, setStatus] = useState('Drop Soccer Manager JSON responses here, or send them directly from Soccer Manager with the browser collector. Nothing is written to the database.');
   const [collectorStatus, setCollectorStatus] = useState('');
+  const collectorLinkRef = useRef(null);
   const totalSummary = useMemo(() => payloads.map((entry) => ({ name: entry.name, ...summarizeNormalizedPayload(entry.payload) })), [payloads]);
 
   function normalizeCapturedEntries(entries) {
@@ -93,6 +94,12 @@ export default function SoccerManagerSyncPage() {
     }
     return { next, errors };
   }
+
+  useEffect(() => {
+    if (collectorLinkRef.current) {
+      collectorLinkRef.current.setAttribute('href', collectorBookmarklet());
+    }
+  }, []);
 
   useEffect(() => {
     function handleCollectorMessage(event) {
@@ -174,7 +181,7 @@ export default function SoccerManagerSyncPage() {
       <div className="card-header"><p className="eyebrow">v0.2 · browser collector</p><h2>Sync from Soccer Manager</h2></div>
       <p>Install the collector once, then use it while you are signed into Soccer Manager. It discovers supported JSON requests already made by the current Soccer Manager page, refetches them inside that same logged-in tab, and sends the JSON directly here. Cookies and passwords are never included.</p>
       <div className="button-row">
-        <a className="button" href={collectorBookmarklet()} title="Drag this link to your bookmarks bar">Top 100 Sync</a>
+        <a ref={collectorLinkRef} className="button" href="#collector" title="Drag this link to your bookmarks bar" onClick={(event) => event.preventDefault()}>Top 100 Sync</a>
         <button type="button" className="secondary" onClick={copyCollector}>Copy collector bookmarklet</button>
       </div>
       <p className="muted">Desktop: drag “Top 100 Sync” to your bookmarks bar, or copy it and create a bookmark manually. Then visit a league table, club, player changes or transfer-market screen on Soccer Manager and click the bookmark.</p>
