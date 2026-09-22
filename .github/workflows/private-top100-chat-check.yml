@@ -45,6 +45,9 @@ jobs:
           grep -Fq "self.addEventListener('notificationclick'" ops/top100-chat/gateway.mjs
           grep -Fq "webpush.sendNotification" ops/top100-chat/gateway.mjs
           grep -Fq "sessionExp" ops/top100-chat/gateway.mjs
+          grep -Fq "maxPushSubscriptionsPerManager = 8" ops/top100-chat/gateway.mjs
+          grep -Fq "maxPushSubscriptionsTotal = 500" ops/top100-chat/gateway.mjs
+          grep -Fq "stillRegistered" ops/top100-chat/gateway.mjs
           grep -Fq "pushSubscriptions = pushSubscriptions.filter((entry) => Number(entry.managerId) !== Number(session.mid))" ops/top100-chat/gateway.mjs
           grep -Fq "normalizeSubscription" ops/top100-chat/gateway.mjs
           grep -Fq "isLoopback(request)" ops/top100-chat/gateway.mjs
