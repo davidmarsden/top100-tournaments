@@ -18,7 +18,10 @@ export function collectorBookmarklet() {
 const target='${SYNC_URL}',helloType='${HELLO_TYPE}',msgType='${MESSAGE_TYPE}',readyType='${READY_TYPE}',ackType='${ACK_TYPE}';
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
 const patterns=[/competition-ajax\\.php/i,/club-ajax-mobile\\.php/i,/playerchanges[^/]*\\.php/i,/transfer[^/]*market[^/]*\\.php/i];
-const urls=[...new Set(performance.getEntriesByType('resource').map(e=>e.name).filter(u=>patterns.some(r=>r.test(u))))];
+const matched=performance.getEntriesByType('resource').map(e=>e.name).filter(u=>patterns.some(r=>r.test(u)));
+const seen=new Set(),urls=[];
+for(let i=matched.length-1;i>=0;i--){if(seen.has(matched[i]))continue;seen.add(matched[i]);urls.push(matched[i]);}
+urls.reverse();
 if(!urls.length){alert('No supported Soccer Manager data requests found on this page yet. Open a league table, club, player changes or transfer market screen, then try again.');return;}
 const session=(crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
 const syncUrl=target+'?collectorSession='+encodeURIComponent(session);
