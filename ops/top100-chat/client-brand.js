@@ -144,6 +144,16 @@
 
     try {
       var subscription = await getPushSubscription();
+      if (subscription) {
+        // Refresh the server-side lease to the current authenticated clubhouse
+        // session. Push delivery therefore cannot outlive Top 100 access.
+        await fetch('/push/subscribe', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: subscription.toJSON() })
+        });
+      }
       link.textContent = subscription ? 'Disable notifications' : 'Enable notifications';
       link.dataset.disabled = 'false';
     } catch (e) {
