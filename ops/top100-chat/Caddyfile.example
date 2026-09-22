@@ -6,6 +6,14 @@ chat.smtop100.blog {
         reverse_proxy 127.0.0.1:1470
     }
 
+    @push path /push/*
+    handle @push {
+        forward_auth 127.0.0.1:1470 {
+            uri /auth/check
+        }
+        reverse_proxy 127.0.0.1:1470
+    }
+
     handle {
         forward_auth 127.0.0.1:1470 {
             uri /auth/check
