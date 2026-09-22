@@ -32,6 +32,7 @@ jobs:
       - name: Check gateway and branding syntax
         run: |
           node --check ops/top100-chat/gateway.mjs
+          node -e "const p=require('./ops/top100-chat/package.json'); if (!p.dependencies || !p.dependencies['web-push']) process.exit(1)"
           node --check ops/top100-chat/client-brand.js
           node --check ops/top100-chat/migrate-source-bindings.mjs
           grep -Fq "postRec.top100ObjectUrl = top100ObjectUrl" ops/top100-chat/client-brand.js
@@ -43,6 +44,7 @@ jobs:
           grep -Fq "self.addEventListener('push'" ops/top100-chat/gateway.mjs
           grep -Fq "self.addEventListener('notificationclick'" ops/top100-chat/gateway.mjs
           grep -Fq "webpush.sendNotification" ops/top100-chat/gateway.mjs
+          grep -Fq "sessionExp" ops/top100-chat/gateway.mjs
           grep -Fq "normalizeSubscription" ops/top100-chat/gateway.mjs
           grep -Fq "isLoopback(request)" ops/top100-chat/gateway.mjs
           ! grep -Fq "addEventListener('fetch'" ops/top100-chat/gateway.mjs
