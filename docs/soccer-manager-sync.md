@@ -4,7 +4,33 @@
 
 Top 100 Soccer Manager Worlds exposes useful structured JSON responses inside the authenticated Soccer Manager web application. Soccer Manager Sync normalizes those responses into stable Top 100 records without storing a Soccer Manager password or copying the raw authenticated session to the Top 100 backend.
 
-The first release is deliberately preview-only.
+The sync path is deliberately preview-only until the source schemas are stable.
+
+## v0.2 browser collector
+
+The admin workbench now provides a **Top 100 Sync** bookmarklet.
+
+While the administrator is already signed into Soccer Manager, the bookmarklet:
+
+1. checks that it is running on an HTTPS `soccermanager.com` origin;
+2. inspects the current page's Resource Timing entries for known read-only Soccer Manager JSON endpoints;
+3. opens/reuses the protected Top 100 Sync admin page immediately from the user's click;
+4. refetches those same endpoint URLs from the Soccer Manager tab with the browser's existing authenticated session;
+5. sends only the JSON response bodies and source URLs to the Top 100 Sync tab with cross-origin `postMessage`;
+6. waits for an acknowledgement from the exact `https://tournaments.smtop100.blog` origin.
+
+No Soccer Manager password, Cookie header, PHP session id or request headers are transmitted to Top 100.
+
+The receiving page accepts messages only from HTTPS `soccermanager.com` origins, checks the declared source origin against the browser-supplied message origin, normalizes at most 20 responses, and remains behind the existing global administrator gate.
+
+The collector currently discovers these endpoint families when they have already been requested by the current Soccer Manager page:
+
+- `competition-ajax.php`
+- `club-ajax-mobile.php`
+- player-changes mobile endpoints
+- transfer-market mobile endpoints
+
+If a relevant request has not yet happened on the current page, open that Soccer Manager screen first and run the bookmarklet again.
 
 ## v0.1 admin workbench
 
@@ -45,14 +71,14 @@ Supported response shapes:
 
 Raw Soccer Manager responses can contain manager names, customer ids, profile-image metadata and other fields Top 100 does not need publicly.
 
-v0.1 keeps raw files in the importing browser. The normalizer extracts only fields needed for Top 100 workflows. Raw responses must not be committed to the repository or exposed through public routes.
+Raw files and browser-collected responses remain in browser memory. The normalizer extracts only fields needed for Top 100 workflows. Raw responses must not be committed to the repository or exposed through public routes.
 
-A later collector should run in the already-authenticated Soccer Manager browser context and submit only normalized records. The Top 100 server should never need the user's Soccer Manager password or PHP session cookie.
+The collector deliberately runs in the already-authenticated Soccer Manager browser context. The Top 100 server never receives or needs the user's Soccer Manager password or PHP session cookie.
 
 ## Next phases
 
-1. Validate normalized output against live Top 100 data.
-2. Add a browser-side collector for the known JSON endpoints.
+1. Validate browser-collected normalized output against live Top 100 data.
+2. Expand endpoint discovery as more Soccer Manager JSON surfaces are confirmed.
 3. Add a server endpoint that accepts only normalized, schema-validated payloads from an authenticated Top 100 global admin.
 4. Store source snapshots and diffs separately from tournament data.
 5. Add opt-in actions to apply manager changes, fixtures/results, player changes and other updates to the relevant Top 100 tools.
