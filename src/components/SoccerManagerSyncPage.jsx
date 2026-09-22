@@ -78,6 +78,7 @@ export default function SoccerManagerSyncPage() {
   const [fileInputKey, setFileInputKey] = useState(0);
   const [status, setStatus] = useState('Drop Soccer Manager JSON responses here, or send them directly from Soccer Manager with the browser collector. Nothing is written to the database.');
   const [collectorStatus, setCollectorStatus] = useState('');
+  const [diagnostics, setDiagnostics] = useState([]);
   const collectorLinkRef = useRef(null);
   const totalSummary = useMemo(() => payloads.map((entry) => ({
     id: entry.id,
@@ -130,6 +131,11 @@ export default function SoccerManagerSyncPage() {
 
       if (message.type !== soccerManagerCollectorProtocol.messageType || !Array.isArray(message.payloads)) return;
 
+      const diagnosticRows = Array.isArray(message.diagnostics)
+        ? message.diagnostics.slice(-50).filter((row) => typeof row?.url === 'string')
+        : [];
+      setDiagnostics(diagnosticRows);
+
       const entries = message.payloads.slice(-20).map((item, index) => {
         let name = `Soccer Manager response ${index + 1}`;
         try {
@@ -146,7 +152,11 @@ export default function SoccerManagerSyncPage() {
       setPayloads(next);
       setStatus(errors.length
         ? `Received ${next.length} supported response(s) from Soccer Manager. ${errors.join(' ')}`
-        : `Received and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'} directly from your logged-in tab.`);
+        : next.length
+          ? `Received and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'} directly from your logged-in tab.`
+          : diagnosticRows.length
+            ? `No supported JSON response matched yet. Captured ${diagnosticRows.length} recent Soccer Manager request URL${diagnosticRows.length === 1 ? '' : 's'} for diagnosis.`
+            : 'No supported JSON responses or request diagnostics were received.');
       setCollectorStatus(`Last browser sync: ${new Date().toLocaleString('en-GB')} · ${event.origin}`);
 
       if (event.source && typeof event.source.postMessage === 'function') {
@@ -200,6 +210,18 @@ export default function SoccerManagerSyncPage() {
     anchor.click();
     URL.revokeObjectURL(url);
   }
+  function downloadDiagnostics() {
+    const blob = new Blob([JSON.stringify({
+      capturedAt: new Date().toISOString(),
+      requests: diagnostics,
+    }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `top100-sm-sync-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   return <main className="app-shell">
     <section className="hero"><div className="hero-row"><div><p className="eyebrow">Top 100 data tools</p><h1>Soccer Manager Sync</h1><p>Turn Soccer Manager's internal JSON responses into clean Top 100 records before we automate collection or write anything to production.</p></div><div className="button-row"><a className="button secondary" href="/admin">Tournament admin</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div></section>
@@ -222,8 +244,17 @@ export default function SoccerManagerSyncPage() {
         <p className="muted">Supported now: competition snapshot, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
-      {!!payloads.length && <div className="button-row"><button type="button" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
+      {!!payloads.length && <div className="button-row"><button type="button" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
     </section>
+
+    {!!diagnostics.length && <section className="card module-card">
+      <div className="card-header"><p className="eyebrow">Diagnostic capture</p><h2>Recent Soccer Manager requests</h2></div>
+      <p className="muted">These are the latest same-origin resource URLs visible to the browser. Sensitive-looking query parameters are redacted before they leave Soccer Manager.</p>
+      <div className="button-row"><button type="button" className="secondary" onClick={downloadDiagnostics}>Download diagnostics</button></div>
+      <div className="table-wrap"><table><thead><tr><th>#</th><th>Type</th><th>Request</th></tr></thead><tbody>
+        {diagnostics.map((row, index) => <tr key={`${row.url}:${row.startTime ?? index}`}><td>{index + 1}</td><td>{row.initiatorType || '—'}</td><td><code>{row.url}</code></td></tr>)}
+      </tbody></table></div>
+    </section>}
 
     {!!totalSummary.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Import summary</p><h2>What we found</h2></div>
