@@ -581,6 +581,15 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (url.pathname === '/auth/logout') {
+    try {
+      const session = getSessionForRequest(request);
+      pushSubscriptions = pushSubscriptions.filter((entry) => Number(entry.managerId) !== Number(session.mid));
+      savePushSubscriptions();
+    } catch {
+      // The session may already be expired or absent; logout should still
+      // clear browser state and the clubhouse cookie.
+    }
+
     send(response, 200, '<!doctype html><meta charset="utf-8"><script>localStorage.removeItem("rssNetworkMemory");location.replace("/login");</script>', {
       'Content-Type': 'text/html; charset=utf-8',
       'Set-Cookie': `${cookieName}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
