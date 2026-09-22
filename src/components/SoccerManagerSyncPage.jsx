@@ -121,7 +121,7 @@ export default function SoccerManagerSyncPage() {
 
       if (message.type !== soccerManagerCollectorProtocol.messageType || !Array.isArray(message.payloads)) return;
 
-      const entries = message.payloads.slice(0, 20).map((item, index) => {
+      const entries = message.payloads.slice(-20).map((item, index) => {
         let name = `Soccer Manager response ${index + 1}`;
         try {
           const url = new URL(item?.url);
