@@ -60,19 +60,7 @@
 .public-section-nav a[data-section-icon]{white-space:nowrap}
 .knockout-only-hub .public-section-nav a[data-fixture-first="schedule"]{display:none}
 
-/* Knockout-only competitions are bracket-first: show the draw immediately, then fixtures and the compact overview. */
-.knockout-only-hub { display:flex; flex-direction:column; }
-.knockout-only-hub > .tournament-hero { order:1; }
-.knockout-only-hub > .public-tournament-switcher { order:2; }
-.knockout-only-hub > .public-section-nav { order:3; }
-.knockout-only-hub > #brackets { order:4; }
-.knockout-only-hub > #knockout { order:5; }
-.knockout-only-hub > #summary { order:6; }
-.knockout-only-hub > #featured { order:7; }
-.knockout-only-hub > #winners { order:8; }
-.knockout-only-hub > #seedings { order:9; }
-.knockout-only-hub > #fair-play { order:10; }
-.knockout-only-hub > #statistics { order:11; }
+/* Knockout-only competitions are bracket-first in the DOM; this keeps keyboard focus and portal placement aligned with the visible page. */
 .knockout-only-hub .knockout-primary-bracket { margin-top:0; }
 .knockout-bracket-scroll-hint { display:none; margin:4px 0 12px; color:#0e7490; font-size:.85rem; font-weight:900; }
 
