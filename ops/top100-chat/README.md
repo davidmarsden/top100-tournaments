@@ -156,7 +156,7 @@ The first version is intentionally restrained:
 - there is no "every new post" notification mode;
 - expired browser push subscriptions are removed automatically.
 
-The browser subscription is stored by the auth gateway under `/var/lib/top100-chat/push-subscriptions.json` and is keyed to the authenticated Top 100 manager id. It does not contain chat history.
+The browser subscription is stored by the auth gateway under `/var/lib/top100-chat/push-subscriptions.json` and is keyed to the authenticated Top 100 manager id. It does not contain chat history. Each subscription also carries the expiry of the current clubhouse session; the client renews that lease when Chat is opened while authenticated. Push delivery therefore stops when Top 100 Chat access expires rather than allowing a stale PWA subscription to receive private notifications indefinitely.
 
 The VAPID keypair is generated automatically on the first deployment and stored in `/etc/top100-chat.env`. Later installer runs preserve the existing keypair. Do not rotate those keys casually: replacing them invalidates existing device subscriptions.
 
