@@ -102,10 +102,24 @@ export default function SoccerManagerSyncPage() {
   }, []);
 
   useEffect(() => {
+    const collectorSession = new URLSearchParams(window.location.search).get('collectorSession');
+    if (collectorSession && window.opener) {
+      try {
+        window.opener.postMessage({
+          type: soccerManagerCollectorProtocol.readyType,
+          session: collectorSession,
+        }, '*');
+      } catch {
+        // The opener may have been closed; manual import remains available.
+      }
+    }
+
     function handleCollectorMessage(event) {
       if (!isAllowedSoccerManagerOrigin(event.origin)) return;
       const message = event.data;
       if (!message || message.type !== soccerManagerCollectorProtocol.messageType || message.version !== 1) return;
+      const collectorSession = new URLSearchParams(window.location.search).get('collectorSession');
+      if (!collectorSession || message.session !== collectorSession) return;
       if (message.sourceOrigin !== event.origin || !Array.isArray(message.payloads)) return;
 
       const entries = message.payloads.slice(0, 20).map((item, index) => {
@@ -127,7 +141,7 @@ export default function SoccerManagerSyncPage() {
       setCollectorStatus(`Last browser sync: ${new Date().toLocaleString('en-GB')} · ${event.origin}`);
 
       if (event.source && typeof event.source.postMessage === 'function') {
-        event.source.postMessage({ type: soccerManagerCollectorProtocol.ackType, accepted: next.length, rejected: errors.length }, event.origin);
+        event.source.postMessage({ type: soccerManagerCollectorProtocol.ackType, session: collectorSession, accepted: next.length, rejected: errors.length }, event.origin);
       }
     }
 
@@ -165,7 +179,11 @@ export default function SoccerManagerSyncPage() {
   }
 
   function downloadNormalized() {
-    const blob = new Blob([JSON.stringify(payloads.map((entry) => ({ source: entry.name, ...entry.payload })), null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(payloads.map((entry) => ({
+      source: entry.name,
+      sourceUrl: entry.sourceUrl || null,
+      ...entry.payload,
+    })), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
