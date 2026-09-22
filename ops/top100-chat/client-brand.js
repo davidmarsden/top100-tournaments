@@ -86,7 +86,9 @@
         '<li><a href="https://smtop100.blog/">Top 100 website</a></li>',
         '<li><a href="https://manager.smtop100.blog/">My Matches</a></li>',
         '<li><a href="https://tournaments.smtop100.blog/">Tournaments</a></li>',
-        '<li><a href="https://rules.smtop100.blog/">Rules</a></li>'
+        '<li><a href="https://rules.smtop100.blog/">Rules</a></li>',
+        '<li class="divider"></li>',
+        '<li><a href="#" id="idTop100Notifications">Enable notifications</a></li>'
       ].join('');
     }
 
@@ -97,6 +99,124 @@
       li.innerHTML = '<a href="https://manager.smtop100.blog/">My Matches</a>';
       nav.appendChild(li);
     }
+  }
+
+  function showTop100Toast(message) {
+    var old = document.querySelector('.top100-share-toast');
+    if (old) old.remove();
+    var toast = document.createElement('div');
+    toast.className = 'top100-share-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    window.setTimeout(function () {
+      if (toast.parentNode) toast.remove();
+    }, 5000);
+  }
+
+  function urlBase64ToUint8Array(value) {
+    var padding = '='.repeat((4 - value.length % 4) % 4);
+    var base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+    var raw = window.atob(base64);
+    return Uint8Array.from(raw, function (char) { return char.charCodeAt(0); });
+  }
+
+  async function getPushSubscription() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return null;
+    var registration = await navigator.serviceWorker.ready;
+    return registration.pushManager.getSubscription();
+  }
+
+  async function refreshNotificationMenu() {
+    var link = document.getElementById('idTop100Notifications');
+    if (!link) return;
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      link.textContent = 'Notifications unavailable';
+      link.dataset.disabled = 'true';
+      return;
+    }
+
+    if (Notification.permission === 'denied') {
+      link.textContent = 'Notifications blocked';
+      link.dataset.disabled = 'true';
+      return;
+    }
+
+    try {
+      var subscription = await getPushSubscription();
+      link.textContent = subscription ? 'Disable notifications' : 'Enable notifications';
+      link.dataset.disabled = 'false';
+    } catch (e) {
+      link.textContent = 'Enable notifications';
+      link.dataset.disabled = 'false';
+    }
+  }
+
+  async function toggleNotifications(event) {
+    if (event) event.preventDefault();
+    var link = document.getElementById('idTop100Notifications');
+    if (!link || link.dataset.disabled === 'true') return;
+
+    try {
+      var registration = await navigator.serviceWorker.ready;
+      var existing = await registration.pushManager.getSubscription();
+
+      if (existing) {
+        await fetch('/push/subscribe', {
+          method: 'DELETE',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: existing.endpoint })
+        });
+        await existing.unsubscribe();
+        showTop100Toast('Reply notifications are off on this device.');
+        await refreshNotificationMenu();
+        return;
+      }
+
+      var permission = Notification.permission;
+      if (permission !== 'granted') permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        showTop100Toast(permission === 'denied' ? 'Notifications are blocked in your browser settings.' : 'Notifications were not enabled.');
+        await refreshNotificationMenu();
+        return;
+      }
+
+      var configResponse = await fetch('/push/config', { credentials: 'same-origin', cache: 'no-store' });
+      if (!configResponse.ok) throw new Error('Could not load notification settings.');
+      var config = await configResponse.json();
+      if (!config.enabled || !config.vapidPublicKey) throw new Error('Notifications are not configured on the server.');
+
+      var subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(config.vapidPublicKey)
+      });
+
+      var saveResponse = await fetch('/push/subscribe', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: subscription.toJSON() })
+      });
+      if (!saveResponse.ok) {
+        await subscription.unsubscribe();
+        throw new Error('Could not save this device for notifications.');
+      }
+
+      showTop100Toast('Reply notifications are on for this device.');
+      await refreshNotificationMenu();
+    } catch (error) {
+      showTop100Toast(error && error.message ? error.message : 'Could not change notification settings.');
+      await refreshNotificationMenu();
+    }
+  }
+
+  function wireNotificationMenu() {
+    var link = document.getElementById('idTop100Notifications');
+    if (!link || link.dataset.top100NotificationsWired) return;
+    link.dataset.top100NotificationsWired = 'true';
+    link.addEventListener('click', toggleNotifications);
+    refreshNotificationMenu();
   }
 
   function installLogout() {
@@ -271,6 +391,7 @@
   function refreshUi() {
     rewriteMenus();
     rewriteUserDisplayName();
+    wireNotificationMenu();
     installContextPanel();
     monitorSourceComposer();
     decorateBoundPosts();
@@ -307,6 +428,7 @@
       attempts += 1;
       rewriteMenus();
       rewriteUserDisplayName();
+      wireNotificationMenu();
       installContextPanel();
       patchNetwork();
       openComposer();
