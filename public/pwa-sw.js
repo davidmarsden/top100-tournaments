@@ -1,4 +1,4 @@
-const CACHE = 'top100-tournaments-shell-v1';
+const CACHE = 'top100-tournaments-shell-v2';
 const CONTROL_FILES = new Set([
   '/tournaments.webmanifest',
   '/my-matches.webmanifest',
@@ -53,6 +53,10 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/')) return;
+
+  // Authenticated manager pages are deliberately network-only. Serving an old
+  // cached shell here can strand users on stale auth/loading code after deploys.
+  if (self.location.hostname === 'manager.smtop100.blog') return;
 
   if (request.mode === 'navigate') {
     event.respondWith(
