@@ -199,7 +199,11 @@ async function sendReplyPush(event) {
     tag: Number.isInteger(replyId) && replyId > 0 ? 'top100-chat-reply-' + replyId : 'top100-chat-reply'
   });
 
-  const targets = pushSubscriptions.filter((entry) => Number(entry.managerId) === managerId);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const targets = pushSubscriptions.filter((entry) =>
+    Number(entry.managerId) === managerId &&
+    Number(entry.sessionExp || 0) > nowSeconds
+  );
   for (const entry of targets) {
     try {
       await webpush.sendNotification(entry.subscription, payload, { TTL: 3600 });
@@ -438,12 +442,14 @@ const server = http.createServer(async (request, response) => {
       if (existing) {
         existing.managerId = Number(session.mid);
         existing.subscription = subscription;
+        existing.sessionExp = Number(session.exp);
         existing.updatedAt = now;
       } else {
         pushSubscriptions.push({
           endpoint: subscription.endpoint,
           managerId: Number(session.mid),
           subscription,
+          sessionExp: Number(session.exp),
           createdAt: now,
           updatedAt: now,
         });
