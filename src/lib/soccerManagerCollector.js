@@ -1,4 +1,5 @@
 const SYNC_URL = 'https://tournaments.smtop100.blog/admin/soccer-manager-sync';
+const HELLO_TYPE = 'top100-sm-sync-hello';
 const MESSAGE_TYPE = 'top100-sm-sync-payloads';
 const READY_TYPE = 'top100-sm-sync-ready';
 const ACK_TYPE = 'top100-sm-sync-ack';
@@ -14,7 +15,7 @@ export function isAllowedSoccerManagerOrigin(origin) {
 
 export function collectorBookmarklet() {
   const code = `(async()=>{try{
-const target='${SYNC_URL}',msgType='${MESSAGE_TYPE}',readyType='${READY_TYPE}',ackType='${ACK_TYPE}';
+const target='${SYNC_URL}',helloType='${HELLO_TYPE}',msgType='${MESSAGE_TYPE}',readyType='${READY_TYPE}',ackType='${ACK_TYPE}';
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
 const patterns=[/competition-ajax\\.php/i,/club-ajax-mobile\\.php/i,/playerchanges[^/]*\\.php/i,/transfer[^/]*market[^/]*\\.php/i];
 const urls=[...new Set(performance.getEntriesByType('resource').map(e=>e.name).filter(u=>patterns.some(r=>r.test(u))))];
@@ -29,7 +30,7 @@ window.addEventListener('message',onMessage);
 const payloads=[];
 for(const url of urls){try{const res=await fetch(url,{credentials:'include',cache:'no-store'});if(!res.ok)continue;const type=(res.headers.get('content-type')||'').toLowerCase();if(!type.includes('json')){const text=await res.text();try{payloads.push({url,data:JSON.parse(text)});}catch{}continue;}payloads.push({url,data:await res.json()});}catch{}}
 if(!payloads.length){window.removeEventListener('message',onMessage);alert('Top 100 Sync found the requests but could not read any JSON responses.');return;}
-for(let i=0;i<30&&!ready;i++)await new Promise(r=>setTimeout(r,1000));
+for(let i=0;i<30&&!ready;i++){try{win.postMessage({type:helloType,version:1,session,sourceOrigin:location.origin},'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 if(!ready){window.removeEventListener('message',onMessage);alert('Top 100 Sync opened, but the newly loaded page did not become ready. Make sure you are signed in there and try again.');return;}
 const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads};
 for(let i=0;i<30&&!done;i++){try{win.postMessage(packet,'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
@@ -41,6 +42,7 @@ if(!done)alert('Top 100 Sync became ready, but did not acknowledge the data. Try
 
 export const soccerManagerCollectorProtocol = {
   syncUrl: SYNC_URL,
+  helloType: HELLO_TYPE,
   messageType: MESSAGE_TYPE,
   readyType: READY_TYPE,
   ackType: ACK_TYPE,
