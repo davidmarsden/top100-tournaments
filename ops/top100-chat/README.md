@@ -144,6 +144,26 @@ These control files are intentionally public because they contain no private cha
 
 On Android/Chrome or Brave, use the browser's **Install app** / **Add to Home screen** command once the manifest has loaded.
 
+## Reply notifications
+
+Installed Top 100 Chat PWAs can opt in to Web Push notifications for **replies to their own posts**.
+
+The first version is intentionally restrained:
+
+- notifications are opt-in per device from the Top 100 menu;
+- only direct replies to a manager's post trigger a push;
+- self-replies do not trigger a push;
+- there is no "every new post" notification mode;
+- expired browser push subscriptions are removed automatically.
+
+The browser subscription is stored by the auth gateway under `/var/lib/top100-chat/push-subscriptions.json` and is keyed to the authenticated Top 100 manager id. It does not contain chat history.
+
+The VAPID keypair is generated automatically on the first deployment and stored in `/etc/top100-chat.env`. Later installer runs preserve the existing keypair. Do not rotate those keys casually: replacing them invalidates existing device subscriptions.
+
+rss.chat itself does not send Web Push. The overlay emits a localhost-only reply event to the gateway after a reply has been successfully written. The gateway then sends Web Push only to subscriptions belonging to the parent post's manager.
+
+The PWA service worker still has no fetch handler and does not cache private chat content. Its additional responsibilities are limited to receiving a push, displaying the notification and opening the relevant chat post when the notification is tapped.
+
 ## Smoke tests
 
 Logged out:
