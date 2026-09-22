@@ -120,6 +120,7 @@ export default function ManagerRegistrationPortal() {
       setLoading(false);
     } catch (error) {
       if (requestId !== loadRequestId.current) return;
+      setMessage('');
       setLoadError(error?.message || 'We could not finish loading registration data.');
       setLoading(false);
     }
