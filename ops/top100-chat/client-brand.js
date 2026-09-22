@@ -147,12 +147,20 @@
       if (subscription) {
         // Refresh the server-side lease to the current authenticated clubhouse
         // session. Push delivery therefore cannot outlive Top 100 access.
-        await fetch('/push/subscribe', {
+        var renewResponse = await fetch('/push/subscribe', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ subscription: subscription.toJSON() })
         });
+        if (!renewResponse.ok) {
+          var renewBody = await renewResponse.json().catch(function () { return {}; });
+          await subscription.unsubscribe();
+          subscription = null;
+          if (renewBody && renewBody.error) {
+            showTop100Toast(renewBody.error + ' Notifications are off on this device.');
+          }
+        }
       }
       link.textContent = subscription ? 'Disable notifications' : 'Enable notifications';
       link.dataset.disabled = 'false';
