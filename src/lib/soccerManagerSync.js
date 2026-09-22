@@ -14,6 +14,17 @@ function textOrNull(value) {
   return text || null;
 }
 
+function booleanFlag(value) {
+  if (value === true || value === 1 || value === '1') return true;
+  if (value === false || value === 0 || value === '0' || value === null || value === undefined || value === '') return false;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === 'no') return false;
+  }
+  return false;
+}
+
 function stripHtml(value) {
   return String(value || '')
     .replace(/<[^>]*>/g, ' ')
@@ -95,7 +106,7 @@ function normalizeFixture(record, competition, fixtureDate, kind) {
     awayManaged: numberOrNull(record.awayManaged),
     homePenaltyScore: numberOrNull(record.homePenScore),
     awayPenaltyScore: numberOrNull(record.awayPenScore),
-    isLeg2: Boolean(record.isLeg2),
+    isLeg2: booleanFlag(record.isLeg2),
   };
 }
 
@@ -226,7 +237,7 @@ export function normalizeTransfers(input) {
       acceptedDate: textOrNull(record.AcceptDate),
       status: numberOrNull(record.Status),
       statusLabel: stripHtml(record.TransferInfoDis),
-      illegal: Boolean(record.Ilegal),
+      illegal: booleanFlag(record.Ilegal),
       illegalReason: textOrNull(record.IlegalReason),
       playerOffers: [
         record.PlayerOffer1DataID ? { playerId: textOrNull(record.PlayerOffer1DataID), name: textOrNull(record.PlayerOffer1Name) } : null,
