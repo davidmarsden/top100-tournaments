@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { hasSupabaseConfig, supabase, supabaseAnonKey, supabaseUrl } from '../lib/supabaseClient';
 
 function formatDate(value) {
   if (!value) return '—';
@@ -31,6 +31,44 @@ function withRegistrationTimeout(promise, label = 'Registration request', ms = R
   ]).finally(() => window.clearTimeout(timer));
 }
 
+function persistedSession() {
+  try {
+    const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+    const raw = window.localStorage.getItem(`sb-${projectRef}-auth-token`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.access_token && parsed?.user?.id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function restGet(path, token, label) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REGISTRATION_LOAD_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body?.message || `${label} failed with HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error(`${label} timed out. Please try again.`);
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export default function ManagerRegistrationPortal() {
   const [session, setSession] = useState(null);
   const [account, setAccount] = useState(null);
@@ -42,33 +80,20 @@ export default function ManagerRegistrationPortal() {
   const loadRequestId = useRef(0);
 
   useEffect(() => {
-    if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
-    let active = true;
-    let subscription = null;
+    if (!hasSupabaseConfig || !supabase) { setLoading(false); return; }
 
-    async function initialiseAuth() {
-      try {
-        const { data, error } = await withRegistrationTimeout(supabase.auth.getSession(), 'Sign-in check');
-        if (!active) return;
-        if (error) throw error;
-        setSession(data.session || null);
-
-        // Wait for session recovery before subscribing. Registering an auth listener
-        // during recovery can deadlock auth-js' browser Web Lock on some mobile browsers.
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (!active) return;
-          setSession(nextSession);
-        });
-        subscription = listener.subscription;
-      } catch (error) {
-        if (!active) return;
-        setLoadError(error?.message || 'We could not check your sign-in. Please try again.');
-        setLoading(false);
-      }
+    // This page deliberately bypasses Supabase auth.getSession()/auth listeners.
+    // On some mobile browsers that path can deadlock on the auth Web Lock before
+    // any of our Promise timeouts can resolve. The persisted session is the same
+    // browser session the main Manager Portal already established.
+    const storedSession = persistedSession();
+    if (storedSession) {
+      setSession(storedSession);
+      return;
     }
 
-    initialiseAuth();
-    return () => { active = false; subscription?.unsubscribe(); };
+    setLoadError('No active Manager Portal session was found. Open My Matches and sign in again.');
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -90,21 +115,22 @@ export default function ManagerRegistrationPortal() {
   }, [loading, session?.user?.id, account, loadError]);
 
   async function load() {
-    if (!session?.user) return;
+    if (!session?.user?.id || !session?.access_token) return;
     const requestId = ++loadRequestId.current;
     setLoading(true);
     setLoadError('');
     setMessage('Loading registration records...');
 
     try {
-      const accountResult = await withRegistrationTimeout(
-        supabase.from('manager_portal_accounts').select('id, manager_id, game_world_id, email, active, managers(id, name, display_name), game_worlds(id, name, slug)').eq('auth_user_id', session.user.id).eq('active', true).maybeSingle(),
+      const uid = encodeURIComponent(session.user.id);
+      const accountRows = await restGet(
+        `manager_portal_accounts?select=id,manager_id,game_world_id,email,active,managers(id,name,display_name),game_worlds(id,name,slug)&auth_user_id=eq.${uid}&active=eq.true&limit=1`,
+        session.access_token,
         'Manager Portal account request',
       );
       if (requestId !== loadRequestId.current) return;
-      if (accountResult.error) throw new Error('Could not load your Manager Portal account: ' + accountResult.error.message);
 
-      const accountRow = accountResult.data || null;
+      const accountRow = accountRows?.[0] || null;
       setAccount(accountRow);
       if (!accountRow) {
         setMessage('Your Manager Portal profile must be approved before linked registrations appear here.');
@@ -112,29 +138,31 @@ export default function ManagerRegistrationPortal() {
         return;
       }
 
-      const [tournamentsResult, registrationsResult] = await withRegistrationTimeout(Promise.all([
-      supabase.from('tournaments')
-        .select('id, name, public_slug, registration_status, registration_opens_at, registration_closes_at, game_world_id, game_worlds(id, name, slug), competition_types(id, name, slug)')
-        .eq('is_public', true)
-        .eq('registration_status', 'open')
-        .order('season_number', { ascending: false }),
-      supabase.from('tournament_registrations')
-        .select('id, tournament_id, club_name, rating, status, submitted_at, reviewed_at, review_notes, promoted_entry_id, promoted_at, tournaments(name, season_number)')
-        .eq('auth_user_id', session.user.id)
-        .order('submitted_at', { ascending: false }),
-      ]), 'Registration data request');
+      const [tournamentRows, registrationRows] = await Promise.all([
+        restGet(
+          'tournaments?select=id,name,public_slug,registration_status,registration_opens_at,registration_closes_at,game_world_id,game_worlds(id,name,slug),competition_types(id,name,slug)&is_public=eq.true&registration_status=eq.open&order=season_number.desc',
+          session.access_token,
+          'Open tournaments request',
+        ),
+        restGet(
+          `tournament_registrations?select=id,tournament_id,club_name,rating,status,submitted_at,reviewed_at,review_notes,promoted_entry_id,promoted_at,tournaments(name,season_number)&auth_user_id=eq.${uid}&order=submitted_at.desc`,
+          session.access_token,
+          'Registration record request',
+        ),
+      ]);
 
       if (requestId !== loadRequestId.current) return;
-      setTournaments(tournamentsResult.error ? [] : tournamentsResult.data || []);
-      setRegistrations(registrationsResult.error ? [] : registrationsResult.data || []);
-      if (tournamentsResult.error) setMessage('Could not load open tournaments: ' + tournamentsResult.error.message);
-      else if (registrationsResult.error) setMessage('Could not load your registrations: ' + registrationsResult.error.message);
-      else setMessage('Your registration record is up to date.');
+      setTournaments(tournamentRows || []);
+      setRegistrations(registrationRows || []);
+      setMessage('Your registration record is up to date.');
       setLoading(false);
     } catch (error) {
       if (requestId !== loadRequestId.current) return;
       setMessage('');
-      setLoadError(error?.message || 'We could not finish loading registration data.');
+      const text = String(error?.message || '');
+      setLoadError(/401|JWT|token|expired/i.test(text)
+        ? 'Your Manager Portal session has expired. Return to My Matches and sign in again.'
+        : (text || 'We could not finish loading registration data.'));
       setLoading(false);
     }
   }
