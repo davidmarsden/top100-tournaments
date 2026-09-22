@@ -136,11 +136,13 @@ function makeCollapsible(element, label, storageKey, defaultOpen = false, persis
 
 function addCollapsibles(hub) {
   const majorIds = ['summary', 'featured', 'winners', 'groups', 'knockout', 'rankings', 'statistics', 'seedings', 'brackets'];
+  const knockoutOnly = hub.classList.contains('knockout-only-hub');
   majorIds.forEach((id) => {
     const section = hub.querySelector(`#${id}`);
     if (!section) return;
     const title = section.querySelector(':scope > .public-section-toolbar h2, :scope > h2, :scope > h3')?.textContent?.trim();
-    makeCollapsible(section, title || id.replace('-', ' '), `section:${id}`, false, true);
+    const primaryBracket = knockoutOnly && id === 'brackets';
+    makeCollapsible(section, title || id.replace('-', ' '), `section:${id}`, primaryBracket, !primaryBracket);
   });
   // Fair Play owns its own React state. Do not mutate or inject controls into it here.
   hub.querySelectorAll('.fixture-section').forEach((section, index) => {
@@ -162,7 +164,8 @@ function ensurePublicFixtureNav() {
   if (!hub) return;
   const nav = hub.querySelector('.public-section-nav');
   const schedule = hub.querySelector('.schedule-summary');
-  if (nav && schedule && !nav.querySelector('a[data-fixture-first="schedule"]')) {
+  const knockoutOnly = hub.classList.contains('knockout-only-hub');
+  if (!knockoutOnly && nav && schedule && !nav.querySelector('a[data-fixture-first="schedule"]')) {
     if (!schedule.id) schedule.id = 'schedule';
     const link = document.createElement('a');
     link.href = '#schedule'; link.dataset.fixtureFirst = 'schedule'; link.textContent = 'Schedule';
@@ -173,7 +176,8 @@ function ensurePublicFixtureNav() {
   addCollapsibles(hub);
 
   const existing = hub.querySelector('[data-fixture-first="public-callout"]');
-  if (!existing && nav) {
+  if (knockoutOnly) existing?.remove();
+  if (!knockoutOnly && !existing && nav) {
     const callout = document.createElement('section');
     callout.className = 'fixture-first-callout'; callout.dataset.fixtureFirst = 'public-callout';
     callout.innerHTML = `<div><p class="eyebrow">Looking for your match?</p><strong>Find the date first, then the opponent.</strong><span>The tournament schedule is below. For the simple personalised view — who you send a friendly to, and who you are waiting for — use My Matches.</span></div><div class="fixture-first-actions"><a class="button" href="#schedule">📅 View schedule</a><a class="button secondary" href="${MANAGER_URL}">👤 My Matches</a></div>`;
