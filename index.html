@@ -24,6 +24,29 @@
     </script>
     <script>
       (() => {
+        const host = window.location.hostname.toLowerCase();
+        if (!host.startsWith('manager.')) return;
+
+        // The authenticated Manager Portal must never be pinned to an old app shell.
+        // Remove legacy Top 100 service-worker caches before React starts.
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations()
+            .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+            .catch(() => undefined);
+        }
+        if ('caches' in window) {
+          caches.keys()
+            .then((keys) => Promise.all(
+              keys
+                .filter((key) => key.startsWith('top100-tournaments-shell-'))
+                .map((key) => caches.delete(key)),
+            ))
+            .catch(() => undefined);
+        }
+      })();
+    </script>
+    <script>
+      (() => {
         const path = window.location.pathname;
         const isChatPath = /^\/chat\/?$/.test(path) || /^\/manager\/chat\/?$/.test(path);
         if (!isChatPath || !window.location.hash) return;
