@@ -39,6 +39,9 @@ check_private () {
 }
 
 check_public "${base}/login"
+check_public "${base}/manifest.webmanifest"
+check_public "${base}/pwa-sw.js"
+check_public "${base}/top100-chat-icon.svg"
 check_private "/"
 check_private "/getrecentitems"
 check_private "/getthread?id=1"
