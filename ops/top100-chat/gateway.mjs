@@ -466,21 +466,32 @@ const server = http.createServer(async (request, response) => {
       const nowSeconds = Math.floor(Date.now() / 1000);
       pruneExpiredPushSubscriptions(nowSeconds);
 
-      const existing = pushSubscriptions.find((entry) => entry.endpoint === subscription.endpoint);
+      let existing = pushSubscriptions.find((entry) => entry.endpoint === subscription.endpoint);
       const targetManagerId = Number(session.mid);
       const isReassignment = Boolean(existing && Number(existing.managerId) !== targetManagerId);
+
+      if (isReassignment) {
+        // A shared browser may have switched Top 100 accounts. Revoke the old
+        // manager ownership before considering whether the new manager can
+        // claim this endpoint, so a rejected reassignment cannot leak private
+        // reply notifications from the previous account.
+        pushSubscriptions = pushSubscriptions.filter((entry) => entry.endpoint !== subscription.endpoint);
+        savePushSubscriptions();
+        existing = undefined;
+      }
+
       const managerCount = activePushSubscriptionCountForManager(targetManagerId);
-      const wouldAddManagerSlot = !existing || isReassignment;
+      const wouldAddManagerSlot = !existing;
 
       if (wouldAddManagerSlot && managerCount >= maxPushSubscriptionsPerManager) {
-        send(response, 429, JSON.stringify({ error: 'Too many notification devices are registered for this manager.' }), {
+        send(response, 429, JSON.stringify({ error: 'Too many notification devices are registered for this manager.', revokedPreviousOwner: isReassignment }), {
           'Content-Type': 'application/json; charset=utf-8',
         });
         return;
       }
 
       if (!existing && pushSubscriptions.length >= maxPushSubscriptionsTotal) {
-        send(response, 503, JSON.stringify({ error: 'Notification subscription capacity has been reached.' }), {
+        send(response, 503, JSON.stringify({ error: 'Notification subscription capacity has been reached.', revokedPreviousOwner: isReassignment }), {
           'Content-Type': 'application/json; charset=utf-8',
         });
         return;
