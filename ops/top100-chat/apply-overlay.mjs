@@ -215,10 +215,10 @@ if (needsReplyPush) {
 
   replaceOnce(
     'reply push trigger',
-    '\t\t\t\t\t\t\t\titemRec.guid = getPermalinkUrl (itemRec); //6/20/26 by DW\n\t\t\t\t\t\t\t\tcallback (undefined, itemRec);\n',
-    '\t\t\t\t\t\t\t\titemRec.guid = getPermalinkUrl (itemRec); //6/20/26 by DW\n' +
-    '\t\t\t\t\t\t\t\tnotifyTop100Reply (itemRec, userRec); // TOP100 CHAT OVERLAY: reply push\n' +
-    '\t\t\t\t\t\t\t\tcallback (undefined, itemRec);\n'
+    '\t\t\t\t\t\t\t\t\t\t\t\titemRec.guid = getPermalinkUrl (itemRec); //6/20/26 by DW\n\t\t\t\t\t\t\t\t\t\t\t\tcallback (undefined, itemRec);\n',
+    '\t\t\t\t\t\t\t\t\t\t\t\titemRec.guid = getPermalinkUrl (itemRec); //6/20/26 by DW\n' +
+    '\t\t\t\t\t\t\t\t\t\t\t\tnotifyTop100Reply (itemRec, userRec); // TOP100 CHAT OVERLAY: reply push\n' +
+    '\t\t\t\t\t\t\t\t\t\t\t\tcallback (undefined, itemRec);\n'
   );
 }
 
