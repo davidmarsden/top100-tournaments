@@ -154,9 +154,10 @@ The first version is intentionally restrained:
 - only direct replies to a manager's post trigger a push;
 - self-replies do not trigger a push;
 - there is no "every new post" notification mode;
-- expired browser push subscriptions are removed automatically.
+- expired browser push subscriptions are removed automatically;
+- subscriptions are capped at 8 devices per manager and 500 devices globally to prevent unbounded store growth or fan-out.
 
-The browser subscription is stored by the auth gateway under `/var/lib/top100-chat/push-subscriptions.json` and is keyed to the authenticated Top 100 manager id. It does not contain chat history. Each subscription also carries the expiry of the current clubhouse session; the client renews that lease when Chat is opened while authenticated. Push delivery therefore stops when Top 100 Chat access expires rather than allowing a stale PWA subscription to receive private notifications indefinitely. Explicit logout revokes all stored push subscriptions for that manager immediately.
+The browser subscription is stored by the auth gateway under `/var/lib/top100-chat/push-subscriptions.json` and is keyed to the authenticated Top 100 manager id. It does not contain chat history. Each subscription also carries the expiry of the current clubhouse session; the client renews that lease when Chat is opened while authenticated. Push delivery therefore stops when Top 100 Chat access expires rather than allowing a stale PWA subscription to receive private notifications indefinitely. Explicit logout revokes all stored push subscriptions for that manager immediately. The gateway also rechecks that each subscription is still registered immediately before each outbound push, so an in-flight fan-out cannot continue delivering to later devices after logout.
 
 The VAPID keypair is generated automatically on the first deployment and stored in `/etc/top100-chat.env`. Later installer runs preserve the existing keypair. Do not rotate those keys casually: replacing them invalidates existing device subscriptions.
 
