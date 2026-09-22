@@ -74,6 +74,7 @@ function FinancePreview({ payload }) {
 
 export default function SoccerManagerSyncPage() {
   const [payloads, setPayloads] = useState([]);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [status, setStatus] = useState('Drop Soccer Manager JSON responses here. Nothing is written to the database in v0.1.');
   const totalSummary = useMemo(() => payloads.map((entry) => ({ name: entry.name, ...summarizeNormalizedPayload(entry.payload) })), [payloads]);
 
@@ -109,11 +110,11 @@ export default function SoccerManagerSyncPage() {
     <section className="card module-card">
       <div className="card-header"><p className="eyebrow">v0.1 · preview only</p><h2>Import captured JSON</h2></div>
       <div className="sm-sync-drop">
-        <input id="sm-sync-files" type="file" accept=".json,application/json" multiple onChange={(event) => importFiles(event.target.files)} />
+        <input key={fileInputKey} id="sm-sync-files" type="file" accept=".json,application/json" multiple onChange={(event) => importFiles(event.target.files)} />
         <p className="muted">Supported now: competition snapshot, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
-      {!!payloads.length && <div className="button-row"><button type="button" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setStatus('Cleared.'); }}>Clear</button></div>}
+      {!!payloads.length && <div className="button-row"><button type="button" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
     </section>
 
     {!!totalSummary.length && <section className="card module-card">
