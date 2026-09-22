@@ -14,6 +14,8 @@ const vapidPublicKey = String(process.env.TOP100_CHAT_VAPID_PUBLIC_KEY || '');
 const vapidPrivateKey = String(process.env.TOP100_CHAT_VAPID_PRIVATE_KEY || '');
 const vapidSubject = String(process.env.TOP100_CHAT_VAPID_SUBJECT || 'mailto:admin@smtop100.blog');
 const pushStorePath = String(process.env.TOP100_CHAT_PUSH_STORE || '/var/lib/top100-chat/push-subscriptions.json');
+const maxPushSubscriptionsPerManager = 8;
+const maxPushSubscriptionsTotal = 500;
 const cookieSecret = crypto.createHmac('sha256', ssoSecret).update('top100-chat-cookie-v1').digest();
 const cookieName = 'top100_chat_session';
 const sessionLifetimeSeconds = Number(process.env.TOP100_CHAT_SESSION_SECONDS || 43200);
@@ -169,7 +171,8 @@ function normalizeSubscription(value) {
   } catch {
     return null;
   }
-  if (!p256dh || !auth || endpoint.length > 2048 || p256dh.length > 512 || auth.length > 512) return null;
+  if (!p256dh || !auth || endpoint.length > 2048 || p256dh.length > 256 || auth.length > 128) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(p256dh) || !/^[A-Za-z0-9_-]+$/.test(auth)) return null;
   return { endpoint, expirationTime: value.expirationTime ?? null, keys: { p256dh, auth } };
 }
 
@@ -205,6 +208,13 @@ async function sendReplyPush(event) {
     Number(entry.sessionExp || 0) > nowSeconds
   );
   for (const entry of targets) {
+    const stillRegistered = pushSubscriptions.some((candidate) =>
+      candidate.endpoint === entry.endpoint &&
+      Number(candidate.managerId) === managerId &&
+      Number(candidate.sessionExp || 0) > Math.floor(Date.now() / 1000)
+    );
+    if (!stillRegistered) continue;
+
     try {
       await webpush.sendNotification(entry.subscription, payload, { TTL: 3600 });
     } catch (error) {
@@ -445,6 +455,20 @@ const server = http.createServer(async (request, response) => {
         existing.sessionExp = Number(session.exp);
         existing.updatedAt = now;
       } else {
+        const managerCount = pushSubscriptions.filter((entry) => Number(entry.managerId) === Number(session.mid)).length;
+        if (managerCount >= maxPushSubscriptionsPerManager) {
+          send(response, 429, JSON.stringify({ error: 'Too many notification devices are registered for this manager.' }), {
+            'Content-Type': 'application/json; charset=utf-8',
+          });
+          return;
+        }
+        if (pushSubscriptions.length >= maxPushSubscriptionsTotal) {
+          send(response, 503, JSON.stringify({ error: 'Notification subscription capacity has been reached.' }), {
+            'Content-Type': 'application/json; charset=utf-8',
+          });
+          return;
+        }
+
         pushSubscriptions.push({
           endpoint: subscription.endpoint,
           managerId: Number(session.mid),
