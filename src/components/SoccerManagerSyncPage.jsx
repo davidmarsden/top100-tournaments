@@ -92,6 +92,10 @@ export default function SoccerManagerSyncPage() {
     }
     setPayloads(next);
     setStatus(errors.length ? `Loaded ${next.length} file(s). ${errors.join(' ')}` : `Loaded and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'}.`);
+    // Always remount the native input after an import attempt. Browsers often
+    // suppress change when the same path is selected twice, including after
+    // a malformed/unsupported file is corrected in place.
+    setFileInputKey((value) => value + 1);
   }
 
   function downloadNormalized() {
