@@ -18,11 +18,14 @@ export function collectorBookmarklet() {
 const target='${SYNC_URL}',helloType='${HELLO_TYPE}',msgType='${MESSAGE_TYPE}',readyType='${READY_TYPE}',ackType='${ACK_TYPE}';
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
 const patterns=[/competition-ajax\\.php/i,/club-ajax-mobile\\.php/i,/playerchanges[^/]*\\.php/i,/transfer[^/]*market[^/]*\\.php/i];
-const matched=performance.getEntriesByType('resource').map(e=>e.name).filter(u=>patterns.some(r=>r.test(u)));
+const sensitive=/token|session|auth|secret|password|passwd|cookie|key/i;
+const sanitize=u=>{try{const x=new URL(u,location.href);if(x.origin!==location.origin)return null;for(const k of [...x.searchParams.keys()])if(sensitive.test(k))x.searchParams.set(k,'[redacted]');x.hash='';return x.toString();}catch{return null;}};
+const resources=performance.getEntriesByType('resource').filter(e=>{try{return new URL(e.name,location.href).origin===location.origin;}catch{return false;}});
+const diagnostics=resources.slice(-50).map(e=>({url:sanitize(e.name),initiatorType:e.initiatorType||null,startTime:Math.round(e.startTime)})).filter(e=>e.url);
+const matched=resources.map(e=>e.name).filter(u=>patterns.some(r=>r.test(u)));
 const seen=new Set(),urls=[];
 for(let i=matched.length-1;i>=0;i--){if(seen.has(matched[i]))continue;seen.add(matched[i]);urls.push(matched[i]);}
 urls.reverse();
-if(!urls.length){alert('No supported Soccer Manager data requests found on this page yet. Open a league table, club, player changes or transfer market screen, then try again.');return;}
 const session=(crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
 const syncUrl=target+'?collectorSession='+encodeURIComponent(session);
 const win=window.open(syncUrl,'top100-sm-sync');
@@ -32,10 +35,10 @@ const onMessage=e=>{if(e.origin!=='https://tournaments.smtop100.blog'||e.source!
 window.addEventListener('message',onMessage);
 const payloads=[];
 for(const url of urls){try{const res=await fetch(url,{credentials:'include',cache:'no-store'});if(!res.ok)continue;const type=(res.headers.get('content-type')||'').toLowerCase();if(!type.includes('json')){const text=await res.text();try{payloads.push({url,data:JSON.parse(text)});}catch{}continue;}payloads.push({url,data:await res.json()});}catch{}}
-if(!payloads.length){window.removeEventListener('message',onMessage);alert('Top 100 Sync found the requests but could not read any JSON responses.');return;}
+if(!payloads.length&&!diagnostics.length){window.removeEventListener('message',onMessage);alert('Top 100 Sync could not see any same-origin resource requests on this page.');return;}
 for(let i=0;i<30&&!ready;i++){try{win.postMessage({type:helloType,version:1,session,sourceOrigin:location.origin},'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 if(!ready){window.removeEventListener('message',onMessage);alert('Top 100 Sync opened, but the newly loaded page did not become ready. Make sure you are signed in there and try again.');return;}
-const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads};
+const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads,diagnostics};
 for(let i=0;i<30&&!done;i++){try{win.postMessage(packet,'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 window.removeEventListener('message',onMessage);
 if(!done)alert('Top 100 Sync became ready, but did not acknowledge the data. Try again.');
