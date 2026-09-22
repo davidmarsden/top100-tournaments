@@ -29,8 +29,9 @@ function replaceOnce(label, from, to) {
 
 const needsLocalSso = !source.includes('TOP100 CHAT OVERLAY: local SSO');
 const needsSourceBindings = !source.includes('TOP100 CHAT OVERLAY: source bindings');
+const needsReplyPush = !source.includes('TOP100 CHAT OVERLAY: reply push');
 
-if (!needsLocalSso && !needsSourceBindings) {
+if (!needsLocalSso && !needsSourceBindings && !needsReplyPush) {
   console.log('Top 100 Chat overlay already up to date; no changes made.');
   process.exit(0);
 }
@@ -176,6 +177,48 @@ if (needsSourceBindings) {
     '\t\t\t\t\t\t\t\t\ttop100ObjectType: postRec.top100ObjectType, // TOP100 CHAT OVERLAY\n' +
     '\t\t\t\t\t\t\t\t\ttop100ObjectTitle: postRec.top100ObjectTitle, // TOP100 CHAT OVERLAY\n' +
     '\t\t\t\t\t\t\t\t\tinReplyTo: postRec.inReplyTo,\n'
+  );
+}
+
+if (needsReplyPush) {
+  const newPostAnchor = '\tfunction newPost (email, code, jsontext, callback) {\n';
+  const newPostIndex = source.indexOf(newPostAnchor);
+  if (newPostIndex < 0) throw new Error('Overlay anchor not found: reply push helper insertion');
+
+  const helperBlock = [
+    '\t// TOP100 CHAT OVERLAY: reply push',
+    '\tfunction notifyTop100Reply (itemRec, userRec) {',
+    '\t\tif ((itemRec.inReplyTo === undefined) || (itemRec.inReplyTo === null)) { return; }',
+    '\t\tgetItemById (userRec.screenname, itemRec.inReplyTo, function (err, parentRec) {',
+    '\t\t\tif (err || (parentRec === undefined) || (parentRec.author === userRec.screenname)) { return; }',
+    '\t\t\tconst senderName = ((userRec.prefs !== undefined) && userRec.prefs.myFeedTitle) ? userRec.prefs.myFeedTitle : userRec.screenname;',
+    '\t\t\tconst payload = {',
+    '\t\t\t\trecipientScreenname: parentRec.author,',
+    '\t\t\t\tsenderScreenname: userRec.screenname,',
+    '\t\t\t\tsenderName,',
+    '\t\t\t\treplyId: itemRec.id,',
+    '\t\t\t\tparentId: itemRec.inReplyTo,',
+    '\t\t\t\texcerpt: itemRec.markdowntext || itemRec.description || ""',
+    '\t\t\t\t};',
+    '\t\t\trequest.post ({url: "http://127.0.0.1:1470/internal/reply", json: payload, timeout: 3000}, function (err, response) {',
+    '\t\t\t\tif (err) { console.log ("notifyTop100Reply: " + err.message); return; }',
+    '\t\t\t\tif ((response !== undefined) && (response.statusCode >= 400)) { console.log ("notifyTop100Reply: gateway returned " + response.statusCode); }',
+    '\t\t\t\t});',
+    '\t\t\t});',
+    '\t\t}',
+    '',
+    ''
+  ].join ('\n');
+
+  source = source.slice(0, newPostIndex) + helperBlock + source.slice(newPostIndex);
+  changes.push('reply push helper');
+
+  replaceOnce(
+    'reply push trigger',
+    '\t\t\t\t\t\t\t\t\t\t\t\titemRec.guid = getPermalinkUrl (itemRec); //6/20/26 by DW\n\t\t\t\t\t\t\t\t\t\t\t\tcallback (undefined, itemRec);\n',
+    '\t\t\t\t\t\t\t\t\t\t\t\titemRec.guid = getPermalinkUrl (itemRec); //6/20/26 by DW\n' +
+    '\t\t\t\t\t\t\t\t\t\t\t\tnotifyTop100Reply (itemRec, userRec); // TOP100 CHAT OVERLAY: reply push\n' +
+    '\t\t\t\t\t\t\t\t\t\t\t\tcallback (undefined, itemRec);\n'
   );
 }
 

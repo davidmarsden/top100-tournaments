@@ -144,6 +144,29 @@ These control files are intentionally public because they contain no private cha
 
 On Android/Chrome or Brave, use the browser's **Install app** / **Add to Home screen** command once the manifest has loaded.
 
+## Reply notifications
+
+Installed Top 100 Chat PWAs can opt in to Web Push notifications for **replies to their own posts**.
+
+The first version is intentionally restrained:
+
+- notifications are opt-in per device from the Top 100 menu;
+- only direct replies to a manager's post trigger a push;
+- self-replies do not trigger a push;
+- there is no "every new post" notification mode;
+- expired browser push subscriptions are removed automatically;
+- subscriptions are capped at 8 active devices per manager and 500 active devices globally to prevent unbounded store growth or fan-out;
+- expired leases are pruned before quota checks, and account-switch endpoint reassignments must satisfy the destination manager's quota too;
+- when a shared browser changes manager accounts, the previous manager's endpoint ownership is revoked before reassignment is attempted. If the new manager cannot claim the endpoint, the browser unsubscribes locally rather than continuing to receive the previous account's private notifications.
+
+The browser subscription is stored by the auth gateway under `/var/lib/top100-chat/push-subscriptions.json` and is keyed to the authenticated Top 100 manager id. It does not contain chat history. Each subscription also carries the expiry of the current clubhouse session; the client renews that lease when Chat is opened while authenticated. Push delivery therefore stops when Top 100 Chat access expires rather than allowing a stale PWA subscription to receive private notifications indefinitely. Explicit logout revokes all stored push subscriptions for that manager immediately. The gateway also rechecks that each subscription is still registered immediately before each outbound push, so an in-flight fan-out cannot continue delivering to later devices after logout.
+
+The VAPID keypair is generated automatically on the first deployment and stored in `/etc/top100-chat.env`. Later installer runs preserve the existing keypair. Do not rotate those keys casually: replacing them invalidates existing device subscriptions.
+
+rss.chat itself does not send Web Push. The overlay emits a localhost-only reply event to the gateway after a reply has been successfully written. The gateway then sends Web Push only to subscriptions belonging to the parent post's manager.
+
+The PWA service worker still has no fetch handler and does not cache private chat content. Its additional responsibilities are limited to receiving a push, displaying the notification and opening the relevant chat post when the notification is tapped.
+
 ## Smoke tests
 
 Logged out:

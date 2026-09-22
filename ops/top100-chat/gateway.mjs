@@ -4,11 +4,18 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import webpush from 'web-push';
 
 const host = process.env.TOP100_CHAT_GATEWAY_HOST || '127.0.0.1';
 const port = Number(process.env.TOP100_CHAT_GATEWAY_PORT || 1470);
 const rssChatPort = Number(process.env.TOP100_CHAT_RSS_PORT || 1430);
 const ssoSecret = String(process.env.TOP100_CHAT_SSO_SECRET || '');
+const vapidPublicKey = String(process.env.TOP100_CHAT_VAPID_PUBLIC_KEY || '');
+const vapidPrivateKey = String(process.env.TOP100_CHAT_VAPID_PRIVATE_KEY || '');
+const vapidSubject = String(process.env.TOP100_CHAT_VAPID_SUBJECT || 'mailto:admin@smtop100.blog');
+const pushStorePath = String(process.env.TOP100_CHAT_PUSH_STORE || '/var/lib/top100-chat/push-subscriptions.json');
+const maxPushSubscriptionsPerManager = 8;
+const maxPushSubscriptionsTotal = 500;
 const cookieSecret = crypto.createHmac('sha256', ssoSecret).update('top100-chat-cookie-v1').digest();
 const cookieName = 'top100_chat_session';
 const sessionLifetimeSeconds = Number(process.env.TOP100_CHAT_SESSION_SECONDS || 43200);
@@ -19,6 +26,11 @@ const clientBrandJs = fs.readFileSync(path.join(here, 'client-brand.js'), 'utf8'
 const usedNonces = new Map();
 const upstreamClientHome = 'https://code.scripting.com/rsschat/index.html';
 let clientHomeCache = '';
+let pushSubscriptions = [];
+
+if (vapidPublicKey && vapidPrivateKey) {
+  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+}
 
 const pwaManifest = JSON.stringify({
   name: 'Top 100 Chat',
@@ -69,12 +81,169 @@ self.addEventListener('activate', function (event) {
       .then(function () { return self.clients.claim(); })
   );
 });
+
+self.addEventListener('push', function (event) {
+  var payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (e) {}
+  var title = payload.title || 'Top 100 Chat';
+  var options = {
+    body: payload.body || 'You have a new reply.',
+    icon: '/top100-chat-icon.svg',
+    badge: '/top100-chat-icon.svg',
+    tag: payload.tag || 'top100-chat-reply',
+    data: { url: payload.url || '/' }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  var target = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clients) {
+      for (var i = 0; i < clients.length; i += 1) {
+        var client = clients[i];
+        if ('focus' in client) {
+          if ('navigate' in client) return client.navigate(target).then(function () { return client.focus(); });
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
+  );
+});
 `;
 
 if (ssoSecret.length < 32) {
   console.error('TOP100_CHAT_SSO_SECRET must be at least 32 characters.');
   process.exit(1);
 }
+
+
+function loadPushSubscriptions() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(pushStorePath, 'utf8'));
+    pushSubscriptions = Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error('push store load:', error.message);
+    pushSubscriptions = [];
+  }
+}
+
+function savePushSubscriptions() {
+  const dir = path.dirname(pushStorePath);
+  fs.mkdirSync(dir, { recursive: true });
+  const temp = pushStorePath + '.tmp';
+  fs.writeFileSync(temp, JSON.stringify(pushSubscriptions, null, 2) + '\n', { mode: 0o600 });
+  fs.renameSync(temp, pushStorePath);
+}
+
+function readJsonBody(request, maxBytes = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      body += chunk;
+      if (Buffer.byteLength(body, 'utf8') > maxBytes) {
+        reject(new Error('Request body too large.'));
+        request.destroy();
+      }
+    });
+    request.on('end', () => {
+      try { resolve(body ? JSON.parse(body) : {}); } catch { reject(new Error('Invalid JSON body.')); }
+    });
+    request.on('error', reject);
+  });
+}
+
+function getSessionForRequest(request) {
+  return verifySession(parseCookies(request)[cookieName]);
+}
+
+function normalizeSubscription(value) {
+  if (!value || typeof value !== 'object') return null;
+  const endpoint = String(value.endpoint || '').trim();
+  const p256dh = String(value.keys?.p256dh || '').trim();
+  const auth = String(value.keys?.auth || '').trim();
+  try {
+    const parsed = new URL(endpoint);
+    if (parsed.protocol !== 'https:') return null;
+  } catch {
+    return null;
+  }
+  if (!p256dh || !auth || endpoint.length > 2048 || p256dh.length > 256 || auth.length > 128) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(p256dh) || !/^[A-Za-z0-9_-]+$/.test(auth)) return null;
+  return { endpoint, expirationTime: value.expirationTime ?? null, keys: { p256dh, auth } };
+}
+
+function isLoopback(request) {
+  const address = request.socket.remoteAddress || '';
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+function cleanNotificationText(value, max = 180) {
+  return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function pruneExpiredPushSubscriptions(nowSeconds = Math.floor(Date.now() / 1000)) {
+  const before = pushSubscriptions.length;
+  pushSubscriptions = pushSubscriptions.filter((entry) => Number(entry.sessionExp || 0) > nowSeconds);
+  if (pushSubscriptions.length !== before) savePushSubscriptions();
+}
+
+function activePushSubscriptionCountForManager(managerId) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return pushSubscriptions.filter((entry) =>
+    Number(entry.managerId) === Number(managerId) &&
+    Number(entry.sessionExp || 0) > nowSeconds
+  ).length;
+}
+
+async function sendReplyPush(event) {
+  pruneExpiredPushSubscriptions();
+  const recipientMatch = /^manager(\d+)$/.exec(String(event.recipientScreenname || ''));
+  const senderMatch = /^manager(\d+)$/.exec(String(event.senderScreenname || ''));
+  if (!recipientMatch) return;
+  const managerId = Number(recipientMatch[1]);
+  if (senderMatch && Number(senderMatch[1]) === managerId) return;
+
+  const replyId = Number(event.replyId);
+  const senderName = cleanNotificationText(event.senderName, 120) || 'A Top 100 manager';
+  const body = cleanNotificationText(event.excerpt, 180) || 'replied to your post.';
+  const payload = JSON.stringify({
+    title: senderName + ' replied in Top 100 Chat',
+    body,
+    url: Number.isInteger(replyId) && replyId > 0 ? '/?id=' + replyId : '/',
+    tag: Number.isInteger(replyId) && replyId > 0 ? 'top100-chat-reply-' + replyId : 'top100-chat-reply'
+  });
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const targets = pushSubscriptions.filter((entry) =>
+    Number(entry.managerId) === managerId &&
+    Number(entry.sessionExp || 0) > nowSeconds
+  );
+  for (const entry of targets) {
+    const stillRegistered = pushSubscriptions.some((candidate) =>
+      candidate.endpoint === entry.endpoint &&
+      Number(candidate.managerId) === managerId &&
+      Number(candidate.sessionExp || 0) > Math.floor(Date.now() / 1000)
+    );
+    if (!stillRegistered) continue;
+
+    try {
+      await webpush.sendNotification(entry.subscription, payload, { TTL: 3600 });
+    } catch (error) {
+      if (error.statusCode === 404 || error.statusCode === 410) {
+        pushSubscriptions = pushSubscriptions.filter((candidate) => candidate.endpoint !== entry.endpoint);
+        savePushSubscriptions();
+      } else {
+        console.error('push send:', error.statusCode || '', error.message);
+      }
+    }
+  }
+}
+
+loadPushSubscriptions();
 
 function cleanExpiredNonces() {
   const now = Math.floor(Date.now() / 1000);
@@ -271,6 +440,120 @@ async function claim(request, response, url) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, 'https://chat.smtop100.blog');
 
+  if (url.pathname === '/push/config') {
+    try {
+      getSessionForRequest(request);
+      send(response, 200, JSON.stringify({ enabled: Boolean(vapidPublicKey && vapidPrivateKey), vapidPublicKey }), {
+        'Content-Type': 'application/json; charset=utf-8',
+      });
+    } catch {
+      send(response, 401, JSON.stringify({ error: 'Authentication required.' }), {
+        'Content-Type': 'application/json; charset=utf-8',
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/push/subscribe' && request.method === 'POST') {
+    try {
+      const session = getSessionForRequest(request);
+      if (!vapidPublicKey || !vapidPrivateKey) throw new Error('Push notifications are not configured.');
+      const body = await readJsonBody(request);
+      const subscription = normalizeSubscription(body.subscription);
+      if (!subscription) throw new Error('Invalid push subscription.');
+
+      const now = new Date().toISOString();
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      pruneExpiredPushSubscriptions(nowSeconds);
+
+      let existing = pushSubscriptions.find((entry) => entry.endpoint === subscription.endpoint);
+      const targetManagerId = Number(session.mid);
+      const isReassignment = Boolean(existing && Number(existing.managerId) !== targetManagerId);
+
+      if (isReassignment) {
+        // A shared browser may have switched Top 100 accounts. Revoke the old
+        // manager ownership before considering whether the new manager can
+        // claim this endpoint, so a rejected reassignment cannot leak private
+        // reply notifications from the previous account.
+        pushSubscriptions = pushSubscriptions.filter((entry) => entry.endpoint !== subscription.endpoint);
+        savePushSubscriptions();
+        existing = undefined;
+      }
+
+      const managerCount = activePushSubscriptionCountForManager(targetManagerId);
+      const wouldAddManagerSlot = !existing;
+
+      if (wouldAddManagerSlot && managerCount >= maxPushSubscriptionsPerManager) {
+        send(response, 429, JSON.stringify({ error: 'Too many notification devices are registered for this manager.', revokedPreviousOwner: isReassignment }), {
+          'Content-Type': 'application/json; charset=utf-8',
+        });
+        return;
+      }
+
+      if (!existing && pushSubscriptions.length >= maxPushSubscriptionsTotal) {
+        send(response, 503, JSON.stringify({ error: 'Notification subscription capacity has been reached.', revokedPreviousOwner: isReassignment }), {
+          'Content-Type': 'application/json; charset=utf-8',
+        });
+        return;
+      }
+
+      if (existing) {
+        existing.managerId = targetManagerId;
+        existing.subscription = subscription;
+        existing.sessionExp = Number(session.exp);
+        existing.updatedAt = now;
+      } else {
+        pushSubscriptions.push({
+          endpoint: subscription.endpoint,
+          managerId: targetManagerId,
+          subscription,
+          sessionExp: Number(session.exp),
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      savePushSubscriptions();
+      send(response, 204, '');
+    } catch (error) {
+      send(response, 400, JSON.stringify({ error: error.message }), {
+        'Content-Type': 'application/json; charset=utf-8',
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/push/subscribe' && request.method === 'DELETE') {
+    try {
+      const session = getSessionForRequest(request);
+      const body = await readJsonBody(request);
+      const endpoint = String(body.endpoint || '').trim();
+      pushSubscriptions = pushSubscriptions.filter((entry) => !(entry.endpoint === endpoint && Number(entry.managerId) === Number(session.mid)));
+      savePushSubscriptions();
+      send(response, 204, '');
+    } catch (error) {
+      send(response, 400, JSON.stringify({ error: error.message }), {
+        'Content-Type': 'application/json; charset=utf-8',
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/internal/reply' && request.method === 'POST') {
+    if (!isLoopback(request)) {
+      send(response, 403, 'Forbidden.', { 'Content-Type': 'text/plain; charset=utf-8' });
+      return;
+    }
+    try {
+      const event = await readJsonBody(request);
+      await sendReplyPush(event);
+      send(response, 204, '');
+    } catch (error) {
+      console.error('reply push event:', error.message);
+      send(response, 400, 'Bad request.', { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    return;
+  }
+
   if (url.pathname === '/manifest.webmanifest') {
     send(response, 200, pwaManifest, {
       'Content-Type': 'application/manifest+json; charset=utf-8',
@@ -356,6 +639,15 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (url.pathname === '/auth/logout') {
+    try {
+      const session = getSessionForRequest(request);
+      pushSubscriptions = pushSubscriptions.filter((entry) => Number(entry.managerId) !== Number(session.mid));
+      savePushSubscriptions();
+    } catch {
+      // The session may already be expired or absent; logout should still
+      // clear browser state and the clubhouse cookie.
+    }
+
     send(response, 200, '<!doctype html><meta charset="utf-8"><script>localStorage.removeItem("rssNetworkMemory");location.replace("/login");</script>', {
       'Content-Type': 'text/html; charset=utf-8',
       'Set-Cookie': `${cookieName}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,

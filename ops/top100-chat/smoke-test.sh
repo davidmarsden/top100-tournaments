@@ -48,5 +48,6 @@ check_private "/getthread?id=1"
 check_private "/data/subs.opml"
 check_private "/users/manager1/rss.xml"
 check_private "/feed?screenname=manager1"
+check_private "/push/config"
 
 echo "Logged-out privacy smoke tests passed."

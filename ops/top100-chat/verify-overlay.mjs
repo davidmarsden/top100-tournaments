@@ -15,6 +15,7 @@ const required=[
   'crypto.randomBytes (24)',
   'requestIsFromThisMachine (theRequest)',
   'TOP100 CHAT OVERLAY: source bindings',
+  'TOP100 CHAT OVERLAY: reply push',
   'top100ObjectUrl',
   'top100ObjectType',
   'top100ObjectTitle'

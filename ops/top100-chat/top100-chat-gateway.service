@@ -16,6 +16,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+StateDirectory=top100-chat
+StateDirectoryMode=0750
 
 [Install]
 WantedBy=multi-user.target

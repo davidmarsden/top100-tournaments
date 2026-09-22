@@ -1,0 +1,8 @@
+{
+  "name": "top100-chat-gateway",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "web-push": "3.6.7"
+  }
+}
