@@ -40,12 +40,19 @@ jobs:
           grep -Fq "rel=\"manifest\"" ops/top100-chat/gateway.mjs
           grep -Fq "navigator.serviceWorker.register" ops/top100-chat/gateway.mjs
           grep -Fq "Top 100 Chat is private and live" ops/top100-chat/gateway.mjs
+          grep -Fq "self.addEventListener('push'" ops/top100-chat/gateway.mjs
+          grep -Fq "self.addEventListener('notificationclick'" ops/top100-chat/gateway.mjs
+          grep -Fq "webpush.sendNotification" ops/top100-chat/gateway.mjs
+          grep -Fq "normalizeSubscription" ops/top100-chat/gateway.mjs
+          grep -Fq "isLoopback(request)" ops/top100-chat/gateway.mjs
           ! grep -Fq "addEventListener('fetch'" ops/top100-chat/gateway.mjs
           grep -Fq "sourceBindingAvailable = false" ops/top100-chat/client-brand.js
           grep -Fq "sourceContextDismissed = true" ops/top100-chat/client-brand.js
           grep -Fq "if (!err)" ops/top100-chat/client-brand.js
           grep -Fq "new MutationObserver" ops/top100-chat/client-brand.js
           grep -Fq "rewriteUserDisplayName" ops/top100-chat/client-brand.js
+          grep -Fq "toggleNotifications" ops/top100-chat/client-brand.js
+          grep -Fq "pushManager.subscribe" ops/top100-chat/client-brand.js
           grep -Fq ".divChat .divThread .divThread" ops/top100-chat/client-theme.css
           grep -Fq "attributeFilter: ['style', 'class']" ops/top100-chat/client-brand.js
           grep -Fq "database does not exist yet; fresh install" ops/top100-chat/migrate-source-bindings.mjs
@@ -64,6 +71,10 @@ jobs:
           grep -Fq 'urlServerHomePageSource": "http://127.0.0.1:1470/client-home"' ops/top100-chat/install-on-droplet.sh
           grep -Fq 'ExecStartPre=/opt/top100-chat/ensure-native-deps.sh' ops/top100-chat/top100-rsschat.service
           grep -Fq 'TOP100_CHAT_RESOLVE_IP=127.0.0.1' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'TOP100_CHAT_VAPID_PUBLIC_KEY=' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'webpush.generateVAPIDKeys' ops/top100-chat/install-on-droplet.sh
+          grep -Fq 'StateDirectory=top100-chat' ops/top100-chat/top100-chat-gateway.service
+          grep -Fq '@push path /push/*' ops/top100-chat/Caddyfile.example
           grep -Fq '@public path /login /login/* /share /manifest.webmanifest /pwa-sw.js /top100-chat-icon.svg /auth/claim /auth/check /auth/logout' ops/top100-chat/Caddyfile.example
           grep -Fq "if (url.pathname === '/share')" ops/top100-chat/gateway.mjs
           grep -Fq "if (url.pathname === '/manifest.webmanifest')" ops/top100-chat/gateway.mjs
@@ -75,6 +86,8 @@ jobs:
           grep -Fq 'node migrate-source-bindings.mjs /opt/top100-rsschat' ops/top100-chat/README.md
           grep -Fq 'top100ObjectUrl' ops/top100-chat/apply-overlay.mjs
           grep -Fq 'top100ObjectTitle' ops/top100-chat/apply-overlay.mjs
+          grep -Fq 'TOP100 CHAT OVERLAY: reply push' ops/top100-chat/apply-overlay.mjs
+          grep -Fq 'notifyTop100Reply (itemRec, userRec)' ops/top100-chat/apply-overlay.mjs
           grep -Fq "readFileSync(path.join(here, 'client-theme.css')" ops/top100-chat/gateway.mjs
           grep -Fq "readFileSync(path.join(here, 'client-brand.js')" ops/top100-chat/gateway.mjs
           grep -Fq 'host="${base#*://}"' ops/top100-chat/smoke-test.sh
