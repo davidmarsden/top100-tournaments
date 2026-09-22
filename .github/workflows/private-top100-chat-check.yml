@@ -50,6 +50,8 @@ jobs:
           grep -Fq "pruneExpiredPushSubscriptions" ops/top100-chat/gateway.mjs
           grep -Fq "isReassignment" ops/top100-chat/gateway.mjs
           grep -Fq "wouldAddManagerSlot" ops/top100-chat/gateway.mjs
+          grep -Fq "revokedPreviousOwner" ops/top100-chat/gateway.mjs
+          grep -Fq "await subscription.unsubscribe()" ops/top100-chat/client-brand.js
           grep -Fq "stillRegistered" ops/top100-chat/gateway.mjs
           grep -Fq "pushSubscriptions = pushSubscriptions.filter((entry) => Number(entry.managerId) !== Number(session.mid))" ops/top100-chat/gateway.mjs
           grep -Fq "normalizeSubscription" ops/top100-chat/gateway.mjs
