@@ -185,7 +185,22 @@ function cleanNotificationText(value, max = 180) {
   return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function pruneExpiredPushSubscriptions(nowSeconds = Math.floor(Date.now() / 1000)) {
+  const before = pushSubscriptions.length;
+  pushSubscriptions = pushSubscriptions.filter((entry) => Number(entry.sessionExp || 0) > nowSeconds);
+  if (pushSubscriptions.length !== before) savePushSubscriptions();
+}
+
+function activePushSubscriptionCountForManager(managerId) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return pushSubscriptions.filter((entry) =>
+    Number(entry.managerId) === Number(managerId) &&
+    Number(entry.sessionExp || 0) > nowSeconds
+  ).length;
+}
+
 async function sendReplyPush(event) {
+  pruneExpiredPushSubscriptions();
   const recipientMatch = /^manager(\d+)$/.exec(String(event.recipientScreenname || ''));
   const senderMatch = /^manager(\d+)$/.exec(String(event.senderScreenname || ''));
   if (!recipientMatch) return;
@@ -448,30 +463,38 @@ const server = http.createServer(async (request, response) => {
       if (!subscription) throw new Error('Invalid push subscription.');
 
       const now = new Date().toISOString();
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      pruneExpiredPushSubscriptions(nowSeconds);
+
       const existing = pushSubscriptions.find((entry) => entry.endpoint === subscription.endpoint);
+      const targetManagerId = Number(session.mid);
+      const isReassignment = Boolean(existing && Number(existing.managerId) !== targetManagerId);
+      const managerCount = activePushSubscriptionCountForManager(targetManagerId);
+      const wouldAddManagerSlot = !existing || isReassignment;
+
+      if (wouldAddManagerSlot && managerCount >= maxPushSubscriptionsPerManager) {
+        send(response, 429, JSON.stringify({ error: 'Too many notification devices are registered for this manager.' }), {
+          'Content-Type': 'application/json; charset=utf-8',
+        });
+        return;
+      }
+
+      if (!existing && pushSubscriptions.length >= maxPushSubscriptionsTotal) {
+        send(response, 503, JSON.stringify({ error: 'Notification subscription capacity has been reached.' }), {
+          'Content-Type': 'application/json; charset=utf-8',
+        });
+        return;
+      }
+
       if (existing) {
-        existing.managerId = Number(session.mid);
+        existing.managerId = targetManagerId;
         existing.subscription = subscription;
         existing.sessionExp = Number(session.exp);
         existing.updatedAt = now;
       } else {
-        const managerCount = pushSubscriptions.filter((entry) => Number(entry.managerId) === Number(session.mid)).length;
-        if (managerCount >= maxPushSubscriptionsPerManager) {
-          send(response, 429, JSON.stringify({ error: 'Too many notification devices are registered for this manager.' }), {
-            'Content-Type': 'application/json; charset=utf-8',
-          });
-          return;
-        }
-        if (pushSubscriptions.length >= maxPushSubscriptionsTotal) {
-          send(response, 503, JSON.stringify({ error: 'Notification subscription capacity has been reached.' }), {
-            'Content-Type': 'application/json; charset=utf-8',
-          });
-          return;
-        }
-
         pushSubscriptions.push({
           endpoint: subscription.endpoint,
-          managerId: Number(session.mid),
+          managerId: targetManagerId,
           subscription,
           sessionExp: Number(session.exp),
           createdAt: now,
