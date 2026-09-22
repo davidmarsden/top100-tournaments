@@ -130,6 +130,20 @@ The rss.chat homepage source must remain:
 
 The gateway proxies the upstream rss.chat client through `/client-home` and injects the Top 100 logout hook. The stock rss.chat sign-out only clears its browser state; it does not clear the HttpOnly Top 100 clubhouse cookie. Reverting the homepage source directly to the upstream client therefore breaks proper logout.
 
+## Progressive Web App
+
+Top 100 Chat is installable as a standalone PWA from `chat.smtop100.blog`.
+
+The gateway serves:
+
+- `/manifest.webmanifest`
+- `/top100-chat-icon.svg`
+- `/pwa-sw.js`
+
+These control files are intentionally public because they contain no private chat data. The service worker is deliberately network-only: it does **not** cache chat pages, timelines, threads, feeds, APIs or other private content. If the clubhouse session has expired, launching the installed app follows the normal Caddy redirect to `/login`.
+
+On Android/Chrome or Brave, use the browser's **Install app** / **Add to Home screen** command once the manifest has loaded.
+
 ## Smoke tests
 
 Logged out:
