@@ -1,7 +1,7 @@
 chat.smtop100.blog {
     encode zstd gzip
 
-    @public path /login /login/* /share /auth/claim /auth/check /auth/logout
+    @public path /login /login/* /share /manifest.webmanifest /pwa-sw.js /top100-chat-icon.svg /auth/claim /auth/check /auth/logout
     handle @public {
         reverse_proxy 127.0.0.1:1470
     }
