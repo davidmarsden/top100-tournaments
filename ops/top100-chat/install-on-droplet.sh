@@ -55,6 +55,7 @@ fetch_top100_file () {
 
 echo "Fetching Top 100 privacy gateway and reproducible rss.chat overlay..."
 fetch_top100_file "ops/top100-chat/gateway.mjs" "${tmpdir}/gateway.mjs"
+fetch_top100_file "ops/top100-chat/package.json" "${tmpdir}/package.json"
 fetch_top100_file "ops/top100-chat/shell.html" "${tmpdir}/shell.html"
 fetch_top100_file "ops/top100-chat/client-theme.css" "${tmpdir}/client-theme.css"
 fetch_top100_file "ops/top100-chat/client-brand.js" "${tmpdir}/client-brand.js"
@@ -80,6 +81,7 @@ chmod 0755 "${GATEWAY_DIR}"
 # live gateway files. This avoids ever executing service-writable code as root
 # during upgrades from older installations.
 install -o root -g root -m 0644 "${tmpdir}/gateway.mjs" "${GATEWAY_DIR}/gateway.mjs"
+install -o root -g root -m 0644 "${tmpdir}/package.json" "${GATEWAY_DIR}/package.json"
 install -o root -g root -m 0644 "${tmpdir}/shell.html" "${GATEWAY_DIR}/shell.html"
 install -o root -g root -m 0644 "${tmpdir}/client-theme.css" "${GATEWAY_DIR}/client-theme.css"
 install -o root -g root -m 0644 "${tmpdir}/client-brand.js" "${GATEWAY_DIR}/client-brand.js"
@@ -130,6 +132,33 @@ chown -R www-data:www-data "${RSS_DIR}"
 "${GATEWAY_DIR}/ensure-native-deps.sh"
 node "${GATEWAY_DIR}/migrate-source-bindings.mjs" "${RSS_DIR}"
 
+echo "Installing Top 100 Chat gateway dependencies..."
+(
+  cd "${GATEWAY_DIR}"
+  npm install --omit=dev --no-audit --no-fund --package-lock=false
+)
+chown -R root:root "${GATEWAY_DIR}"
+chmod -R go-w "${GATEWAY_DIR}"
+
+existing_vapid_public="${TOP100_CHAT_VAPID_PUBLIC_KEY:-}"
+existing_vapid_private="${TOP100_CHAT_VAPID_PRIVATE_KEY:-}"
+if [[ -f "${ENV_FILE}" ]]; then
+  if [[ -z "${existing_vapid_public}" ]]; then
+    existing_vapid_public="$(sed -n 's/^TOP100_CHAT_VAPID_PUBLIC_KEY=//p' "${ENV_FILE}" | tail -1)"
+  fi
+  if [[ -z "${existing_vapid_private}" ]]; then
+    existing_vapid_private="$(sed -n 's/^TOP100_CHAT_VAPID_PRIVATE_KEY=//p' "${ENV_FILE}" | tail -1)"
+  fi
+fi
+
+if [[ -z "${existing_vapid_public}" || -z "${existing_vapid_private}" ]]; then
+  echo "Generating persistent VAPID keys for reply notifications..."
+  read -r existing_vapid_public existing_vapid_private < <(
+    cd "${GATEWAY_DIR}"
+    node --input-type=module -e "import webpush from 'web-push'; const k=webpush.generateVAPIDKeys(); console.log(k.publicKey + ' ' + k.privateKey);"
+  )
+fi
+
 umask 077
 cat > "${ENV_FILE}" <<EOF
 TOP100_CHAT_SSO_SECRET=${TOP100_CHAT_SSO_SECRET}
@@ -137,6 +166,10 @@ TOP100_CHAT_GATEWAY_HOST=127.0.0.1
 TOP100_CHAT_GATEWAY_PORT=1470
 TOP100_CHAT_RSS_PORT=1430
 TOP100_CHAT_SESSION_SECONDS=43200
+TOP100_CHAT_VAPID_PUBLIC_KEY=${existing_vapid_public}
+TOP100_CHAT_VAPID_PRIVATE_KEY=${existing_vapid_private}
+TOP100_CHAT_VAPID_SUBJECT=mailto:admin@smtop100.blog
+TOP100_CHAT_PUSH_STORE=/var/lib/top100-chat/push-subscriptions.json
 EOF
 chmod 0600 "${ENV_FILE}"
 chown root:root "${ENV_FILE}"
