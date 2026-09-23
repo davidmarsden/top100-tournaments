@@ -418,6 +418,7 @@ export function normalizeClubSquad(input, context = {}) {
       assists: firstNumber(record.as, record.assists),
       goalkeeper: firstBoolean(record.gk),
       youth: firstBoolean(record.youth),
+      transferListed: firstBoolean(record.transferlisted, record.transfer_list, record.tl),
       photo: firstText(record.photofilename, record.PhotoFilename),
       ratingChangedAt: firstText(record.ratchgdate),
     };
