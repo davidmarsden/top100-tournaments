@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeSoccerManagerPayload, summarizeNormalizedPayload } from '../lib/soccerManagerSync';
 import { collectorBookmarklet, isAllowedSoccerManagerOrigin, soccerManagerCollectorProtocol } from '../lib/soccerManagerCollector';
+import { normalizedPayloadForPersistence, stageSoccerManagerSync } from '../lib/soccerManagerSyncPersistence';
+import SoccerManagerSyncReview from './SoccerManagerSyncReview.jsx';
 
 function formatValue(value) {
   if (value === null || value === undefined || value === '') return '—';
@@ -99,6 +101,9 @@ export default function SoccerManagerSyncPage() {
   const [collectorStatus, setCollectorStatus] = useState('');
   const [diagnostics, setDiagnostics] = useState([]);
   const [diagnosticsCapturedAt, setDiagnosticsCapturedAt] = useState(null);
+  const [stageStatus, setStageStatus] = useState('');
+  const [stageBusy, setStageBusy] = useState(false);
+  const [reviewRefreshToken, setReviewRefreshToken] = useState(0);
   const collectorLinkRef = useRef(null);
   const totalSummary = useMemo(() => payloads.map((entry) => ({
     id: entry.id,
@@ -235,6 +240,7 @@ export default function SoccerManagerSyncPage() {
     }
     const { next, errors } = normalizeCapturedEntries(entries);
     const allErrors = [...readErrors, ...errors];
+    setDiagnosticsCapturedAt(null);
     setPayloads(next);
     setStatus(allErrors.length ? `Loaded ${next.length} file(s). ${allErrors.join(' ')}` : `Loaded and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'}.`);
     // Always remount the native input after an import attempt. Browsers often
@@ -243,12 +249,23 @@ export default function SoccerManagerSyncPage() {
     setFileInputKey((value) => value + 1);
   }
 
+  async function stageForReview() {
+    if (!payloads.length) return;
+    setStageBusy(true);
+    setStageStatus('');
+    try {
+      const result = await stageSoccerManagerSync(payloads, diagnosticsCapturedAt);
+      setStageStatus(`Staged sync #${result.runId}: ${result.sourceCount} source response${result.sourceCount === 1 ? '' : 's'} and ${result.entityCount} normalized entities. Review the differences below before approving them into the canonical source layer.`);
+      setReviewRefreshToken((value) => value + 1);
+    } catch (error) {
+      setStageStatus(`Could not stage this sync: ${error.message}`);
+    } finally {
+      setStageBusy(false);
+    }
+  }
+
   function downloadNormalized() {
-    const blob = new Blob([JSON.stringify(payloads.map((entry) => ({
-      source: entry.name,
-      sourceUrl: entry.sourceUrl || null,
-      ...entry.payload,
-    })), null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(normalizedPayloadForPersistence(payloads), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -270,11 +287,11 @@ export default function SoccerManagerSyncPage() {
   }
 
   return <main className="app-shell">
-    <section className="hero"><div className="hero-row"><div><p className="eyebrow">Top 100 data tools</p><h1>Soccer Manager Sync</h1><p>Turn Soccer Manager's internal JSON responses into clean Top 100 records before we automate collection or write anything to production.</p></div><div className="button-row"><a className="button secondary" href="/admin">Tournament admin</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div></section>
+    <section className="hero"><div className="hero-row"><div><p className="eyebrow">Top 100 data tools</p><h1>Soccer Manager Sync</h1><p>Turn Soccer Manager's internal JSON responses into clean Top 100 records, stage the differences privately, and review them before anything can flow into the public archive.</p></div><div className="button-row"><a className="button secondary" href="/admin">Tournament admin</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div></section>
 
     <section className="card module-card">
       <div className="card-header"><p className="eyebrow">v0.2 · browser collector</p><h2>Sync from Soccer Manager</h2></div>
-      <p>Install the collector once, then use it while you are signed into Soccer Manager. It discovers supported JSON requests already made by the current Soccer Manager page, refetches them inside that same logged-in tab, and sends the JSON directly here. Cookies and passwords are never included.</p>
+      <p>Install the collector once, then use it while you are signed into Soccer Manager. It discovers supported JSON requests already made by the current Soccer Manager page, refetches them inside that same logged-in tab, and sends the JSON directly here. Cookies and passwords are never included. Nothing is persisted unless you explicitly stage the normalized result for review.</p>
       <div className="button-row">
         <a ref={collectorLinkRef} className="button" href="#collector" title="Drag this link to your bookmarks bar" onClick={(event) => event.preventDefault()}>Top 100 Sync</a>
         <button type="button" className="secondary" onClick={copyCollector}>Copy collector bookmarklet</button>
@@ -290,7 +307,8 @@ export default function SoccerManagerSyncPage() {
         <p className="muted">Supported now: competition snapshot, club squad, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
-      {!!payloads.length && <div className="button-row"><button type="button" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setDiagnosticsCapturedAt(null); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
+      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
+      {stageStatus && <p className="status">{stageStatus}</p>}
     </section>
 
     {!!diagnostics.length && <section className="card module-card">
@@ -301,6 +319,8 @@ export default function SoccerManagerSyncPage() {
         {diagnostics.map((row, index) => <tr key={`${row.url}:${row.startTime ?? index}`}><td>{index + 1}</td><td>{row.initiatorType || '—'}</td><td><code>{row.url}</code></td></tr>)}
       </tbody></table></div>
     </section>}
+
+    <SoccerManagerSyncReview refreshToken={reviewRefreshToken} />
 
     {!!totalSummary.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Import summary</p><h2>What we found</h2></div>

@@ -4,7 +4,29 @@
 
 Top 100 Soccer Manager Worlds exposes useful structured JSON responses inside the authenticated Soccer Manager web application. Soccer Manager Sync normalizes those responses into stable Top 100 records without storing a Soccer Manager password or copying the raw authenticated session to the Top 100 backend.
 
-The sync path is deliberately preview-only until the source schemas are stable.
+The collector and normalizer remain browser-first, but v0.3 adds a private persistent staging layer. Normalized data can be staged for review; nothing flows into the public Top 100 archive until a later explicit archive-application phase.
+
+## v0.3 persistent staging and review
+
+The Sync workbench can now **Stage for review** after a successful browser sync or JSON import.
+
+Staging persists only normalized Top 100 data. File imports clear any prior browser-collector capture timestamp so a staged file import cannot inherit unrelated audit metadata. Raw Soccer Manager responses, cookies, request headers and browser-session credentials are never written to Supabase. Source URLs are sanitized again before persistence and sensitive-looking query parameters are redacted.
+
+Three private, global-admin-only tables form the source layer:
+
+- `soccer_manager_sync_runs` — immutable normalized snapshots and sync metadata;
+- `soccer_manager_sync_changes` — the review queue of new/changed canonical entities;
+- `soccer_manager_canonical_entities` — the latest approved Soccer Manager source state.
+
+The browser converts each normalized response into stable source entities before staging. Current entity types include worlds, divisions, standings, manager assignments, fixtures/results, season history, player leaderboards, squad players, transfers, player changes and club finance snapshots. Player-change normalization preserves a source event ID/date/turn when present, and canonical player-change events are staged only when one of those occurrence discriminators is available; this prevents a later repeated rating/position transition from being collapsed into an earlier event. World-specific market events first use the entry's own sanitized source URL for `sid`, treating placeholder zero IDs as absent just like the main normalizer, then fall back only when the entire captured batch has one unambiguous world. Repeated squad captures of the same `(setupId, clubId)` are deduplicated before deciding whether a fallback club context is unique. Batch ambiguity detection includes the sanitized source context of every captured entry, not just competition and squad responses; if no single world can be established, the event is not staged as a canonical entity.
+
+The staging RPC compares incoming entities with the approved canonical source state and creates review rows only when the normalized JSON is new or changed. Each staged change also records the canonical version it was compared against. Re-running an unchanged sync therefore produces a zero-change reviewed run rather than another pile of duplicate work.
+
+Approving a change updates only the private canonical source layer. Rejecting it leaves canonical source state unchanged. Before approval, the RPC serializes review transitions for the run and takes a transaction-scoped advisory lock on each stable entity identity before locking/rechecking the canonical row. This also covers first-time entities where no canonical row exists to lock yet. The current canonical version/data must still match the baseline captured when the change was staged; stale individual or bulk approvals are rejected instead of overwriting newer canonical state. Bulk approve/reject is available only after the UI has paged through the complete change set for the run, and the before/after review panes render the complete normalized JSON rather than a truncated preview. The “already up to date” empty state is shown only for runs whose recorded change count is actually zero, so a failed/incomplete queue load cannot masquerade as a clean sync. Run switching clears the previous queue immediately and stale async responses are ignored. The review selector keyset-pages unresolved runs by descending run ID to exhaustion, so it remains stable even if another reviewer completes a run while later pages are loading. Overlapping run-list loads also use request-generation guards, so an older response cannot overwrite a newer staged/refreshed run list. Review actions explicitly reload the run list and selected queue once; they no longer trigger a second parent refresh cycle. It therefore includes every unresolved run beyond PostgREST's per-response row cap, plus the 12 most recent completed runs. Older pending work cannot be evicted by newer zero-change/completed syncs, response-size limits or offset shifts caused by concurrent review. These review operations are transactional database RPCs and require `public.is_admin()`; browser roles receive read access only to the private tables.
+
+This phase intentionally does **not** write to public archive tables such as `teams`, `managers`, `manager_clubs`, `honours` or tournament `matches`. Those adapters come next, after the canonical source changes are visible and auditable.
+
+The first version only stages **new and changed** entities. It does not yet infer removals (for example, a player leaving a squad) from absence in a snapshot. Removal semantics will be added only for endpoint scopes proven to be complete authoritative sets.
 
 ## v0.2 browser collector
 
@@ -18,10 +40,10 @@ While the administrator is already signed into Soccer Manager, the bookmarklet:
 4. refetches those same endpoint URLs from the Soccer Manager tab with the browser's existing authenticated session;
 5. repeatedly sends a session-scoped hello message to the exact `WindowProxy` returned by `window.open`;
 6. waits for the newly loaded Sync document to reply to that hello via `event.source`, proving readiness for the current collector tab rather than a stale opener;
-7. sends only the JSON response bodies and source URLs to that ready document with cross-origin `postMessage`;
+7. sends only the JSON response bodies and sanitized source URLs to that ready document with cross-origin `postMessage`;
 8. accepts the final acknowledgement only when it comes from the exact Sync window/origin and carries the same session token.
 
-No Soccer Manager password, Cookie header, PHP session id or request headers are transmitted to Top 100.
+No Soccer Manager password, Cookie header, PHP session id or request headers are transmitted to Top 100. Supported payload source URLs now pass through the same sensitive-query redaction used by diagnostics before they cross origins.
 
 Known finance companion responses are collapsed only when `clubfinance` and `incomegraph` have the same remaining source context and normalize to the same data. Responses from different clubs/worlds keep their distinct source URLs even when their normalized values happen to match.
 
@@ -100,11 +122,11 @@ The collector deliberately runs in the already-authenticated Soccer Manager brow
 
 ## Next phases
 
-1. Validate browser-collected normalized output against live Top 100 data.
-2. Expand endpoint discovery as more Soccer Manager JSON surfaces are confirmed.
-3. Add a server endpoint that accepts only normalized, schema-validated payloads from an authenticated Top 100 global admin.
-4. Store source snapshots and diffs separately from tournament data.
-5. Add opt-in actions to apply manager changes, fixtures/results, player changes and other updates to the relevant Top 100 tools.
-6. Add scheduled/change notifications only after the sync path is stable and auditable.
+1. Add authoritative-scope removal detection for complete league, manager-assignment and squad snapshots.
+2. Add explicit adapters from approved canonical entities to Top 100 archive tables: seasons, clubs, managers/appointments, honours and friendly tournament fixtures/results.
+3. Add dedicated immutable transfer and player-change archives fed from approved canonical events.
+4. Build player/transfer analytics and the Hamburger SV manager dashboard from canonical history rather than live page state.
+5. Expand endpoint discovery as more Soccer Manager JSON surfaces are confirmed.
+6. Add scheduled/change notifications only after the sync path and archive adapters are stable and auditable.
 
 Stable Soccer Manager ids should be treated as source keys. Top 100 names remain display fields, not identity keys.
