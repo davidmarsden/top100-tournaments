@@ -11,10 +11,9 @@ function formatWhen(value) {
   }
 }
 
-function compactJson(value) {
+function reviewJson(value) {
   if (value === null || value === undefined) return '—';
-  const text = JSON.stringify(value, null, 2);
-  return text.length > 5000 ? text.slice(0, 5000) + '\n…' : text;
+  return JSON.stringify(value, null, 2);
 }
 
 const CHANGE_PAGE_SIZE = 500;
@@ -282,8 +281,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
               <details>
                 <summary>Compare normalized data</summary>
                 <div className="sm-sync-diff-grid">
-                  <div><strong>Before</strong><pre>{compactJson(change.before_data)}</pre></div>
-                  <div><strong>After</strong><pre>{compactJson(change.after_data)}</pre></div>
+                  <div><strong>Before</strong><pre>{reviewJson(change.before_data)}</pre></div>
+                  <div><strong>After</strong><pre>{reviewJson(change.after_data)}</pre></div>
                 </div>
               </details>
               {change.status === 'pending' && <div className="button-row">
