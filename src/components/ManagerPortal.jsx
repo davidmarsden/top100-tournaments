@@ -134,7 +134,7 @@ export default function ManagerPortal({ registrationMode = false }) {
       const { error } = await withPortalTimeout(
         supabase.auth.signInWithOtp({
           email: address,
-          options: { emailRedirectTo: `${window.location.origin}/manager`, shouldCreateUser: true },
+          options: { emailRedirectTo: `${window.location.origin}${registrationMode ? '/manager/registration' : '/manager'}`, shouldCreateUser: true },
         }),
         'Sign-in link request',
         12000,
