@@ -269,8 +269,12 @@ export function normalizeCompetitionSnapshot(input) {
 }
 
 export function normalizePlayerChanges(input) {
+  const batchTurn = numberOrNull(input?.Turn?.TurnNum ?? input?.TurnNum ?? input?.turn);
   const normalise = (record, kind) => ({
     kind,
+    eventId: textOrNull(record.PlayerChangeID ?? record.ChangeID ?? record.EventID ?? record.eventId),
+    eventDate: textOrNull(record.ChangeDate ?? record.EventDate ?? record.Date ?? record.ratchgdate),
+    turn: numberOrNull(record.TurnNum ?? record.Turn ?? batchTurn),
     playerId: textOrNull(record.PlayerID ?? record.PlayerDataID),
     name: textOrNull(record.PlayerName),
     age: numberOrNull(record.PlayerAge),
