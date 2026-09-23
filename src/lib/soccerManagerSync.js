@@ -263,23 +263,22 @@ function findClubSquadRows(input) {
     if (Array.isArray(value)) {
       const objectRows = value.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
       if (objectRows.length) {
-        let idCount = 0;
-        let nameCount = 0;
-        let ratingCount = 0;
-        const score = objectRows.reduce((sum, row) => {
+        const qualifyingRows = objectRows.filter((row) => {
           const playerId = textOrNull(row.playerid ?? row.PlayerID ?? row.PlayerDataID ?? row.playerdataid);
           const rating = numberOrNull(row.rating ?? row.PlayerRating);
           const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
           const playerName = textOrNull(row.pitchname ?? row.PlayerName ?? fullName);
-          const hasPlayerId = playerId !== null;
-          const hasRating = rating !== null;
-          const hasName = playerName !== null;
-          if (hasPlayerId) idCount += 1;
-          if (hasName) nameCount += 1;
-          if (hasRating) ratingCount += 1;
-          return sum + (hasPlayerId ? 2 : 0) + (hasRating ? 1 : 0) + (hasName ? 1 : 0);
-        }, 0);
-        candidates.push({ rows: objectRows, score, width: objectRows.length, idCount, nameCount, ratingCount });
+          return playerId !== null && (playerName !== null || rating !== null);
+        });
+        if (qualifyingRows.length) {
+          const score = qualifyingRows.reduce((sum, row) => {
+            const rating = numberOrNull(row.rating ?? row.PlayerRating);
+            const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+            const playerName = textOrNull(row.pitchname ?? row.PlayerName ?? fullName);
+            return sum + 2 + (rating !== null ? 1 : 0) + (playerName !== null ? 1 : 0);
+          }, 0);
+          candidates.push({ rows: qualifyingRows, score, width: qualifyingRows.length });
+        }
       }
       for (const row of value) visit(row, depth + 1);
       return;
@@ -288,12 +287,7 @@ function findClubSquadRows(input) {
   }
 
   visit(input);
-  const qualifying = candidates.filter((candidate) => {
-    const detailCount = Math.max(candidate.nameCount, candidate.ratingCount);
-    return candidate.idCount >= 2
-      && detailCount >= 2
-      && detailCount >= Math.ceil(candidate.idCount / 2);
-  });
+  const qualifying = candidates.filter((candidate) => candidate.width >= 2);
   qualifying.sort((a, b) => (b.score - a.score) || (b.width - a.width));
   return qualifying[0]?.rows || [];
 }
