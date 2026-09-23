@@ -8,7 +8,7 @@ const LEGACY_MANAGER_ORIGIN = 'https://tournaments.smtop100.blog';
 const LEGACY_MIGRATION_KEY = 'top100-manager-legacy-session-migration-attempted';
 const BRIDGE_TIMEOUT_MS = 3000;
 
-export default function ManagerEntry() {
+export default function ManagerEntry({ registrationMode = false }) {
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase || window.location.hostname !== 'manager.smtop100.blog') return undefined;
 
@@ -62,9 +62,9 @@ export default function ManagerEntry() {
 
   return (
     <>
-      <ManagerPortal />
-      <ManagerReminderPreferences />
-      <ManagerResourceHub />
+      <ManagerPortal registrationMode={registrationMode} />
+      {!registrationMode && <ManagerReminderPreferences />}
+      {!registrationMode && <ManagerResourceHub />}
     </>
   );
 }

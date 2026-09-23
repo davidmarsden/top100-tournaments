@@ -3,7 +3,6 @@ import AdminGate from './components/AdminGate.jsx';
 import AuthSessionBridge from './components/AuthSessionBridge.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
 import ManagerEntry from './components/ManagerEntry.jsx';
-import ManagerRegistrationPortal from './components/ManagerRegistrationPortal.jsx';
 import PublicVotingResults from './components/PublicVotingResults.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
 import SoccerManagerSyncPage from './components/SoccerManagerSyncPage.jsx';
@@ -90,7 +89,7 @@ export default function App() {
   if (isManagerHost()) {
     if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
     if (isManagerHostChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
-    if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerRegistrationPortal /></ManagerShell>;
+    if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerEntry registrationMode /></ManagerShell>;
     if (isManagerHostPortalPath()) return <ManagerShell><ManagerEntry /></ManagerShell>;
     forwardManagerHostPathToTournaments();
     return null;
