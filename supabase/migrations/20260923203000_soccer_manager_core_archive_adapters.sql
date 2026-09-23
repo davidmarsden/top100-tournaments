@@ -416,6 +416,51 @@ begin
       continue;
     end if;
 
+    select link.target_id, team.name, link.source_name
+      into v_team_id, v_existing_team_name, v_existing_source_name
+    from public.soccer_manager_archive_links link
+    join public.teams team on team.id = link.target_id
+    where link.source_type = 'club'
+      and link.source_key = setup_id || ':' || v_club_id
+      and link.target_type = 'team';
+
+    if v_team_id is null then
+      skipped_assignments := skipped_assignments + 1;
+      continue;
+    end if;
+
+    select case
+      when lower(coalesce(standing.data->>'managed', '')) in ('1','true','yes') then true
+      else false
+    end
+      into v_club_managed
+    from public.soccer_manager_canonical_entities standing
+    where standing.entity_type = 'standing'
+      and standing.data->>'setupId' = setup_id
+      and standing.data->>'clubId' = v_club_id
+    order by
+      standing.last_approved_at desc,
+      standing.version desc,
+      standing.entity_key desc
+    limit 1;
+
+    if coalesce(v_club_managed, false) = false then
+      update public.game_world_clubs
+        set current_manager_name = null,
+            manager_key = null,
+            occupied = false,
+            updated_at = now()
+      where game_world_id = v_world_id
+        and club_key = public.normal_registration_key(coalesce(v_existing_source_name, v_existing_team_name));
+
+      delete from public.soccer_manager_world_manager_assignments
+      where game_world_id = v_world_id
+        and team_id = v_team_id;
+
+      skipped_assignments := skipped_assignments + 1;
+      continue;
+    end if;
+
     select target_id
       into v_manager_id
     from public.soccer_manager_archive_links
@@ -472,51 +517,6 @@ begin
 
     managers_applied := managers_applied + 1;
 
-    select link.target_id, team.name, link.source_name
-      into v_team_id, v_existing_team_name, v_existing_source_name
-    from public.soccer_manager_archive_links link
-    join public.teams team on team.id = link.target_id
-    where link.source_type = 'club'
-      and link.source_key = setup_id || ':' || v_club_id
-      and link.target_type = 'team';
-
-    if v_team_id is null then
-      skipped_assignments := skipped_assignments + 1;
-      continue;
-    end if;
-
-    select case
-      when lower(coalesce(standing.data->>'managed', '')) in ('1','true','yes') then true
-      else false
-    end
-      into v_club_managed
-    from public.soccer_manager_canonical_entities standing
-    where standing.entity_type = 'standing'
-      and standing.data->>'setupId' = setup_id
-      and standing.data->>'clubId' = v_club_id
-    order by
-      standing.last_approved_at desc,
-      standing.version desc,
-      standing.entity_key desc
-    limit 1;
-
-    if coalesce(v_club_managed, false) = false then
-      update public.game_world_clubs
-        set current_manager_name = null,
-            manager_key = null,
-            occupied = false,
-            updated_at = now()
-      where game_world_id = v_world_id
-        and club_key = public.normal_registration_key(coalesce(v_existing_source_name, v_existing_team_name));
-
-      delete from public.soccer_manager_world_manager_assignments
-      where game_world_id = v_world_id
-        and team_id = v_team_id;
-
-      skipped_assignments := skipped_assignments + 1;
-      continue;
-    end if;
-
     update public.game_world_clubs
       set current_manager_name = v_manager_name,
           manager_key = public.normal_registration_key(v_manager_name),
@@ -552,6 +552,21 @@ begin
           manager_id = excluded.manager_id,
           source_manager_key = excluded.source_manager_key,
           source_manager_name = excluded.source_manager_name,
+          updated_at = now();
+
+    insert into public.manager_game_world_memberships (
+      manager_id,
+      game_world_id,
+      active,
+      updated_at
+    ) values (
+      v_manager_id,
+      v_world_id,
+      true,
+      now()
+    )
+    on conflict (manager_id, game_world_id) do update
+      set active = true,
           updated_at = now();
 
     assignments_applied := assignments_applied + 1;
