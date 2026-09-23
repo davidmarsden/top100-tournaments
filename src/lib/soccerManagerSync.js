@@ -118,6 +118,19 @@ function fieldNames(rows) {
   return [...new Set(rows.flatMap((row) => Object.keys(row || {})))].sort((a, b) => a.localeCompare(b));
 }
 
+function squadPlayerName(record) {
+  const firstName = firstText(record?.playername, record?.name);
+  const surname = firstText(record?.playersurname, record?.surname);
+  const fullName = [firstName, surname].filter(Boolean).join(' ');
+  return firstText(
+    record?.playerpitchname,
+    record?.pitchname,
+    record?.PlayerName,
+    fullName,
+    firstName,
+  );
+}
+
 function zipLeagueRows(tables, leagueId) {
   const keys = {
     clubId: '_clubId',
@@ -339,15 +352,13 @@ function findClubSquadRows(input) {
         const qualifyingRows = objectRows.filter((row) => {
           const playerId = firstNonZeroId(row.playerid, row.PlayerID, row.PlayerDataID, row.playerdataid);
           const rating = firstNumber(row.rating, row.PlayerRating);
-          const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-          const playerName = firstText(row.pitchname, row.PlayerName, fullName);
+          const playerName = squadPlayerName(row);
           return playerId !== null && (playerName !== null || rating !== null);
         });
         if (qualifyingRows.length) {
           const score = qualifyingRows.reduce((sum, row) => {
             const rating = firstNumber(row.rating, row.PlayerRating);
-            const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-            const playerName = firstText(row.pitchname, row.PlayerName, fullName);
+            const playerName = squadPlayerName(row);
             return sum + 2 + (rating !== null ? 1 : 0) + (playerName !== null ? 1 : 0);
           }, 0);
           candidates.push({ rows: qualifyingRows, score, width: qualifyingRows.length });
@@ -383,32 +394,31 @@ export function normalizeClubSquad(input, context = {}) {
       playerKeys: fieldNames(rows),
     },
     players: rows.map((record) => {
-      const fullName = [record.name, record.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
       return {
       playerId: firstNonZeroId(record.playerid, record.PlayerID, record.PlayerDataID, record.playerdataid),
       playerDataId: firstNonZeroId(record.playerdataid, record.PlayerDataID, record.playerid, record.PlayerID),
-      name: firstText(record.pitchname, record.PlayerName, fullName, record.name),
-      firstName: textOrNull(record.name),
-      surname: textOrNull(record.surname),
+      name: squadPlayerName(record),
+      firstName: firstText(record.playername, record.name),
+      surname: firstText(record.playersurname, record.surname),
       age: firstNumber(record.age, record.PlayerAge),
       rating: firstNumber(record.rating, record.PlayerRating),
-      position: firstPosition(record.multipositiondis, record.LiveMultiPositionDis, record.position),
-      positionId: firstNumber(record.multiposition, record.playerpositionid, record.PlayerPos),
+      position: firstPosition(record.playerposition, record.multipositiondis, record.LiveMultiPositionDis, record.position),
+      positionId: firstNumber(record.playerpositionid, record.multiposition, record.PlayerPos),
       nationality: firstText(record.countryname, record.playerscountryname, record.country),
       value: firstNumber(record.valueraw, record.Value),
       wages: firstNumber(record.wagesraw, record.wages),
-      contract: firstNumber(record.ctr, record.contract),
+      contract: firstNumber(record.ctrraw, record.ctr, record.contract),
       morale: firstNumber(record.morale),
-      condition: firstNumber(record.con, record.condition),
+      condition: firstNumber(record.conraw, record.con, record.condition),
       foot: firstText(record.foot),
       appearances: firstNumber(record.app),
       substituteAppearances: firstNumber(record.subapp),
       averagePerformance: firstNumber(record.avp),
-      goals: firstNumber(record.goals),
-      assists: firstNumber(record.assists),
+      goals: firstNumber(record.gs, record.goals),
+      assists: firstNumber(record.as, record.assists),
       goalkeeper: firstBoolean(record.gk),
       youth: firstBoolean(record.youth),
-      transferListed: firstBoolean(record.transferlisted, record.transfer_list, record.tl),
+      transferListed: firstBoolean(record.isplayeronvisibletransferlist, record.transferlisted, record.transfer_list, record.tl),
       photo: firstText(record.photofilename, record.PhotoFilename),
       ratingChangedAt: firstText(record.ratchgdate),
     };
