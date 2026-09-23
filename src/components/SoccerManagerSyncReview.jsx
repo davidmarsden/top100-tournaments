@@ -27,6 +27,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
   const [busyId, setBusyId] = useState(null);
   const [status, setStatus] = useState('');
   const changeRequestRef = useRef(0);
+  const runRequestRef = useRef(0);
   const selectedRunIdRef = useRef(null);
 
   useEffect(() => {
@@ -59,6 +60,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
 
   const loadRuns = useCallback(async () => {
     if (!supabase) return;
+    const requestId = runRequestRef.current + 1;
+    runRequestRef.current = requestId;
     setLoadingRuns(true);
     const fields = 'id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at';
 
@@ -97,6 +100,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
       .eq('status', 'reviewed')
       .order('created_at', { ascending: false })
       .limit(12);
+
+    if (runRequestRef.current !== requestId) return;
 
     setLoadingRuns(false);
     const error = unresolvedError || recentReviewedResult.error;
