@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 function worldLabel(world) {
@@ -16,15 +16,20 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
   const [loading, setLoading] = useState(false);
   const [busySetupId, setBusySetupId] = useState(null);
   const [status, setStatus] = useState('');
+  const loadRequestRef = useRef(0);
 
   const loadWorlds = useCallback(async () => {
     if (!supabase) return;
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setLoading(true);
     const { data, error } = await supabase
       .from('soccer_manager_canonical_entities')
       .select('entity_key, data, version, last_approved_at')
       .eq('entity_type', 'world')
       .order('entity_key', { ascending: true });
+
+    if (loadRequestRef.current !== requestId) return;
 
     if (error) {
       setStatus(`Could not load approved worlds: ${error.message}`);
