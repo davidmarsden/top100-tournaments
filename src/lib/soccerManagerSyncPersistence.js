@@ -131,8 +131,11 @@ function squadEntities(entry) {
   }));
 }
 
-function transferEntities(entry, setupId = null) {
-  const worldScope = setupId || 'unscoped-world';
+function transferEntities(entry, fallbackSetupId = null) {
+  const sourceContext = parseSourceContext(entry.sourceUrl);
+  const setupId = sourceContext.setupId || fallbackSetupId || null;
+  if (!setupId) return [];
+  const worldScope = setupId;
   return compact((entry.payload?.transfers || []).map((transfer) => {
     const localKey = transfer?.transferId
       || [transfer?.playerId, transfer?.acceptedDate, transfer?.fromClubId, transfer?.toClubId].filter(Boolean).join(':');
@@ -144,12 +147,15 @@ function transferEntities(entry, setupId = null) {
   }));
 }
 
-function playerChangeEntities(entry, setupId = null) {
+function playerChangeEntities(entry, fallbackSetupId = null) {
+  const sourceContext = parseSourceContext(entry.sourceUrl);
+  const setupId = sourceContext.setupId || fallbackSetupId || null;
+  if (!setupId) return [];
   const rows = [];
   const addRows = (items, kind) => {
     for (const item of items || []) {
       if (!item?.playerId) continue;
-      const worldScope = setupId || 'unscoped-world';
+      const worldScope = setupId;
       const signature = [
         worldScope,
         item.playerId,
