@@ -79,6 +79,7 @@ export default function SoccerManagerSyncPage() {
   const [status, setStatus] = useState('Drop Soccer Manager JSON responses here, or send them directly from Soccer Manager with the browser collector. Nothing is written to the database.');
   const [collectorStatus, setCollectorStatus] = useState('');
   const [diagnostics, setDiagnostics] = useState([]);
+  const [diagnosticsCapturedAt, setDiagnosticsCapturedAt] = useState(null);
   const collectorLinkRef = useRef(null);
   const totalSummary = useMemo(() => payloads.map((entry) => ({
     id: entry.id,
@@ -135,6 +136,7 @@ export default function SoccerManagerSyncPage() {
         ? message.diagnostics.slice(-50).filter((row) => typeof row?.url === 'string')
         : [];
       setDiagnostics(diagnosticRows);
+      setDiagnosticsCapturedAt(typeof message.capturedAt === 'string' ? message.capturedAt : null);
 
       const entries = message.payloads.slice(-20).map((item, index) => {
         let name = `Soccer Manager response ${index + 1}`;
@@ -212,7 +214,7 @@ export default function SoccerManagerSyncPage() {
   }
   function downloadDiagnostics() {
     const blob = new Blob([JSON.stringify({
-      capturedAt: new Date().toISOString(),
+      capturedAt: diagnosticsCapturedAt,
       requests: diagnostics,
     }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -244,12 +246,12 @@ export default function SoccerManagerSyncPage() {
         <p className="muted">Supported now: competition snapshot, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
-      {!!payloads.length && <div className="button-row"><button type="button" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
+      {!!payloads.length && <div className="button-row"><button type="button" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setDiagnosticsCapturedAt(null); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
     </section>
 
     {!!diagnostics.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Diagnostic capture</p><h2>Recent Soccer Manager requests</h2></div>
-      <p className="muted">These are the latest same-origin resource URLs visible to the browser. Sensitive-looking query parameters are redacted before they leave Soccer Manager.</p>
+      <p className="muted">These are the latest same-origin resource URLs visible to the browser. Sensitive-looking query parameters are redacted before they leave Soccer Manager.{diagnosticsCapturedAt ? ` Captured ${new Date(diagnosticsCapturedAt).toLocaleString('en-GB')}.` : ''}</p>
       <div className="button-row"><button type="button" className="secondary" onClick={downloadDiagnostics}>Download diagnostics</button></div>
       <div className="table-wrap"><table><thead><tr><th>#</th><th>Type</th><th>Request</th></tr></thead><tbody>
         {diagnostics.map((row, index) => <tr key={`${row.url}:${row.startTime ?? index}`}><td>{index + 1}</td><td>{row.initiatorType || '—'}</td><td><code>{row.url}</code></td></tr>)}
