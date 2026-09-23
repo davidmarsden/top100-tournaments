@@ -284,12 +284,14 @@ function findClubSquadRows(input) {
   }
 
   visit(input);
-  candidates.sort((a, b) => (b.score - a.score) || (b.width - a.width));
-  const best = candidates[0];
-  if (!best) return [];
-  const detailCount = Math.max(best.nameCount, best.ratingCount);
-  if (best.idCount < 2 || detailCount < 2 || detailCount < Math.ceil(best.idCount / 2)) return [];
-  return best.rows;
+  const qualifying = candidates.filter((candidate) => {
+    const detailCount = Math.max(candidate.nameCount, candidate.ratingCount);
+    return candidate.idCount >= 2
+      && detailCount >= 2
+      && detailCount >= Math.ceil(candidate.idCount / 2);
+  });
+  qualifying.sort((a, b) => (b.score - a.score) || (b.width - a.width));
+  return qualifying[0]?.rows || [];
 }
 
 export function normalizeClubSquad(input) {
