@@ -28,6 +28,34 @@ League titles are stored in `achievements`, not `honours`, because the current `
 
 Tournament fixtures/results, transfers, player history and analytics are deliberately outside this first adapter.
 
+
+## Production bootstrap — 23 September 2026
+
+The core archive adapter was deployed to the Top 100 production Supabase project and bootstrapped from the normalized full-league capture taken on 22 September 2026 for Soccer Manager setup `239138`.
+
+Because the persistent staging tables were still empty at deployment time, the normalized capture was rebuilt into the same core entity shapes used by the application and staged as the initial reviewed baseline: 1 world, 5 divisions, 100 standings, 100 current manager assignments and 27 season-history rows (233 entities total). Fixtures, player leaders, transfers, player changes, squad data and finance data were deliberately left for their dedicated later adapters.
+
+The initial apply exposed two live-data identity details that are now part of the documented contract:
+
+- Soccer Manager's `managed` field is numeric in the live competition payload. Both `1` and `2` occurred in the baseline, and both represent managed clubs. The adapter therefore treats any positive integer (or a true/yes boolean-like value) as managed.
+- Stable Soccer Manager manager ids remain authoritative across display-name changes. The production bootstrap explicitly linked the existing Top 100 identities for three pre-existing normalized-name duplicates and linked Soccer Manager manager `22959444` to the established Melvin Udall manager record when the source display changed from `5️⃣8️⃣` to `6️⃣0️⃣`.
+
+The first archive apply had already inserted all 100 immutable standing snapshots and 27 league-title achievements before the managed-flag mismatch was discovered. After the managed-flag hotfix, the same approved baseline was reapplied idempotently. The corrected production state is:
+
+- 100 current clubs imported;
+- 100 current managers resolved;
+- 100 world-scoped manager assignments;
+- 100 occupied Top 100 club-directory rows;
+- 27 seasons;
+- 27 Soccer Manager league-title achievements;
+- 100 standing snapshots;
+- 0 skipped current assignments on the corrected apply.
+
+The second apply inserted zero additional standing snapshots, confirming the snapshot path is idempotent for an already-applied approved baseline. The audit log preserves both the initial apply and the corrected reapply.
+
+Operationally, future imports should continue to use **stage → review/approve → Apply core archive**. If an identity match is ambiguous, the adapter must stop and the stable source id must be linked deliberately; it must not guess or create a parallel identity.
+
+
 ## v0.3 persistent staging and review
 
 The Sync workbench can now **Stage for review** after a successful browser sync or JSON import.
