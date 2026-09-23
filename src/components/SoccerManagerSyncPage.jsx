@@ -75,7 +75,13 @@ function FinancePreview({ payload }) {
 
 function ClubSquadPreview({ payload }) {
   return <section className="card module-card">
-    <div className="card-header"><p className="eyebrow">Club squad</p><h2>{payload.club.name || 'Squad snapshot'}</h2></div>
+    <div className="card-header"><p className="eyebrow">Club squad</p><h2>{payload.club.name || payload.club.clubId || 'Squad snapshot'}</h2></div>
+    <SummaryCards summary={{ clubId: payload.club.clubId, setupId: payload.club.setupId, players: payload.players.length }} />
+    {!!payload.schema?.playerKeys?.length && <details className="sm-sync-schema">
+      <summary>Raw squad field names ({payload.schema.playerKeys.length})</summary>
+      <p className="muted">Field names only — no raw player values are included.</p>
+      <div className="sm-sync-field-list">{payload.schema.playerKeys.map((key) => <code key={key}>{key}</code>)}</div>
+    </details>}
     <div className="table-wrap"><table><thead><tr><th>Player</th><th>Age</th><th>Pos</th><th>Rat</th><th>Value</th><th>Wages</th><th>Morale</th><th>Cond</th><th>Apps</th><th>G</th><th>A</th></tr></thead><tbody>
       {payload.players.map((row, index) => <tr key={row.playerId || row.playerDataId || index}>
         <td><strong>{row.name || [row.firstName, row.surname].filter(Boolean).join(' ') || 'Unknown'}</strong><span>{row.playerId}</span></td>
@@ -121,7 +127,7 @@ export default function SoccerManagerSyncPage() {
 
     for (const entry of entries) {
       try {
-        const payload = normalizeSoccerManagerPayload(entry.raw);
+        const payload = normalizeSoccerManagerPayload(entry.raw, { sourceUrl: entry.sourceUrl });
         if (payload.kind === 'clubFinance') {
           const companion = financeCompanionContext(entry.sourceUrl);
           if (companion) {
