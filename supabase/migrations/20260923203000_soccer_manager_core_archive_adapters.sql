@@ -859,7 +859,8 @@ grant execute on function public.apply_soccer_manager_core_archive(text) to auth
       select count(*)::integer, min(id)
         into v_case_matches, v_manager_id
       from public.managers
-      where lower(coalesce(display_name, canonical_name, name)) = lower(v_manager_name);
+      where public.normal_registration_key(coalesce(display_name, canonical_name, name))
+        = public.normal_registration_key(v_manager_name);
 
       if v_case_matches = 0 then
         insert into public.managers(name, canonical_name, display_name, active)
@@ -1069,7 +1070,8 @@ grant execute on function public.apply_soccer_manager_core_archive(text) to auth
       select count(*)::integer, min(id)
         into v_case_matches, v_manager_id
       from public.managers
-      where lower(coalesce(display_name, canonical_name, name)) = lower(v_manager_name);
+      where public.normal_registration_key(coalesce(display_name, canonical_name, name))
+        = public.normal_registration_key(v_manager_name);
 
       if v_case_matches = 0 then
         insert into public.managers(name, canonical_name, display_name, active)
