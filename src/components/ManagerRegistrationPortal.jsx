@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { hasSupabaseConfig, supabase, supabaseAnonKey, supabaseUrl } from '../lib/supabaseClient';
 
 function formatDate(value) {
   if (!value) return '—';
@@ -31,6 +31,84 @@ function withRegistrationTimeout(promise, label = 'Registration request', ms = R
   ]).finally(() => window.clearTimeout(timer));
 }
 
+function authStorageKey() {
+  try {
+    const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+    return `sb-${projectRef}-auth-token`;
+  } catch {
+    return '';
+  }
+}
+
+function persistedSession() {
+  try {
+    const key = authStorageKey();
+    if (!key) return null;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.access_token && parsed?.user?.id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function restGet(path, token, label) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REGISTRATION_LOAD_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body?.message || `${label} failed with HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error(`${label} timed out. Please try again.`);
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function restRpc(functionName, payload, token, label) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REGISTRATION_LOAD_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${functionName}`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body?.message || `${label} failed with HTTP ${response.status}`);
+    }
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error(`${label} timed out. Please try again.`);
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export default function ManagerRegistrationPortal() {
   const [session, setSession] = useState(null);
   const [account, setAccount] = useState(null);
@@ -40,35 +118,57 @@ export default function ManagerRegistrationPortal() {
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const loadRequestId = useRef(0);
+  const sessionTokenRef = useRef('');
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
-    let active = true;
-    let subscription = null;
 
-    async function initialiseAuth() {
-      try {
-        const { data, error } = await withRegistrationTimeout(supabase.auth.getSession(), 'Sign-in check');
-        if (!active) return;
-        if (error) throw error;
-        setSession(data.session || null);
-
-        // Wait for session recovery before subscribing. Registering an auth listener
-        // during recovery can deadlock auth-js' browser Web Lock on some mobile browsers.
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (!active) return;
-          setSession(nextSession);
-        });
-        subscription = listener.subscription;
-      } catch (error) {
-        if (!active) return;
-        setLoadError(error?.message || 'We could not check your sign-in. Please try again.');
-        setLoading(false);
+    // This page deliberately bypasses Supabase auth.getSession()/auth listeners.
+    // On some mobile browsers that path can deadlock on the auth Web Lock before
+    // any of our Promise timeouts can resolve. The persisted session is the same
+    // browser session the main Manager Portal already established.
+    const key = authStorageKey();
+    const applyStoredSession = (reloadOnChange = false) => {
+      const storedSession = persistedSession();
+      if (storedSession) {
+        const tokenChanged = storedSession.access_token !== sessionTokenRef.current;
+        sessionTokenRef.current = storedSession.access_token;
+        setSession(storedSession);
+        if (reloadOnChange && tokenChanged) {
+          load();
+        }
+        return true;
       }
-    }
 
-    initialiseAuth();
-    return () => { active = false; subscription?.unsubscribe(); };
+      sessionTokenRef.current = '';
+      loadRequestId.current += 1;
+      setSession(null);
+      setAccount(null);
+      setRegistrations([]);
+      setTournaments([]);
+      setMessage('');
+      setLoadError('No active Manager Portal session was found. Open My Matches and sign in again.');
+      setLoading(false);
+      return false;
+    };
+
+    applyStoredSession();
+
+    const handleStorage = (event) => {
+      if (!key || event.storageArea !== window.localStorage || event.key !== key) return;
+      applyStoredSession(true);
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // storage events do not fire in the tab that performed the write. Poll the
+    // persisted token lightly so same-tab Supabase refreshes are observed without
+    // calling into the auth client or its Web Lock.
+    const refreshPoll = window.setInterval(() => applyStoredSession(true), 5000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.clearInterval(refreshPoll);
+    };
   }, []);
 
   useEffect(() => {
@@ -90,21 +190,36 @@ export default function ManagerRegistrationPortal() {
   }, [loading, session?.user?.id, account, loadError]);
 
   async function load() {
-    if (!session?.user) return;
+    const latestSession = persistedSession();
+    if (!latestSession?.user?.id || !latestSession?.access_token) {
+      loadRequestId.current += 1;
+      setSession(null);
+      setAccount(null);
+      setRegistrations([]);
+      setTournaments([]);
+      setMessage('');
+      setLoadError('No active Manager Portal session was found. Open My Matches and sign in again.');
+      setLoading(false);
+      return;
+    }
+
+    sessionTokenRef.current = latestSession.access_token;
+    setSession(latestSession);
     const requestId = ++loadRequestId.current;
     setLoading(true);
     setLoadError('');
     setMessage('Loading registration records...');
 
     try {
-      const accountResult = await withRegistrationTimeout(
-        supabase.from('manager_portal_accounts').select('id, manager_id, game_world_id, email, active, managers(id, name, display_name), game_worlds(id, name, slug)').eq('auth_user_id', session.user.id).eq('active', true).maybeSingle(),
+      const uid = encodeURIComponent(latestSession.user.id);
+      const accountRows = await restGet(
+        `manager_portal_accounts?select=id,manager_id,game_world_id,email,active,managers(id,name,display_name),game_worlds(id,name,slug)&auth_user_id=eq.${uid}&active=eq.true&limit=1`,
+        latestSession.access_token,
         'Manager Portal account request',
       );
       if (requestId !== loadRequestId.current) return;
-      if (accountResult.error) throw new Error('Could not load your Manager Portal account: ' + accountResult.error.message);
 
-      const accountRow = accountResult.data || null;
+      const accountRow = accountRows?.[0] || null;
       setAccount(accountRow);
       if (!accountRow) {
         setMessage('Your Manager Portal profile must be approved before linked registrations appear here.');
@@ -112,40 +227,68 @@ export default function ManagerRegistrationPortal() {
         return;
       }
 
-      const [tournamentsResult, registrationsResult] = await withRegistrationTimeout(Promise.all([
-      supabase.from('tournaments')
-        .select('id, name, public_slug, registration_status, registration_opens_at, registration_closes_at, game_world_id, game_worlds(id, name, slug), competition_types(id, name, slug)')
-        .eq('is_public', true)
-        .eq('registration_status', 'open')
-        .order('season_number', { ascending: false }),
-      supabase.from('tournament_registrations')
-        .select('id, tournament_id, club_name, rating, status, submitted_at, reviewed_at, review_notes, promoted_entry_id, promoted_at, tournaments(name, season_number)')
-        .eq('auth_user_id', session.user.id)
-        .order('submitted_at', { ascending: false }),
-      ]), 'Registration data request');
+      const [tournamentRows, registrationRows] = await Promise.all([
+        restGet(
+          'tournaments?select=id,name,public_slug,registration_status,registration_opens_at,registration_closes_at,game_world_id,game_worlds(id,name,slug),competition_types(id,name,slug)&is_public=eq.true&registration_status=eq.open&order=season_number.desc',
+          latestSession.access_token,
+          'Open tournaments request',
+        ),
+        restGet(
+          `tournament_registrations?select=id,tournament_id,club_name,rating,status,submitted_at,reviewed_at,review_notes,promoted_entry_id,promoted_at,tournaments(name,season_number)&auth_user_id=eq.${uid}&order=submitted_at.desc`,
+          latestSession.access_token,
+          'Registration record request',
+        ),
+      ]);
 
       if (requestId !== loadRequestId.current) return;
-      setTournaments(tournamentsResult.error ? [] : tournamentsResult.data || []);
-      setRegistrations(registrationsResult.error ? [] : registrationsResult.data || []);
-      if (tournamentsResult.error) setMessage('Could not load open tournaments: ' + tournamentsResult.error.message);
-      else if (registrationsResult.error) setMessage('Could not load your registrations: ' + registrationsResult.error.message);
-      else setMessage('Your registration record is up to date.');
+      setTournaments(tournamentRows || []);
+      setRegistrations(registrationRows || []);
+      setMessage('Your registration record is up to date.');
       setLoading(false);
     } catch (error) {
       if (requestId !== loadRequestId.current) return;
       setMessage('');
-      setLoadError(error?.message || 'We could not finish loading registration data.');
+      setTournaments([]);
+      const text = String(error?.message || '');
+      setLoadError(/401|JWT|token|expired/i.test(text)
+        ? 'Your Manager Portal session has expired. Return to My Matches and sign in again.'
+        : (text || 'We could not finish loading registration data.'));
       setLoading(false);
     }
   }
 
   async function withdraw(row) {
     if (!window.confirm(`Withdraw your registration for ${row.tournaments?.name || 'this tournament'}?`)) return;
+
+    const latestSession = persistedSession();
+    if (!latestSession?.access_token) {
+      setLoadError('No active Manager Portal session was found. Open My Matches and sign in again.');
+      setLoading(false);
+      return;
+    }
+
+    setSession(latestSession);
     setLoading(true);
-    const { error } = await supabase.rpc('withdraw_manager_tournament_registration', { target_registration_id: row.id });
-    if (error) setMessage('Could not withdraw registration: ' + error.message);
-    else { setMessage('Registration withdrawn.'); await load(); }
-    setLoading(false);
+    setLoadError('');
+    setMessage('Withdrawing registration...');
+
+    try {
+      await restRpc(
+        'withdraw_manager_tournament_registration',
+        { target_registration_id: row.id },
+        latestSession.access_token,
+        'Registration withdrawal request',
+      );
+      setMessage('Registration withdrawn.');
+      await load();
+    } catch (error) {
+      setMessage('');
+      const text = String(error?.message || '');
+      setLoadError(/401|JWT|token|expired/i.test(text)
+        ? 'Your Manager Portal session has expired. Return to My Matches and sign in again.'
+        : (text || 'Could not withdraw registration.'));
+      setLoading(false);
+    }
   }
 
   async function logout() {
@@ -165,6 +308,6 @@ export default function ManagerRegistrationPortal() {
 
     <section className="card"><div className="card-header"><p className="eyebrow">Your record</p><h2>Registrations</h2></div><p><strong>If a registration appears here as submitted or approved, we have it.</strong></p>{loadError ? <div className="warning-card"><strong>We could not verify your registration record.</strong><span>{loadError}</span><p className="muted">Do not submit a duplicate registration until this record has loaded successfully.</p><button type="button" className="secondary" onClick={load}>Try again</button></div> : loading ? <p className="muted">Checking your registration record...</p> : !registrations.length ? <p className="muted">You have no linked tournament registrations yet.</p> : <div className="entrant-list">{registrations.map((row) => <article className="entrant-row registration-row" key={row.id}><div className="registration-details"><strong>{statusLabel(row)} · {row.tournaments?.name || `Tournament #${row.tournament_id}`}</strong><span>{row.club_name} · rating {row.rating} · submitted {formatDate(row.submitted_at)} · reference #{row.id}</span>{row.reviewed_at && <span>Reviewed {formatDate(row.reviewed_at)}</span>}{row.review_notes && <span>{row.review_notes}</span>}</div>{row.status === 'pending' && <button type="button" className="secondary" onClick={() => withdraw(row)} disabled={loading}>Withdraw</button>}</article>)}</div>}</section>
 
-    <section className="card"><div className="card-header"><p className="eyebrow">Open now</p><h2>Register for a tournament</h2></div>{loadError && <div className="warning-card"><strong>Registration data could not finish loading.</strong><span>{loadError}</span><button type="button" className="secondary" onClick={load}>Try again</button></div>}{loading && !loadError ? <p className="muted">Checking open tournaments...</p> : !tournaments.length && !loadError ? <p className="muted">There are no open public tournaments right now.</p> : <div className="entrant-list">{tournaments.map((tournament) => <article className="entrant-row registration-row" key={tournament.id}><div className="registration-details"><strong>{tournament.name}</strong><span>{tournament.game_worlds?.name} · no email required · canonical club directory · average rating 65–95 required</span></div><a className="button" href={registrationPath(tournament)}>Register</a></article>)}</div>}{message && <p className="status">{message}</p>}</section>
+    <section className="card"><div className="card-header"><p className="eyebrow">Open now</p><h2>Register for a tournament</h2></div>{loadError && <div className="warning-card"><strong>Registration data could not finish loading.</strong><span>{loadError}</span><button type="button" className="secondary" onClick={load}>Try again</button></div>}{loadError ? null : loading ? <p className="muted">Checking open tournaments...</p> : !tournaments.length ? <p className="muted">There are no open public tournaments right now.</p> : <div className="entrant-list">{tournaments.map((tournament) => <article className="entrant-row registration-row" key={tournament.id}><div className="registration-details"><strong>{tournament.name}</strong><span>{tournament.game_worlds?.name} · no email required · canonical club directory · average rating 65–95 required</span></div><a className="button" href={registrationPath(tournament)}>Register</a></article>)}</div>}{message && <p className="status">{message}</p>}</section>
   </main>;
 }
