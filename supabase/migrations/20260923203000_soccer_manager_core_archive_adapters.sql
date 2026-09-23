@@ -95,6 +95,7 @@ declare
   v_club_id text;
   v_club_name text;
   v_existing_team_name text;
+  v_club_managed boolean;
   v_manager_source_id text;
   v_manager_name text;
   v_team_id bigint;
@@ -380,6 +381,36 @@ begin
       into v_existing_team_name
     from public.teams
     where id = v_team_id;
+
+    select case
+      when lower(coalesce(standing.data->>'managed', '')) in ('1','true','yes') then true
+      else false
+    end
+      into v_club_managed
+    from public.soccer_manager_canonical_entities standing
+    where standing.entity_type = 'standing'
+      and standing.data->>'setupId' = setup_id
+      and standing.data->>'clubId' = v_club_id
+    order by standing.entity_key
+    limit 1;
+
+    if coalesce(v_club_managed, false) = false then
+      update public.game_world_clubs
+        set current_manager_name = null,
+            manager_key = null,
+            occupied = false,
+            updated_at = now()
+      where game_world_id = v_world_id
+        and club_key = public.normal_registration_key(v_existing_team_name);
+
+      update public.manager_clubs mc
+        set current_club = false
+      where mc.team_id = v_team_id
+        and mc.current_club = true;
+
+      skipped_assignments := skipped_assignments + 1;
+      continue;
+    end if;
 
     update public.game_world_clubs
       set current_manager_name = v_manager_name,
