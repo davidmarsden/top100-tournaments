@@ -105,6 +105,7 @@ export default function SoccerManagerSyncPage() {
   const [stageStatus, setStageStatus] = useState('');
   const [stageBusy, setStageBusy] = useState(false);
   const [reviewRefreshToken, setReviewRefreshToken] = useState(0);
+  const [archiveRefreshToken, setArchiveRefreshToken] = useState(0);
   const collectorLinkRef = useRef(null);
   const totalSummary = useMemo(() => payloads.map((entry) => ({
     id: entry.id,
@@ -321,8 +322,8 @@ export default function SoccerManagerSyncPage() {
       </tbody></table></div>
     </section>}
 
-    <SoccerManagerSyncReview refreshToken={reviewRefreshToken} />
-    <SoccerManagerArchiveAdapter refreshToken={reviewRefreshToken} />
+    <SoccerManagerSyncReview refreshToken={reviewRefreshToken} onReviewComplete={() => setArchiveRefreshToken((value) => value + 1)} />
+    <SoccerManagerArchiveAdapter refreshToken={archiveRefreshToken} />
 
     {!!totalSummary.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Import summary</p><h2>What we found</h2></div>
