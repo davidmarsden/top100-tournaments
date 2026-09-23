@@ -62,28 +62,46 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
     if (!supabase) return;
     setLoadingRuns(true);
     const fields = 'id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at';
-    const [unresolvedResult, recentReviewedResult] = await Promise.all([
-      supabase
+
+    const unresolvedRuns = [];
+    let unresolvedFrom = 0;
+    let unresolvedError = null;
+
+    while (true) {
+      const result = await supabase
         .from('soccer_manager_sync_runs')
         .select(fields)
         .neq('status', 'reviewed')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('soccer_manager_sync_runs')
-        .select(fields)
-        .eq('status', 'reviewed')
         .order('created_at', { ascending: false })
-        .limit(12),
-    ]);
+        .range(unresolvedFrom, unresolvedFrom + CHANGE_PAGE_SIZE - 1);
+
+      if (result.error) {
+        unresolvedError = result.error;
+        break;
+      }
+
+      const page = result.data || [];
+      unresolvedRuns.push(...page);
+      if (page.length < CHANGE_PAGE_SIZE) break;
+      unresolvedFrom += CHANGE_PAGE_SIZE;
+    }
+
+    const recentReviewedResult = await supabase
+      .from('soccer_manager_sync_runs')
+      .select(fields)
+      .eq('status', 'reviewed')
+      .order('created_at', { ascending: false })
+      .limit(12);
+
     setLoadingRuns(false);
-    const error = unresolvedResult.error || recentReviewedResult.error;
+    const error = unresolvedError || recentReviewedResult.error;
     if (error) {
       setStatus(`Could not load staged sync runs: ${error.message}`);
       return;
     }
 
     const byId = new Map();
-    for (const run of [...(unresolvedResult.data || []), ...(recentReviewedResult.data || [])]) {
+    for (const run of [...unresolvedRuns, ...(recentReviewedResult.data || [])]) {
       byId.set(run.id, run);
     }
     const nextRuns = [...byId.values()].sort(
