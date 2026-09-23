@@ -78,12 +78,13 @@ Supported response shapes:
   - Soccer Manager illegal-deal flag
 - Club squad (`club-ajax-mobile.php?action=clubinitdata2...`)
   - player/source ids
-  - observed name fields: `playerpitchname`, `playername`, `playersurname`; first-name and surname aliases are resolved independently and then combined before falling back to first name alone, and the same aliases are used during squad detection
+  - observed name fields: `playerpitchname`, `playername`, `playersurname`; `playername` is treated as a Soccer Manager short/display name rather than a literal first name, and the same aliases are used during squad detection
   - observed position fields: `playerposition`, `playerpositionid`
   - age, rating, nationality, value and wages
   - observed contract/condition raw fields: `ctrraw`, `conraw`
   - appearances plus observed `gs` / `as` goal-assist fields
-  - youth/goalkeeper/visible-transfer-list flags where present
+  - youth/goalkeeper flags where present
+  - `isplayeronvisibletransferlist` remains visible in the field-name schema diagnostic but is not used as transfer-listed status because the live squad capture showed it true for every player; legacy `transferlisted`, `transfer_list` and `tl` aliases remain supported when present
 - Club finance
   - season balance/income/outgoings
   - wages and transfer spend

@@ -84,7 +84,7 @@ function ClubSquadPreview({ payload }) {
     </details>}
     <div className="table-wrap"><table><thead><tr><th>Player</th><th>Age</th><th>Pos</th><th>Rat</th><th>Value</th><th>Wages</th><th>Morale</th><th>Cond</th><th>Apps</th><th>G</th><th>A</th></tr></thead><tbody>
       {payload.players.map((row, index) => <tr key={row.playerId || row.playerDataId || index}>
-        <td><strong>{row.name || [row.firstName, row.surname].filter(Boolean).join(' ') || 'Unknown'}</strong><span>{row.playerId}</span></td>
+        <td><strong>{row.name || row.shortName || row.surname || 'Unknown'}</strong><span>{row.playerId}</span></td>
         <td>{formatValue(row.age)}</td><td>{row.position || '—'}</td><td>{formatValue(row.rating)}</td><td>{formatValue(row.value)}</td><td>{formatValue(row.wages)}</td><td>{formatValue(row.morale)}</td><td>{formatValue(row.condition)}</td><td>{formatValue(row.appearances)}</td><td>{formatValue(row.goals)}</td><td>{formatValue(row.assists)}</td>
       </tr>)}
     </tbody></table></div>
