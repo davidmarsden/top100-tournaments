@@ -22,6 +22,31 @@ create policy "Global admins read Soccer Manager archive links"
   on public.soccer_manager_archive_links for select to authenticated
   using ((select public.is_admin()));
 
+create table if not exists public.soccer_manager_world_manager_assignments (
+  game_world_id bigint not null references public.game_worlds(id) on delete cascade,
+  team_id bigint not null references public.teams(id) on delete cascade,
+  manager_id bigint not null references public.managers(id) on delete cascade,
+  source_manager_key text not null,
+  assigned_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (game_world_id, team_id)
+);
+
+create index if not exists soccer_manager_world_manager_assignments_manager_idx
+  on public.soccer_manager_world_manager_assignments(game_world_id, manager_id);
+
+alter table public.soccer_manager_world_manager_assignments enable row level security;
+
+revoke all on table public.soccer_manager_world_manager_assignments from anon, authenticated;
+grant select on table public.soccer_manager_world_manager_assignments to authenticated;
+grant select, insert, update, delete on table public.soccer_manager_world_manager_assignments to service_role;
+
+drop policy if exists "Global admins read Soccer Manager world manager assignments"
+  on public.soccer_manager_world_manager_assignments;
+create policy "Global admins read Soccer Manager world manager assignments"
+  on public.soccer_manager_world_manager_assignments for select to authenticated
+  using ((select public.is_admin()));
+
 create table if not exists public.league_standing_snapshots (
   id bigint generated always as identity primary key,
   source_entity_key text not null,
@@ -189,11 +214,17 @@ begin
   -- Current clubs come from approved standing entities. Stable SM club ids
   -- stay in the private archive-link map; public directory keys remain name-normalized.
   for row_data in
-    select entity_key, data
+    select distinct on (data->>'clubId')
+      entity_key, data
     from public.soccer_manager_canonical_entities
     where entity_type = 'standing'
       and data->>'setupId' = setup_id
-    order by entity_key
+      and nullif(trim(data->>'clubId'), '') is not null
+    order by
+      data->>'clubId',
+      last_approved_at desc,
+      version desc,
+      entity_key desc
   loop
     v_club_id := nullif(trim(row_data.data->>'clubId'), '');
     v_club_name := nullif(trim(row_data.data->>'name'), '');
@@ -216,7 +247,7 @@ begin
       select count(*)::integer, min(id)
         into v_case_matches, v_team_id
       from public.teams
-      where lower(name) = lower(v_club_name);
+      where public.team_directory_key(name) = public.team_directory_key(v_club_name);
 
       if v_case_matches = 0 then
         insert into public.teams(name, active)
@@ -234,7 +265,7 @@ begin
       select count(*)::integer
         into v_case_matches
       from public.teams
-      where lower(name) = lower(v_club_name)
+      where public.team_directory_key(name) = public.team_directory_key(v_club_name)
         and id <> v_team_id;
 
       if v_case_matches > 0 then
@@ -391,7 +422,10 @@ begin
     where standing.entity_type = 'standing'
       and standing.data->>'setupId' = setup_id
       and standing.data->>'clubId' = v_club_id
-    order by standing.entity_key
+    order by
+      standing.last_approved_at desc,
+      standing.version desc,
+      standing.entity_key desc
     limit 1;
 
     if coalesce(v_club_managed, false) = false then
@@ -403,10 +437,9 @@ begin
       where game_world_id = v_world_id
         and club_key = public.normal_registration_key(v_existing_team_name);
 
-      update public.manager_clubs mc
-        set current_club = false
-      where mc.team_id = v_team_id
-        and mc.current_club = true;
+      delete from public.soccer_manager_world_manager_assignments
+      where game_world_id = v_world_id
+        and team_id = v_team_id;
 
       skipped_assignments := skipped_assignments + 1;
       continue;
@@ -420,26 +453,25 @@ begin
     where game_world_id = v_world_id
       and club_key = public.normal_registration_key(v_existing_team_name);
 
-    update public.manager_clubs mc
-      set current_club = false
-    where mc.team_id = v_team_id
-      and mc.current_club = true
-      and mc.manager_id is distinct from v_manager_id;
-
-    if not exists (
-      select 1
-      from public.manager_clubs mc
-      where mc.manager_id = v_manager_id
-        and mc.team_id = v_team_id
-        and mc.current_club = true
-    ) then
-      insert into public.manager_clubs (
-        manager_id, team_id, current_club, appointment_type, notes
-      ) values (
-        v_manager_id, v_team_id, true, 'manager',
-        'Applied from approved Soccer Manager manager assignment.'
-      );
-    end if;
+    insert into public.soccer_manager_world_manager_assignments (
+      game_world_id,
+      team_id,
+      manager_id,
+      source_manager_key,
+      assigned_at,
+      updated_at
+    ) values (
+      v_world_id,
+      v_team_id,
+      v_manager_id,
+      setup_id || ':' || v_manager_source_id,
+      now(),
+      now()
+    )
+    on conflict (game_world_id, team_id) do update
+      set manager_id = excluded.manager_id,
+          source_manager_key = excluded.source_manager_key,
+          updated_at = now();
 
     assignments_applied := assignments_applied + 1;
   end loop;
@@ -496,7 +528,7 @@ begin
       select count(*)::integer, min(id)
         into v_case_matches, v_team_id
       from public.teams
-      where lower(name) = lower(v_club_name);
+      where public.team_directory_key(name) = public.team_directory_key(v_club_name);
 
       if v_case_matches = 0 then
         insert into public.teams(name, active)
