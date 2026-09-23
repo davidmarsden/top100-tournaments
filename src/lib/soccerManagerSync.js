@@ -267,9 +267,13 @@ function findClubSquadRows(input) {
         let nameCount = 0;
         let ratingCount = 0;
         const score = objectRows.reduce((sum, row) => {
-          const hasPlayerId = row.playerid != null || row.PlayerID != null || row.PlayerDataID != null || row.playerdataid != null;
-          const hasRating = row.rating != null || row.PlayerRating != null;
-          const hasName = row.pitchname != null || row.name != null || row.PlayerName != null || row.surname != null;
+          const playerId = textOrNull(row.playerid ?? row.PlayerID ?? row.PlayerDataID ?? row.playerdataid);
+          const rating = numberOrNull(row.rating ?? row.PlayerRating);
+          const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+          const playerName = textOrNull(row.pitchname ?? row.PlayerName ?? fullName);
+          const hasPlayerId = playerId !== null;
+          const hasRating = rating !== null;
+          const hasName = playerName !== null;
           if (hasPlayerId) idCount += 1;
           if (hasName) nameCount += 1;
           if (hasRating) ratingCount += 1;
