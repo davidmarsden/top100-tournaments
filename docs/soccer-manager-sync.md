@@ -84,7 +84,7 @@ Supported response shapes:
   - observed contract/condition raw fields: `ctrraw`, `conraw`
   - appearances plus observed `gs` / `as` goal-assist fields
   - youth/goalkeeper flags where present
-  - `isplayeronvisibletransferlist` remains visible in the field-name schema diagnostic but is not normalized as transfer-listed status because the live squad capture showed it true for every player
+  - `isplayeronvisibletransferlist` remains visible in the field-name schema diagnostic but is not used as transfer-listed status because the live squad capture showed it true for every player; legacy `transferlisted`, `transfer_list` and `tl` aliases remain supported when present
 - Club finance
   - season balance/income/outgoings
   - wages and transfer spend
