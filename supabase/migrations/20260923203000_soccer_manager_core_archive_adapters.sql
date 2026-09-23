@@ -150,6 +150,122 @@ create unique index if not exists achievements_source_key_uidx
 create index if not exists achievements_game_world_season_idx
   on public.achievements(game_world_id, season_id);
 
+create or replace function public.promote_registration_to_entrant(registration_id bigint)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  registration_row public.tournament_registrations%rowtype;
+  team_row_id bigint;
+  manager_row_id bigint;
+  entry_row_id bigint;
+  next_seed integer;
+  registration_world_id bigint;
+  registration_external_world_id bigint;
+begin
+  select * into registration_row
+  from public.tournament_registrations
+  where id = registration_id
+  for update;
+  if not found then raise exception 'Registration not found'; end if;
+  if not public.can_manage_tournament(registration_row.tournament_id) then
+    raise exception 'Tournament organiser access required';
+  end if;
+  if registration_row.status <> 'approved' then raise exception 'Registration must be approved first'; end if;
+  if registration_row.promoted_entry_id is not null then return registration_row.promoted_entry_id; end if;
+
+  select t.game_world_id, w.external_world_id
+    into registration_world_id, registration_external_world_id
+  from public.tournaments t
+  left join public.game_worlds w on w.id = t.game_world_id
+  where t.id = registration_row.tournament_id;
+
+  team_row_id := registration_row.team_id;
+  manager_row_id := registration_row.manager_id;
+
+  if team_row_id is null and registration_external_world_id is not null then
+    select link.target_id into team_row_id
+    from public.soccer_manager_archive_links link
+    join public.teams team on team.id = link.target_id
+    where link.source_type = 'club'
+      and link.target_type = 'team'
+      and split_part(link.source_key, ':', 1) = registration_external_world_id::text
+      and public.normal_registration_key(link.source_name) = registration_row.club_key
+    order by link.updated_at desc
+    limit 1;
+  end if;
+
+  if team_row_id is null then
+    select id into team_row_id
+    from public.teams
+    where public.normal_registration_key(name) = registration_row.club_key
+    order by id
+    limit 1;
+  end if;
+
+  if team_row_id is null then
+    insert into public.teams(name, active)
+    values (registration_row.club_name, true)
+    returning id into team_row_id;
+  end if;
+
+  if manager_row_id is null and registration_world_id is not null and team_row_id is not null then
+    select assignment.manager_id into manager_row_id
+    from public.soccer_manager_world_manager_assignments assignment
+    where assignment.game_world_id = registration_world_id
+      and assignment.team_id = team_row_id
+      and public.normal_registration_key(assignment.source_manager_name) = registration_row.manager_key
+    limit 1;
+  end if;
+
+  if manager_row_id is null then
+    select id into manager_row_id
+    from public.managers
+    where public.normal_registration_key(coalesce(display_name, name)) = registration_row.manager_key
+    order by id
+    limit 1;
+  end if;
+
+  if manager_row_id is null then
+    insert into public.managers(name, display_name, canonical_name, active)
+    values (registration_row.manager_name, registration_row.manager_name, lower(registration_row.manager_name), true)
+    returning id into manager_row_id;
+  end if;
+
+  select id into entry_row_id
+  from public.tournament_entries
+  where tournament_id = registration_row.tournament_id
+    and (team_id = team_row_id or manager_id = manager_row_id)
+  limit 1;
+
+  if entry_row_id is null then
+    select coalesce(max(seed),0) + 1 into next_seed
+    from public.tournament_entries
+    where tournament_id = registration_row.tournament_id;
+    insert into public.tournament_entries(tournament_id,team_id,manager_id,seed,rating,entry_status,prize_draw_eligible,notes)
+    values (registration_row.tournament_id,team_row_id,manager_row_id,next_seed,registration_row.rating,'active',true,
+            'Promoted from registration #' || registration_row.id)
+    returning id into entry_row_id;
+  end if;
+
+  update public.tournament_registrations
+    set team_id = team_row_id, manager_id = manager_row_id, promoted_entry_id = entry_row_id,
+        promoted_at = now(), reviewed_at = coalesce(reviewed_at, now()),
+        reviewed_by = coalesce(reviewed_by, (select auth.uid()))
+  where id = registration_row.id;
+
+  update public.tournaments t
+    set actual_entries = (select count(*) from public.tournament_entries te where te.tournament_id = t.id)
+  where t.id = registration_row.tournament_id;
+
+  return entry_row_id;
+end;
+$$;
+revoke all on function public.promote_registration_to_entrant(bigint) from public, anon;
+grant execute on function public.promote_registration_to_entrant(bigint) to authenticated, service_role;
+
 create or replace function public.apply_soccer_manager_core_archive(
   target_setup_id text default null
 )
@@ -671,7 +787,7 @@ begin
 
       if v_case_matches = 0 then
         insert into public.managers(name, canonical_name, display_name, active)
-        values (v_manager_name, v_manager_name, v_manager_name, true)
+        values (v_manager_name, v_manager_name, v_manager_name, false)
         returning id into v_manager_id;
       elsif v_case_matches > 1 then
         raise exception 'Ambiguous historical Top 100 manager match for %', v_manager_name;
