@@ -14,6 +14,14 @@ function textOrNull(value) {
   return text || null;
 }
 
+function firstText(...values) {
+  for (const value of values) {
+    const text = textOrNull(value);
+    if (text !== null) return text;
+  }
+  return null;
+}
+
 function booleanFlag(value) {
   if (value === true || value === 1 || value === '1') return true;
   if (value === false || value === 0 || value === '0' || value === null || value === undefined || value === '') return false;
@@ -267,14 +275,14 @@ function findClubSquadRows(input) {
           const playerId = textOrNull(row.playerid ?? row.PlayerID ?? row.PlayerDataID ?? row.playerdataid);
           const rating = numberOrNull(row.rating ?? row.PlayerRating);
           const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-          const playerName = textOrNull(row.pitchname ?? row.PlayerName ?? fullName);
+          const playerName = firstText(row.pitchname, row.PlayerName, fullName);
           return playerId !== null && (playerName !== null || rating !== null);
         });
         if (qualifyingRows.length) {
           const score = qualifyingRows.reduce((sum, row) => {
             const rating = numberOrNull(row.rating ?? row.PlayerRating);
             const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-            const playerName = textOrNull(row.pitchname ?? row.PlayerName ?? fullName);
+            const playerName = firstText(row.pitchname, row.PlayerName, fullName);
             return sum + 2 + (rating !== null ? 1 : 0) + (playerName !== null ? 1 : 0);
           }, 0);
           candidates.push({ rows: qualifyingRows, score, width: qualifyingRows.length });
@@ -305,7 +313,7 @@ export function normalizeClubSquad(input) {
       return {
       playerId: textOrNull(record.playerid ?? record.PlayerID ?? record.PlayerDataID ?? record.playerdataid),
       playerDataId: textOrNull(record.playerdataid ?? record.PlayerDataID ?? record.playerid ?? record.PlayerID),
-      name: textOrNull(record.pitchname ?? record.PlayerName ?? fullName ?? record.name),
+      name: firstText(record.pitchname, record.PlayerName, fullName, record.name),
       firstName: textOrNull(record.name),
       surname: textOrNull(record.surname),
       age: numberOrNull(record.age ?? record.PlayerAge),
