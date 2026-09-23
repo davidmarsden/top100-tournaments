@@ -79,6 +79,36 @@ async function restGet(path, token, label) {
   }
 }
 
+async function restRpc(functionName, payload, token, label) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REGISTRATION_LOAD_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${functionName}`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body?.message || `${label} failed with HTTP ${response.status}`);
+    }
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error(`${label} timed out. Please try again.`);
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export default function ManagerRegistrationPortal() {
   const [session, setSession] = useState(null);
   const [account, setAccount] = useState(null);
@@ -212,11 +242,36 @@ export default function ManagerRegistrationPortal() {
 
   async function withdraw(row) {
     if (!window.confirm(`Withdraw your registration for ${row.tournaments?.name || 'this tournament'}?`)) return;
+
+    const latestSession = persistedSession();
+    if (!latestSession?.access_token) {
+      setLoadError('No active Manager Portal session was found. Open My Matches and sign in again.');
+      setLoading(false);
+      return;
+    }
+
+    setSession(latestSession);
     setLoading(true);
-    const { error } = await supabase.rpc('withdraw_manager_tournament_registration', { target_registration_id: row.id });
-    if (error) setMessage('Could not withdraw registration: ' + error.message);
-    else { setMessage('Registration withdrawn.'); await load(); }
-    setLoading(false);
+    setLoadError('');
+    setMessage('Withdrawing registration...');
+
+    try {
+      await restRpc(
+        'withdraw_manager_tournament_registration',
+        { target_registration_id: row.id },
+        latestSession.access_token,
+        'Registration withdrawal request',
+      );
+      setMessage('Registration withdrawn.');
+      await load();
+    } catch (error) {
+      setMessage('');
+      const text = String(error?.message || '');
+      setLoadError(/401|JWT|token|expired/i.test(text)
+        ? 'Your Manager Portal session has expired. Return to My Matches and sign in again.'
+        : (text || 'Could not withdraw registration.'));
+      setLoading(false);
+    }
   }
 
   async function logout() {
