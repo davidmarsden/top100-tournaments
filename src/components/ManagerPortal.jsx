@@ -198,19 +198,34 @@ export default function ManagerPortal({ registrationMode = false }) {
         return;
       }
 
-      const [entryResult, accessResult, registrationResult] = await withPortalTimeout(Promise.all([
+      if (registrationMode) {
+        const registrationResult = await withPortalTimeout(
+          supabase.from('tournaments')
+            .select('id, name, public_slug, registration_status, season_number, game_worlds(id, name, slug), competition_types(id, name, slug)')
+            .eq('is_public', true)
+            .eq('registration_status', 'open')
+            .order('season_number', { ascending: false }),
+          'Open tournament registration lookup',
+        );
+        if (registrationResult.error) throw new Error('Could not load open tournament registrations: ' + registrationResult.error.message);
+
+        setAccount(accountRow);
+        setClaim(null);
+        setEntries([]);
+        setMatches([]);
+        setGroupEntries([]);
+        setAdminAssignments([]);
+        setOpenTournaments(registrationResult.data || []);
+        setSelectedEntryId('');
+        setMessage('Registration options loaded.');
+        return;
+      }
+
+      const [entryResult, accessResult] = await withPortalTimeout(Promise.all([
         supabase.from('tournament_entries').select('id, tournament_id, manager_id, group_code, seed, pot, teams(id, name), tournaments!inner(id, name, status, season_number, public_slug, is_public, game_world_id)').eq('manager_id', accountRow.manager_id).eq('tournaments.game_world_id', accountRow.game_world_id),
         supabase.from('tournament_organisers').select('tournament_id, role, tournaments(id, name)').eq('auth_user_id', session.user.id).eq('active', true),
-        registrationMode
-          ? supabase.from('tournaments')
-              .select('id, name, public_slug, registration_status, season_number, game_worlds(id, name, slug), competition_types(id, name, slug)')
-              .eq('is_public', true)
-              .eq('registration_status', 'open')
-              .order('season_number', { ascending: false })
-          : Promise.resolve({ data: [], error: null }),
       ]), 'Tournament access lookup');
       if (entryResult.error) throw new Error('Could not load your tournament entries: ' + entryResult.error.message);
-      if (registrationMode && registrationResult.error) throw new Error('Could not load open tournament registrations: ' + registrationResult.error.message);
 
       const entryRows = entryResult.data || [];
       const orderedEntries = [...entryRows].sort((a, b) => Number(b.tournaments?.season_number || 0) - Number(a.tournaments?.season_number || 0));
@@ -234,8 +249,8 @@ export default function ManagerPortal({ registrationMode = false }) {
       setMatches(matchRows);
       setGroupEntries(peerEntries);
       setAdminAssignments(accessResult.error ? [] : (accessResult.data || []));
-      setOpenTournaments(registrationResult.data || []);
-      setMessage(registrationMode ? 'Registration options loaded.' : 'Portal loaded.');
+      setOpenTournaments([]);
+      setMessage('Portal loaded.');
     } catch (error) {
       setLoadError(error?.message || 'We could not finish loading your Manager Portal.');
       setMessage('');
