@@ -119,22 +119,15 @@ function fieldNames(rows) {
 }
 
 function squadPlayerName(record) {
-  const observedFullName = [record?.playername, record?.playersurname]
-    .map((value) => textOrNull(value))
-    .filter(Boolean)
-    .join(' ');
-  const legacyFullName = [record?.name, record?.surname]
-    .map((value) => textOrNull(value))
-    .filter(Boolean)
-    .join(' ');
+  const firstName = firstText(record?.playername, record?.name);
+  const surname = firstText(record?.playersurname, record?.surname);
+  const fullName = [firstName, surname].filter(Boolean).join(' ');
   return firstText(
     record?.playerpitchname,
     record?.pitchname,
     record?.PlayerName,
-    observedFullName,
-    legacyFullName,
-    record?.playername,
-    record?.name,
+    fullName,
+    firstName,
   );
 }
 
