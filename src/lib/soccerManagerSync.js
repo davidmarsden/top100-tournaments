@@ -398,7 +398,7 @@ export function normalizeClubSquad(input, context = {}) {
       playerId: firstNonZeroId(record.playerid, record.PlayerID, record.PlayerDataID, record.playerdataid),
       playerDataId: firstNonZeroId(record.playerdataid, record.PlayerDataID, record.playerid, record.PlayerID),
       name: squadPlayerName(record),
-      firstName: firstText(record.playername, record.name),
+      shortName: firstText(record.playername, record.name),
       surname: firstText(record.playersurname, record.surname),
       age: firstNumber(record.age, record.PlayerAge),
       rating: firstNumber(record.rating, record.PlayerRating),
@@ -418,7 +418,6 @@ export function normalizeClubSquad(input, context = {}) {
       assists: firstNumber(record.as, record.assists),
       goalkeeper: firstBoolean(record.gk),
       youth: firstBoolean(record.youth),
-      transferListed: firstBoolean(record.isplayeronvisibletransferlist, record.transferlisted, record.transfer_list, record.tl),
       photo: firstText(record.photofilename, record.PhotoFilename),
       ratingChangedAt: firstText(record.ratchgdate),
     };
