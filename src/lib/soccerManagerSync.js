@@ -253,6 +253,76 @@ export function normalizeTransfers(input) {
   };
 }
 
+
+function findClubSquadRows(input) {
+  if (!input || typeof input !== 'object') return [];
+  const candidates = [];
+
+  function visit(value, depth = 0) {
+    if (!value || depth > 4) return;
+    if (Array.isArray(value)) {
+      const objectRows = value.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+      if (objectRows.length) {
+        const score = objectRows.reduce((sum, row) => {
+          const hasPlayerId = row.playerid != null || row.PlayerID != null || row.PlayerDataID != null || row.playerdataid != null;
+          const hasRating = row.rating != null || row.PlayerRating != null;
+          const hasName = row.pitchname != null || row.name != null || row.PlayerName != null || row.surname != null;
+          return sum + (hasPlayerId ? 2 : 0) + (hasRating ? 1 : 0) + (hasName ? 1 : 0);
+        }, 0);
+        candidates.push({ rows: objectRows, score, width: objectRows.length });
+      }
+      for (const row of value) visit(row, depth + 1);
+      return;
+    }
+    for (const child of Object.values(value)) visit(child, depth + 1);
+  }
+
+  visit(input);
+  candidates.sort((a, b) => (b.score - a.score) || (b.width - a.width));
+  const best = candidates[0];
+  if (!best || best.score < Math.max(4, best.width * 2)) return [];
+  return best.rows;
+}
+
+export function normalizeClubSquad(input) {
+  const rows = findClubSquadRows(input);
+  return {
+    kind: 'clubSquad',
+    club: {
+      clubId: textOrNull(input?.clubid ?? input?.ClubID ?? input?.clubID ?? input?.club?.clubid ?? input?.club?.ClubID),
+      name: textOrNull(input?.clubname ?? input?.ClubName ?? input?.clubName ?? input?.club?.clubname ?? input?.club?.ClubName),
+    },
+    players: rows.map((record) => ({
+      playerId: textOrNull(record.playerid ?? record.PlayerID ?? record.PlayerDataID ?? record.playerdataid),
+      playerDataId: textOrNull(record.playerdataid ?? record.PlayerDataID ?? record.playerid ?? record.PlayerID),
+      name: textOrNull(record.pitchname ?? record.PlayerName ?? record.name ?? [record.name, record.surname].filter(Boolean).join(' ')),
+      firstName: textOrNull(record.name),
+      surname: textOrNull(record.surname),
+      age: numberOrNull(record.age ?? record.PlayerAge),
+      rating: numberOrNull(record.rating ?? record.PlayerRating),
+      position: cleanPosition(record.multipositiondis ?? record.LiveMultiPositionDis ?? record.position),
+      positionId: numberOrNull(record.multiposition ?? record.playerpositionid ?? record.PlayerPos),
+      nationality: textOrNull(record.countryname ?? record.playerscountryname ?? record.country),
+      value: numberOrNull(record.valueraw ?? record.Value),
+      wages: numberOrNull(record.wagesraw ?? record.wages),
+      contract: numberOrNull(record.ctr ?? record.contract),
+      morale: numberOrNull(record.morale),
+      condition: numberOrNull(record.con ?? record.condition),
+      foot: textOrNull(record.foot),
+      appearances: numberOrNull(record.app),
+      substituteAppearances: numberOrNull(record.subapp),
+      averagePerformance: numberOrNull(record.avp),
+      goals: numberOrNull(record.goals),
+      assists: numberOrNull(record.assists),
+      goalkeeper: booleanFlag(record.gk),
+      youth: booleanFlag(record.youth),
+      transferListed: booleanFlag(record.transferlisted ?? record.transfer_list ?? record.tl),
+      photo: textOrNull(record.photofilename ?? record.PhotoFilename),
+      ratingChangedAt: textOrNull(record.ratchgdate),
+    })),
+  };
+}
+
 export function normalizeClubFinance(input) {
   return {
     kind: 'clubFinance',
@@ -288,6 +358,7 @@ export function detectSoccerManagerPayload(input) {
   if (Array.isArray(input?.changes) || Array.isArray(input?.new)) return 'playerChanges';
   if (Array.isArray(input?.Transfers)) return 'transfers';
   if (Array.isArray(input?.Weekly) && ('_seasonBalance' in input || '_seasonTotalIn' in input)) return 'clubFinance';
+  if (findClubSquadRows(input).length) return 'clubSquad';
   return null;
 }
 
@@ -297,6 +368,7 @@ export function normalizeSoccerManagerPayload(input) {
     case 'playerChanges': return normalizePlayerChanges(input);
     case 'transfers': return normalizeTransfers(input);
     case 'clubFinance': return normalizeClubFinance(input);
+    case 'clubSquad': return normalizeClubSquad(input);
     default: throw new Error('Unsupported Soccer Manager JSON response.');
   }
 }
@@ -324,6 +396,9 @@ export function summarizeNormalizedPayload(payload) {
   }
   if (payload.kind === 'clubFinance') {
     return { type: 'Club finance', weeks: payload.weekly.length, seasonBalance: payload.season.balance, seasonProfit: payload.season.profit };
+  }
+  if (payload.kind === 'clubSquad') {
+    return { type: 'Club squad', club: payload.club.name || payload.club.clubId, players: payload.players.length };
   }
   return { type: payload.kind };
 }
