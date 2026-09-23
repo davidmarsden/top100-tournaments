@@ -263,13 +263,19 @@ function findClubSquadRows(input) {
     if (Array.isArray(value)) {
       const objectRows = value.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
       if (objectRows.length) {
+        let idCount = 0;
+        let nameCount = 0;
+        let ratingCount = 0;
         const score = objectRows.reduce((sum, row) => {
           const hasPlayerId = row.playerid != null || row.PlayerID != null || row.PlayerDataID != null || row.playerdataid != null;
           const hasRating = row.rating != null || row.PlayerRating != null;
           const hasName = row.pitchname != null || row.name != null || row.PlayerName != null || row.surname != null;
+          if (hasPlayerId) idCount += 1;
+          if (hasName) nameCount += 1;
+          if (hasRating) ratingCount += 1;
           return sum + (hasPlayerId ? 2 : 0) + (hasRating ? 1 : 0) + (hasName ? 1 : 0);
         }, 0);
-        candidates.push({ rows: objectRows, score, width: objectRows.length });
+        candidates.push({ rows: objectRows, score, width: objectRows.length, idCount, nameCount, ratingCount });
       }
       for (const row of value) visit(row, depth + 1);
       return;
@@ -280,7 +286,9 @@ function findClubSquadRows(input) {
   visit(input);
   candidates.sort((a, b) => (b.score - a.score) || (b.width - a.width));
   const best = candidates[0];
-  if (!best || best.score < Math.max(4, best.width * 2)) return [];
+  if (!best) return [];
+  const detailCount = Math.max(best.nameCount, best.ratingCount);
+  if (best.idCount < 2 || detailCount < 2 || detailCount < Math.ceil(best.idCount / 2)) return [];
   return best.rows;
 }
 
@@ -292,10 +300,12 @@ export function normalizeClubSquad(input) {
       clubId: textOrNull(input?.clubid ?? input?.ClubID ?? input?.clubID ?? input?.club?.clubid ?? input?.club?.ClubID),
       name: textOrNull(input?.clubname ?? input?.ClubName ?? input?.clubName ?? input?.club?.clubname ?? input?.club?.ClubName),
     },
-    players: rows.map((record) => ({
+    players: rows.map((record) => {
+      const fullName = [record.name, record.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      return {
       playerId: textOrNull(record.playerid ?? record.PlayerID ?? record.PlayerDataID ?? record.playerdataid),
       playerDataId: textOrNull(record.playerdataid ?? record.PlayerDataID ?? record.playerid ?? record.PlayerID),
-      name: textOrNull(record.pitchname ?? record.PlayerName ?? record.name ?? [record.name, record.surname].filter(Boolean).join(' ')),
+      name: textOrNull(record.pitchname ?? record.PlayerName ?? fullName ?? record.name),
       firstName: textOrNull(record.name),
       surname: textOrNull(record.surname),
       age: numberOrNull(record.age ?? record.PlayerAge),
@@ -319,7 +329,8 @@ export function normalizeClubSquad(input) {
       transferListed: booleanFlag(record.transferlisted ?? record.transfer_list ?? record.tl),
       photo: textOrNull(record.photofilename ?? record.PhotoFilename),
       ratingChangedAt: textOrNull(record.ratchgdate),
-    })),
+    };
+    }),
   };
 }
 
