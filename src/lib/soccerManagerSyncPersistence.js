@@ -17,6 +17,12 @@ export function sanitizeSoccerManagerSourceUrl(value) {
   }
 }
 
+function nonZeroSourceId(value) {
+  const text = value === null || value === undefined ? '' : String(value).trim();
+  if (!text || text === '0') return null;
+  return text;
+}
+
 function parseSourceContext(sourceUrl) {
   const safeUrl = sanitizeSoccerManagerSourceUrl(sourceUrl);
   if (!safeUrl) return {};
@@ -24,8 +30,8 @@ function parseSourceContext(sourceUrl) {
     const url = new URL(safeUrl);
     return {
       sourceUrl: safeUrl,
-      setupId: url.searchParams.get('sid') || null,
-      clubId: url.searchParams.get('clubid') || null,
+      setupId: nonZeroSourceId(url.searchParams.get('sid')),
+      clubId: nonZeroSourceId(url.searchParams.get('clubid')),
       action: url.searchParams.get('action') || null,
     };
   } catch {
