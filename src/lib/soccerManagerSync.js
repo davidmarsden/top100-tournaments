@@ -99,6 +99,25 @@ function cleanPosition(value) {
   return match ? match[1].trim() : stripHtml(value);
 }
 
+function parseSourceContext(sourceUrl) {
+  if (!sourceUrl) return {};
+  try {
+    const url = new URL(sourceUrl);
+    return {
+      clubId: nonZeroId(url.searchParams.get('clubid')),
+      setupId: nonZeroId(url.searchParams.get('sid')),
+      latestId: nonZeroId(url.searchParams.get('latestid')),
+      action: textOrNull(url.searchParams.get('action')),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function fieldNames(rows) {
+  return [...new Set(rows.flatMap((row) => Object.keys(row || {})))].sort((a, b) => a.localeCompare(b));
+}
+
 function zipLeagueRows(tables, leagueId) {
   const keys = {
     clubId: '_clubId',
@@ -346,13 +365,22 @@ function findClubSquadRows(input) {
   return qualifying[0]?.rows || [];
 }
 
-export function normalizeClubSquad(input) {
+export function normalizeClubSquad(input, context = {}) {
   const rows = findClubSquadRows(input);
+  const sourceContext = parseSourceContext(context.sourceUrl);
   return {
     kind: 'clubSquad',
     club: {
-      clubId: firstNonZeroId(input?.clubid, input?.ClubID, input?.clubID, input?.club?.clubid, input?.club?.ClubID, input?.club?.clubID),
+      clubId: firstNonZeroId(input?.clubid, input?.ClubID, input?.clubID, input?.club?.clubid, input?.club?.ClubID, input?.club?.clubID, sourceContext.clubId),
+      setupId: firstNonZeroId(input?.sid, input?.setupID, input?.SetupID, input?.club?.sid, input?.club?.setupID, sourceContext.setupId),
       name: firstText(input?.clubname, input?.ClubName, input?.clubName, input?.club?.clubname, input?.club?.ClubName, input?.club?.clubName),
+    },
+    sourceContext: {
+      action: sourceContext.action,
+      latestId: sourceContext.latestId,
+    },
+    schema: {
+      playerKeys: fieldNames(rows),
     },
     players: rows.map((record) => {
       const fullName = [record.name, record.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
@@ -427,13 +455,13 @@ export function detectSoccerManagerPayload(input) {
   return null;
 }
 
-export function normalizeSoccerManagerPayload(input) {
+export function normalizeSoccerManagerPayload(input, context = {}) {
   switch (detectSoccerManagerPayload(input)) {
     case 'competition': return normalizeCompetitionSnapshot(input);
     case 'playerChanges': return normalizePlayerChanges(input);
     case 'transfers': return normalizeTransfers(input);
     case 'clubFinance': return normalizeClubFinance(input);
-    case 'clubSquad': return normalizeClubSquad(input);
+    case 'clubSquad': return normalizeClubSquad(input, context);
     default: throw new Error('Unsupported Soccer Manager JSON response.');
   }
 }
@@ -463,7 +491,13 @@ export function summarizeNormalizedPayload(payload) {
     return { type: 'Club finance', weeks: payload.weekly.length, seasonBalance: payload.season.balance, seasonProfit: payload.season.profit };
   }
   if (payload.kind === 'clubSquad') {
-    return { type: 'Club squad', club: payload.club.name || payload.club.clubId, players: payload.players.length };
+    return {
+      type: 'Club squad',
+      club: payload.club.name || payload.club.clubId,
+      world: payload.club.setupId,
+      players: payload.players.length,
+      schemaFields: payload.schema?.playerKeys?.length || 0,
+    };
   }
   return { type: payload.kind };
 }
