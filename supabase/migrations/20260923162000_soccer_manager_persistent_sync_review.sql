@@ -38,6 +38,7 @@ create table if not exists public.soccer_manager_sync_changes (
   status text not null default 'pending'
     check (status in ('pending','approved','rejected')),
   before_data jsonb,
+  baseline_version integer,
   after_data jsonb not null,
   reviewed_by uuid references auth.users(id) on delete set null,
   reviewed_at timestamptz,
@@ -144,6 +145,7 @@ begin
     scope_key,
     change_kind,
     before_data,
+    baseline_version,
     after_data
   )
   select
@@ -153,6 +155,7 @@ begin
     entity.scope_key,
     case when canonical.entity_key is null then 'new' else 'changed' end,
     canonical.data,
+    canonical.version,
     entity.data
   from (
     select
@@ -194,6 +197,9 @@ as $$
 declare
   user_id uuid := (select auth.uid());
   change_row public.soccer_manager_sync_changes%rowtype;
+  current_data jsonb;
+  current_version integer;
+  canonical_found boolean;
   remaining_pending integer;
 begin
   if user_id is null or not public.is_admin() then
@@ -217,6 +223,24 @@ begin
   end if;
 
   if target_decision = 'approved' then
+    select data, version
+    into current_data, current_version
+    from public.soccer_manager_canonical_entities
+    where entity_type = change_row.entity_type
+      and entity_key = change_row.entity_key
+    for update;
+    canonical_found := found;
+
+    if change_row.before_data is null then
+      if canonical_found then
+        raise exception 'Stale Soccer Manager sync change: canonical entity was created after this run was staged';
+      end if;
+    elsif not canonical_found
+       or current_version is distinct from change_row.baseline_version
+       or current_data is distinct from change_row.before_data then
+      raise exception 'Stale Soccer Manager sync change: canonical entity changed after this run was staged';
+    end if;
+
     insert into public.soccer_manager_canonical_entities (
       entity_type,
       entity_key,
@@ -298,6 +322,36 @@ begin
   end if;
 
   if target_decision = 'approved' then
+    perform 1
+    from public.soccer_manager_canonical_entities canonical
+    join public.soccer_manager_sync_changes change
+      on change.entity_type = canonical.entity_type
+     and change.entity_key = canonical.entity_key
+    where change.run_id = target_run_id
+      and change.status = 'pending'
+    for update of canonical;
+
+    if exists (
+      select 1
+      from public.soccer_manager_sync_changes change
+      left join public.soccer_manager_canonical_entities canonical
+        on canonical.entity_type = change.entity_type
+       and canonical.entity_key = change.entity_key
+      where change.run_id = target_run_id
+        and change.status = 'pending'
+        and (
+          (change.before_data is null and canonical.entity_key is not null)
+          or
+          (change.before_data is not null and (
+            canonical.entity_key is null
+            or canonical.version is distinct from change.baseline_version
+            or canonical.data is distinct from change.before_data
+          ))
+        )
+    ) then
+      raise exception 'Stale Soccer Manager sync run: canonical source changed after this run was staged; review the newer state before bulk approval';
+    end if;
+
     insert into public.soccer_manager_canonical_entities (
       entity_type,
       entity_key,
