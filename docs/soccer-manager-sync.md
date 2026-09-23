@@ -78,7 +78,7 @@ Supported response shapes:
   - Soccer Manager illegal-deal flag
 - Club squad (`club-ajax-mobile.php?action=clubinitdata2...`)
   - player/source ids
-  - observed name fields: `playerpitchname`, `playername`, `playersurname`
+  - observed name fields: `playerpitchname`, `playername`, `playersurname`; the combined first/surname form is used before falling back to first name alone, and the same aliases are used during squad detection
   - observed position fields: `playerposition`, `playerpositionid`
   - age, rating, nationality, value and wages
   - observed contract/condition raw fields: `ctrraw`, `conraw`
