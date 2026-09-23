@@ -469,7 +469,13 @@ begin
       now()
     )
     on conflict (game_world_id, team_id) do update
-      set manager_id = excluded.manager_id,
+      set assigned_at = case
+            when public.soccer_manager_world_manager_assignments.manager_id is distinct from excluded.manager_id
+              or public.soccer_manager_world_manager_assignments.source_manager_key is distinct from excluded.source_manager_key
+            then excluded.assigned_at
+            else public.soccer_manager_world_manager_assignments.assigned_at
+          end,
+          manager_id = excluded.manager_id,
           source_manager_key = excluded.source_manager_key,
           updated_at = now();
 
@@ -516,12 +522,13 @@ begin
     v_team_id := null;
 
     if v_club_id is not null then
-      select target_id
+      select link.target_id
         into v_team_id
-      from public.soccer_manager_archive_links
-      where source_type = 'club'
-        and source_key = setup_id || ':' || v_club_id
-        and target_type = 'team';
+      from public.soccer_manager_archive_links link
+      join public.teams team on team.id = link.target_id
+      where link.source_type = 'club'
+        and link.source_key = setup_id || ':' || v_club_id
+        and link.target_type = 'team';
     end if;
 
     if v_team_id is null and v_club_name is not null then
@@ -556,12 +563,13 @@ begin
     v_manager_id := null;
 
     if v_manager_source_id is not null then
-      select target_id
+      select link.target_id
         into v_manager_id
-      from public.soccer_manager_archive_links
-      where source_type = 'manager'
-        and source_key = setup_id || ':' || v_manager_source_id
-        and target_type = 'manager';
+      from public.soccer_manager_archive_links link
+      join public.managers manager on manager.id = link.target_id
+      where link.source_type = 'manager'
+        and link.source_key = setup_id || ':' || v_manager_source_id
+        and link.target_type = 'manager';
     end if;
 
     if v_manager_id is null and v_manager_name is not null then
@@ -632,16 +640,28 @@ begin
   -- This lets the adapter catch up after several reviews without losing intermediate tables.
   for row_data in
     select
-      change.entity_key,
-      coalesce(change.baseline_version, 0) + 1 as source_version,
-      run.captured_at,
-      change.after_data as data
-    from public.soccer_manager_sync_changes change
-    join public.soccer_manager_sync_runs run on run.id = change.run_id
-    where change.entity_type = 'standing'
-      and change.status = 'approved'
-      and change.after_data->>'setupId' = setup_id
-    order by change.entity_key, coalesce(change.baseline_version, 0) + 1, change.id
+      approved.entity_key,
+      approved.source_version,
+      approved.captured_at,
+      approved.data
+    from (
+      select
+        change.entity_key,
+        row_number() over (
+          partition by change.entity_key
+          order by
+            coalesce(change.reviewed_at, run.captured_at, change.created_at),
+            change.id
+        )::integer as source_version,
+        run.captured_at,
+        change.after_data as data
+      from public.soccer_manager_sync_changes change
+      join public.soccer_manager_sync_runs run on run.id = change.run_id
+      where change.entity_type = 'standing'
+        and change.status = 'approved'
+        and change.after_data->>'setupId' = setup_id
+    ) approved
+    order by approved.entity_key, approved.source_version
   loop
     v_club_id := nullif(trim(row_data.data->>'clubId'), '');
     if v_club_id is null then
