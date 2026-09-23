@@ -336,11 +336,11 @@ begin
     where game_world_id = world_id
       and club_key = 'sm:' || club_id;
 
-    update public.manager_clubs
+    update public.manager_clubs mc
       set current_club = false
-    where team_id = team_id
-      and current_club = true
-      and manager_id is distinct from manager_id;
+    where mc.team_id = team_id
+      and mc.current_club = true
+      and mc.manager_id is distinct from manager_id;
 
     if not exists (
       select 1
