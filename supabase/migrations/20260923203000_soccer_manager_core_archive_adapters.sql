@@ -28,7 +28,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   mapped_team_id bigint;
 begin
@@ -67,7 +67,7 @@ begin
 
   return new;
 end;
-$;
+$$;
 
 create table if not exists public.soccer_manager_world_manager_assignments (
   game_world_id bigint not null references public.game_worlds(id) on delete cascade,
