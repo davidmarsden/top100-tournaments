@@ -131,21 +131,27 @@ function squadEntities(entry) {
   }));
 }
 
-function transferEntities(entry) {
+function transferEntities(entry, setupId = null) {
+  const worldScope = setupId || 'unscoped-world';
   return compact((entry.payload?.transfers || []).map((transfer) => {
-    const key = transfer?.transferId
+    const localKey = transfer?.transferId
       || [transfer?.playerId, transfer?.acceptedDate, transfer?.fromClubId, transfer?.toClubId].filter(Boolean).join(':');
-    if (!key) return null;
-    return entity('transfer', key, 'transfer-market', transfer);
+    if (!localKey) return null;
+    return entity('transfer', `${worldScope}:${localKey}`, worldScope, {
+      setupId,
+      ...transfer,
+    });
   }));
 }
 
-function playerChangeEntities(entry) {
+function playerChangeEntities(entry, setupId = null) {
   const rows = [];
   const addRows = (items, kind) => {
     for (const item of items || []) {
       if (!item?.playerId) continue;
+      const worldScope = setupId || 'unscoped-world';
       const signature = [
+        worldScope,
         item.playerId,
         item.changeType || kind,
         item.oldRating,
@@ -153,7 +159,7 @@ function playerChangeEntities(entry) {
         item.oldPositionId,
         item.newPositionId,
       ].map((value) => value ?? '').join(':');
-      rows.push(entity('player_change', signature, 'player-changes', { eventKind: kind, ...item }));
+      rows.push(entity('player_change', signature, worldScope, { setupId, eventKind: kind, ...item }));
     }
   };
   addRows(entry.payload?.changes, 'change');
@@ -161,28 +167,55 @@ function playerChangeEntities(entry) {
   return rows;
 }
 
-function financeEntities(entry) {
+function financeEntities(entry, fallbackContext = {}) {
   const context = parseSourceContext(entry.sourceUrl);
-  const scope = [context.setupId || 'unknown-world', context.clubId || 'unknown-club'].join(':');
+  const setupId = context.setupId || fallbackContext.setupId || null;
+  const clubId = context.clubId || fallbackContext.clubId || null;
+  if (!setupId || !clubId) return [];
+  const scope = `${setupId}:club:${clubId}`;
   return [entity('club_finance', scope, scope, {
-    setupId: context.setupId || null,
-    clubId: context.clubId || null,
+    setupId,
+    clubId,
     ...entry.payload,
   })];
+}
+
+function inferSyncContext(entries) {
+  const setupIds = new Set();
+  const clubs = [];
+
+  for (const entry of entries || []) {
+    if (entry?.payload?.kind === 'competition' && entry.payload?.world?.setupId) {
+      setupIds.add(String(entry.payload.world.setupId));
+    }
+    if (entry?.payload?.kind === 'clubSquad') {
+      const sourceContext = parseSourceContext(entry.sourceUrl);
+      const setupId = entry.payload?.club?.setupId || sourceContext.setupId;
+      const clubId = entry.payload?.club?.clubId || sourceContext.clubId;
+      if (setupId) setupIds.add(String(setupId));
+      if (setupId && clubId) clubs.push({ setupId: String(setupId), clubId: String(clubId) });
+    }
+  }
+
+  return {
+    setupId: setupIds.size === 1 ? [...setupIds][0] : null,
+    club: clubs.length === 1 ? clubs[0] : null,
+  };
 }
 
 export function extractSoccerManagerEntities(entries) {
   const output = [];
   const seen = new Map();
+  const inferred = inferSyncContext(entries);
 
   for (const entry of entries || []) {
     if (!entry?.payload?.kind) continue;
     let entities = [];
     if (entry.payload.kind === 'competition') entities = competitionEntities(entry);
     if (entry.payload.kind === 'clubSquad') entities = squadEntities(entry);
-    if (entry.payload.kind === 'transfers') entities = transferEntities(entry);
-    if (entry.payload.kind === 'playerChanges') entities = playerChangeEntities(entry);
-    if (entry.payload.kind === 'clubFinance') entities = financeEntities(entry);
+    if (entry.payload.kind === 'transfers') entities = transferEntities(entry, inferred.setupId);
+    if (entry.payload.kind === 'playerChanges') entities = playerChangeEntities(entry, inferred.setupId);
+    if (entry.payload.kind === 'clubFinance') entities = financeEntities(entry, inferred.club || {});
 
     for (const row of entities) {
       const identity = `${row.entityType}\u0000${row.entityKey}`;
