@@ -272,7 +272,7 @@ function findClubSquadRows(input) {
       const objectRows = value.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
       if (objectRows.length) {
         const qualifyingRows = objectRows.filter((row) => {
-          const playerId = textOrNull(row.playerid ?? row.PlayerID ?? row.PlayerDataID ?? row.playerdataid);
+          const playerId = firstText(row.playerid, row.PlayerID, row.PlayerDataID, row.playerdataid);
           const rating = numberOrNull(row.rating ?? row.PlayerRating);
           const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
           const playerName = firstText(row.pitchname, row.PlayerName, fullName);
@@ -311,8 +311,8 @@ export function normalizeClubSquad(input) {
     players: rows.map((record) => {
       const fullName = [record.name, record.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
       return {
-      playerId: textOrNull(record.playerid ?? record.PlayerID ?? record.PlayerDataID ?? record.playerdataid),
-      playerDataId: textOrNull(record.playerdataid ?? record.PlayerDataID ?? record.playerid ?? record.PlayerID),
+      playerId: firstText(record.playerid, record.PlayerID, record.PlayerDataID, record.playerdataid),
+      playerDataId: firstText(record.playerdataid, record.PlayerDataID, record.playerid, record.PlayerID),
       name: firstText(record.pitchname, record.PlayerName, fullName, record.name),
       firstName: textOrNull(record.name),
       surname: textOrNull(record.surname),
