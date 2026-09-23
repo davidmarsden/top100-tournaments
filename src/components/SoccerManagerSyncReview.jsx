@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { reviewSoccerManagerSyncChange, reviewSoccerManagerSyncRun } from '../lib/soccerManagerSyncPersistence';
 
@@ -17,6 +17,8 @@ function compactJson(value) {
   return text.length > 5000 ? text.slice(0, 5000) + '\n…' : text;
 }
 
+const CHANGE_PAGE_SIZE = 500;
+
 export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }) {
   const [runs, setRuns] = useState([]);
   const [selectedRunId, setSelectedRunId] = useState(null);
@@ -25,6 +27,12 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
   const [loadingChanges, setLoadingChanges] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [status, setStatus] = useState('');
+  const changeRequestRef = useRef(0);
+  const selectedRunIdRef = useRef(null);
+
+  useEffect(() => {
+    selectedRunIdRef.current = selectedRunId;
+  }, [selectedRunId]);
 
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) || null,
@@ -67,24 +75,48 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
   }, []);
 
   const loadChanges = useCallback(async (runId) => {
+    const requestId = changeRequestRef.current + 1;
+    changeRequestRef.current = requestId;
+    setChanges([]);
+
     if (!supabase || !runId) {
-      setChanges([]);
+      setLoadingChanges(false);
       return;
     }
+
     setLoadingChanges(true);
-    const { data, error } = await supabase
-      .from('soccer_manager_sync_changes')
-      .select('id, run_id, entity_type, entity_key, scope_key, change_kind, status, before_data, after_data, reviewed_at')
-      .eq('run_id', runId)
-      .order('entity_type', { ascending: true })
-      .order('id', { ascending: true })
-      .limit(1000);
+    const allChanges = [];
+    let from = 0;
+    let error = null;
+
+    while (true) {
+      const result = await supabase
+        .from('soccer_manager_sync_changes')
+        .select('id, run_id, entity_type, entity_key, scope_key, change_kind, status, before_data, after_data, reviewed_at')
+        .eq('run_id', runId)
+        .order('entity_type', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, from + CHANGE_PAGE_SIZE - 1);
+
+      if (result.error) {
+        error = result.error;
+        break;
+      }
+
+      const page = result.data || [];
+      allChanges.push(...page);
+      if (page.length < CHANGE_PAGE_SIZE) break;
+      from += CHANGE_PAGE_SIZE;
+    }
+
+    if (changeRequestRef.current !== requestId || selectedRunIdRef.current !== runId) return;
+
     setLoadingChanges(false);
     if (error) {
       setStatus(`Could not load staged changes: ${error.message}`);
       return;
     }
-    setChanges(data || []);
+    setChanges(allChanges);
   }, []);
 
   useEffect(() => {
@@ -111,7 +143,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
   }
 
   async function reviewRun(decision) {
-    if (!selectedRunId || !pendingCount) return;
+    const allChangesLoaded = Boolean(selectedRun) && !loadingChanges && changes.length === selectedRun.change_count;
+    if (!selectedRunId || !pendingCount || !allChangesLoaded) return;
     const verb = decision === 'approved' ? 'approve' : 'reject';
     if (!window.confirm(`Really ${verb} all ${pendingCount} pending changes in sync #${selectedRunId}?`)) return;
 
@@ -168,8 +201,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
               <p className="muted">{selectedRun.source_count} source response{selectedRun.source_count === 1 ? '' : 's'} · {selectedRun.entity_count} normalized entities · {selectedRun.change_count} changes</p>
             </div>
             {!!pendingCount && <div className="button-row">
-              <button type="button" onClick={() => reviewRun('approved')} disabled={Boolean(busyId)}>Approve all ({pendingCount})</button>
-              <button type="button" className="secondary" onClick={() => reviewRun('rejected')} disabled={Boolean(busyId)}>Reject all</button>
+              <button type="button" onClick={() => reviewRun('approved')} disabled={Boolean(busyId) || loadingChanges || changes.length !== selectedRun.change_count}>Approve all ({pendingCount})</button>
+              <button type="button" className="secondary" onClick={() => reviewRun('rejected')} disabled={Boolean(busyId) || loadingChanges || changes.length !== selectedRun.change_count}>Reject all</button>
             </div>}
           </div>
 
@@ -177,7 +210,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
             {changeSummary.map(([label, count]) => <span key={label}><strong>{count}</strong> {label}</span>)}
           </div>}
 
-          {loadingChanges && <p className="muted">Loading changes…</p>}
+          {loadingChanges && <p className="muted">Loading all {selectedRun.change_count} changes before review actions are enabled…</p>}
+          {!loadingChanges && changes.length !== selectedRun.change_count && <p className="status error-text">Only {changes.length} of {selectedRun.change_count} changes are loaded. Bulk review is disabled.</p>}
           {!loadingChanges && !changes.length && <div className="empty-state"><strong>No differences from the approved canonical source state.</strong><p className="muted">This sync is already up to date.</p></div>}
 
           <div className="sm-sync-change-list">
@@ -199,8 +233,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
                 </div>
               </details>
               {change.status === 'pending' && <div className="button-row">
-                <button type="button" onClick={() => reviewOne(change.id, 'approved')} disabled={Boolean(busyId)}>Approve</button>
-                <button type="button" className="secondary" onClick={() => reviewOne(change.id, 'rejected')} disabled={Boolean(busyId)}>Reject</button>
+                <button type="button" onClick={() => reviewOne(change.id, 'approved')} disabled={Boolean(busyId) || loadingChanges}>Approve</button>
+                <button type="button" className="secondary" onClick={() => reviewOne(change.id, 'rejected')} disabled={Boolean(busyId) || loadingChanges}>Reject</button>
               </div>}
             </article>)}
           </div>
