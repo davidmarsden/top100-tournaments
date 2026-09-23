@@ -22,6 +22,14 @@ function firstText(...values) {
   return null;
 }
 
+function firstNumber(...values) {
+  for (const value of values) {
+    const number = numberOrNull(value);
+    if (number !== null) return number;
+  }
+  return null;
+}
+
 function booleanFlag(value) {
   if (value === true || value === 1 || value === '1') return true;
   if (value === false || value === 0 || value === '0' || value === null || value === undefined || value === '') return false;
@@ -273,14 +281,14 @@ function findClubSquadRows(input) {
       if (objectRows.length) {
         const qualifyingRows = objectRows.filter((row) => {
           const playerId = firstText(row.playerid, row.PlayerID, row.PlayerDataID, row.playerdataid);
-          const rating = numberOrNull(row.rating ?? row.PlayerRating);
+          const rating = firstNumber(row.rating, row.PlayerRating);
           const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
           const playerName = firstText(row.pitchname, row.PlayerName, fullName);
           return playerId !== null && (playerName !== null || rating !== null);
         });
         if (qualifyingRows.length) {
           const score = qualifyingRows.reduce((sum, row) => {
-            const rating = numberOrNull(row.rating ?? row.PlayerRating);
+            const rating = firstNumber(row.rating, row.PlayerRating);
             const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
             const playerName = firstText(row.pitchname, row.PlayerName, fullName);
             return sum + 2 + (rating !== null ? 1 : 0) + (playerName !== null ? 1 : 0);
@@ -305,8 +313,8 @@ export function normalizeClubSquad(input) {
   return {
     kind: 'clubSquad',
     club: {
-      clubId: textOrNull(input?.clubid ?? input?.ClubID ?? input?.clubID ?? input?.club?.clubid ?? input?.club?.ClubID),
-      name: textOrNull(input?.clubname ?? input?.ClubName ?? input?.clubName ?? input?.club?.clubname ?? input?.club?.ClubName),
+      clubId: firstText(input?.clubid, input?.ClubID, input?.clubID, input?.club?.clubid, input?.club?.ClubID),
+      name: firstText(input?.clubname, input?.ClubName, input?.clubName, input?.club?.clubname, input?.club?.ClubName),
     },
     players: rows.map((record) => {
       const fullName = [record.name, record.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
@@ -317,7 +325,7 @@ export function normalizeClubSquad(input) {
       firstName: textOrNull(record.name),
       surname: textOrNull(record.surname),
       age: numberOrNull(record.age ?? record.PlayerAge),
-      rating: numberOrNull(record.rating ?? record.PlayerRating),
+      rating: firstNumber(record.rating, record.PlayerRating),
       position: cleanPosition(record.multipositiondis ?? record.LiveMultiPositionDis ?? record.position),
       positionId: numberOrNull(record.multiposition ?? record.playerpositionid ?? record.PlayerPos),
       nationality: textOrNull(record.countryname ?? record.playerscountryname ?? record.country),
