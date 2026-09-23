@@ -156,8 +156,22 @@ function playerChangeEntities(entry, fallbackSetupId = null) {
     for (const item of items || []) {
       if (!item?.playerId) continue;
       const worldScope = setupId;
+      const occurrence = item.eventId
+        ? `id:${item.eventId}`
+        : item.eventDate
+          ? `date:${item.eventDate}`
+          : item.turn !== null && item.turn !== undefined
+            ? `turn:${item.turn}`
+            : null;
+
+      // Player changes are events, not mutable player state. Without a source
+      // occurrence discriminator, a later repeat of the same transition would
+      // collide with the earlier event, so leave it unstaged rather than merge it.
+      if (!occurrence) continue;
+
       const signature = [
         worldScope,
+        occurrence,
         item.playerId,
         item.changeType || kind,
         item.oldRating,
