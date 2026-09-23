@@ -64,16 +64,22 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
     const fields = 'id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at';
 
     const unresolvedRuns = [];
-    let unresolvedFrom = 0;
+    let unresolvedCursor = null;
     let unresolvedError = null;
 
     while (true) {
-      const result = await supabase
+      let query = supabase
         .from('soccer_manager_sync_runs')
         .select(fields)
         .neq('status', 'reviewed')
-        .order('created_at', { ascending: false })
-        .range(unresolvedFrom, unresolvedFrom + CHANGE_PAGE_SIZE - 1);
+        .order('id', { ascending: false })
+        .limit(CHANGE_PAGE_SIZE);
+
+      if (unresolvedCursor !== null) {
+        query = query.lt('id', unresolvedCursor);
+      }
+
+      const result = await query;
 
       if (result.error) {
         unresolvedError = result.error;
@@ -83,7 +89,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
       const page = result.data || [];
       unresolvedRuns.push(...page);
       if (page.length < CHANGE_PAGE_SIZE) break;
-      unresolvedFrom += CHANGE_PAGE_SIZE;
+      unresolvedCursor = page[page.length - 1].id;
     }
 
     const recentReviewedResult = await supabase
