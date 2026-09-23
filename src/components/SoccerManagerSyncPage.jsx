@@ -3,6 +3,7 @@ import { normalizeSoccerManagerPayload, summarizeNormalizedPayload } from '../li
 import { collectorBookmarklet, isAllowedSoccerManagerOrigin, soccerManagerCollectorProtocol } from '../lib/soccerManagerCollector';
 import { normalizedPayloadForPersistence, stageSoccerManagerSync } from '../lib/soccerManagerSyncPersistence';
 import SoccerManagerSyncReview from './SoccerManagerSyncReview.jsx';
+import SoccerManagerArchiveAdapter from './SoccerManagerArchiveAdapter.jsx';
 
 function formatValue(value) {
   if (value === null || value === undefined || value === '') return '—';
@@ -321,6 +322,7 @@ export default function SoccerManagerSyncPage() {
     </section>}
 
     <SoccerManagerSyncReview refreshToken={reviewRefreshToken} />
+    <SoccerManagerArchiveAdapter refreshToken={reviewRefreshToken} />
 
     {!!totalSummary.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Import summary</p><h2>What we found</h2></div>
