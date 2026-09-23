@@ -23,6 +23,8 @@ While the administrator is already signed into Soccer Manager, the bookmarklet:
 
 No Soccer Manager password, Cookie header, PHP session id or request headers are transmitted to Top 100.
 
+Equivalent normalized responses are collapsed in the workbench, so companion requests such as `clubfinance` and `incomegraph` do not render duplicate finance snapshots.
+
 The receiving page accepts messages only from HTTPS `soccermanager.com` origins, checks the declared source origin against the browser-supplied message origin, requires the per-run collector session token, and replies to readiness probes via the actual message `event.source` rather than `window.opener`. It normalizes at most the 20 most recent responses, so the screen the administrator just opened is not displaced by older Resource Timing history, and remains behind the existing global administrator gate. Normalized downloads preserve the captured source URL so action/world/club query context is not lost. The UI also uses that full source identity for React keys while keeping the endpoint basename as the human-readable label, preventing previews from being reused across different query variants.
 
 The collector also sends a diagnostic list of the 50 most recent same-origin resource requests visible through the browser's Resource Timing API. This lets us discover real Soccer Manager endpoint names when a screen is not yet covered by the known patterns. Diagnostic URLs are restricted to the current Soccer Manager origin and query parameters with names suggesting tokens, sessions (including aliases such as `PHPSESSID`/`sessid`), auth, secrets, passwords, cookies or keys are redacted before transmission.
@@ -36,7 +38,7 @@ The collector currently discovers these endpoint families when they have already
 - player-changes mobile endpoints
 - transfer-market mobile endpoints
 
-If a relevant request has not yet happened on the current page, open that Soccer Manager screen first and run the bookmarklet again. If no supported JSON response matches, the diagnostic request list is still delivered so the missing endpoint can be identified without opening browser developer tools.
+If a relevant request has not yet happened on the current page, open that Soccer Manager screen first and run the bookmarklet again. Club squad responses are detected by their player-record shape rather than relying on one fragile top-level array name, because the observed `clubinitdata2` response nests the squad data. If no supported JSON response matches, the diagnostic request list is still delivered so the missing endpoint can be identified without opening browser developer tools.
 
 ## v0.1 admin workbench
 
@@ -68,6 +70,12 @@ Supported response shapes:
   - source/destination club ids
   - manager/customer ids
   - Soccer Manager illegal-deal flag
+- Club squad (`club-ajax-mobile.php?action=clubinitdata2...`)
+  - player/source ids
+  - name, age, rating and positions
+  - value, wages, contract, morale and condition
+  - appearances, goals and assists
+  - youth/goalkeeper/transfer-list flags where present
 - Club finance
   - season balance/income/outgoings
   - wages and transfer spend
