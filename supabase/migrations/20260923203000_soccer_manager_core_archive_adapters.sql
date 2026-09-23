@@ -23,11 +23,58 @@ create policy "Global admins read Soccer Manager archive links"
   on public.soccer_manager_archive_links for select to authenticated
   using ((select public.is_admin()));
 
+create or replace function public.sync_game_world_club_to_teams()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  mapped_team_id bigint;
+begin
+  if new.active = true and nullif(trim(new.club_name), '') is not null then
+    select link.target_id
+      into mapped_team_id
+    from public.soccer_manager_archive_links link
+    join public.game_worlds world on world.id = new.game_world_id
+    join public.teams team on team.id = link.target_id
+    where link.source_type = 'club'
+      and link.target_type = 'team'
+      and world.external_world_id is not null
+      and split_part(link.source_key, ':', 1) = world.external_world_id::text
+      and public.team_directory_key(link.source_name) = public.team_directory_key(new.club_name)
+    order by link.updated_at desc
+    limit 1;
+
+    if mapped_team_id is not null then
+      update public.teams
+      set active = true
+      where id = mapped_team_id;
+
+      return new;
+    end if;
+
+    update public.teams
+    set active = true
+    where public.team_directory_key(name) = public.team_directory_key(new.club_name);
+
+    if not found then
+      insert into public.teams (name, active)
+      values (new.club_name, true)
+      on conflict (name) do update set active = true;
+    end if;
+  end if;
+
+  return new;
+end;
+$;
+
 create table if not exists public.soccer_manager_world_manager_assignments (
   game_world_id bigint not null references public.game_worlds(id) on delete cascade,
   team_id bigint not null references public.teams(id) on delete cascade,
   manager_id bigint not null references public.managers(id) on delete cascade,
   source_manager_key text not null,
+  source_manager_name text,
   assigned_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (game_world_id, team_id)
@@ -283,6 +330,14 @@ begin
     if coalesce(v_existing_source_name, v_existing_team_name) is not null
        and public.normal_registration_key(coalesce(v_existing_source_name, v_existing_team_name))
            is distinct from public.normal_registration_key(v_club_name) then
+      update public.soccer_manager_archive_links
+        set source_name = v_club_name,
+            updated_at = now()
+      where source_type = 'club'
+        and source_key = setup_id || ':' || v_club_id
+        and target_type = 'team'
+        and target_id = v_team_id;
+
       update public.game_world_clubs
         set club_name = v_club_name,
             club_key = public.normal_registration_key(v_club_name),
@@ -392,21 +447,27 @@ begin
       end if;
 
       insert into public.soccer_manager_archive_links (
-        source_type, source_key, target_type, target_id
+        source_type, source_key, target_type, target_id, source_name
       ) values (
-        'manager', setup_id || ':' || v_manager_source_id, 'manager', v_manager_id
+        'manager', setup_id || ':' || v_manager_source_id, 'manager', v_manager_id, v_manager_name
       )
       on conflict (source_type, source_key) do update
         set target_type = excluded.target_type,
             target_id = excluded.target_id,
+            source_name = excluded.source_name,
             updated_at = now();
     else
       update public.managers
-        set name = coalesce(nullif(name, ''), v_manager_name),
-            canonical_name = coalesce(nullif(canonical_name, ''), v_manager_name),
-            display_name = v_manager_name,
-            active = true
+        set active = true
       where id = v_manager_id;
+
+      update public.soccer_manager_archive_links
+        set source_name = v_manager_name,
+            updated_at = now()
+      where source_type = 'manager'
+        and source_key = setup_id || ':' || v_manager_source_id
+        and target_type = 'manager'
+        and target_id = v_manager_id;
     end if;
 
     managers_applied := managers_applied + 1;
@@ -469,6 +530,7 @@ begin
       team_id,
       manager_id,
       source_manager_key,
+      source_manager_name,
       assigned_at,
       updated_at
     ) values (
@@ -476,6 +538,7 @@ begin
       v_team_id,
       v_manager_id,
       setup_id || ':' || v_manager_source_id,
+      v_manager_name,
       now(),
       now()
     )
@@ -488,6 +551,7 @@ begin
           end,
           manager_id = excluded.manager_id,
           source_manager_key = excluded.source_manager_key,
+          source_manager_name = excluded.source_manager_name,
           updated_at = now();
 
     assignments_applied := assignments_applied + 1;
