@@ -191,11 +191,14 @@ function inferSyncContext(entries) {
   const clubs = [];
 
   for (const entry of entries || []) {
+    const sourceContext = parseSourceContext(entry?.sourceUrl);
+    if (sourceContext.setupId) setupIds.add(String(sourceContext.setupId));
+
     if (entry?.payload?.kind === 'competition' && entry.payload?.world?.setupId) {
       setupIds.add(String(entry.payload.world.setupId));
     }
+
     if (entry?.payload?.kind === 'clubSquad') {
-      const sourceContext = parseSourceContext(entry.sourceUrl);
       const setupId = entry.payload?.club?.setupId || sourceContext.setupId;
       const clubId = entry.payload?.club?.clubId || sourceContext.clubId;
       if (setupId) setupIds.add(String(setupId));
@@ -203,9 +206,14 @@ function inferSyncContext(entries) {
     }
   }
 
+  const setupId = setupIds.size === 1 ? [...setupIds][0] : null;
+  const matchingClubs = setupId
+    ? clubs.filter((club) => club.setupId === setupId)
+    : [];
+
   return {
-    setupId: setupIds.size === 1 ? [...setupIds][0] : null,
-    club: clubs.length === 1 ? clubs[0] : null,
+    setupId,
+    club: matchingClubs.length === 1 ? matchingClubs[0] : null,
   };
 }
 
