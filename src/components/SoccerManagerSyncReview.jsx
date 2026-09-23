@@ -268,7 +268,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0 }) {
 
           {loadingChanges && <p className="muted">Loading all {selectedRun.change_count} changes before review actions are enabled…</p>}
           {!loadingChanges && !allChangesLoaded && <p className="status error-text">The complete change set is not loaded for this run. Bulk review is disabled.</p>}
-          {!loadingChanges && !changes.length && <div className="empty-state"><strong>No differences from the approved canonical source state.</strong><p className="muted">This sync is already up to date.</p></div>}
+          {!loadingChanges && selectedRun.change_count === 0 && <div className="empty-state"><strong>No differences from the approved canonical source state.</strong><p className="muted">This sync is already up to date.</p></div>}
 
           <div className="sm-sync-change-list">
             {changes.map((change) => <article key={change.id} className={`sm-sync-change-card ${change.status}`}>
