@@ -18,7 +18,7 @@ export function collectorBookmarklet() {
 const target='${SYNC_URL}',helloType='${HELLO_TYPE}',msgType='${MESSAGE_TYPE}',readyType='${READY_TYPE}',ackType='${ACK_TYPE}';
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
 const patterns=[/competition-ajax\\.php/i,/club-ajax-mobile\\.php/i,/playerchanges[^/]*\\.php/i,/transfer[^/]*market[^/]*\\.php/i];
-const sensitive=/token|session|auth|secret|password|passwd|cookie|key/i;
+const sensitive=/(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)/i;
 const sanitize=u=>{try{const x=new URL(u,location.href);if(x.origin!==location.origin)return null;for(const k of [...x.searchParams.keys()])if(sensitive.test(k))x.searchParams.set(k,'[redacted]');x.hash='';return x.toString();}catch{return null;}};
 const resources=performance.getEntriesByType('resource').filter(e=>{try{return new URL(e.name,location.href).origin===location.origin;}catch{return false;}});
 const diagnostics=resources.slice(-50).map(e=>({url:sanitize(e.name),initiatorType:e.initiatorType||null,startTime:Math.round(e.startTime)})).filter(e=>e.url);
