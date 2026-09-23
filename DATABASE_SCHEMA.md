@@ -384,6 +384,7 @@ Purpose: Stores Soccer Manager current manager-to-club assignments scoped to a s
 | `team_id` | `int8` | FK → `teams.id`, composite primary key |
 | `manager_id` | `int8` | FK → `managers.id`, required |
 | `source_manager_key` | `text` | Required stable Soccer Manager source identity |
+| `source_manager_name` | `text` | Nullable; world-specific Soccer Manager display name |
 | `assigned_at` | `timestamptz` | Default `now()` |
 | `updated_at` | `timestamptz` | Default `now()` |
 
