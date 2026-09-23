@@ -31,6 +31,8 @@ The collector also sends a diagnostic list of the 50 most recent same-origin res
 
 The Sync workbench shows those requests in a diagnostic table and can download the sanitized list as a small JSON file. The download preserves the collector's original capture timestamp rather than the later download time. Diagnostics contain URLs/timing metadata only, never cookies, request headers or response bodies.
 
+For club-squad responses, the normalizer now also receives the captured source URL as context. If the response body omits club/world identity, it can safely recover the non-secret `clubid` and `sid` query values from that already-captured URL. The normalized squad output keeps those as `club.clubId` and `club.setupId`; the action/latest response id are retained separately as source context.
+
 The collector currently discovers these endpoint families when they have already been requested by the current Soccer Manager page:
 
 - `competition-ajax.php`
@@ -38,7 +40,11 @@ The collector currently discovers these endpoint families when they have already
 - player-changes mobile endpoints
 - transfer-market mobile endpoints
 
-If a relevant request has not yet happened on the current page, open that Soccer Manager screen first and run the bookmarklet again. Club squad responses are detected by their player-record shape rather than relying on one fragile top-level array name, because the observed `clubinitdata2` response nests the squad data. Detection validates evidence per player row: a row must contain a real player ID plus either a meaningful name or a parseable rating. Squad aliases are normalized before selection rather than chosen by key presence. Blank text and whitespace-only/unparseable numeric aliases fall through to valid alternatives; player IDs treat `0` as absent; nested camel-case club metadata is included; and age, position, nationality, value, wages, contract and transfer-list aliases use the same normalized fallback rule. Only those qualifying rows are kept, and candidate arrays with at least two such players are ranked. This prevents a larger unrelated ID-only array from hiding the actual squad. If no supported JSON response matches, the diagnostic request list is still delivered so the missing endpoint can be identified without opening browser developer tools.
+If a relevant request has not yet happened on the current page, open that Soccer Manager screen first and run the bookmarklet again. Club squad responses are detected by their player-record shape rather than relying on one fragile top-level array name, because the observed `clubinitdata2` response nests the squad data. Detection validates evidence per player row: a row must contain a real player ID plus either a meaningful name or a parseable rating. Squad aliases are normalized before selection rather than chosen by key presence. Blank text and whitespace-only/unparseable numeric aliases fall through to valid alternatives; player IDs treat `0` as absent; nested camel-case club metadata is included; and age, position, nationality, value, wages, contract and transfer-list aliases use the same normalized fallback rule. Only those qualifying rows are kept, and candidate arrays with at least two such players are ranked. This prevents a larger unrelated ID-only array from hiding the actual squad.
+
+To finish mapping fields that are present in the raw club response but not yet recognized by the normalizer, the normalized squad now includes a schema diagnostic containing only the unique player-row field names. The workbench exposes those names behind a disclosure panel. No raw player values are included in that schema diagnostic.
+
+If no supported JSON response matches, the diagnostic request list is still delivered so the missing endpoint can be identified without opening browser developer tools.
 
 ## v0.1 admin workbench
 
