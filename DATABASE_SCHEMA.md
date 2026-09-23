@@ -373,6 +373,21 @@ Purpose: Private source-identity map used by approved Soccer Manager archive ada
 
 This table is admin-readable only and is not a public archive surface.
 
+## Table `soccer_manager_world_manager_assignments`
+
+Purpose: Stores Soccer Manager current manager-to-club assignments scoped to a specific game world. This is deliberately separate from global `manager_clubs` career history so applying one Soccer Manager world cannot retire another world's current assignment.
+
+| Name | Type | Constraints |
+|---|---|---|
+| `game_world_id` | `int8` | FK → `game_worlds.id`, composite primary key |
+| `team_id` | `int8` | FK → `teams.id`, composite primary key |
+| `manager_id` | `int8` | FK → `managers.id`, required |
+| `source_manager_key` | `text` | Required stable Soccer Manager source identity |
+| `assigned_at` | `timestamptz` | Default `now()` |
+| `updated_at` | `timestamptz` | Default `now()` |
+
+This table is admin-readable only. Vacant clubs remove the selected world's assignment row without mutating global `manager_clubs.current_club`.
+
 ## Table `league_standing_snapshots`
 
 Purpose: Immutable versioned league-table history created when an administrator applies approved Soccer Manager canonical standings to the archive.
@@ -430,6 +445,9 @@ Purpose: Stores bracket/round schedule presets. These can be set before fixtures
 | `achievements` | `season_id` | `seasons.id` |
 | `league_standing_snapshots` | `game_world_id` | `game_worlds.id` |
 | `league_standing_snapshots` | `team_id` | `teams.id` |
+| `soccer_manager_world_manager_assignments` | `game_world_id` | `game_worlds.id` |
+| `soccer_manager_world_manager_assignments` | `team_id` | `teams.id` |
+| `soccer_manager_world_manager_assignments` | `manager_id` | `managers.id` |
 | `forfeits` | `forfeiting_entry_id` | `tournament_entries.id` |
 | `forfeits` | `match_id` | `matches.id` |
 | `groups` | `tournament_id` | `tournaments.id` |
