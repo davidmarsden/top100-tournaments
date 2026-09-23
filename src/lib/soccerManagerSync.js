@@ -118,6 +118,26 @@ function fieldNames(rows) {
   return [...new Set(rows.flatMap((row) => Object.keys(row || {})))].sort((a, b) => a.localeCompare(b));
 }
 
+function squadPlayerName(record) {
+  const observedFullName = [record?.playername, record?.playersurname]
+    .map((value) => textOrNull(value))
+    .filter(Boolean)
+    .join(' ');
+  const legacyFullName = [record?.name, record?.surname]
+    .map((value) => textOrNull(value))
+    .filter(Boolean)
+    .join(' ');
+  return firstText(
+    record?.playerpitchname,
+    record?.pitchname,
+    record?.PlayerName,
+    observedFullName,
+    legacyFullName,
+    record?.playername,
+    record?.name,
+  );
+}
+
 function zipLeagueRows(tables, leagueId) {
   const keys = {
     clubId: '_clubId',
@@ -339,15 +359,13 @@ function findClubSquadRows(input) {
         const qualifyingRows = objectRows.filter((row) => {
           const playerId = firstNonZeroId(row.playerid, row.PlayerID, row.PlayerDataID, row.playerdataid);
           const rating = firstNumber(row.rating, row.PlayerRating);
-          const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-          const playerName = firstText(row.pitchname, row.PlayerName, fullName);
+          const playerName = squadPlayerName(row);
           return playerId !== null && (playerName !== null || rating !== null);
         });
         if (qualifyingRows.length) {
           const score = qualifyingRows.reduce((sum, row) => {
             const rating = firstNumber(row.rating, row.PlayerRating);
-            const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-            const playerName = firstText(row.pitchname, row.PlayerName, fullName);
+            const playerName = squadPlayerName(row);
             return sum + 2 + (rating !== null ? 1 : 0) + (playerName !== null ? 1 : 0);
           }, 0);
           candidates.push({ rows: qualifyingRows, score, width: qualifyingRows.length });
@@ -383,11 +401,10 @@ export function normalizeClubSquad(input, context = {}) {
       playerKeys: fieldNames(rows),
     },
     players: rows.map((record) => {
-      const fullName = [record.name, record.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
       return {
       playerId: firstNonZeroId(record.playerid, record.PlayerID, record.PlayerDataID, record.playerdataid),
       playerDataId: firstNonZeroId(record.playerdataid, record.PlayerDataID, record.playerid, record.PlayerID),
-      name: firstText(record.playerpitchname, record.pitchname, record.PlayerName, record.playername, fullName, record.name),
+      name: squadPlayerName(record),
       firstName: firstText(record.playername, record.name),
       surname: firstText(record.playersurname, record.surname),
       age: firstNumber(record.age, record.PlayerAge),
