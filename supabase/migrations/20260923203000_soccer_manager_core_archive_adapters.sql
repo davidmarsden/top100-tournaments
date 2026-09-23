@@ -512,14 +512,20 @@ begin
     end if;
   end loop;
 
-  -- Each approved standing version is preserved once. This gives analytics a
-  -- progression history even though the canonical entity itself stores only latest state.
+  -- Preserve every approved standing change, not only the latest canonical row.
+  -- This lets the adapter catch up after several reviews without losing intermediate tables.
   for row_data in
-    select entity_key, version, last_approved_at, data
-    from public.soccer_manager_canonical_entities
-    where entity_type = 'standing'
-      and data->>'setupId' = setup_id
-    order by entity_key
+    select
+      change.entity_key,
+      coalesce(change.baseline_version, 0) + 1 as source_version,
+      run.captured_at,
+      change.after_data as data
+    from public.soccer_manager_sync_changes change
+    join public.soccer_manager_sync_runs run on run.id = change.run_id
+    where change.entity_type = 'standing'
+      and change.status = 'approved'
+      and change.after_data->>'setupId' = setup_id
+    order by change.entity_key, coalesce(change.baseline_version, 0) + 1, change.id
   loop
     v_club_id := nullif(trim(row_data.data->>'clubId'), '');
     if v_club_id is null then
@@ -559,7 +565,7 @@ begin
       captured_at
     ) values (
       row_data.entity_key,
-      row_data.version,
+      row_data.source_version,
       v_world_id,
       nullif(row_data.data->>'leagueId', ''),
       case when coalesce(row_data.data->>'division', '') ~ '^[0-9]+$' then (row_data.data->>'division')::integer else null end,
@@ -576,7 +582,7 @@ begin
       case when coalesce(row_data.data->>'points', '') ~ '^-?[0-9]+$' then (row_data.data->>'points')::integer else null end,
       case when coalesce(row_data.data->>'attendance', '') ~ '^-?[0-9]+$' then (row_data.data->>'attendance')::integer else null end,
       coalesce(row_data.data->'form', '[]'::jsonb),
-      coalesce(row_data.last_approved_at, now())
+      coalesce(row_data.captured_at, now())
     )
     on conflict (source_entity_key, source_version) do nothing;
 
