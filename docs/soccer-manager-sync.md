@@ -18,11 +18,11 @@ The first adapter consumes approved canonical entities only and applies the safe
 3. stable manager/customer ids → `managers`;
 4. current manager-to-club assignments → `game_world_clubs` plus world-scoped `soccer_manager_world_manager_assignments`;
 5. season/champion history → `seasons` and league-title `achievements`;
-6. each approved standing version → immutable `league_standing_snapshots`.
+6. each approved standing state → immutable `league_standing_snapshots`, using a deterministic per-entity approval sequence so pre-versioning legacy approvals are preserved too.
 
 `soccer_manager_archive_links` keeps the stable source-id-to-archive-id mapping. Names are used only for a cautious first match when no mapping exists; team matching uses the same punctuation-, spacing- and accent-insensitive `team_directory_key` as the rest of the Top 100 directory, and ambiguous matches abort the transaction rather than guessing. Subsequent runs use source IDs.
 
-The adapter is idempotent. Re-running it updates mapped current records, does not duplicate league titles, and inserts a standing snapshot only once for each approved canonical entity version. Current directory state collapses canonical standings to the most recently approved row per world/club, so promotions and relegations do not leave an older division row in control. Current manager assignments are stored per game world rather than mutating the global `manager_clubs.current_club` career flag. A standing that explicitly reports a club unmanaged clears only that world's current assignment. The adapter does not infer other departures or sackings from absence, and a normal sync or source approval never invokes it automatically.
+The adapter is idempotent. Re-running it updates mapped current records, does not duplicate league titles, and inserts a standing snapshot only once for each approved standing approval in that entity's chronological history. Current directory state collapses canonical standings to the most recently approved row per world/club, so promotions and relegations do not leave an older division row in control. Current manager assignments are stored per game world rather than mutating the global `manager_clubs.current_club` career flag. A standing that explicitly reports a club unmanaged clears only that world's current assignment. The adapter does not infer other departures or sackings from absence, and a normal sync or source approval never invokes it automatically.
 
 League titles are stored in `achievements`, not `honours`, because the current `honours` table is tied to a tournament entry. `achievements` now carries optional game-world, season and source provenance so league history can coexist cleanly with tournament honours.
 
