@@ -20,9 +20,9 @@ Three private, global-admin-only tables form the source layer:
 
 The browser converts each normalized response into stable source entities before staging. Current entity types include worlds, divisions, standings, manager assignments, fixtures/results, season history, player leaderboards, squad players, transfers, player changes and club finance snapshots.
 
-The staging RPC compares incoming entities with the approved canonical source state and creates review rows only when the normalized JSON is new or changed. Re-running an unchanged sync therefore produces a zero-change reviewed run rather than another pile of duplicate work.
+The staging RPC compares incoming entities with the approved canonical source state and creates review rows only when the normalized JSON is new or changed. Each staged change also records the canonical version it was compared against. Re-running an unchanged sync therefore produces a zero-change reviewed run rather than another pile of duplicate work.
 
-Approving a change updates only the private canonical source layer. Rejecting it leaves canonical source state unchanged. Bulk approve/reject is available per sync run. These review operations are transactional database RPCs and require `public.is_admin()`; browser roles receive read access only to the private tables.
+Approving a change updates only the private canonical source layer. Rejecting it leaves canonical source state unchanged. Before approval, the RPC locks the relevant canonical row and verifies that its current version/data still matches the baseline captured when the change was staged; stale individual or bulk approvals are rejected instead of overwriting newer canonical state. Bulk approve/reject is available only after the UI has paged through the complete change set for the run. Run switching clears the previous queue immediately and stale async responses are ignored. These review operations are transactional database RPCs and require `public.is_admin()`; browser roles receive read access only to the private tables.
 
 This phase intentionally does **not** write to public archive tables such as `teams`, `managers`, `manager_clubs`, `honours` or tournament `matches`. Those adapters come next, after the canonical source changes are visible and auditable.
 
