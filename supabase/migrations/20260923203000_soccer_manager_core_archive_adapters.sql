@@ -293,7 +293,13 @@ begin
             manager_key = case
               when lower(coalesce(row_data.data->>'managed', '')) in ('1','true','yes')
               then manager_key else null end,
-            division = case when coalesce(row_data.data->>'division', '') ~ '^[0-9]+
+            division = case when coalesce(row_data.data->>'division', '') ~ '^[0-9]+$'
+              then (row_data.data->>'division')::integer else null end,
+            active = true,
+            updated_at = now()
+      where game_world_id = v_world_id
+        and club_key = public.normal_registration_key(coalesce(v_existing_source_name, v_existing_team_name));
+    end if;
 
     insert into public.game_world_clubs (
       game_world_id,
