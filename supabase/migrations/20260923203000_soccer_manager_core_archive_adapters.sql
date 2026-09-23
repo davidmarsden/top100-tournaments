@@ -240,6 +240,11 @@ begin
       end if;
     end if;
 
+    update public.teams
+      set name = v_club_name,
+          active = true
+    where id = v_team_id;
+
     -- The public directory contract uses normalized display-name keys. Source IDs
     -- stay in soccer_manager_archive_links and never leak into registration keys.
     if v_existing_team_name is not null
@@ -1051,11 +1056,6 @@ grant execute on function public.apply_soccer_manager_core_archive(text) to auth
           division = excluded.division,
           active = true,
           updated_at = now();
-
-    update public.teams
-      set name = v_club_name,
-          active = true
-    where id = v_team_id;
 
     insert into public.soccer_manager_archive_links (
       source_type, source_key, target_type, target_id
