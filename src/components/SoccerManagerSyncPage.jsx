@@ -320,7 +320,7 @@ export default function SoccerManagerSyncPage() {
       </tbody></table></div>
     </section>}
 
-    <SoccerManagerSyncReview refreshToken={reviewRefreshToken} onReviewed={() => setReviewRefreshToken((value) => value + 1)} />
+    <SoccerManagerSyncReview refreshToken={reviewRefreshToken} />
 
     {!!totalSummary.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Import summary</p><h2>What we found</h2></div>
