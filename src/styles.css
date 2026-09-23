@@ -160,3 +160,10 @@ th { color: #44546f; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .sm-sync-summary { display: grid; gap: 12px; padding: 14px 0; border-top: 1px solid #e4ebf7; }
 .sm-sync-summary:first-of-type { border-top: 0; padding-top: 0; }
 .sm-sync-summary > strong { font-size: 1.05rem; }
+
+
+.sm-sync-schema { margin: 0 0 18px; padding: 14px 16px; border: 1px solid #e4ebf7; border-radius: 16px; background: #fbfdff; }
+.sm-sync-schema summary { cursor: pointer; font-weight: 900; }
+.sm-sync-schema .muted { margin-bottom: 10px; }
+.sm-sync-field-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.sm-sync-field-list code { padding: 0.35rem 0.5rem; border-radius: 8px; background: #eef3fb; color: #334155; font-size: 0.78rem; }
