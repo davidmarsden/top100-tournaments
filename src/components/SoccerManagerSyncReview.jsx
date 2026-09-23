@@ -44,6 +44,11 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
     [changes],
   );
 
+  const allChangesLoaded = Boolean(selectedRun)
+    && !loadingChanges
+    && changes.length === selectedRun.change_count
+    && changes.every((change) => change.run_id === selectedRunId);
+
   const changeSummary = useMemo(() => {
     const summary = new Map();
     for (const change of changes) {
@@ -128,6 +133,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
   }, [loadChanges, selectedRunId, refreshToken]);
 
   async function reviewOne(changeId, decision) {
+    const change = changes.find((row) => row.id === changeId);
+    if (!change || change.run_id !== selectedRunId || loadingChanges) return;
     setBusyId(changeId);
     setStatus('');
     try {
@@ -143,7 +150,6 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
   }
 
   async function reviewRun(decision) {
-    const allChangesLoaded = Boolean(selectedRun) && !loadingChanges && changes.length === selectedRun.change_count;
     if (!selectedRunId || !pendingCount || !allChangesLoaded) return;
     const verb = decision === 'approved' ? 'approve' : 'reject';
     if (!window.confirm(`Really ${verb} all ${pendingCount} pending changes in sync #${selectedRunId}?`)) return;
@@ -184,7 +190,12 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
           type="button"
           key={run.id}
           className={`sm-sync-run-card ${selectedRunId === run.id ? 'selected' : ''}`}
-          onClick={() => setSelectedRunId(run.id)}
+          onClick={() => {
+            changeRequestRef.current += 1;
+            setChanges([]);
+            setLoadingChanges(true);
+            setSelectedRunId(run.id);
+          }}
         >
           <strong>Sync #{run.id}</strong>
           <span>{formatWhen(run.captured_at)}</span>
@@ -201,8 +212,8 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
               <p className="muted">{selectedRun.source_count} source response{selectedRun.source_count === 1 ? '' : 's'} · {selectedRun.entity_count} normalized entities · {selectedRun.change_count} changes</p>
             </div>
             {!!pendingCount && <div className="button-row">
-              <button type="button" onClick={() => reviewRun('approved')} disabled={Boolean(busyId) || loadingChanges || changes.length !== selectedRun.change_count}>Approve all ({pendingCount})</button>
-              <button type="button" className="secondary" onClick={() => reviewRun('rejected')} disabled={Boolean(busyId) || loadingChanges || changes.length !== selectedRun.change_count}>Reject all</button>
+              <button type="button" onClick={() => reviewRun('approved')} disabled={Boolean(busyId) || !allChangesLoaded}>Approve all ({pendingCount})</button>
+              <button type="button" className="secondary" onClick={() => reviewRun('rejected')} disabled={Boolean(busyId) || !allChangesLoaded}>Reject all</button>
             </div>}
           </div>
 
@@ -211,7 +222,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
           </div>}
 
           {loadingChanges && <p className="muted">Loading all {selectedRun.change_count} changes before review actions are enabled…</p>}
-          {!loadingChanges && changes.length !== selectedRun.change_count && <p className="status error-text">Only {changes.length} of {selectedRun.change_count} changes are loaded. Bulk review is disabled.</p>}
+          {!loadingChanges && !allChangesLoaded && <p className="status error-text">The complete change set is not loaded for this run. Bulk review is disabled.</p>}
           {!loadingChanges && !changes.length && <div className="empty-state"><strong>No differences from the approved canonical source state.</strong><p className="muted">This sync is already up to date.</p></div>}
 
           <div className="sm-sync-change-list">
