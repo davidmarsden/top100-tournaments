@@ -75,7 +75,7 @@ create unique index if not exists achievements_source_key_uidx
   on public.achievements(source, source_key);
 
 create index if not exists achievements_game_world_season_idx
-  on public.achievements(game_world_id, v_season_id);
+  on public.achievements(game_world_id, season_id);
 
 create or replace function public.apply_soccer_manager_core_archive(
   target_setup_id text default null
@@ -201,7 +201,7 @@ begin
 
     insert into public.game_world_clubs (
       game_world_id,
-      v_club_name,
+      club_name,
       club_key,
       occupied,
       division,
@@ -218,7 +218,7 @@ begin
       now()
     )
     on conflict (game_world_id, club_key) do update
-      set v_club_name = excluded.v_club_name,
+      set club_name = excluded.club_name,
           occupied = excluded.occupied,
           division = excluded.division,
           active = true,
@@ -478,9 +478,9 @@ begin
     if v_team_id is not null then
       insert into public.achievements (
         game_world_id,
-        v_season_id,
-        v_team_id,
-        v_manager_id,
+        season_id,
+        team_id,
+        manager_id,
         achievement_type,
         title,
         position,
@@ -488,10 +488,10 @@ begin
         source,
         source_key
       ) values (
-        game_world_id,
-        season_id,
-        team_id,
-        manager_id,
+        v_world_id,
+        v_season_id,
+        v_team_id,
+        v_manager_id,
         'league_title',
         'Season S' || v_season_number || ' league champion',
         1,
@@ -501,9 +501,9 @@ begin
       )
       on conflict (source, source_key) do update
         set game_world_id = excluded.game_world_id,
-            v_season_id = excluded.v_season_id,
-            v_team_id = excluded.v_team_id,
-            v_manager_id = excluded.v_manager_id,
+            season_id = excluded.season_id,
+            team_id = excluded.team_id,
+            manager_id = excluded.manager_id,
             title = excluded.title,
             position = excluded.position,
             notes = excluded.notes;
