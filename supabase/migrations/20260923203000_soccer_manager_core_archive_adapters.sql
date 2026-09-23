@@ -75,7 +75,7 @@ create unique index if not exists achievements_source_key_uidx
   on public.achievements(source, source_key);
 
 create index if not exists achievements_game_world_season_idx
-  on public.achievements(game_world_id, season_id);
+  on public.achievements(game_world_id, v_season_id);
 
 create or replace function public.apply_soccer_manager_core_archive(
   target_setup_id text default null
@@ -89,18 +89,18 @@ declare
   user_id uuid := (select auth.uid());
   setup_id text := nullif(trim(target_setup_id), '');
   world_count integer;
-  world_id bigint;
+  v_world_id bigint;
   world_data jsonb;
   row_data record;
-  club_id text;
-  club_name text;
-  manager_source_id text;
-  manager_name text;
-  team_id bigint;
-  manager_id bigint;
-  season_id bigint;
-  season_number integer;
-  case_matches integer;
+  v_club_id text;
+  v_club_name text;
+  v_manager_source_id text;
+  v_manager_name text;
+  v_team_id bigint;
+  v_manager_id bigint;
+  v_season_id bigint;
+  v_season_number integer;
+  v_case_matches integer;
   clubs_applied integer := 0;
   managers_applied integer := 0;
   assignments_applied integer := 0;
@@ -145,13 +145,13 @@ begin
   end if;
 
   select id
-    into world_id
+    into v_world_id
   from public.game_worlds
   where external_world_id = setup_id::bigint
   order by id
   limit 1;
 
-  if world_id is null then
+  if v_world_id is null then
     insert into public.game_worlds (
       name,
       slug,
@@ -167,17 +167,17 @@ begin
       true,
       setup_id::bigint
     )
-    returning id into world_id;
+    returning id into v_world_id;
   else
     update public.game_worlds
       set is_active = true
-    where id = world_id;
+    where id = v_world_id;
   end if;
 
   insert into public.soccer_manager_archive_links (
     source_type, source_key, target_type, target_id
   ) values (
-    'world', setup_id, 'game_world', world_id
+    'world', setup_id, 'game_world', v_world_id
   )
   on conflict (source_type, source_key) do update
     set target_type = excluded.target_type,
@@ -193,24 +193,24 @@ begin
       and data->>'setupId' = setup_id
     order by entity_key
   loop
-    club_id := nullif(trim(row_data.data->>'clubId'), '');
-    club_name := nullif(trim(row_data.data->>'name'), '');
-    if club_id is null or club_name is null then
+    v_club_id := nullif(trim(row_data.data->>'clubId'), '');
+    v_club_name := nullif(trim(row_data.data->>'name'), '');
+    if v_club_id is null or v_club_name is null then
       continue;
     end if;
 
     insert into public.game_world_clubs (
       game_world_id,
-      club_name,
+      v_club_name,
       club_key,
       occupied,
       division,
       active,
       updated_at
     ) values (
-      world_id,
-      club_name,
-      'sm:' || club_id,
+      v_world_id,
+      v_club_name,
+      'sm:' || v_club_id,
       case when lower(coalesce(row_data.data->>'managed', '')) in ('1','true','yes') then true else false end,
       case when coalesce(row_data.data->>'division', '') ~ '^[0-9]+$'
         then (row_data.data->>'division')::integer else null end,
@@ -218,29 +218,29 @@ begin
       now()
     )
     on conflict (game_world_id, club_key) do update
-      set club_name = excluded.club_name,
+      set v_club_name = excluded.v_club_name,
           occupied = excluded.occupied,
           division = excluded.division,
           active = true,
           updated_at = now();
 
     select count(*)::integer, min(id)
-      into case_matches, team_id
+      into v_case_matches, v_team_id
     from public.teams
-    where lower(name) = lower(club_name);
+    where lower(name) = lower(v_club_name);
 
-    if case_matches = 0 then
+    if v_case_matches = 0 then
       insert into public.teams(name, active)
-      values (club_name, true)
-      returning id into team_id;
-    elsif case_matches > 1 then
-      raise exception 'Ambiguous Top 100 team match for Soccer Manager club % (%)', club_name, club_id;
+      values (v_club_name, true)
+      returning id into v_team_id;
+    elsif v_case_matches > 1 then
+      raise exception 'Ambiguous Top 100 team match for Soccer Manager club % (%)', v_club_name, v_club_id;
     end if;
 
     insert into public.soccer_manager_archive_links (
       source_type, source_key, target_type, target_id
     ) values (
-      'club', setup_id || ':' || club_id, 'team', team_id
+      'club', setup_id || ':' || v_club_id, 'team', v_team_id
     )
     on conflict (source_type, source_key) do update
       set target_type = excluded.target_type,
@@ -259,47 +259,47 @@ begin
       and data->>'setupId' = setup_id
     order by entity_key
   loop
-    manager_source_id := nullif(trim(row_data.data->>'managerId'), '');
-    manager_name := nullif(trim(row_data.data->>'displayName'), '');
-    club_id := nullif(trim(row_data.data->>'clubId'), '');
+    v_manager_source_id := nullif(trim(row_data.data->>'managerId'), '');
+    v_manager_name := nullif(trim(row_data.data->>'displayName'), '');
+    v_club_id := nullif(trim(row_data.data->>'clubId'), '');
 
-    if manager_source_id is null or manager_name is null or club_id is null then
+    if v_manager_source_id is null or v_manager_name is null or v_club_id is null then
       continue;
     end if;
 
     select target_id
-      into manager_id
+      into v_manager_id
     from public.soccer_manager_archive_links
     where source_type = 'manager'
-      and source_key = setup_id || ':' || manager_source_id
+      and source_key = setup_id || ':' || v_manager_source_id
       and target_type = 'manager';
 
-    if manager_id is not null
-       and not exists (select 1 from public.managers where id = manager_id) then
+    if v_manager_id is not null
+       and not exists (select 1 from public.managers where id = v_manager_id) then
       delete from public.soccer_manager_archive_links
       where source_type = 'manager'
-        and source_key = setup_id || ':' || manager_source_id;
-      manager_id := null;
+        and source_key = setup_id || ':' || v_manager_source_id;
+      v_manager_id := null;
     end if;
 
-    if manager_id is null then
+    if v_manager_id is null then
       select count(*)::integer, min(id)
-        into case_matches, manager_id
+        into v_case_matches, v_manager_id
       from public.managers
-      where lower(coalesce(display_name, canonical_name, name)) = lower(manager_name);
+      where lower(coalesce(display_name, canonical_name, name)) = lower(v_manager_name);
 
-      if case_matches = 0 then
+      if v_case_matches = 0 then
         insert into public.managers(name, canonical_name, display_name, active)
-        values (manager_name, manager_name, manager_name, true)
-        returning id into manager_id;
-      elsif case_matches > 1 then
-        raise exception 'Ambiguous Top 100 manager match for Soccer Manager manager % (%)', manager_name, manager_source_id;
+        values (v_manager_name, v_manager_name, v_manager_name, true)
+        returning id into v_manager_id;
+      elsif v_case_matches > 1 then
+        raise exception 'Ambiguous Top 100 manager match for Soccer Manager manager % (%)', v_manager_name, v_manager_source_id;
       end if;
 
       insert into public.soccer_manager_archive_links (
         source_type, source_key, target_type, target_id
       ) values (
-        'manager', setup_id || ':' || manager_source_id, 'manager', manager_id
+        'manager', setup_id || ':' || v_manager_source_id, 'manager', v_manager_id
       )
       on conflict (source_type, source_key) do update
         set target_type = excluded.target_type,
@@ -307,52 +307,52 @@ begin
             updated_at = now();
     else
       update public.managers
-        set name = coalesce(nullif(name, ''), manager_name),
-            canonical_name = coalesce(nullif(canonical_name, ''), manager_name),
-            display_name = manager_name,
+        set name = coalesce(nullif(name, ''), v_manager_name),
+            canonical_name = coalesce(nullif(canonical_name, ''), v_manager_name),
+            display_name = v_manager_name,
             active = true
-      where id = manager_id;
+      where id = v_manager_id;
     end if;
 
     managers_applied := managers_applied + 1;
 
     select target_id
-      into team_id
+      into v_team_id
     from public.soccer_manager_archive_links
     where source_type = 'club'
-      and source_key = setup_id || ':' || club_id
+      and source_key = setup_id || ':' || v_club_id
       and target_type = 'team';
 
-    if team_id is null then
+    if v_team_id is null then
       skipped_assignments := skipped_assignments + 1;
       continue;
     end if;
 
     update public.game_world_clubs
-      set current_manager_name = manager_name,
-          manager_key = 'sm:' || manager_source_id,
+      set current_manager_name = v_manager_name,
+          manager_key = 'sm:' || v_manager_source_id,
           occupied = true,
           updated_at = now()
-    where game_world_id = world_id
-      and club_key = 'sm:' || club_id;
+    where game_world_id = v_world_id
+      and club_key = 'sm:' || v_club_id;
 
     update public.manager_clubs mc
       set current_club = false
-    where mc.team_id = team_id
+    where mc.team_id = v_team_id
       and mc.current_club = true
-      and mc.manager_id is distinct from manager_id;
+      and mc.manager_id is distinct from v_manager_id;
 
     if not exists (
       select 1
       from public.manager_clubs mc
-      where mc.manager_id = manager_id
-        and mc.team_id = team_id
+      where mc.manager_id = v_manager_id
+        and mc.team_id = v_team_id
         and mc.current_club = true
     ) then
       insert into public.manager_clubs (
         manager_id, team_id, current_club, appointment_type, notes
       ) values (
-        manager_id, team_id, true, 'manager',
+        v_manager_id, v_team_id, true, 'manager',
         'Applied from approved Soccer Manager manager assignment.'
       );
     end if;
@@ -375,18 +375,18 @@ begin
       continue;
     end if;
 
-    season_number := (row_data.data->>'season')::integer;
+    v_season_number := (row_data.data->>'season')::integer;
 
     insert into public.seasons(code, number)
-    values ('S' || season_number, season_number)
+    values ('S' || v_season_number, v_season_number)
     on conflict (code) do update
       set number = excluded.number
-    returning id into season_id;
+    returning id into v_season_id;
 
     insert into public.soccer_manager_archive_links (
       source_type, source_key, target_type, target_id
     ) values (
-      'season', setup_id || ':' || coalesce(row_data.data->>'seasonId', season_number::text), 'season', season_id
+      'season', setup_id || ':' || coalesce(row_data.data->>'seasonId', v_season_number::text), 'season', v_season_id
     )
     on conflict (source_type, source_key) do update
       set target_type = excluded.target_type,
@@ -395,38 +395,38 @@ begin
 
     seasons_applied := seasons_applied + 1;
 
-    club_id := nullif(trim(row_data.data->>'winnerClubId'), '');
-    club_name := nullif(trim(row_data.data->>'winnerClubName'), '');
-    team_id := null;
+    v_club_id := nullif(trim(row_data.data->>'winnerClubId'), '');
+    v_club_name := nullif(trim(row_data.data->>'winnerClubName'), '');
+    v_team_id := null;
 
-    if club_id is not null then
+    if v_club_id is not null then
       select target_id
-        into team_id
+        into v_team_id
       from public.soccer_manager_archive_links
       where source_type = 'club'
-        and source_key = setup_id || ':' || club_id
+        and source_key = setup_id || ':' || v_club_id
         and target_type = 'team';
     end if;
 
-    if team_id is null and club_name is not null then
+    if v_team_id is null and v_club_name is not null then
       select count(*)::integer, min(id)
-        into case_matches, team_id
+        into v_case_matches, v_team_id
       from public.teams
-      where lower(name) = lower(club_name);
+      where lower(name) = lower(v_club_name);
 
-      if case_matches = 0 then
+      if v_case_matches = 0 then
         insert into public.teams(name, active)
-        values (club_name, true)
-        returning id into team_id;
-      elsif case_matches > 1 then
-        raise exception 'Ambiguous historical Top 100 team match for %', club_name;
+        values (v_club_name, true)
+        returning id into v_team_id;
+      elsif v_case_matches > 1 then
+        raise exception 'Ambiguous historical Top 100 team match for %', v_club_name;
       end if;
 
-      if club_id is not null then
+      if v_club_id is not null then
         insert into public.soccer_manager_archive_links (
           source_type, source_key, target_type, target_id
         ) values (
-          'club', setup_id || ':' || club_id, 'team', team_id
+          'club', setup_id || ':' || v_club_id, 'team', v_team_id
         )
         on conflict (source_type, source_key) do update
           set target_type = excluded.target_type,
@@ -435,38 +435,38 @@ begin
       end if;
     end if;
 
-    manager_source_id := nullif(trim(row_data.data->>'winnerManagerId'), '');
-    manager_name := nullif(trim(row_data.data->>'winnerManagerName'), '');
-    manager_id := null;
+    v_manager_source_id := nullif(trim(row_data.data->>'winnerManagerId'), '');
+    v_manager_name := nullif(trim(row_data.data->>'winnerManagerName'), '');
+    v_manager_id := null;
 
-    if manager_source_id is not null then
+    if v_manager_source_id is not null then
       select target_id
-        into manager_id
+        into v_manager_id
       from public.soccer_manager_archive_links
       where source_type = 'manager'
-        and source_key = setup_id || ':' || manager_source_id
+        and source_key = setup_id || ':' || v_manager_source_id
         and target_type = 'manager';
     end if;
 
-    if manager_id is null and manager_name is not null then
+    if v_manager_id is null and v_manager_name is not null then
       select count(*)::integer, min(id)
-        into case_matches, manager_id
+        into v_case_matches, v_manager_id
       from public.managers
-      where lower(coalesce(display_name, canonical_name, name)) = lower(manager_name);
+      where lower(coalesce(display_name, canonical_name, name)) = lower(v_manager_name);
 
-      if case_matches = 0 then
+      if v_case_matches = 0 then
         insert into public.managers(name, canonical_name, display_name, active)
-        values (manager_name, manager_name, manager_name, true)
-        returning id into manager_id;
-      elsif case_matches > 1 then
-        raise exception 'Ambiguous historical Top 100 manager match for %', manager_name;
+        values (v_manager_name, v_manager_name, v_manager_name, true)
+        returning id into v_manager_id;
+      elsif v_case_matches > 1 then
+        raise exception 'Ambiguous historical Top 100 manager match for %', v_manager_name;
       end if;
 
-      if manager_source_id is not null then
+      if v_manager_source_id is not null then
         insert into public.soccer_manager_archive_links (
           source_type, source_key, target_type, target_id
         ) values (
-          'manager', setup_id || ':' || manager_source_id, 'manager', manager_id
+          'manager', setup_id || ':' || v_manager_source_id, 'manager', v_manager_id
         )
         on conflict (source_type, source_key) do update
           set target_type = excluded.target_type,
@@ -475,12 +475,12 @@ begin
       end if;
     end if;
 
-    if team_id is not null then
+    if v_team_id is not null then
       insert into public.achievements (
         game_world_id,
-        season_id,
-        team_id,
-        manager_id,
+        v_season_id,
+        v_team_id,
+        v_manager_id,
         achievement_type,
         title,
         position,
@@ -488,12 +488,12 @@ begin
         source,
         source_key
       ) values (
-        world_id,
+        game_world_id,
         season_id,
         team_id,
         manager_id,
         'league_title',
-        'Season S' || season_number || ' league champion',
+        'Season S' || v_season_number || ' league champion',
         1,
         'Imported from approved Soccer Manager season history.',
         'soccer_manager',
@@ -501,9 +501,9 @@ begin
       )
       on conflict (source, source_key) do update
         set game_world_id = excluded.game_world_id,
-            season_id = excluded.season_id,
-            team_id = excluded.team_id,
-            manager_id = excluded.manager_id,
+            v_season_id = excluded.v_season_id,
+            v_team_id = excluded.v_team_id,
+            v_manager_id = excluded.v_manager_id,
             title = excluded.title,
             position = excluded.position,
             notes = excluded.notes;
@@ -521,19 +521,19 @@ begin
       and data->>'setupId' = setup_id
     order by entity_key
   loop
-    club_id := nullif(trim(row_data.data->>'clubId'), '');
-    if club_id is null then
+    v_club_id := nullif(trim(row_data.data->>'clubId'), '');
+    if v_club_id is null then
       continue;
     end if;
 
     select target_id
-      into team_id
+      into v_team_id
     from public.soccer_manager_archive_links
     where source_type = 'club'
-      and source_key = setup_id || ':' || club_id
+      and source_key = setup_id || ':' || v_club_id
       and target_type = 'team';
 
-    if team_id is null then
+    if v_team_id is null then
       continue;
     end if;
 
@@ -560,10 +560,10 @@ begin
     ) values (
       row_data.entity_key,
       row_data.version,
-      world_id,
+      v_world_id,
       nullif(row_data.data->>'leagueId', ''),
       case when coalesce(row_data.data->>'division', '') ~ '^[0-9]+$' then (row_data.data->>'division')::integer else null end,
-      team_id,
+      v_team_id,
       case when coalesce(row_data.data->>'position', '') ~ '^-?[0-9]+$' then (row_data.data->>'position')::integer else null end,
       case when coalesce(row_data.data->>'previousPosition', '') ~ '^-?[0-9]+$' then (row_data.data->>'previousPosition')::integer else null end,
       case when coalesce(row_data.data->>'played', '') ~ '^-?[0-9]+$' then (row_data.data->>'played')::integer else null end,
@@ -593,7 +593,7 @@ begin
     changed_by
   ) values (
     'soccer_manager_archive',
-    world_id,
+    v_world_id,
     'apply_core_archive',
     jsonb_build_object(
       'setupId', setup_id,
@@ -610,7 +610,7 @@ begin
 
   return jsonb_build_object(
     'setupId', setup_id,
-    'gameWorldId', world_id,
+    'gameWorldId', v_world_id,
     'clubs', clubs_applied,
     'managers', managers_applied,
     'assignments', assignments_applied,
