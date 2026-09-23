@@ -329,13 +329,18 @@ begin
       continue;
     end if;
 
+    select name
+      into v_existing_team_name
+    from public.teams
+    where id = v_team_id;
+
     update public.game_world_clubs
       set current_manager_name = v_manager_name,
           manager_key = public.normal_registration_key(v_manager_name),
           occupied = true,
           updated_at = now()
     where game_world_id = v_world_id
-      and club_key = public.normal_registration_key((select t.name from public.teams t where t.id = v_team_id));
+      and club_key = public.normal_registration_key(v_existing_team_name);
 
     update public.manager_clubs mc
       set current_club = false
