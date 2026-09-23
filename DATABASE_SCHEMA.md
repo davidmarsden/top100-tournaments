@@ -368,6 +368,7 @@ Purpose: Private source-identity map used by approved Soccer Manager archive ada
 | `source_key` | `text` | Composite primary key |
 | `target_type` | `text` | `game_world`, `team`, `manager` or `season` |
 | `target_id` | `int8` | Target archive ID |
+| `source_name` | `text` | Nullable; last applied source display name for world-specific rename tracking |
 | `created_at` | `timestamptz` | Default `now()` |
 | `updated_at` | `timestamptz` | Default `now()` |
 
