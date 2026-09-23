@@ -207,8 +207,13 @@ function inferSyncContext(entries) {
   }
 
   const setupId = setupIds.size === 1 ? [...setupIds][0] : null;
+  const distinctClubs = new Map();
+  for (const club of clubs) {
+    distinctClubs.set(`${club.setupId}\u0000${club.clubId}`, club);
+  }
+
   const matchingClubs = setupId
-    ? clubs.filter((club) => club.setupId === setupId)
+    ? [...distinctClubs.values()].filter((club) => club.setupId === setupId)
     : [];
 
   return {
