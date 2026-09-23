@@ -3,7 +3,8 @@ function asArray(value) {
 }
 
 function numberOrNull(value) {
-  if (value === null || value === undefined || value === '') return null;
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -12,6 +13,59 @@ function textOrNull(value) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
   return text || null;
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = textOrNull(value);
+    if (text !== null) return text;
+  }
+  return null;
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    const number = numberOrNull(value);
+    if (number !== null) return number;
+  }
+  return null;
+}
+
+function firstNonZeroId(...values) {
+  for (const value of values) {
+    const id = nonZeroId(value);
+    if (id !== null) return id;
+  }
+  return null;
+}
+
+function firstPosition(...values) {
+  for (const value of values) {
+    if (textOrNull(value) === null) continue;
+    const position = cleanPosition(value);
+    if (position) return position;
+  }
+  return null;
+}
+
+function booleanOrNull(value) {
+  if (value === true || value === 1 || value === '1') return true;
+  if (value === false || value === 0 || value === '0') return false;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return null;
+    if (normalized === 'true' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === 'no') return false;
+  }
+  return null;
+}
+
+function firstBoolean(...values) {
+  for (const value of values) {
+    const flag = booleanOrNull(value);
+    if (flag !== null) return flag;
+  }
+  return false;
 }
 
 function booleanFlag(value) {
@@ -253,6 +307,87 @@ export function normalizeTransfers(input) {
   };
 }
 
+
+function findClubSquadRows(input) {
+  if (!input || typeof input !== 'object') return [];
+  const candidates = [];
+
+  function visit(value, depth = 0) {
+    if (!value || depth > 4) return;
+    if (Array.isArray(value)) {
+      const objectRows = value.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+      if (objectRows.length) {
+        const qualifyingRows = objectRows.filter((row) => {
+          const playerId = firstNonZeroId(row.playerid, row.PlayerID, row.PlayerDataID, row.playerdataid);
+          const rating = firstNumber(row.rating, row.PlayerRating);
+          const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+          const playerName = firstText(row.pitchname, row.PlayerName, fullName);
+          return playerId !== null && (playerName !== null || rating !== null);
+        });
+        if (qualifyingRows.length) {
+          const score = qualifyingRows.reduce((sum, row) => {
+            const rating = firstNumber(row.rating, row.PlayerRating);
+            const fullName = [row.name, row.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+            const playerName = firstText(row.pitchname, row.PlayerName, fullName);
+            return sum + 2 + (rating !== null ? 1 : 0) + (playerName !== null ? 1 : 0);
+          }, 0);
+          candidates.push({ rows: qualifyingRows, score, width: qualifyingRows.length });
+        }
+      }
+      for (const row of value) visit(row, depth + 1);
+      return;
+    }
+    for (const child of Object.values(value)) visit(child, depth + 1);
+  }
+
+  visit(input);
+  const qualifying = candidates.filter((candidate) => candidate.width >= 2);
+  qualifying.sort((a, b) => (b.score - a.score) || (b.width - a.width));
+  return qualifying[0]?.rows || [];
+}
+
+export function normalizeClubSquad(input) {
+  const rows = findClubSquadRows(input);
+  return {
+    kind: 'clubSquad',
+    club: {
+      clubId: firstNonZeroId(input?.clubid, input?.ClubID, input?.clubID, input?.club?.clubid, input?.club?.ClubID, input?.club?.clubID),
+      name: firstText(input?.clubname, input?.ClubName, input?.clubName, input?.club?.clubname, input?.club?.ClubName, input?.club?.clubName),
+    },
+    players: rows.map((record) => {
+      const fullName = [record.name, record.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      return {
+      playerId: firstNonZeroId(record.playerid, record.PlayerID, record.PlayerDataID, record.playerdataid),
+      playerDataId: firstNonZeroId(record.playerdataid, record.PlayerDataID, record.playerid, record.PlayerID),
+      name: firstText(record.pitchname, record.PlayerName, fullName, record.name),
+      firstName: textOrNull(record.name),
+      surname: textOrNull(record.surname),
+      age: firstNumber(record.age, record.PlayerAge),
+      rating: firstNumber(record.rating, record.PlayerRating),
+      position: firstPosition(record.multipositiondis, record.LiveMultiPositionDis, record.position),
+      positionId: firstNumber(record.multiposition, record.playerpositionid, record.PlayerPos),
+      nationality: firstText(record.countryname, record.playerscountryname, record.country),
+      value: firstNumber(record.valueraw, record.Value),
+      wages: firstNumber(record.wagesraw, record.wages),
+      contract: firstNumber(record.ctr, record.contract),
+      morale: firstNumber(record.morale),
+      condition: firstNumber(record.con, record.condition),
+      foot: firstText(record.foot),
+      appearances: firstNumber(record.app),
+      substituteAppearances: firstNumber(record.subapp),
+      averagePerformance: firstNumber(record.avp),
+      goals: firstNumber(record.goals),
+      assists: firstNumber(record.assists),
+      goalkeeper: firstBoolean(record.gk),
+      youth: firstBoolean(record.youth),
+      transferListed: firstBoolean(record.transferlisted, record.transfer_list, record.tl),
+      photo: firstText(record.photofilename, record.PhotoFilename),
+      ratingChangedAt: firstText(record.ratchgdate),
+    };
+    }),
+  };
+}
+
 export function normalizeClubFinance(input) {
   return {
     kind: 'clubFinance',
@@ -288,6 +423,7 @@ export function detectSoccerManagerPayload(input) {
   if (Array.isArray(input?.changes) || Array.isArray(input?.new)) return 'playerChanges';
   if (Array.isArray(input?.Transfers)) return 'transfers';
   if (Array.isArray(input?.Weekly) && ('_seasonBalance' in input || '_seasonTotalIn' in input)) return 'clubFinance';
+  if (findClubSquadRows(input).length) return 'clubSquad';
   return null;
 }
 
@@ -297,6 +433,7 @@ export function normalizeSoccerManagerPayload(input) {
     case 'playerChanges': return normalizePlayerChanges(input);
     case 'transfers': return normalizeTransfers(input);
     case 'clubFinance': return normalizeClubFinance(input);
+    case 'clubSquad': return normalizeClubSquad(input);
     default: throw new Error('Unsupported Soccer Manager JSON response.');
   }
 }
@@ -324,6 +461,9 @@ export function summarizeNormalizedPayload(payload) {
   }
   if (payload.kind === 'clubFinance') {
     return { type: 'Club finance', weeks: payload.weekly.length, seasonBalance: payload.season.balance, seasonProfit: payload.season.profit };
+  }
+  if (payload.kind === 'clubSquad') {
+    return { type: 'Club squad', club: payload.club.name || payload.club.clubId, players: payload.players.length };
   }
   return { type: payload.kind };
 }

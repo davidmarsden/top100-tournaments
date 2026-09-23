@@ -73,6 +73,19 @@ function FinancePreview({ payload }) {
   </section>;
 }
 
+function ClubSquadPreview({ payload }) {
+  return <section className="card module-card">
+    <div className="card-header"><p className="eyebrow">Club squad</p><h2>{payload.club.name || 'Squad snapshot'}</h2></div>
+    <div className="table-wrap"><table><thead><tr><th>Player</th><th>Age</th><th>Pos</th><th>Rat</th><th>Value</th><th>Wages</th><th>Morale</th><th>Cond</th><th>Apps</th><th>G</th><th>A</th></tr></thead><tbody>
+      {payload.players.map((row, index) => <tr key={row.playerId || row.playerDataId || index}>
+        <td><strong>{row.name || [row.firstName, row.surname].filter(Boolean).join(' ') || 'Unknown'}</strong><span>{row.playerId}</span></td>
+        <td>{formatValue(row.age)}</td><td>{row.position || '—'}</td><td>{formatValue(row.rating)}</td><td>{formatValue(row.value)}</td><td>{formatValue(row.wages)}</td><td>{formatValue(row.morale)}</td><td>{formatValue(row.condition)}</td><td>{formatValue(row.appearances)}</td><td>{formatValue(row.goals)}</td><td>{formatValue(row.assists)}</td>
+      </tr>)}
+    </tbody></table></div>
+  </section>;
+}
+
+
 export default function SoccerManagerSyncPage() {
   const [payloads, setPayloads] = useState([]);
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -90,9 +103,34 @@ export default function SoccerManagerSyncPage() {
   function normalizeCapturedEntries(entries) {
     const next = [];
     const errors = [];
+    const seenFinanceCompanions = new Map();
+
+    function financeCompanionContext(sourceUrl) {
+      if (!sourceUrl) return null;
+      try {
+        const url = new URL(sourceUrl);
+        const action = url.searchParams.get('action');
+        if (action !== 'clubfinance' && action !== 'incomegraph') return null;
+        url.searchParams.delete('action');
+        url.searchParams.sort();
+        return { action, context: `${url.origin}${url.pathname}?${url.searchParams.toString()}` };
+      } catch {
+        return null;
+      }
+    }
+
     for (const entry of entries) {
       try {
         const payload = normalizeSoccerManagerPayload(entry.raw);
+        if (payload.kind === 'clubFinance') {
+          const companion = financeCompanionContext(entry.sourceUrl);
+          if (companion) {
+            const signature = `${companion.context}:${JSON.stringify(payload)}`;
+            const previousAction = seenFinanceCompanions.get(signature);
+            if (previousAction && previousAction !== companion.action) continue;
+            seenFinanceCompanions.set(signature, companion.action);
+          }
+        }
         next.push({
           id: entry.id || entry.sourceUrl || entry.name,
           name: entry.name,
@@ -243,7 +281,7 @@ export default function SoccerManagerSyncPage() {
       <div className="card-header"><p className="eyebrow">Fallback · preview only</p><h2>Import captured JSON</h2></div>
       <div className="sm-sync-drop">
         <input key={fileInputKey} id="sm-sync-files" type="file" accept=".json,application/json" multiple onChange={(event) => importFiles(event.target.files)} />
-        <p className="muted">Supported now: competition snapshot, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
+        <p className="muted">Supported now: competition snapshot, club squad, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
       {!!payloads.length && <div className="button-row"><button type="button" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setDiagnosticsCapturedAt(null); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
@@ -268,6 +306,7 @@ export default function SoccerManagerSyncPage() {
       {entry.payload.kind === 'playerChanges' && <PlayerChangesPreview payload={entry.payload} />}
       {entry.payload.kind === 'transfers' && <TransfersPreview payload={entry.payload} />}
       {entry.payload.kind === 'clubFinance' && <FinancePreview payload={entry.payload} />}
+      {entry.payload.kind === 'clubSquad' && <ClubSquadPreview payload={entry.payload} />}
     </div>)}
   </main>;
 }
