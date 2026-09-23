@@ -38,7 +38,7 @@ The collector currently discovers these endpoint families when they have already
 - player-changes mobile endpoints
 - transfer-market mobile endpoints
 
-If a relevant request has not yet happened on the current page, open that Soccer Manager screen first and run the bookmarklet again. Club squad responses are detected by their player-record shape rather than relying on one fragile top-level array name, because the observed `clubinitdata2` response nests the squad data. Detection first filters candidate arrays to require player IDs plus meaningful name or rating evidence, then ranks only the qualifying candidates. This prevents a larger unrelated ID-only array from hiding the actual squad. If no supported JSON response matches, the diagnostic request list is still delivered so the missing endpoint can be identified without opening browser developer tools.
+If a relevant request has not yet happened on the current page, open that Soccer Manager screen first and run the bookmarklet again. Club squad responses are detected by their player-record shape rather than relying on one fragile top-level array name, because the observed `clubinitdata2` response nests the squad data. Detection first normalizes candidate ID/name/rating values using the same non-empty/parseable checks as the final squad normalizer, then filters candidate arrays to require real player IDs plus meaningful name or rating evidence, and finally ranks only the qualifying candidates. This prevents a larger unrelated ID-only array from hiding the actual squad. If no supported JSON response matches, the diagnostic request list is still delivered so the missing endpoint can be identified without opening browser developer tools.
 
 ## v0.1 admin workbench
 
