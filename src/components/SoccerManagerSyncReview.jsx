@@ -188,7 +188,6 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
       setStatus(`Change ${decision}.`);
       await Promise.all([loadRuns(), loadChanges(selectedRunId)]);
       if (typeof onReviewComplete === 'function') onReviewComplete();
-      if (typeof onReviewComplete === 'function') onReviewComplete();
     } catch (error) {
       setStatus(`Review failed: ${error.message}`);
     } finally {
@@ -207,6 +206,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
       const reviewed = await reviewSoccerManagerSyncRun(selectedRunId, decision);
       setStatus(`${reviewed} change${reviewed === 1 ? '' : 's'} ${decision}.`);
       await Promise.all([loadRuns(), loadChanges(selectedRunId)]);
+      if (typeof onReviewComplete === 'function') onReviewComplete();
     } catch (error) {
       setStatus(`Review failed: ${error.message}`);
     } finally {
