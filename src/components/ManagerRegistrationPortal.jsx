@@ -118,6 +118,7 @@ export default function ManagerRegistrationPortal() {
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const loadRequestId = useRef(0);
+  const sessionTokenRef = useRef('');
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
@@ -130,7 +131,8 @@ export default function ManagerRegistrationPortal() {
     const applyStoredSession = (reloadOnChange = false) => {
       const storedSession = persistedSession();
       if (storedSession) {
-        const tokenChanged = storedSession.access_token !== session?.access_token;
+        const tokenChanged = storedSession.access_token !== sessionTokenRef.current;
+        sessionTokenRef.current = storedSession.access_token;
         setSession(storedSession);
         if (reloadOnChange && tokenChanged) {
           load();
@@ -138,6 +140,7 @@ export default function ManagerRegistrationPortal() {
         return true;
       }
 
+      sessionTokenRef.current = '';
       loadRequestId.current += 1;
       setSession(null);
       setAccount(null);
@@ -156,7 +159,16 @@ export default function ManagerRegistrationPortal() {
       applyStoredSession(true);
     };
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+
+    // storage events do not fire in the tab that performed the write. Poll the
+    // persisted token lightly so same-tab Supabase refreshes are observed without
+    // calling into the auth client or its Web Lock.
+    const refreshPoll = window.setInterval(() => applyStoredSession(true), 5000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.clearInterval(refreshPoll);
+    };
   }, []);
 
   useEffect(() => {
@@ -191,6 +203,7 @@ export default function ManagerRegistrationPortal() {
       return;
     }
 
+    sessionTokenRef.current = latestSession.access_token;
     setSession(latestSession);
     const requestId = ++loadRequestId.current;
     setLoading(true);
@@ -235,6 +248,7 @@ export default function ManagerRegistrationPortal() {
     } catch (error) {
       if (requestId !== loadRequestId.current) return;
       setMessage('');
+      setTournaments([]);
       const text = String(error?.message || '');
       setLoadError(/401|JWT|token|expired/i.test(text)
         ? 'Your Manager Portal session has expired. Return to My Matches and sign in again.'
@@ -294,6 +308,6 @@ export default function ManagerRegistrationPortal() {
 
     <section className="card"><div className="card-header"><p className="eyebrow">Your record</p><h2>Registrations</h2></div><p><strong>If a registration appears here as submitted or approved, we have it.</strong></p>{loadError ? <div className="warning-card"><strong>We could not verify your registration record.</strong><span>{loadError}</span><p className="muted">Do not submit a duplicate registration until this record has loaded successfully.</p><button type="button" className="secondary" onClick={load}>Try again</button></div> : loading ? <p className="muted">Checking your registration record...</p> : !registrations.length ? <p className="muted">You have no linked tournament registrations yet.</p> : <div className="entrant-list">{registrations.map((row) => <article className="entrant-row registration-row" key={row.id}><div className="registration-details"><strong>{statusLabel(row)} · {row.tournaments?.name || `Tournament #${row.tournament_id}`}</strong><span>{row.club_name} · rating {row.rating} · submitted {formatDate(row.submitted_at)} · reference #{row.id}</span>{row.reviewed_at && <span>Reviewed {formatDate(row.reviewed_at)}</span>}{row.review_notes && <span>{row.review_notes}</span>}</div>{row.status === 'pending' && <button type="button" className="secondary" onClick={() => withdraw(row)} disabled={loading}>Withdraw</button>}</article>)}</div>}</section>
 
-    <section className="card"><div className="card-header"><p className="eyebrow">Open now</p><h2>Register for a tournament</h2></div>{loadError && <div className="warning-card"><strong>Registration data could not finish loading.</strong><span>{loadError}</span><button type="button" className="secondary" onClick={load}>Try again</button></div>}{loading && !loadError ? <p className="muted">Checking open tournaments...</p> : !tournaments.length && !loadError ? <p className="muted">There are no open public tournaments right now.</p> : <div className="entrant-list">{tournaments.map((tournament) => <article className="entrant-row registration-row" key={tournament.id}><div className="registration-details"><strong>{tournament.name}</strong><span>{tournament.game_worlds?.name} · no email required · canonical club directory · average rating 65–95 required</span></div><a className="button" href={registrationPath(tournament)}>Register</a></article>)}</div>}{message && <p className="status">{message}</p>}</section>
+    <section className="card"><div className="card-header"><p className="eyebrow">Open now</p><h2>Register for a tournament</h2></div>{loadError && <div className="warning-card"><strong>Registration data could not finish loading.</strong><span>{loadError}</span><button type="button" className="secondary" onClick={load}>Try again</button></div>}{loadError ? null : loading ? <p className="muted">Checking open tournaments...</p> : !tournaments.length ? <p className="muted">There are no open public tournaments right now.</p> : <div className="entrant-list">{tournaments.map((tournament) => <article className="entrant-row registration-row" key={tournament.id}><div className="registration-details"><strong>{tournament.name}</strong><span>{tournament.game_worlds?.name} · no email required · canonical club directory · average rating 65–95 required</span></div><a className="button" href={registrationPath(tournament)}>Register</a></article>)}</div>}{message && <p className="status">{message}</p>}</section>
   </main>;
 }
