@@ -353,6 +353,70 @@ Purpose: Records trophies, stats awards, special recognitions and tournament ach
 | `position` | `int4` | Nullable |
 | `notes` | `text` | Nullable |
 | `created_at` | `timestamptz` | Nullable, default `now()` |
+| `game_world_id` | `int8` | FK → `game_worlds.id`, nullable |
+| `season_id` | `int8` | FK → `seasons.id`, nullable |
+| `source` | `text` | Nullable; provenance namespace such as `soccer_manager` |
+| `source_key` | `text` | Nullable; unique with `source` when present |
+
+## Table `soccer_manager_archive_links`
+
+Purpose: Private source-identity map used by approved Soccer Manager archive adapters. Stable Soccer Manager IDs map to Top 100 archive IDs so later syncs do not rely on names for identity.
+
+| Name | Type | Constraints |
+|---|---|---|
+| `source_type` | `text` | Composite primary key |
+| `source_key` | `text` | Composite primary key |
+| `target_type` | `text` | `game_world`, `team`, `manager` or `season` |
+| `target_id` | `int8` | Target archive ID |
+| `source_name` | `text` | Nullable; last applied source display name for world-specific rename tracking |
+| `created_at` | `timestamptz` | Default `now()` |
+| `updated_at` | `timestamptz` | Default `now()` |
+
+This table is admin-readable only and is not a public archive surface.
+
+## Table `soccer_manager_world_manager_assignments`
+
+Purpose: Stores Soccer Manager current manager-to-club assignments scoped to a specific game world. This is deliberately separate from global `manager_clubs` career history so applying one Soccer Manager world cannot retire another world's current assignment.
+
+| Name | Type | Constraints |
+|---|---|---|
+| `game_world_id` | `int8` | FK → `game_worlds.id`, composite primary key |
+| `team_id` | `int8` | FK → `teams.id`, composite primary key |
+| `manager_id` | `int8` | FK → `managers.id`, required |
+| `source_manager_key` | `text` | Required stable Soccer Manager source identity |
+| `source_manager_name` | `text` | Nullable; world-specific Soccer Manager display name |
+| `assigned_at` | `timestamptz` | Default `now()` |
+| `updated_at` | `timestamptz` | Default `now()` |
+
+This table is admin-readable only. Vacant clubs remove the selected world's assignment row without mutating global `manager_clubs.current_club`.
+
+## Table `league_standing_snapshots`
+
+Purpose: Immutable versioned league-table history created when an administrator applies approved Soccer Manager canonical standings to the archive.
+
+| Name | Type | Constraints |
+|---|---|---|
+| `id` | `int8` | Primary Identity |
+| `source_entity_key` | `text` | Required |
+| `source_version` | `int4` | Required; unique with `source_entity_key` |
+| `game_world_id` | `int8` | FK → `game_worlds.id`, required |
+| `league_id` | `text` | Nullable |
+| `division` | `int4` | Nullable |
+| `team_id` | `int8` | FK → `teams.id`, required |
+| `position` | `int4` | Nullable |
+| `previous_position` | `int4` | Nullable |
+| `played` | `int4` | Nullable |
+| `won` | `int4` | Nullable |
+| `drawn` | `int4` | Nullable |
+| `lost` | `int4` | Nullable |
+| `goals_for` | `int4` | Nullable |
+| `goals_against` | `int4` | Nullable |
+| `goal_difference` | `int4` | Nullable |
+| `points` | `int4` | Nullable |
+| `attendance` | `int4` | Nullable |
+| `form` | `jsonb` | Default `[]` |
+| `captured_at` | `timestamptz` | Required |
+| `created_at` | `timestamptz` | Default `now()` |
 
 ## Table `tournament_round_dates`
 
@@ -379,6 +443,13 @@ Purpose: Stores bracket/round schedule presets. These can be set before fixtures
 | `achievements` | `manager_id` | `managers.id` |
 | `achievements` | `team_id` | `teams.id` |
 | `achievements` | `tournament_id` | `tournaments.id` |
+| `achievements` | `game_world_id` | `game_worlds.id` |
+| `achievements` | `season_id` | `seasons.id` |
+| `league_standing_snapshots` | `game_world_id` | `game_worlds.id` |
+| `league_standing_snapshots` | `team_id` | `teams.id` |
+| `soccer_manager_world_manager_assignments` | `game_world_id` | `game_worlds.id` |
+| `soccer_manager_world_manager_assignments` | `team_id` | `teams.id` |
+| `soccer_manager_world_manager_assignments` | `manager_id` | `managers.id` |
 | `forfeits` | `forfeiting_entry_id` | `tournament_entries.id` |
 | `forfeits` | `match_id` | `matches.id` |
 | `groups` | `tournament_id` | `tournaments.id` |

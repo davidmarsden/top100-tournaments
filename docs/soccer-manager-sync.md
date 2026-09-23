@@ -4,7 +4,29 @@
 
 Top 100 Soccer Manager Worlds exposes useful structured JSON responses inside the authenticated Soccer Manager web application. Soccer Manager Sync normalizes those responses into stable Top 100 records without storing a Soccer Manager password or copying the raw authenticated session to the Top 100 backend.
 
-The collector and normalizer remain browser-first, but v0.3 adds a private persistent staging layer. Normalized data can be staged for review; nothing flows into the public Top 100 archive until a later explicit archive-application phase.
+The collector and normalizer remain browser-first. v0.3 added a private persistent staging layer; v0.4 adds the first explicit archive adapter. Normalized data is still staged and approved first, and archive writes happen only when a global administrator separately chooses **Apply core archive**.
+
+
+## v0.4 core archive adapters
+
+The Sync workbench now has a separate **Apply approved data to the archive** module. This is intentionally independent of source review: approving a canonical Soccer Manager change records source truth, while applying an adapter updates Top 100 archive records.
+
+The first adapter consumes approved canonical entities only and applies the safest archive spine in one transactional, global-admin-only RPC:
+
+1. Soccer Manager world/setup → `game_worlds`;
+2. current standing clubs → `game_world_clubs` and the existing `teams` directory;
+3. stable manager/customer ids → `managers`;
+4. current manager-to-club assignments → `game_world_clubs` plus world-scoped `soccer_manager_world_manager_assignments`;
+5. season/champion history → `seasons` and league-title `achievements`;
+6. each approved standing state → immutable `league_standing_snapshots`, using a deterministic per-entity approval sequence so pre-versioning legacy approvals are preserved too.
+
+`soccer_manager_archive_links` keeps the stable source-id-to-archive-id mapping. Names are used only for a cautious first match when no mapping exists; team matching uses the same punctuation-, spacing- and accent-insensitive `team_directory_key` as the rest of the Top 100 directory, and manager matching uses the same normalized registration key as portal claims. Ambiguous matches abort the transaction rather than guessing. The link also remembers the last source club display name so world-specific renames can update `game_world_clubs` without letting whichever world was applied last rename the shared global `teams` row. The directory-sync trigger and registration-promotion RPC both honour that stable mapping, so a world-only rename reuses the mapped team instead of creating a duplicate. Manager source display names are likewise kept world-scoped in the current assignment/directory while the shared `managers` row remains stable after first linkage; registration promotion resolves the mapped world assignment before falling back to global name matching. Managers created only from historical season records start inactive and become active only through a current assignment.
+
+The adapter is idempotent. Re-running it updates mapped current records, does not duplicate league titles, and inserts a standing snapshot only once for each approved standing approval in that entity's chronological history. Current directory state collapses canonical standings to the most recently approved row per world/club, so promotions and relegations do not leave an older division row in control. Current manager assignments are stored per game world rather than mutating the global `manager_clubs.current_club` career flag. The authoritative current standing is checked before any manager activation: a standing that explicitly reports a club unmanaged clears only that world's current assignment and does not reactivate a stale canonical manager assignment. For a genuinely managed club, applying the assignment also upserts an active `manager_game_world_memberships` row so Portal, Voting and lifecycle features recognise the imported manager in that world. The adapter does not infer other departures or sackings from absence, and a normal sync or source approval never invokes it automatically.
+
+League titles are stored in `achievements`, not `honours`, because the current `honours` table is tied to a tournament entry. `achievements` now carries optional game-world, season and source provenance so league history can coexist cleanly with tournament honours.
+
+Tournament fixtures/results, transfers, player history and analytics are deliberately outside this first adapter.
 
 ## v0.3 persistent staging and review
 
@@ -24,7 +46,7 @@ The staging RPC compares incoming entities with the approved canonical source st
 
 Approving a change updates only the private canonical source layer. Rejecting it leaves canonical source state unchanged. Before approval, the RPC serializes review transitions for the run and takes a transaction-scoped advisory lock on each stable entity identity before locking/rechecking the canonical row. This also covers first-time entities where no canonical row exists to lock yet. The current canonical version/data must still match the baseline captured when the change was staged; stale individual or bulk approvals are rejected instead of overwriting newer canonical state. Bulk approve/reject is available only after the UI has paged through the complete change set for the run, and the before/after review panes render the complete normalized JSON rather than a truncated preview. The “already up to date” empty state is shown only for runs whose recorded change count is actually zero, so a failed/incomplete queue load cannot masquerade as a clean sync. Run switching clears the previous queue immediately and stale async responses are ignored. The review selector keyset-pages unresolved runs by descending run ID to exhaustion, so it remains stable even if another reviewer completes a run while later pages are loading. Overlapping run-list loads also use request-generation guards, so an older response cannot overwrite a newer staged/refreshed run list. Review actions explicitly reload the run list and selected queue once; they no longer trigger a second parent refresh cycle. It therefore includes every unresolved run beyond PostgREST's per-response row cap, plus the 12 most recent completed runs. Older pending work cannot be evicted by newer zero-change/completed syncs, response-size limits or offset shifts caused by concurrent review. These review operations are transactional database RPCs and require `public.is_admin()`; browser roles receive read access only to the private tables.
 
-This phase intentionally does **not** write to public archive tables such as `teams`, `managers`, `manager_clubs`, `honours` or tournament `matches`. Those adapters come next, after the canonical source changes are visible and auditable.
+Source review itself still does **not** write to public archive tables. Archive mutation is a separate v0.4 admin action, and tournament `matches`, transfers and player history remain untouched by the core adapter.
 
 The first version only stages **new and changed** entities. It does not yet infer removals (for example, a player leaving a squad) from absence in a snapshot. Removal semantics will be added only for endpoint scopes proven to be complete authoritative sets.
 
@@ -123,8 +145,8 @@ The collector deliberately runs in the already-authenticated Soccer Manager brow
 ## Next phases
 
 1. Add authoritative-scope removal detection for complete league, manager-assignment and squad snapshots.
-2. Add explicit adapters from approved canonical entities to Top 100 archive tables: seasons, clubs, managers/appointments, honours and friendly tournament fixtures/results.
-3. Add dedicated immutable transfer and player-change archives fed from approved canonical events.
+2. Add dedicated immutable transfer and player/player-change archives fed from approved canonical events.
+3. Match approved Soccer Manager fixtures/results to friendly-tournament records without guessing on ambiguous teams or ties.
 4. Build player/transfer analytics and the Hamburger SV manager dashboard from canonical history rather than live page state.
 5. Expand endpoint discovery as more Soccer Manager JSON surfaces are confirmed.
 6. Add scheduled/change notifications only after the sync path and archive adapters are stable and auditable.

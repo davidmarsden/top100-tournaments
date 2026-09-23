@@ -18,7 +18,7 @@ function reviewJson(value) {
 
 const CHANGE_PAGE_SIZE = 500;
 
-export default function SoccerManagerSyncReview({ refreshToken = 0 }) {
+export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComplete = null }) {
   const [runs, setRuns] = useState([]);
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [changes, setChanges] = useState([]);
@@ -187,6 +187,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0 }) {
       await reviewSoccerManagerSyncChange(changeId, decision);
       setStatus(`Change ${decision}.`);
       await Promise.all([loadRuns(), loadChanges(selectedRunId)]);
+      if (typeof onReviewComplete === 'function') onReviewComplete();
     } catch (error) {
       setStatus(`Review failed: ${error.message}`);
     } finally {
@@ -205,6 +206,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0 }) {
       const reviewed = await reviewSoccerManagerSyncRun(selectedRunId, decision);
       setStatus(`${reviewed} change${reviewed === 1 ? '' : 's'} ${decision}.`);
       await Promise.all([loadRuns(), loadChanges(selectedRunId)]);
+      if (typeof onReviewComplete === 'function') onReviewComplete();
     } catch (error) {
       setStatus(`Review failed: ${error.message}`);
     } finally {
