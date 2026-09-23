@@ -127,11 +127,14 @@ export default function ManagerRegistrationPortal() {
     // any of our Promise timeouts can resolve. The persisted session is the same
     // browser session the main Manager Portal already established.
     const key = authStorageKey();
-    const applyStoredSession = () => {
+    const applyStoredSession = (reloadOnChange = false) => {
       const storedSession = persistedSession();
       if (storedSession) {
+        const tokenChanged = storedSession.access_token !== session?.access_token;
         setSession(storedSession);
-        setLoadError('');
+        if (reloadOnChange && tokenChanged) {
+          load();
+        }
         return true;
       }
 
@@ -150,7 +153,7 @@ export default function ManagerRegistrationPortal() {
 
     const handleStorage = (event) => {
       if (!key || event.storageArea !== window.localStorage || event.key !== key) return;
-      applyStoredSession();
+      applyStoredSession(true);
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
