@@ -191,6 +191,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
           key={run.id}
           className={`sm-sync-run-card ${selectedRunId === run.id ? 'selected' : ''}`}
           onClick={() => {
+            if (run.id === selectedRunId) return;
             changeRequestRef.current += 1;
             setChanges([]);
             setLoadingChanges(true);
