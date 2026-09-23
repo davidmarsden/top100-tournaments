@@ -196,6 +196,7 @@ set search_path = ''
 as $$
 declare
   user_id uuid := (select auth.uid());
+  change_run_id bigint;
   change_row public.soccer_manager_sync_changes%rowtype;
   current_data jsonb;
   current_version integer;
@@ -209,20 +210,43 @@ begin
     raise exception 'Decision must be approved or rejected';
   end if;
 
+  select run_id
+  into change_run_id
+  from public.soccer_manager_sync_changes
+  where id = target_change_id;
+
+  if not found then
+    raise exception 'Soccer Manager sync change not found';
+  end if;
+
+  -- Serialize every review transition for this run before locking a change row.
+  -- This keeps the pending-count/status transition correct under concurrent reviewers.
+  perform 1
+  from public.soccer_manager_sync_runs
+  where id = change_run_id
+  for update;
+
+  if not found then
+    raise exception 'Soccer Manager sync run not found';
+  end if;
+
   select *
   into change_row
   from public.soccer_manager_sync_changes
   where id = target_change_id
   for update;
 
-  if not found then
-    raise exception 'Soccer Manager sync change not found';
-  end if;
   if change_row.status <> 'pending' then
     return change_row;
   end if;
 
   if target_decision = 'approved' then
+    -- Canonical rows may not exist yet, so row locks alone cannot serialize
+    -- competing first approvals. Lock the stable entity identity as well.
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(change_row.entity_type || E'\x1f' || change_row.entity_key, 0)
+    );
+
     select data, version
     into current_data, current_version
     from public.soccer_manager_canonical_entities
@@ -305,6 +329,7 @@ as $$
 declare
   user_id uuid := (select auth.uid());
   reviewed_count integer := 0;
+  lock_row record;
 begin
   if user_id is null or not public.is_admin() then
     raise exception 'Global admin access required';
@@ -322,6 +347,20 @@ begin
   end if;
 
   if target_decision = 'approved' then
+    -- Lock every entity identity in deterministic order. Advisory locks also
+    -- serialize the first approval when no canonical row exists yet.
+    for lock_row in
+      select change.entity_type, change.entity_key
+      from public.soccer_manager_sync_changes change
+      where change.run_id = target_run_id
+        and change.status = 'pending'
+      order by change.entity_type, change.entity_key
+    loop
+      perform pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended(lock_row.entity_type || E'\x1f' || lock_row.entity_key, 0)
+      );
+    end loop;
+
     perform 1
     from public.soccer_manager_canonical_entities canonical
     join public.soccer_manager_sync_changes change
