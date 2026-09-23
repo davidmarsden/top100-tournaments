@@ -240,7 +240,7 @@ export default function ManagerPortal({ registrationMode = false }) {
       }
 
       const [entryResult, accessResult] = await withPortalTimeout(Promise.all([
-        supabase.from('tournament_entries').select('id, tournament_id, manager_id, group_code, seed, pot, teams(id, name), tournaments!inner(id, name, status, season_number, public_slug, is_public, game_world_id)').eq('manager_id', accountRow.manager_id).eq('tournaments.game_world_id', accountRow.game_world_id),
+        supabase.from('tournament_entries').select('id, tournament_id, manager_id, group_code, seed, pot, teams(id, name), tournaments!inner(id, name, status, season_number, public_slug, is_public, game_world_id)').eq('manager_id', accountRow.manager_id),
         supabase.from('tournament_organisers').select('tournament_id, role, tournaments(id, name)').eq('auth_user_id', session.user.id).eq('active', true),
       ]), 'Tournament access lookup');
       if (entryResult.error) throw new Error('Could not load your tournament entries: ' + entryResult.error.message);
