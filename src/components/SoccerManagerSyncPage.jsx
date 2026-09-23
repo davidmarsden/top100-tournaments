@@ -103,13 +103,34 @@ export default function SoccerManagerSyncPage() {
   function normalizeCapturedEntries(entries) {
     const next = [];
     const errors = [];
-    const seenPayloads = new Set();
+    const seenFinanceCompanions = new Map();
+
+    function financeCompanionContext(sourceUrl) {
+      if (!sourceUrl) return null;
+      try {
+        const url = new URL(sourceUrl);
+        const action = url.searchParams.get('action');
+        if (action !== 'clubfinance' && action !== 'incomegraph') return null;
+        url.searchParams.delete('action');
+        url.searchParams.sort();
+        return { action, context: `${url.origin}${url.pathname}?${url.searchParams.toString()}` };
+      } catch {
+        return null;
+      }
+    }
+
     for (const entry of entries) {
       try {
         const payload = normalizeSoccerManagerPayload(entry.raw);
-        const signature = `${payload.kind}:${JSON.stringify(payload)}`;
-        if (seenPayloads.has(signature)) continue;
-        seenPayloads.add(signature);
+        if (payload.kind === 'clubFinance') {
+          const companion = financeCompanionContext(entry.sourceUrl);
+          if (companion) {
+            const signature = `${companion.context}:${JSON.stringify(payload)}`;
+            const previousAction = seenFinanceCompanions.get(signature);
+            if (previousAction && previousAction !== companion.action) continue;
+            seenFinanceCompanions.set(signature, companion.action);
+          }
+        }
         next.push({
           id: entry.id || entry.sourceUrl || entry.name,
           name: entry.name,
