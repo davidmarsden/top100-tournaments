@@ -34,7 +34,7 @@ let ready=false,done=false;
 const onMessage=e=>{if(e.origin!=='https://tournaments.smtop100.blog'||e.source!==win||!e.data||e.data.session!==session)return;if(e.data.type===readyType)ready=true;if(e.data.type===ackType){done=true;window.removeEventListener('message',onMessage);}};
 window.addEventListener('message',onMessage);
 const payloads=[];
-for(const url of urls){try{const res=await fetch(url,{credentials:'include',cache:'no-store'});if(!res.ok)continue;const type=(res.headers.get('content-type')||'').toLowerCase();if(!type.includes('json')){const text=await res.text();try{payloads.push({url,data:JSON.parse(text)});}catch{}continue;}payloads.push({url,data:await res.json()});}catch{}}
+for(const url of urls){try{const res=await fetch(url,{credentials:'include',cache:'no-store'});if(!res.ok)continue;const type=(res.headers.get('content-type')||'').toLowerCase();const safeUrl=sanitize(url);if(!safeUrl)continue;if(!type.includes('json')){const text=await res.text();try{payloads.push({url:safeUrl,data:JSON.parse(text)});}catch{}continue;}payloads.push({url:safeUrl,data:await res.json()});}catch{}}
 if(!payloads.length&&!diagnostics.length){window.removeEventListener('message',onMessage);alert('Top 100 Sync could not see any same-origin resource requests on this page.');return;}
 for(let i=0;i<30&&!ready;i++){try{win.postMessage({type:helloType,version:1,session,sourceOrigin:location.origin},'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 if(!ready){window.removeEventListener('message',onMessage);alert('Top 100 Sync opened, but the newly loaded page did not become ready. Make sure you are signed in there and try again.');return;}
