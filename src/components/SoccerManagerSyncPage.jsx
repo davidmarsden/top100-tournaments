@@ -240,6 +240,7 @@ export default function SoccerManagerSyncPage() {
     }
     const { next, errors } = normalizeCapturedEntries(entries);
     const allErrors = [...readErrors, ...errors];
+    setDiagnosticsCapturedAt(null);
     setPayloads(next);
     setStatus(allErrors.length ? `Loaded ${next.length} file(s). ${allErrors.join(' ')}` : `Loaded and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'}.`);
     // Always remount the native input after an import attempt. Browsers often
