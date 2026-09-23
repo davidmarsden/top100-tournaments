@@ -185,8 +185,8 @@ begin
         target_id = excluded.target_id,
         updated_at = now();
 
-  -- Current clubs come from approved standing entities. Stable SM club ids are
-  -- kept in club_key; the existing trigger mirrors names into public.teams.
+  -- Current clubs come from approved standing entities. Stable SM club ids
+  -- stay in the private archive-link map; public directory keys remain name-normalized.
   for row_data in
     select entity_key, data
     from public.soccer_manager_canonical_entities
@@ -203,6 +203,7 @@ begin
     v_team_id := null;
     v_existing_team_name := null;
 
+    -- Reuse a stable source-id mapping first. Names are only an initial-import fallback.
     select link.target_id, team.name
       into v_team_id, v_existing_team_name
     from public.soccer_manager_archive_links link
@@ -225,7 +226,8 @@ begin
         raise exception 'Ambiguous Top 100 team match for Soccer Manager club % (%)', v_club_name, v_club_id;
       end if;
 
-      select name into v_existing_team_name
+      select name
+        into v_existing_team_name
       from public.teams
       where id = v_team_id;
     else
@@ -240,20 +242,63 @@ begin
       end if;
     end if;
 
+    -- Rename the stable team first. The existing game_world_clubs trigger can then
+    -- see that team when the directory row changes and will not create a duplicate.
     update public.teams
       set name = v_club_name,
           active = true
     where id = v_team_id;
 
-    -- The public directory contract uses normalized display-name keys. Source IDs
-    -- stay in soccer_manager_archive_links and never leak into registration keys.
     if v_existing_team_name is not null
        and public.normal_registration_key(v_existing_team_name) is distinct from public.normal_registration_key(v_club_name) then
       update public.game_world_clubs
         set club_name = v_club_name,
             club_key = public.normal_registration_key(v_club_name),
             occupied = case when lower(coalesce(row_data.data->>'managed', '')) in ('1','true','yes') then true else false end,
-            division = case when coalesce(row_data.data->>'division', '') ~ '^[0-9]+
+            division = case when coalesce(row_data.data->>'division', '') ~ '^[0-9]+$'
+              then (row_data.data->>'division')::integer else null end,
+            active = true,
+            updated_at = now()
+      where game_world_id = v_world_id
+        and club_key = public.normal_registration_key(v_existing_team_name);
+    end if;
+
+    insert into public.game_world_clubs (
+      game_world_id,
+      club_name,
+      club_key,
+      occupied,
+      division,
+      active,
+      updated_at
+    ) values (
+      v_world_id,
+      v_club_name,
+      public.normal_registration_key(v_club_name),
+      case when lower(coalesce(row_data.data->>'managed', '')) in ('1','true','yes') then true else false end,
+      case when coalesce(row_data.data->>'division', '') ~ '^[0-9]+$'
+        then (row_data.data->>'division')::integer else null end,
+      true,
+      now()
+    )
+    on conflict (game_world_id, club_key) do update
+      set club_name = excluded.club_name,
+          occupied = excluded.occupied,
+          division = excluded.division,
+          active = true,
+          updated_at = now();
+
+    insert into public.soccer_manager_archive_links (
+      source_type, source_key, target_type, target_id
+    ) values (
+      'club', setup_id || ':' || v_club_id, 'team', v_team_id
+    )
+    on conflict (source_type, source_key) do update
+      set target_type = excluded.target_type,
+          target_id = excluded.target_id,
+          updated_at = now();
+
+    clubs_applied := clubs_applied + 1;
   end loop;
 
   -- Stable manager ids are mapped once. Exact case-insensitive name matching is
