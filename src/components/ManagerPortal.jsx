@@ -8,6 +8,18 @@ function matchDate(match) { if (!match.fixture_date) return 'Date TBC'; const [y
 function ordinal(value) { if (!value) return 'TBC'; return `${value}${value === 1 ? 'st' : value === 2 ? 'nd' : value === 3 ? 'rd' : 'th'}`; }
 function entryTeamName(entry, fallback = 'TBC') { return entry?.teams?.name || fallback || 'TBC'; }
 function registrationPath(tournament) { return `/${tournament.game_worlds?.slug}/${tournament.competition_types?.slug}/${tournament.public_slug}/register`; }
+function registrationStatusLabel(row) {
+  if (row.status === 'approved') return row.promoted_entry_id ? 'Entry confirmed' : 'Registration approved';
+  if (row.status === 'pending') return 'Registration submitted';
+  if (row.status === 'rejected') return 'Registration not approved';
+  if (row.status === 'withdrawn') return 'Registration withdrawn';
+  return row.status || 'Registration';
+}
+function registrationDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+}
 const PORTAL_LOAD_TIMEOUT_MS = 8000;
 
 function withPortalTimeout(promise, label = 'Manager Portal request', ms = PORTAL_LOAD_TIMEOUT_MS) {
@@ -48,6 +60,7 @@ export default function ManagerPortal({ registrationMode = false }) {
   const [entries, setEntries] = useState([]), [matches, setMatches] = useState([]), [groupEntries, setGroupEntries] = useState([]), [selectedEntryId, setSelectedEntryId] = useState('');
   const [adminAssignments, setAdminAssignments] = useState([]);
   const [openTournaments, setOpenTournaments] = useState([]);
+  const [registrations, setRegistrations] = useState([]);
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
@@ -199,15 +212,19 @@ export default function ManagerPortal({ registrationMode = false }) {
       }
 
       if (registrationMode) {
-        const registrationResult = await withPortalTimeout(
+        const [registrationResult, registrationsResult] = await withPortalTimeout(Promise.all([
           supabase.from('tournaments')
             .select('id, name, public_slug, registration_status, season_number, game_worlds(id, name, slug), competition_types(id, name, slug)')
             .eq('is_public', true)
             .eq('registration_status', 'open')
             .order('season_number', { ascending: false }),
-          'Open tournament registration lookup',
-        );
+          supabase.from('tournament_registrations')
+            .select('id, tournament_id, club_name, rating, status, submitted_at, reviewed_at, review_notes, promoted_entry_id, promoted_at, tournaments(name, season_number)')
+            .eq('auth_user_id', session.user.id)
+            .order('submitted_at', { ascending: false }),
+        ]), 'Registration records lookup');
         if (registrationResult.error) throw new Error('Could not load open tournament registrations: ' + registrationResult.error.message);
+        if (registrationsResult.error) throw new Error('Could not load your registration records: ' + registrationsResult.error.message);
 
         setAccount(accountRow);
         setClaim(null);
@@ -216,6 +233,7 @@ export default function ManagerPortal({ registrationMode = false }) {
         setGroupEntries([]);
         setAdminAssignments([]);
         setOpenTournaments(registrationResult.data || []);
+        setRegistrations(registrationsResult.data || []);
         setSelectedEntryId('');
         setMessage('Registration options loaded.');
         return;
@@ -250,9 +268,31 @@ export default function ManagerPortal({ registrationMode = false }) {
       setGroupEntries(peerEntries);
       setAdminAssignments(accessResult.error ? [] : (accessResult.data || []));
       setOpenTournaments([]);
+      setRegistrations([]);
       setMessage('Portal loaded.');
     } catch (error) {
       setLoadError(error?.message || 'We could not finish loading your Manager Portal.');
+      setMessage('');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function withdrawRegistration(row) {
+    if (!window.confirm(`Withdraw your registration for ${row.tournaments?.name || 'this tournament'}?`)) return;
+    setLoading(true);
+    setLoadError('');
+    setMessage('Withdrawing registration...');
+    try {
+      const { error } = await withPortalTimeout(
+        supabase.rpc('withdraw_manager_tournament_registration', { target_registration_id: row.id }),
+        'Registration withdrawal',
+      );
+      if (error) throw error;
+      await loadPortal();
+      setMessage('Registration withdrawn.');
+    } catch (error) {
+      setLoadError(error?.message || 'Could not withdraw registration.');
       setMessage('');
     } finally {
       setLoading(false);
@@ -276,6 +316,7 @@ export default function ManagerPortal({ registrationMode = false }) {
     return <main className="manager-portal-shell">
       <section className="manager-portal-hero"><div><p className="eyebrow">Team registration · {account.game_worlds?.name || 'Top 100'}</p><h1>{account.managers?.display_name || account.managers?.name || 'Top 100 Manager'}</h1><p>Choose an open tournament below. Registration uses the normal tournament form and stays linked to your signed-in Manager Portal account.</p></div><div className="button-row"><a className="button secondary" href="/manager">Back to My Matches</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
       <section className="card"><div className="card-header"><p className="eyebrow">Open now</p><h2>Register for a tournament</h2></div>{openTournaments.length ? <div className="entrant-list">{openTournaments.map((tournament) => <article className="entrant-row registration-row" key={tournament.id}><div className="registration-details"><strong>{tournament.name}</strong><span>{tournament.game_worlds?.name || 'Top 100'} · {tournament.competition_types?.name || 'Tournament'}</span></div><a className="button" href={registrationPath(tournament)}>Register</a></article>)}</div> : <p className="muted">There are no open public tournaments right now.</p>}</section>
+      <section className="card"><div className="card-header"><p className="eyebrow">Your record</p><h2>Registrations</h2></div>{registrations.length ? <div className="entrant-list">{registrations.map((row) => <article className="entrant-row registration-row" key={row.id}><div className="registration-details"><strong>{registrationStatusLabel(row)} · {row.tournaments?.name || `Tournament #${row.tournament_id}`}</strong><span>{row.club_name} · rating {row.rating} · submitted {registrationDate(row.submitted_at)}</span>{row.reviewed_at && <span>Reviewed {registrationDate(row.reviewed_at)}</span>}{row.review_notes && <span>{row.review_notes}</span>}</div>{row.status === 'pending' && <button type="button" className="secondary" onClick={() => withdrawRegistration(row)}>Withdraw</button>}</article>)}</div> : <p className="muted">You have no linked tournament registrations yet.</p>}</section>
     </main>;
   }
 
