@@ -31,10 +31,20 @@ function withRegistrationTimeout(promise, label = 'Registration request', ms = R
   ]).finally(() => window.clearTimeout(timer));
 }
 
-function persistedSession() {
+function authStorageKey() {
   try {
     const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
-    const raw = window.localStorage.getItem(`sb-${projectRef}-auth-token`);
+    return `sb-${projectRef}-auth-token`;
+  } catch {
+    return '';
+  }
+}
+
+function persistedSession() {
+  try {
+    const key = authStorageKey();
+    if (!key) return null;
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed?.access_token && parsed?.user?.id ? parsed : null;
@@ -80,20 +90,40 @@ export default function ManagerRegistrationPortal() {
   const loadRequestId = useRef(0);
 
   useEffect(() => {
-    if (!hasSupabaseConfig || !supabase) { setLoading(false); return; }
+    if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
 
     // This page deliberately bypasses Supabase auth.getSession()/auth listeners.
     // On some mobile browsers that path can deadlock on the auth Web Lock before
     // any of our Promise timeouts can resolve. The persisted session is the same
     // browser session the main Manager Portal already established.
-    const storedSession = persistedSession();
-    if (storedSession) {
-      setSession(storedSession);
-      return;
-    }
+    const key = authStorageKey();
+    const applyStoredSession = () => {
+      const storedSession = persistedSession();
+      if (storedSession) {
+        setSession(storedSession);
+        setLoadError('');
+        return true;
+      }
 
-    setLoadError('No active Manager Portal session was found. Open My Matches and sign in again.');
-    setLoading(false);
+      loadRequestId.current += 1;
+      setSession(null);
+      setAccount(null);
+      setRegistrations([]);
+      setTournaments([]);
+      setMessage('');
+      setLoadError('No active Manager Portal session was found. Open My Matches and sign in again.');
+      setLoading(false);
+      return false;
+    };
+
+    applyStoredSession();
+
+    const handleStorage = (event) => {
+      if (!key || event.storageArea !== window.localStorage || event.key !== key) return;
+      applyStoredSession();
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   useEffect(() => {
@@ -115,17 +145,30 @@ export default function ManagerRegistrationPortal() {
   }, [loading, session?.user?.id, account, loadError]);
 
   async function load() {
-    if (!session?.user?.id || !session?.access_token) return;
+    const latestSession = persistedSession();
+    if (!latestSession?.user?.id || !latestSession?.access_token) {
+      loadRequestId.current += 1;
+      setSession(null);
+      setAccount(null);
+      setRegistrations([]);
+      setTournaments([]);
+      setMessage('');
+      setLoadError('No active Manager Portal session was found. Open My Matches and sign in again.');
+      setLoading(false);
+      return;
+    }
+
+    setSession(latestSession);
     const requestId = ++loadRequestId.current;
     setLoading(true);
     setLoadError('');
     setMessage('Loading registration records...');
 
     try {
-      const uid = encodeURIComponent(session.user.id);
+      const uid = encodeURIComponent(latestSession.user.id);
       const accountRows = await restGet(
         `manager_portal_accounts?select=id,manager_id,game_world_id,email,active,managers(id,name,display_name),game_worlds(id,name,slug)&auth_user_id=eq.${uid}&active=eq.true&limit=1`,
-        session.access_token,
+        latestSession.access_token,
         'Manager Portal account request',
       );
       if (requestId !== loadRequestId.current) return;
@@ -141,12 +184,12 @@ export default function ManagerRegistrationPortal() {
       const [tournamentRows, registrationRows] = await Promise.all([
         restGet(
           'tournaments?select=id,name,public_slug,registration_status,registration_opens_at,registration_closes_at,game_world_id,game_worlds(id,name,slug),competition_types(id,name,slug)&is_public=eq.true&registration_status=eq.open&order=season_number.desc',
-          session.access_token,
+          latestSession.access_token,
           'Open tournaments request',
         ),
         restGet(
           `tournament_registrations?select=id,tournament_id,club_name,rating,status,submitted_at,reviewed_at,review_notes,promoted_entry_id,promoted_at,tournaments(name,season_number)&auth_user_id=eq.${uid}&order=submitted_at.desc`,
-          session.access_token,
+          latestSession.access_token,
           'Registration record request',
         ),
       ]);
