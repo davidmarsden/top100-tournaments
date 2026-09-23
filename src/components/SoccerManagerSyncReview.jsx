@@ -61,17 +61,35 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewed }
   const loadRuns = useCallback(async () => {
     if (!supabase) return;
     setLoadingRuns(true);
-    const { data, error } = await supabase
-      .from('soccer_manager_sync_runs')
-      .select('id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at')
-      .order('created_at', { ascending: false })
-      .limit(12);
+    const fields = 'id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at';
+    const [unresolvedResult, recentReviewedResult] = await Promise.all([
+      supabase
+        .from('soccer_manager_sync_runs')
+        .select(fields)
+        .neq('status', 'reviewed')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('soccer_manager_sync_runs')
+        .select(fields)
+        .eq('status', 'reviewed')
+        .order('created_at', { ascending: false })
+        .limit(12),
+    ]);
     setLoadingRuns(false);
+    const error = unresolvedResult.error || recentReviewedResult.error;
     if (error) {
       setStatus(`Could not load staged sync runs: ${error.message}`);
       return;
     }
-    const nextRuns = data || [];
+
+    const byId = new Map();
+    for (const run of [...(unresolvedResult.data || []), ...(recentReviewedResult.data || [])]) {
+      byId.set(run.id, run);
+    }
+    const nextRuns = [...byId.values()].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
     setRuns(nextRuns);
     setSelectedRunId((current) => {
       if (current && nextRuns.some((run) => run.id === current)) return current;
