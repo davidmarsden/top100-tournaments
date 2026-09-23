@@ -78,10 +78,12 @@ Supported response shapes:
   - Soccer Manager illegal-deal flag
 - Club squad (`club-ajax-mobile.php?action=clubinitdata2...`)
   - player/source ids
-  - name, age, rating and positions
-  - value, wages, contract, morale and condition
-  - appearances, goals and assists
-  - youth/goalkeeper/transfer-list flags where present
+  - observed name fields: `playerpitchname`, `playername`, `playersurname`
+  - observed position fields: `playerposition`, `playerpositionid`
+  - age, rating, nationality, value and wages
+  - observed contract/condition raw fields: `ctrraw`, `conraw`
+  - appearances plus observed `gs` / `as` goal-assist fields
+  - youth/goalkeeper/visible-transfer-list flags where present
 - Club finance
   - season balance/income/outgoings
   - wages and transfer spend
