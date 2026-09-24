@@ -2,9 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 function money(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return '—';
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(amount);
+  if (!hasNumber(value)) return '—';
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(Number(value));
 }
 
 function hasNumber(value) {
@@ -19,6 +18,11 @@ function number(value, digits = 1) {
 function mean(rows, field) {
   const values = rows.map((row) => row[field]).filter(hasNumber).map(Number);
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function sumKnown(rows, field) {
+  const values = rows.map((row) => row[field]).filter(hasNumber).map(Number);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
 }
 
 function positionGroup(player) {
@@ -85,7 +89,7 @@ export default function ManagerSquadDashboard() {
   const metrics = useMemo(() => ({
     seniorAverageRating: mean(seniorPlayers, 'rating'),
     seniorAverageAge: mean(seniorPlayers, 'age'),
-    seniorValue: seniorPlayers.reduce((sum, player) => sum + (Number(player.value) || 0), 0),
+    seniorValue: sumKnown(seniorPlayers, 'value'),
     expiring: seniorPlayers.filter((player) => hasNumber(player.contract) && Number(player.contract) <= 1).length,
     firstTeamReady: seniorPlayers.filter((player) => hasNumber(player.rating) && Number(player.rating) >= 89).length,
     youthAverageRating: mean(youthPlayers, 'rating'),
