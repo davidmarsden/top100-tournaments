@@ -44,7 +44,7 @@ const redactReplayContextText=value=>{
   let text=String(value);
   const sensitiveName='[A-Za-z0-9_-]*(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)[A-Za-z0-9_-]*';
   const sensitiveField=/(token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)/i;
-  const attr=/([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(?:\\(["'])(.*?)(?:\\\2|$)|"([^"]*)(?:"|$)|'([^']*)(?:'|$)|([^\s"'=<>\x60]+))/g;
+  const attr=/([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(?:\\(["'])([\s\S]*?)(?:\\\2|$)|"([^"]*)(?:"|$)|'([^']*)(?:'|$)|([^\s"'=<>\x60]+))/g;
   const redactHtmlTag=tag=>{
     const attrs=[];
     let match;
