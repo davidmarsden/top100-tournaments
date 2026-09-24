@@ -81,8 +81,9 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
       const result = data || {};
       setStatus(
         `Applied player/transfer archive for world ${result.setupId || setupId}: `
-        + `${result.squadPlayers || 0} squad players, ${result.playerSnapshots || 0} new player snapshots, `
-        + `${result.transfers || 0} transfers and ${result.playerChanges || 0} player-change events.`
+        + `${result.squadPlayers || 0} squad players, ${result.squadMembershipsCleared || 0} stale squad membership(s) cleared, `
+        + `${result.playerSnapshots || 0} new player snapshots, ${result.transfers || 0} transfers and `
+        + `${result.playerChanges || 0} player-change events.`
         + (result.unmappedTransferClubs
           ? ` ${result.unmappedTransferClubs} transfer club reference(s) could not yet be mapped to Top 100 teams.`
           : ''),
