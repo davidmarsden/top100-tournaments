@@ -68,7 +68,40 @@ export default function ManagerSquadDashboard() {
     }
   }
 
-  useEffect(() => { loadDashboard(); }, []);
+  useEffect(() => {
+    if (!hasSupabaseConfig || !supabase) {
+      setLoading(false);
+      setDashboard(null);
+      setError('Supabase is not connected.');
+      return undefined;
+    }
+
+    let active = true;
+    let subscription = null;
+
+    async function initialise() {
+      await loadDashboard();
+      if (!active) return;
+
+      const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+        if (!active) return;
+        if (!nextSession) {
+          setDashboard(null);
+          setError('');
+          setLoading(false);
+          return;
+        }
+        await loadDashboard();
+      });
+      subscription = listener.subscription;
+    }
+
+    initialise();
+    return () => {
+      active = false;
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   const players = dashboard?.players || [];
   const transfers = dashboard?.transfers || [];
@@ -120,6 +153,7 @@ export default function ManagerSquadDashboard() {
   if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading squad dashboard…</h1></section></main>;
   if (!dashboard && !error) return <main className="manager-portal-shell"><section className="card manager-login-card"><h1>Sign in first</h1><p className="muted">Use your Manager Portal sign-in, then come back to Squad &amp; Transfers.</p><a className="button" href="/">Go to Manager Portal</a></section></main>;
   if (error) return <main className="manager-portal-shell"><section className="card manager-login-card"><h1>Couldn’t load the dashboard</h1><p className="status">{error}</p><button type="button" onClick={loadDashboard}>Try again</button></section></main>;
+  if (!dashboard?.teamId) return <main className="manager-portal-shell"><section className="card manager-login-card"><h1>No current club linked</h1><p className="muted">Your Manager Portal account is valid, but there is no current Soccer Manager team assignment for this game world yet.</p><div className="button-row"><a className="button" href="/">Back to My Matches</a><button type="button" className="secondary" onClick={loadDashboard}>Check again</button></div></section></main>;
 
   return <main className="manager-portal-shell squad-dashboard">
     <section className="manager-portal-hero">
