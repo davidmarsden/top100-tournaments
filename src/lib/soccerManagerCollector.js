@@ -29,13 +29,17 @@ export function isAllowedSoccerManagerOrigin(origin) {
 export function collectorBookmarklet() {
   const code = `(()=>{try{
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
+const session=(crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
+const win=window.open('https://tournaments.smtop100.blog/admin/soccer-manager-sync?collectorSession='+encodeURIComponent(session),'top100-sm-sync');
+if(!win){alert('Please allow pop-ups for Soccer Manager, then try Top 100 Sync again.');return;}
+window.__top100SmSyncBootstrap={session,win};
 const existing=document.getElementById('top100-sm-sync-collector-script');
 if(existing)existing.remove();
 const script=document.createElement('script');
 script.id='top100-sm-sync-collector-script';
 script.src='https://tournaments.smtop100.blog/sm-sync-collector.js?v='+Date.now();
 script.async=true;
-script.onerror=()=>alert('Top 100 Sync could not load its collector script. Soccer Manager may be blocking external scripts.');
+script.onerror=()=>{try{win.close();}catch{}delete window.__top100SmSyncBootstrap;alert('Top 100 Sync could not load its collector script. Soccer Manager may be blocking external scripts.');};
 (document.head||document.documentElement).appendChild(script);
 }catch(err){alert('Top 100 Sync failed: '+(err&&err.message?err.message:String(err)));}})();`;
   return 'javascript:' + encodeURIComponent(code);
