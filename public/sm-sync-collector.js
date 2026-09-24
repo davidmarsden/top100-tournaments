@@ -80,10 +80,27 @@ const redactReplayContextText=value=>{
     opener.lastIndex=end;
   }
   if(cursor)text=rebuilt+text.slice(cursor);
-  const quotedAssignment=new RegExp("([\\\"'\\x60]?"+sensitiveName+"[\\\"'\\x60]?\\s*[:=]\\s*)([\\\"'\\x60])([\\s\\S]*?)\\2","gi");
-  text=text.replace(quotedAssignment,'$1$2[redacted]$2');
-  const quotedAttribute=new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*)([\\\"'\\x60])([\\s\\S]*?)\\2","gi");
-  text=text.replace(quotedAttribute,'$1$2[redacted]$2');
+  const redactQuotedSensitive=(input,prefixPattern)=>{
+    const opener=new RegExp(prefixPattern+"([\\\"'\\x60])","gi");
+    let output='',cursor=0,match;
+    while((match=opener.exec(input))!==null){
+      const delimiter=match[1];
+      let end=opener.lastIndex;
+      for(;end<input.length;end++){
+        if(input[end]!==delimiter)continue;
+        let slashes=0;
+        for(let j=end-1;j>=0&&input[j]==='\\\\';j--)slashes++;
+        if(slashes%2===0)break;
+      }
+      if(end>=input.length)break;
+      output+=input.slice(cursor,match.index)+match[0]+'[redacted]'+delimiter;
+      cursor=end+1;
+      opener.lastIndex=end+1;
+    }
+    return cursor?output+input.slice(cursor):input;
+  };
+  text=redactQuotedSensitive(text,"[\\\"'\\x60]?"+sensitiveName+"[\\\"'\\x60]?\\s*[:=]\\s*");
+  text=redactQuotedSensitive(text,"(?:data-)?"+sensitiveName+"\\s*=\\s*");
   text=text.replace(new RegExp("([?&]"+sensitiveName+"=)[^&#\\s\\\"'<>]*","gi"),'$1[redacted]');
   text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
   text=text.replace(new RegExp("([\\\"']?"+sensitiveName+"[\\\"']?\\s*[:=]\\s*)[^\\\"'\\s,;}<]*","gi"),'$1[redacted]');
