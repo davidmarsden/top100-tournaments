@@ -167,6 +167,10 @@ The collector also sends a diagnostic list of the 50 most recent same-origin res
 
 The Sync workbench shows those requests in a diagnostic table and can download the sanitized list as a small JSON file. The download preserves the collector's original capture timestamp rather than the later download time. Diagnostics contain URLs/timing metadata only, never cookies, request headers or response bodies.
 
+When the current Soccer Manager page has loaded known match-engine JavaScript assets, the collector also captures source text for an exact same-origin allowlist: `constants.js`, `jsutil.js`, `random.js`, `randomdata.js`, `attributes.js`, `formationdata.js`, `positions.js`, `matchreportcommentary.js`, `livematch.js` and `livematch2d.js`. The workbench validates the origin/path allowlist again, rejects duplicate paths, caps each file at 2 million characters and the bundle at 6 million characters, and exposes a separate **Download match-engine diagnostics** JSON export. The bundle contains static JavaScript source text plus source URLs only; cookies, request headers and authenticated JSON response bodies are never included.
+
+Because the collector is installed as a bookmarklet containing the collector code itself, an existing manually saved Top 100 Sync bookmark must be replaced/re-copied after this feature ships in order to gain the new match-engine export.
+
 For club-squad responses, the normalizer now also receives the captured source URL as context. If the response body omits club/world identity, it can safely recover the non-secret `clubid` and `sid` query values from that already-captured URL. The normalized squad output keeps those as `club.clubId` and `club.setupId`; the action/latest response id are retained separately as source context.
 
 The collector currently discovers these endpoint families when they have already been requested by the current Soccer Manager page:
