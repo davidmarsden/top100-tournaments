@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 
 const DEFAULTS = {
   youth_cup_enabled: false,
@@ -23,8 +23,7 @@ function formatDeliveryTime(value) {
   return new Date(value).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-export default function ManagerReminderPreferences() {
-  const [session, setSession] = useState(null);
+export default function ManagerReminderPreferences({ session = null, authLoading = false }) {
   const [account, setAccount] = useState(null);
   const [prefs, setPrefs] = useState(DEFAULTS);
   const [savedPrefs, setSavedPrefs] = useState(DEFAULTS);
@@ -35,42 +34,7 @@ export default function ManagerReminderPreferences() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
-
-    let active = true;
-    let subscription = null;
-
-    async function initialiseAuth() {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (!active) return;
-        if (error) throw error;
-        setSession(data.session || null);
-
-        // This component mounts alongside ManagerPortal and shares the same
-        // Supabase client. Do not register an auth listener until initial
-        // session recovery has settled, otherwise the listener can race the
-        // client's browser Web Lock initialization.
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (!active) return;
-          setSession(nextSession);
-        });
-        subscription = listener.subscription;
-      } catch (error) {
-        if (!active) return;
-        console.warn('Could not initialise reminder authentication.', error);
-        setLoading(false);
-      }
-    }
-
-    initialiseAuth();
-    return () => {
-      active = false;
-      subscription?.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
+    if (authLoading) return;
     if (!session?.user?.id) {
       setAccount(null);
       setNextFixture(null);
@@ -79,7 +43,7 @@ export default function ManagerReminderPreferences() {
       return;
     }
     loadPreferences();
-  }, [session?.user?.id]);
+  }, [authLoading, session?.user?.id]);
 
   const enabledLabels = useMemo(() => {
     if (!savedPrefs.youth_cup_enabled) return [];
