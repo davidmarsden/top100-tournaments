@@ -89,7 +89,7 @@ const redactReplayContextText=value=>{
       for(;end<input.length;end++){
         if(input[end]!==delimiter)continue;
         let slashes=0;
-        for(let j=end-1;j>=0&&input[j]==='\\\\';j--)slashes++;
+        for(let j=end-1;j>=0&&input.charCodeAt(j)===92;j--)slashes++;
         if(slashes%2===0)break;
       }
       if(end>=input.length)break;
