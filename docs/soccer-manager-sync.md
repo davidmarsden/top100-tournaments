@@ -292,3 +292,12 @@ The first known acceptance case is Top 100 fixture `282010118`, Hellas Verona 3â
 The match-engine diagnostics allowlist also includes `/js/common/multiplayer_videoplayer.js`. Soccer Manager loads this alongside the live-match renderer, while `livematch.js` itself only consumes the already-populated `window.liveMatchXML`. Capturing the video-player source is therefore the evidence-gathering step for identifying the authenticated replay-loader request used by completed fixtures.
 
 Do not guess or hard-code a replay endpoint from fixture IDs. Once the loader contract is observed, the intended bulk workflow is: derive completed fixture IDs from approved world/match data, fetch replays from the authenticated Soccer Manager tab with bounded concurrency and resumable progress, normalize each replay through the existing match replay normalizer, and stage deduplicated `match_snapshot` entities for review.
+
+
+### Replay page context diagnostics
+
+Because the completed-match renderer consumes an already-populated `window.liveMatchXML`, the collector can capture a structural diagnostic of the replay-selection context without exporting arbitrary page source. It contains only the sanitized current page URL, selected replay-related query parameters, non-sensitive fixture/match identifiers from DOM metadata and hidden inputs, and sanitized same-origin form/link destinations whose query keys indicate replay-related fixture/match/game/club/setup/season/turn context. Inline script bodies are not parsed or transferred.
+
+This context is diagnostic-only: it is not added to normalized sync payloads, staged for review, or persisted to Supabase. The workbench independently requires the Soccer Manager origin, reconstructs query and identifier maps from bounded string entries (40 query fields, 80 identifiers, 500 characters per value), accepts at most 80 bounded same-origin replay navigation entries, and rejects the structural packet if its serialized size exceeds 100,000 characters. Arbitrary inline-script and HTML excerpts are never transferred.
+
+The purpose is to identify the server-side completed-replay selection contract from observed structural evidence rather than guessing an endpoint. Once a fixture selector/action is confirmed, bulk season harvesting can use that observed contract with bounded concurrency, resume/progress and the existing match replay normalizer.

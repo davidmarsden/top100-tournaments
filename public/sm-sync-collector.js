@@ -31,8 +31,67 @@ for(const entry of resources){try{const u=new URL(entry.name,location.href);if(u
 const matchEngineSources=[];
 let engineBytes=0;
 const maxFileChars=2000000,maxTotalChars=6000000;
-const maxReplayChars=2000000;
-let matchReplay=null;
+const maxReplayChars=2000000,maxReplayContextChars=250000;
+let matchReplay=null,replayPageContext=null;
+const safeReplayContextValue=value=>{
+  if(value===null||value===undefined)return null;
+  const text=String(value);
+  if(text.length>500)return text.slice(0,500);
+  return text;
+};
+const captureReplayPageContext=()=>{
+  const isReplayIdentifier=name=>/^(?:data-)?(?:fixture(?:-?id)?|fix(?:id)?|match(?:-?id)?|mid|game(?:-?id)?|club(?:-?id)?|clubid|sid|season|turn)$/i.test(String(name||''));
+  const params={};
+  let safePageUrl=location.origin+location.pathname;
+  try{
+    const page=new URL(location.href),projectedPage=new URL(page.origin+page.pathname);
+    for(const [key,value] of page.searchParams.entries()){
+      if(isReplayIdentifier(key)&&!sensitive.test(key)&&!sensitive.test(String(value))){
+        const safeValue=safeReplayContextValue(value);
+        params[key]=safeValue;
+        projectedPage.searchParams.append(key,safeValue);
+      }
+    }
+    safePageUrl=projectedPage.href;
+  }catch{}
+  const identifiers={};
+  for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-fixtureid],[data-fix],[data-fixid],[data-match],[data-match-id],[data-matchid],[data-mid],[data-game],[data-game-id],[data-gameid],[data-club],[data-club-id],[data-clubid],[data-sid],[data-season],[data-turn],[data-id],input[type="hidden"]')).slice(0,300)){
+    const candidates=[];
+    if(el.id&&isReplayIdentifier(el.id)&&!sensitive.test(el.id)&&el.type==='hidden'&&el.value)candidates.push([el.id,el.value]);
+    if(el.name&&isReplayIdentifier(el.name)&&!sensitive.test(el.name)&&el.value)candidates.push([el.name,el.value]);
+    for(const attr of Array.from(el.attributes||[]))if(attr.name.startsWith('data-')&&isReplayIdentifier(attr.name)&&!sensitive.test(attr.name))candidates.push([attr.name,attr.value]);
+    for(const [key,value] of candidates){
+      if(sensitive.test(String(value)))continue;
+      identifiers[key+':'+Object.keys(identifiers).length]=safeReplayContextValue(value);
+      if(Object.keys(identifiers).length>=80)break;
+    }
+    if(Object.keys(identifiers).length>=80)break;
+  }
+  const navigation=[];
+  for(const el of Array.from(document.querySelectorAll('a[href],form')).slice(0,300)){
+    const isForm=el.tagName==='FORM';
+    const raw=isForm?(el.getAttribute('action')||location.href):el.getAttribute('href');
+    if(!raw)continue;
+    try{
+      const url=new URL(raw,location.href);
+      if(url.origin!==location.origin)continue;
+      const structural=new URL(url.origin+url.pathname);
+      for(const [key,value] of url.searchParams.entries()){
+        if(isReplayIdentifier(key)&&!sensitive.test(String(value)))structural.searchParams.append(key,safeReplayContextValue(value));
+      }
+      if(isForm){
+        for(const [key,value] of Array.from(new FormData(el).entries()).slice(0,100)){
+          if(typeof value==='string'&&isReplayIdentifier(key)&&!sensitive.test(value))structural.searchParams.append(key,safeReplayContextValue(value));
+        }
+      }
+      if(![...structural.searchParams.keys()].length)continue;
+      navigation.push({kind:isForm?'form':'link',url:structural.href});
+      if(navigation.length>=80)break;
+    }catch{}
+  }
+  const context={pageUrl:safePageUrl,params,identifiers,navigation};
+  return JSON.stringify(context).length<=maxReplayContextChars?context:null;
+};
 try{
   const replayXml=typeof window.liveMatchXML==='string'?window.liveMatchXML:null;
   if(replayXml){
@@ -46,11 +105,16 @@ try{
 }catch(err){
   matchReplay={url:sanitize(location.href),xml:null,error:err&&err.message?err.message:'Replay capture failed'};
 }
+try{
+  if(matchReplay)replayPageContext=captureReplayPageContext();
+}catch{
+  replayPageContext=null;
+}
 for(const u of engineCandidates){try{const res=await fetch(u.href,{credentials:'include',cache:'no-store'});const finalUrl=new URL(res.url||u.href,location.href);if(finalUrl.origin!==location.origin||finalUrl.pathname!==u.pathname){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Redirected outside allowlisted asset path'});continue;}if(!res.ok){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'HTTP '+res.status});continue;}const contentType=(res.headers.get('content-type')||'').toLowerCase();if(!(contentType.includes('javascript')||contentType.includes('ecmascript')||contentType.includes('text/plain'))){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Unexpected content type '+(contentType||'unknown')});continue;}const text=await res.text();if(text.length>maxFileChars){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Source exceeded '+maxFileChars+' characters'});continue;}if(engineBytes+text.length>maxTotalChars){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Bundle exceeded '+maxTotalChars+' characters'});continue;}engineBytes+=text.length;matchEngineSources.push({url:u.origin+u.pathname,source:text,error:null});}catch(err){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:err&&err.message?err.message:'Fetch failed'});}}
 if(!payloads.length&&!diagnostics.length&&!matchEngineSources.length&&!matchReplay){window.removeEventListener('message',onMessage);alert('Top 100 Sync could not see any same-origin resource requests or match replay data on this page.');return;}
 for(let i=0;i<30&&!ready;i++){try{win.postMessage({type:helloType,version:1,session,sourceOrigin:location.origin},'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 if(!ready){window.removeEventListener('message',onMessage);alert('Top 100 Sync opened, but the newly loaded page did not become ready. Make sure you are signed in there and try again.');return;}
-const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads,diagnostics,matchEngineSources,matchReplay};
+const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads,diagnostics,matchEngineSources,matchReplay,replayPageContext};
 for(let i=0;i<30&&!done;i++){try{win.postMessage(packet,'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 window.removeEventListener('message',onMessage);
 if(!done)alert('Top 100 Sync became ready, but did not acknowledge the data. Try again.');

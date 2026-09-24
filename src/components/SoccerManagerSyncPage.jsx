@@ -142,6 +142,7 @@ export default function SoccerManagerSyncPage() {
   const [diagnosticsCapturedAt, setDiagnosticsCapturedAt] = useState(null);
   const [matchEngineSources, setMatchEngineSources] = useState([]);
   const [matchReplay, setMatchReplay] = useState(null);
+  const [replayPageContext, setReplayPageContext] = useState(null);
   const [stageStatus, setStageStatus] = useState('');
   const [stageBusy, setStageBusy] = useState(false);
   const [reviewRefreshToken, setReviewRefreshToken] = useState(0);
@@ -277,6 +278,73 @@ export default function SoccerManagerSyncPage() {
       setDiagnostics(diagnosticRows);
       setMatchEngineSources(engineRows);
       setMatchReplay(replayRow);
+      let replayContextRow = null;
+      if (message.replayPageContext && typeof message.replayPageContext === 'object') {
+        const row = message.replayPageContext;
+        try {
+          if (typeof row.pageUrl !== 'string' || row.pageUrl.length > 2000) throw new Error('Invalid replay page URL');
+          const url = new URL(row.pageUrl);
+          const rawParams = row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? row.params : {};
+          const rawIdentifiers = row.identifiers && typeof row.identifiers === 'object' && !Array.isArray(row.identifiers) ? row.identifiers : {};
+          const rawNavigation = Array.isArray(row.navigation) ? row.navigation : [];
+          const paramKeys = Object.keys(rawParams);
+          const identifierKeys = Object.keys(rawIdentifiers);
+          const shapeWithinLimits = paramKeys.length <= 40 && identifierKeys.length <= 80 && rawNavigation.length <= 80;
+          let candidate = null;
+          if (shapeWithinLimits) {
+            const boundedMap = (value, keys) => Object.fromEntries(keys.map((key) => [key, value[key]]));
+            const replayKey = (key) => /^(?:data-)?(?:fixture(?:-?id)?|fix(?:id)?|match(?:-?id)?|mid|game(?:-?id)?|club(?:-?id)?|clubid|sid|season|turn)$/i.test(String(key || ''));
+            const identifierBase = (key) => String(key || '').replace(/:\d+$/, '');
+            const entriesValid = paramKeys.every((key) => replayKey(key) && key.length <= 120 && typeof rawParams[key] === 'string' && rawParams[key].length <= 500)
+              && identifierKeys.every((key) => replayKey(identifierBase(key)) && key.length <= 120 && typeof rawIdentifiers[key] === 'string' && rawIdentifiers[key].length <= 500);
+            const navigation = [];
+            let navigationValid = true;
+            for (const value of rawNavigation) {
+              if (!value || (value.kind !== 'form' && value.kind !== 'link') || typeof value.url !== 'string' || value.url.length > 2000) {
+                navigationValid = false;
+                break;
+              }
+              try {
+                const incoming = new URL(value.url);
+                if (incoming.origin !== event.origin) {
+                  navigationValid = false;
+                  break;
+                }
+                const projected = new URL(incoming.origin + incoming.pathname);
+                for (const [key, entry] of incoming.searchParams.entries()) {
+                  if (replayKey(key)) projected.searchParams.append(key, entry.slice(0, 500));
+                }
+                if (![...projected.searchParams.keys()].length) {
+                  navigationValid = false;
+                  break;
+                }
+                navigation.push({ kind: value.kind, url: projected.href });
+              } catch {
+                navigationValid = false;
+                break;
+              }
+            }
+            if (entriesValid && navigationValid) {
+              const projectedPage = new URL(url.origin + url.pathname);
+              for (const [key, entry] of url.searchParams.entries()) {
+                if (replayKey(key)) projectedPage.searchParams.append(key, entry.slice(0, 500));
+              }
+              candidate = {
+                pageUrl: projectedPage.href,
+                params: boundedMap(rawParams, paramKeys),
+                identifiers: boundedMap(rawIdentifiers, identifierKeys),
+                navigation,
+              };
+            }
+          }
+          if (candidate && url.origin === event.origin && JSON.stringify(candidate).length <= 100000) {
+            replayContextRow = candidate;
+          }
+        } catch {
+          replayContextRow = null;
+        }
+      }
+      setReplayPageContext(replayContextRow);
       setDiagnosticsCapturedAt(typeof message.capturedAt === 'string' ? message.capturedAt : null);
 
       const entries = message.payloads.slice(-20).map((item, index) => {
@@ -319,7 +387,8 @@ export default function SoccerManagerSyncPage() {
       setCollectorStatus(
         `Last browser sync: ${new Date().toLocaleString('en-GB')} · ${event.origin}`
         + (engineRows.length ? ` · match-engine sources ${sourceCount}/${engineRows.length}` : '')
-        + (replayRow ? ` · match replay ${replayRow.xml ? 'captured' : 'detected'}` : ''),
+        + (replayRow ? ` · match replay ${replayRow.xml ? 'captured' : 'detected'}` : '')
+        + (replayContextRow ? ' · replay page context captured' : ''),
       );
 
       if (event.source && typeof event.source.postMessage === 'function') {
@@ -355,6 +424,7 @@ export default function SoccerManagerSyncPage() {
     setDiagnosticsCapturedAt(null);
     setMatchEngineSources([]);
     setMatchReplay(null);
+    setReplayPageContext(null);
     setPayloads(next);
     setStatus(allErrors.length ? `Loaded ${next.length} file(s). ${allErrors.join(' ')}` : `Loaded and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'}.`);
     // Always remount the native input after an import attempt. Browsers often
@@ -417,6 +487,20 @@ export default function SoccerManagerSyncPage() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadReplayPageContextDiagnostics() {
+    if (!replayPageContext) return;
+    const blob = new Blob([JSON.stringify({
+      capturedAt: diagnosticsCapturedAt,
+      ...replayPageContext,
+    }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `top100-sm-replay-page-context-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function downloadMatchReplayDiagnostics() {
     if (!matchReplay) return;
     const blob = new Blob([JSON.stringify({
@@ -454,7 +538,7 @@ export default function SoccerManagerSyncPage() {
         <p className="muted">Supported now: competition snapshot, club squad, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
-      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setMatchEngineSources([]); setMatchReplay(null); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
+      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setMatchEngineSources([]); setMatchReplay(null); setReplayPageContext(null); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
       {stageStatus && <p className="status">{stageStatus}</p>}
     </section>
 
@@ -490,6 +574,25 @@ export default function SoccerManagerSyncPage() {
           </tr>;
         })}
       </tbody></table></div>
+    </section>}
+
+    {!!replayPageContext && <section className="card module-card">
+      <div className="card-header"><p className="eyebrow">Replay-loader diagnostics</p><h2>Replay page context</h2></div>
+      <p className="muted">
+        Captures only structural replay-selection data: the page URL/query context, likely fixture/match identifiers, and same-origin replay-related form/link destinations. No arbitrary script or HTML content crosses origins. This is diagnostic-only and is never staged or persisted.
+        {diagnosticsCapturedAt ? ` Captured ${new Date(diagnosticsCapturedAt).toLocaleString('en-GB')}.` : ''}
+      </p>
+      <div className="overview-metrics">
+        <article><span>Query fields</span><strong>{Object.keys(replayPageContext.params || {}).length}</strong></article>
+        <article><span>Identifiers</span><strong>{Object.keys(replayPageContext.identifiers || {}).length}</strong></article>
+        <article><span>Replay links/forms</span><strong>{replayPageContext.navigation?.length || 0}</strong></article>
+      </div>
+      <p className="muted"><code>{replayPageContext.pageUrl}</code></p>
+      <div className="button-row">
+        <button type="button" className="secondary" onClick={downloadReplayPageContextDiagnostics}>
+          Download replay page context
+        </button>
+      </div>
     </section>}
 
     {!!matchReplay && <section className="card module-card">
