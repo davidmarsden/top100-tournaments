@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeSoccerManagerPayload, summarizeNormalizedPayload } from '../lib/soccerManagerSync';
+import { normalizeSoccerManagerMatchReplay, summarizeMatchReplay } from '../lib/soccerManagerMatchReplay';
 import {
   collectorBookmarklet,
   isAllowedSoccerManagerOrigin,
@@ -78,6 +79,38 @@ function FinancePreview({ payload }) {
     <div className="table-wrap"><table><thead><tr><th>Week</th><th>Income</th><th>Outgoings</th><th>Balance</th><th>Wages</th></tr></thead><tbody>
       {payload.weekly.map((week, index) => <tr key={week.weekStart || index}><td>{week.weekStart}</td><td>{formatValue(week.income)}</td><td>{formatValue(week.outgoings)}</td><td>{formatValue(week.balance)}</td><td>{formatValue(week.wages)}</td></tr>)}
     </tbody></table></div>
+  </section>;
+}
+
+function MatchReplayPreview({ payload }) {
+  const summary = summarizeMatchReplay(payload);
+  return <section className="card module-card">
+    <div className="card-header"><p className="eyebrow">Match archive candidate</p><h2>{summary.match}</h2></div>
+    <SummaryCards summary={summary} />
+    <div className="grid two-columns">
+      <article>
+        <h3>Key chances</h3>
+        <div className="entrant-list">
+          {(payload.chances || []).map((chance) => <div className="entrant-row" key={`${chance.sequence}:${chance.minute}`}>
+            <div>
+              <strong>{chance.minute}' · {chance.teamSide === 'h' ? payload.fixture.homeName : payload.fixture.awayName} · {chance.outcome}</strong>
+              <span>{chance.player?.surname || chance.player?.firstName || chance.player?.playerId || 'Unknown player'}{chance.secondaryPlayer?.playerId ? ` · supplied by ${chance.secondaryPlayer.surname || chance.secondaryPlayer.playerId}` : ''}</span>
+            </div>
+          </div>)}
+        </div>
+      </article>
+      <article>
+        <h3>Substitutions</h3>
+        <div className="entrant-list">
+          {(payload.substitutions || []).map((subs) => <div className="entrant-row" key={`${subs.sequence}:${subs.minute}`}>
+            <div>
+              <strong>{subs.minute}' · {subs.teamSide === 'h' ? payload.fixture.homeName : payload.fixture.awayName}</strong>
+              <span>{subs.offPlayerIds.length} off · {subs.onPlayerIds.length} on</span>
+            </div>
+          </div>)}
+        </div>
+      </article>
+    </div>
   </section>;
 }
 
@@ -257,14 +290,29 @@ export default function SoccerManagerSyncPage() {
       });
 
       const { next, errors } = normalizeCapturedEntries(entries);
+      if (replayRow?.xml) {
+        try {
+          const payload = normalizeSoccerManagerMatchReplay(replayRow.xml, replayRow.url);
+          next.push({
+            id: `match-replay:${payload.source.setupId || 'unknown'}:${payload.source.fixtureId}`,
+            name: `Match replay ${payload.source.fixtureId}`,
+            sourceUrl: replayRow.url,
+            payload,
+          });
+        } catch (error) {
+          errors.push(`Match replay: ${error.message}`);
+        }
+      }
       setPayloads(next);
       setStatus(errors.length
         ? `Received ${next.length} supported response(s) from Soccer Manager. ${errors.join(' ')}`
         : next.length
           ? `Received and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'} directly from your logged-in tab.`
-          : diagnosticRows.length
-            ? `No supported JSON response matched yet. Captured ${diagnosticRows.length} recent Soccer Manager request URL${diagnosticRows.length === 1 ? '' : 's'} for diagnosis.`
-            : 'No supported JSON responses or request diagnostics were received.');
+          : replayRow?.xml
+            ? 'Captured the match replay but could not normalize it. See the error above.'
+            : diagnosticRows.length
+              ? `No supported JSON response matched yet. Captured ${diagnosticRows.length} recent Soccer Manager request URL${diagnosticRows.length === 1 ? '' : 's'} for diagnosis.`
+              : 'No supported JSON responses or request diagnostics were received.');
       const sourceCount = engineRows.filter((row) => typeof row.source === 'string').length;
       setCollectorStatus(
         `Last browser sync: ${new Date().toLocaleString('en-GB')} · ${event.origin}`
@@ -474,6 +522,7 @@ export default function SoccerManagerSyncPage() {
       {entry.payload.kind === 'transfers' && <TransfersPreview payload={entry.payload} />}
       {entry.payload.kind === 'clubFinance' && <FinancePreview payload={entry.payload} />}
       {entry.payload.kind === 'clubSquad' && <ClubSquadPreview payload={entry.payload} />}
+      {entry.payload.kind === 'matchReplay' && <MatchReplayPreview payload={entry.payload} />}
     </div>)}
   </main>;
 }
