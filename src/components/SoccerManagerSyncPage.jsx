@@ -282,6 +282,7 @@ export default function SoccerManagerSyncPage() {
       if (message.replayPageContext && typeof message.replayPageContext === 'object') {
         const row = message.replayPageContext;
         try {
+          if (typeof row.pageUrl !== 'string' || row.pageUrl.length > 2000) throw new Error('Invalid replay page URL');
           const url = new URL(row.pageUrl);
           const rawParams = row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? row.params : {};
           const rawIdentifiers = row.identifiers && typeof row.identifiers === 'object' && !Array.isArray(row.identifiers) ? row.identifiers : {};
@@ -324,8 +325,12 @@ export default function SoccerManagerSyncPage() {
               }
             }
             if (entriesValid && navigationValid) {
+              const projectedPage = new URL(url.origin + url.pathname);
+              for (const [key, entry] of url.searchParams.entries()) {
+                if (replayKey(key)) projectedPage.searchParams.append(key, entry.slice(0, 500));
+              }
               candidate = {
-                pageUrl: row.pageUrl,
+                pageUrl: projectedPage.href,
                 params: boundedMap(rawParams, paramKeys),
                 identifiers: boundedMap(rawIdentifiers, identifierKeys),
                 navigation,
