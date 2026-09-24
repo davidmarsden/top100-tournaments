@@ -47,8 +47,8 @@ function buildStandings(entries, matches) {
   return [...rows.values()].map((row) => ({ ...row, gd: row.gf - row.ga })).sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf || a.team.localeCompare(b.team));
 }
 
-export default function ManagerPortal({ registrationMode = false }) {
-  const [session, setSession] = useState(null), [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
+export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '' }) {
+  const [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [magicLinkStatus, setMagicLinkStatus] = useState('idle');
   const [magicLinkSentTo, setMagicLinkSentTo] = useState('');
@@ -63,36 +63,23 @@ export default function ManagerPortal({ registrationMode = false }) {
   const [registrations, setRegistrations] = useState([]);
 
   useEffect(() => {
-    if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
-    let active = true;
-    let subscription = null;
-
-    async function initialiseAuth() {
-      try {
-        const { data, error } = await withPortalTimeout(supabase.auth.getSession(), 'Sign-in check');
-        if (!active) return;
-        if (error) throw error;
-        setSession(data.session || null);
-
-        // Wait for the initial session recovery to finish before subscribing.
-        // auth-js can deadlock its browser Web Lock if a listener registers
-        // while initialization/session refresh is still in progress.
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (!active) return;
-          setSession(nextSession);
-        });
-        subscription = listener.subscription;
-      } catch (error) {
-        if (!active) return;
-        setMessage(error?.message || 'We could not check your sign-in. Please try again.');
-        setLoading(false);
-      }
+    if (authLoading) return;
+    if (authError) {
+      setMessage(authError);
+      setLoading(false);
+      return;
     }
-
-    initialiseAuth();
-    return () => { active = false; subscription?.unsubscribe(); };
-  }, []);
-  useEffect(() => { if (session?.user) { loadIdentityDirectory(); loadPortal(); } else { setLoading(false); setAccount(null); setClaim(null); setEntries([]); setAdminAssignments([]); } }, [session?.user?.id]);
+    if (session?.user) {
+      loadIdentityDirectory();
+      loadPortal();
+    } else {
+      setLoading(false);
+      setAccount(null);
+      setClaim(null);
+      setEntries([]);
+      setAdminAssignments([]);
+    }
+  }, [authLoading, authError, session?.user?.id]);
   useEffect(() => { loadWorldClubs(claimForm.gameWorldId); }, [claimForm.gameWorldId]);
   useEffect(() => {
     if (magicLinkResendIn <= 0) return undefined;
