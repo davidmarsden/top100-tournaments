@@ -193,20 +193,30 @@ export default function SoccerManagerSyncPage() {
         ? message.diagnostics.slice(-50).filter((row) => typeof row?.url === 'string')
         : [];
       const allowedEnginePaths = new Set(MATCH_ENGINE_DIAGNOSTIC_PATHS);
-      const engineRows = Array.isArray(message.matchEngineSources)
-        ? message.matchEngineSources.filter((row) => {
-          if (!row || typeof row.url !== 'string') return false;
-          try {
-            const url = new URL(row.url);
-            if (url.origin !== event.origin || !allowedEnginePaths.has(url.pathname)) return false;
-          } catch {
-            return false;
-          }
-          if (row.source !== null && typeof row.source !== 'string') return false;
-          if (typeof row.source === 'string' && row.source.length > 2000000) return false;
-          return row.error === null || row.error === undefined || typeof row.error === 'string';
-        }).slice(0, MATCH_ENGINE_DIAGNOSTIC_PATHS.length)
-        : [];
+      const engineRows = [];
+      const engineSeenPaths = new Set();
+      let engineChars = 0;
+      for (const row of Array.isArray(message.matchEngineSources) ? message.matchEngineSources : []) {
+        if (engineRows.length >= MATCH_ENGINE_DIAGNOSTIC_PATHS.length) break;
+        if (!row || typeof row.url !== 'string') continue;
+        let pathname;
+        try {
+          const url = new URL(row.url);
+          if (url.origin !== event.origin || !allowedEnginePaths.has(url.pathname)) continue;
+          pathname = url.pathname;
+        } catch {
+          continue;
+        }
+        if (engineSeenPaths.has(pathname)) continue;
+        if (row.source !== null && typeof row.source !== 'string') continue;
+        if (typeof row.source === 'string') {
+          if (row.source.length > 2000000 || engineChars + row.source.length > 6000000) continue;
+          engineChars += row.source.length;
+        }
+        if (row.error !== null && row.error !== undefined && typeof row.error !== 'string') continue;
+        engineSeenPaths.add(pathname);
+        engineRows.push(row);
+      }
       setDiagnostics(diagnosticRows);
       setMatchEngineSources(engineRows);
       setDiagnosticsCapturedAt(typeof message.capturedAt === 'string' ? message.capturedAt : null);
