@@ -31,11 +31,26 @@ for(const entry of resources){try{const u=new URL(entry.name,location.href);if(u
 const matchEngineSources=[];
 let engineBytes=0;
 const maxFileChars=2000000,maxTotalChars=6000000;
+const maxReplayChars=2000000;
+let matchReplay=null;
+try{
+  const replayXml=typeof window.liveMatchXML==='string'?window.liveMatchXML:null;
+  if(replayXml){
+    const safePageUrl=sanitize(location.href);
+    if(replayXml.length>maxReplayChars){
+      matchReplay={url:safePageUrl,xml:null,error:'Replay XML exceeded '+maxReplayChars+' characters'};
+    }else{
+      matchReplay={url:safePageUrl,xml:replayXml,error:null};
+    }
+  }
+}catch(err){
+  matchReplay={url:sanitize(location.href),xml:null,error:err&&err.message?err.message:'Replay capture failed'};
+}
 for(const u of engineCandidates){try{const res=await fetch(u.href,{credentials:'include',cache:'no-store'});const finalUrl=new URL(res.url||u.href,location.href);if(finalUrl.origin!==location.origin||finalUrl.pathname!==u.pathname){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Redirected outside allowlisted asset path'});continue;}if(!res.ok){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'HTTP '+res.status});continue;}const contentType=(res.headers.get('content-type')||'').toLowerCase();if(!(contentType.includes('javascript')||contentType.includes('ecmascript')||contentType.includes('text/plain'))){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Unexpected content type '+(contentType||'unknown')});continue;}const text=await res.text();if(text.length>maxFileChars){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Source exceeded '+maxFileChars+' characters'});continue;}if(engineBytes+text.length>maxTotalChars){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Bundle exceeded '+maxTotalChars+' characters'});continue;}engineBytes+=text.length;matchEngineSources.push({url:u.origin+u.pathname,source:text,error:null});}catch(err){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:err&&err.message?err.message:'Fetch failed'});}}
-if(!payloads.length&&!diagnostics.length&&!matchEngineSources.length){window.removeEventListener('message',onMessage);alert('Top 100 Sync could not see any same-origin resource requests on this page.');return;}
+if(!payloads.length&&!diagnostics.length&&!matchEngineSources.length&&!matchReplay){window.removeEventListener('message',onMessage);alert('Top 100 Sync could not see any same-origin resource requests or match replay data on this page.');return;}
 for(let i=0;i<30&&!ready;i++){try{win.postMessage({type:helloType,version:1,session,sourceOrigin:location.origin},'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 if(!ready){window.removeEventListener('message',onMessage);alert('Top 100 Sync opened, but the newly loaded page did not become ready. Make sure you are signed in there and try again.');return;}
-const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads,diagnostics,matchEngineSources};
+const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads,diagnostics,matchEngineSources,matchReplay};
 for(let i=0;i<30&&!done;i++){try{win.postMessage(packet,'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 window.removeEventListener('message',onMessage);
 if(!done)alert('Top 100 Sync became ready, but did not acknowledge the data. Try again.');
