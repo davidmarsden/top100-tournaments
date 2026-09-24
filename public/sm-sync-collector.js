@@ -44,7 +44,7 @@ const redactReplayContextText=value=>{
   let text=String(value);
   const sensitiveName='[A-Za-z0-9_-]*(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)[A-Za-z0-9_-]*';
   const sensitiveField=/(token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)/i;
-  const attr=/([A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(?:\\\\(["'])(.*?)\\\\\\2|"([^"]*)"|'([^']*)'|([^\\s"'=<>\\x60]+))/g;
+  const attr=/([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(?:\\(["'])(.*?)\\\2|"([^"]*)"|'([^']*)'|([^\s"'=<>\x60]+))/g;
   const redactHtmlTag=tag=>{
     const attrs=[];
     let match;
@@ -64,7 +64,7 @@ const redactReplayContextText=value=>{
     return tag.slice(0,secretAttr.start)+replacement+tag.slice(secretAttr.end);
   };
   let rebuilt='',cursor=0;
-  const opener=/<(?:input|meta)\\b/gi;
+  const opener=/<(?:input|meta)\b/gi;
   let open;
   while((open=opener.exec(text))!==null){
     let quote=null,end=-1;
