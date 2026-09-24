@@ -39,6 +39,15 @@ const safeReplayContextValue=value=>{
   if(text.length>500)return text.slice(0,500);
   return text;
 };
+const redactReplayContextText=value=>{
+  if(value===null||value===undefined)return value;
+  let text=String(value);
+  const sensitiveName='(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)';
+  text=text.replace(new RegExp('([?&]'+sensitiveName+'=)[^&#\\s"\\'<>]*','gi'),'$1[redacted]');
+  text=text.replace(new RegExp('((?:data-)?'+sensitiveName+'\\s*=\\s*["\\']?)[^"\\'\\s<>;&]*','gi'),'$1[redacted]');
+  text=text.replace(new RegExp('(["\\']?'+sensitiveName+'["\\']?\\s*[:=]\\s*["\\']?)[^"\\'\\s,;}<]*','gi'),'$1[redacted]');
+  return text;
+};
 const captureReplayPageContext=()=>{
   const safePageUrl=sanitize(location.href);
   const params={};
@@ -47,11 +56,11 @@ const captureReplayPageContext=()=>{
   for(const script of Array.from(document.scripts||[])){
     if(script.src)continue;
     const source=script.textContent||'';
-    if(!/liveMatchXML|fixture|match/i.test(source))continue;
-    let excerpt=source;
-    const marker=source.indexOf('liveMatchXML');
-    if(marker>=0){const start=Math.max(0,marker-3000),end=Math.min(source.length,marker+12000);excerpt=source.slice(start,end);}
-    if(excerpt.length>20000)excerpt=excerpt.slice(0,20000);
+    const markerMatch=/liveMatchXML|fixture|match/i.exec(source);
+    if(!markerMatch)continue;
+    const marker=markerMatch.index;
+    const start=Math.max(0,marker-5000),end=Math.min(source.length,marker+15000);
+    const excerpt=redactReplayContextText(source.slice(start,end));
     scripts.push(excerpt);
     if(scripts.length>=8)break;
   }
@@ -63,17 +72,17 @@ const captureReplayPageContext=()=>{
     if(el.name)pairs.push(['name',el.name]);
     for(const attr of Array.from(el.attributes||[]))if(attr.name.startsWith('data-'))pairs.push([attr.name,attr.value]);
     if(el.type==='hidden'&&el.value)pairs.push(['value',el.value]);
-    const label=pairs.map(([k,v])=>k+'='+v).join(' ');
+    const label=pairs.map(([k,v])=>k+'='+(sensitive.test(k)||sensitive.test(String(el.id||''))||sensitive.test(String(el.name||''))?'[redacted]':v)).join(' ');
     if(!idPattern.test(label))continue;
     const key=(el.id||el.name||pairs.find(([k])=>k.startsWith('data-'))?.[0]||'element')+':'+Object.keys(identifiers).length;
-    identifiers[key]=safeReplayContextValue(label);
+    identifiers[key]=safeReplayContextValue(redactReplayContextText(label));
     if(Object.keys(identifiers).length>=80)break;
   }
   let htmlAroundReplay=null;
   try{
     const html=document.documentElement?.outerHTML||'';
     const marker=html.indexOf('liveMatchXML');
-    if(marker>=0)htmlAroundReplay=html.slice(Math.max(0,marker-10000),Math.min(html.length,marker+30000));
+    if(marker>=0)htmlAroundReplay=redactReplayContextText(html.slice(Math.max(0,marker-10000),Math.min(html.length,marker+30000)));
     if(htmlAroundReplay&&htmlAroundReplay.length>maxReplayContextChars)htmlAroundReplay=htmlAroundReplay.slice(0,maxReplayContextChars);
   }catch{}
   return {url:safePageUrl,title:document.title||null,params,identifiers,inlineScripts:scripts,htmlAroundReplay,error:null};
