@@ -116,7 +116,7 @@ begin
       jsonb_build_object(
         'id', transfer.id,
         'sourceTransferId', transfer.source_transfer_id,
-        'playerName', concat_ws(' ', transfer.player_name, nullif(transfer.player_surname, transfer.player_name)),
+        'playerName', coalesce(nullif(trim(transfer.player_name), ''), nullif(trim(transfer.player_surname), ''), 'Unknown player'),
         'rating', transfer.rating,
         'age', transfer.age,
         'position', transfer.position,
