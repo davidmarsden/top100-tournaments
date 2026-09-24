@@ -58,14 +58,15 @@ const captureReplayPageContext=()=>{
     if(Object.keys(identifiers).length>=80)break;
   }
   const scriptSignals=[];
-  const signalPattern=/(?:^|[^A-Za-z0-9_$])(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn)(?![A-Za-z0-9_$])\s*[:=]\s*["']?([A-Za-z0-9_-]{1,80})/gi;
+  const signalPattern=/(?:^|[^A-Za-z0-9_$])(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn)(?![A-Za-z0-9_$])\s*[:=]\s*(?:"([^"\\\r\n]{1,80})"|'([^'\\\r\n]{1,80})'|([A-Za-z0-9_-]{1,80})(?=\s*[,;}\]\r\n]|\s*$))/gi;
   for(const script of Array.from(document.scripts||[])){
     if(script.src)continue;
     const source=script.textContent||'';
     let match;
     while((match=signalPattern.exec(source))!==null){
-      if(sensitive.test(match[1])||sensitive.test(match[2]))continue;
-      scriptSignals.push({key:match[1],value:safeReplayContextValue(match[2])});
+      const signalValue=match[2]??match[3]??match[4];
+      if(!signalValue||sensitive.test(match[1])||sensitive.test(signalValue))continue;
+      scriptSignals.push({key:match[1],value:safeReplayContextValue(signalValue)});
       if(scriptSignals.length>=120)break;
     }
     signalPattern.lastIndex=0;
