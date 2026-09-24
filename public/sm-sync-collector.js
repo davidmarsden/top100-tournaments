@@ -108,7 +108,8 @@ const redactReplayContextText=value=>{
     return cursor?output+input.slice(cursor):input;
   };
   text=redactQuotedSensitive(text,"(?:[A-Za-z_$][\\w$]*\\s*\\[\\s*)?[\\\"'\\x60]?"+sensitiveName+"[\\\"'\\x60]?(?:\\s*\\])?\\s*[:=]\\s*");
-  text=redactQuotedSensitive(text,"(?:\\\\[\\\"']|[\\\"'])?"+sensitiveName+"(?:\\\\[\\\"']|[\\\"'])?\\s*:\\s*\\\\?");
+  const escapedJson=new RegExp("((?:\\\\[\\\"']|&quot;|&#34;|&#x22;)"+sensitiveName+"(?:\\\\[\\\"']|&quot;|&#34;|&#x22;)\\s*:\\s*)(\\\\[\\\"']|&quot;|&#34;|&#x22;)([\\s\\S]*?)(\\\\[\\\"']|&quot;|&#34;|&#x22;)","gi");
+  text=text.replace(escapedJson,(whole,prefix,open,value,close)=>prefix+open+'[redacted]'+close);
   text=redactQuotedSensitive(text,"(?:data-)?"+sensitiveName+"\\s*=\\s*");
   text=text.replace(new RegExp("([?&]"+sensitiveName+"=)[^&#\\s\\\"'<>]*","gi"),'$1[redacted]');
   text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
