@@ -52,6 +52,23 @@ All four tables are admin-private in v0.5. Squad snapshots include morale, condi
 The adapter is idempotent: current player records are upserted, authoritative squad-scope removals clear stale current-team membership without deleting player history, transfer/change entities keep stable source identities, and player snapshots are inserted once per approved entity/version sequence. Player-change chronology uses the source sync run's capture time rather than the later review timestamp.
 
 
+
+## v0.6 manager squad dashboard
+
+The Manager Portal now has a private **Squad & Transfers** view backed by `get_my_soccer_manager_dashboard()`.
+
+The RPC is manager-scoped rather than exposing the raw Soccer Manager archive tables. It resolves the signed-in user's active Manager Portal account, current game-world assignment and team, then returns only that manager's own current squad, latest league-standing snapshot and transfers involving that team. Other clubs' private squad state is not exposed.
+
+The dashboard deliberately separates senior and youth data so a large development squad does not distort first-team metrics. Initial headline measures include senior squad size, average rating, average age, value, 89+ depth, short contracts, youth size/rating, positional depth, performance leaders and actionable condition/morale/succession flags.
+
+Transfer counterparties use two distinct models:
+
+- one of the 100 canonical Top 100 game-world clubs can resolve to a mapped `team_id`;
+- the much larger Soccer Manager universe contains hundreds or thousands of external real-life clubs which buy/sell players and can participate in SMFA Cup/Shield competitions. Those sides retain their Soccer Manager club id and source name without being forced into the Top 100 world directory.
+
+This distinction is intentional and should also be used by later SMFA competition and market-analysis features.
+
+
 ## Production bootstrap — 23 September 2026
 
 The core archive adapter was deployed to the Top 100 production Supabase project and bootstrapped from the normalized full-league capture taken on 22 September 2026 for Soccer Manager setup `239138`.
