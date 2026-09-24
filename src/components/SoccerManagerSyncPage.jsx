@@ -285,22 +285,22 @@ export default function SoccerManagerSyncPage() {
           const url = new URL(row.pageUrl);
           const rawParams = row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? row.params : {};
           const rawIdentifiers = row.identifiers && typeof row.identifiers === 'object' && !Array.isArray(row.identifiers) ? row.identifiers : {};
-          const rawSignals = Array.isArray(row.scriptSignals) ? row.scriptSignals : [];
+          const rawNavigation = Array.isArray(row.navigation) ? row.navigation : [];
           const paramKeys = Object.keys(rawParams);
           const identifierKeys = Object.keys(rawIdentifiers);
-          const shapeWithinLimits = paramKeys.length <= 40 && identifierKeys.length <= 80 && rawSignals.length <= 120;
+          const shapeWithinLimits = paramKeys.length <= 40 && identifierKeys.length <= 80 && rawNavigation.length <= 80;
           let candidate = null;
           if (shapeWithinLimits) {
             const boundedMap = (value, keys) => Object.fromEntries(keys.map((key) => [key, value[key]]));
             const entriesValid = paramKeys.every((key) => key.length <= 120 && typeof rawParams[key] === 'string' && rawParams[key].length <= 500)
               && identifierKeys.every((key) => key.length <= 120 && typeof rawIdentifiers[key] === 'string' && rawIdentifiers[key].length <= 500);
-            const signalsValid = rawSignals.every((value) => value && typeof value.key === 'string' && value.key.length <= 80 && typeof value.value === 'string' && value.value.length <= 500);
-            if (entriesValid && signalsValid) {
+            const navigationValid = rawNavigation.every((value) => value && (value.kind === 'form' || value.kind === 'link') && typeof value.url === 'string' && value.url.length <= 2000);
+            if (entriesValid && navigationValid) {
               candidate = {
                 pageUrl: row.pageUrl,
                 params: boundedMap(rawParams, paramKeys),
                 identifiers: boundedMap(rawIdentifiers, identifierKeys),
-                scriptSignals: rawSignals.map(({ key, value }) => ({ key, value })),
+                navigation: rawNavigation.map(({ kind, url: navigationUrl }) => ({ kind, url: navigationUrl })),
               };
             }
           }
@@ -546,13 +546,13 @@ export default function SoccerManagerSyncPage() {
     {!!replayPageContext && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Replay-loader diagnostics</p><h2>Replay page context</h2></div>
       <p className="muted">
-        Captures only structural replay-selection data: the page URL/query context, likely fixture/match identifiers, and allowlisted identifier/value signals extracted from inline scripts. No arbitrary script or HTML excerpts cross origins. This is diagnostic-only and is never staged or persisted.
+        Captures only structural replay-selection data: the page URL/query context, likely fixture/match identifiers, and same-origin replay-related form/link destinations. No arbitrary script or HTML content crosses origins. This is diagnostic-only and is never staged or persisted.
         {diagnosticsCapturedAt ? ` Captured ${new Date(diagnosticsCapturedAt).toLocaleString('en-GB')}.` : ''}
       </p>
       <div className="overview-metrics">
         <article><span>Query fields</span><strong>{Object.keys(replayPageContext.params || {}).length}</strong></article>
         <article><span>Identifiers</span><strong>{Object.keys(replayPageContext.identifiers || {}).length}</strong></article>
-        <article><span>Script signals</span><strong>{replayPageContext.scriptSignals?.length || 0}</strong></article>
+        <article><span>Replay links/forms</span><strong>{replayPageContext.navigation?.length || 0}</strong></article>
       </div>
       <p className="muted"><code>{replayPageContext.pageUrl}</code></p>
       <div className="button-row">
