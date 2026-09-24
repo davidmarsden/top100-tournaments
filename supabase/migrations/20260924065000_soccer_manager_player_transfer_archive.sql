@@ -255,6 +255,7 @@ declare
   v_to_manager_source_id text;
   v_captured_at timestamptz;
   scope_row record;
+  v_cleared_count integer := 0;
   squad_players_applied integer := 0;
   squad_memberships_cleared integer := 0;
   player_snapshots_applied integer := 0;
@@ -426,8 +427,8 @@ begin
           and nullif(trim(coalesce(canonical.data->>'playerDataId', canonical.data->>'playerId')), '') = player.source_player_id
       );
 
-    get diagnostics v_case_matches = row_count;
-    squad_memberships_cleared := squad_memberships_cleared + v_case_matches;
+    get diagnostics v_cleared_count = row_count;
+    squad_memberships_cleared := squad_memberships_cleared + v_cleared_count;
   end loop;
 
   -- Immutable snapshots from every approved squad-player state.
