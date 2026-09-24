@@ -470,7 +470,7 @@ begin
   -- Latest transfer record for each stable transfer entity. A transfer may be observed before a squad capture,
   -- so a minimal player identity is created and later enriched by squad data.
   for row_data in
-    select entity_key, data, version, last_approved_at
+    select entity_key, data, version, first_approved_at, last_approved_at
     from public.soccer_manager_canonical_entities
     where entity_type='transfer'
       and data->>'setupId'=setup_id
@@ -588,8 +588,8 @@ begin
       case when lower(coalesce(row_data.data->>'illegal','')) in ('true','1','yes') then true when lower(coalesce(row_data.data->>'illegal','')) in ('false','0','no') then false else null end,
       nullif(trim(row_data.data->>'illegalReason'),''),
       coalesce(row_data.data->'playerOffers','[]'::jsonb),
-      coalesce(row_data.last_approved_at, now()),
-      coalesce(row_data.last_approved_at, now()),
+      coalesce(row_data.first_approved_at, row_data.last_approved_at, now()),
+      coalesce(row_data.last_approved_at, row_data.first_approved_at, now()),
       row_data.data,
       now()
     )
@@ -635,7 +635,10 @@ begin
       and data->>'setupId'=setup_id
     order by entity_key
   loop
-    v_source_player_id := nullif(trim(row_data.data->>'playerId'),'');
+    v_source_player_id := nullif(trim(coalesce(row_data.data->>'playerDataId', row_data.data->>'playerId')),'');
+    if v_source_player_id = '0' then
+      v_source_player_id := null;
+    end if;
     if v_source_player_id is null then
       continue;
     end if;
