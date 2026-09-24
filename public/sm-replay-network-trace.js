@@ -4,7 +4,7 @@ const key=/^(?:fixture(?:-?id)?|fix(?:id)?|match(?:-?id)?|mid|game(?:-?id)?|club
 const sensitive=/(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)/i;
 const max=200,startedAt=new Date().toISOString(),events=[];
 const projectUrl=(raw)=>{try{const u=new URL(raw,location.href);if(u.origin!==location.origin)return null;const p=new URL(u.origin+u.pathname);for(const [k,v] of u.searchParams.entries())if(key.test(k)&&!sensitive.test(k)&&!sensitive.test(v))p.searchParams.append(k,String(v).slice(0,500));return p.href;}catch{return null;}};
-const bodyFields=(body)=>{const out=[];try{if(body instanceof URLSearchParams){for(const [k,v] of body.entries())if(key.test(k)&&!sensitive.test(v))out.push([k,String(v).slice(0,500)]);}else if(body instanceof FormData){for(const [k,v] of body.entries())if(typeof v==='string'&&key.test(k)&&!sensitive.test(v))out.push([k,v.slice(0,500)]);}}catch{}return out.slice(0,40);};
+const bodyFields=(body)=>{const out=[];try{let entries=null;if(body instanceof URLSearchParams)entries=body.entries();else if(body instanceof FormData)entries=body.entries();else if(typeof body==='string'&&body.length<=10000)entries=new URLSearchParams(body).entries();if(entries)for(const [k,v] of entries)if(typeof v==='string'&&key.test(k)&&!sensitive.test(k)&&!sensitive.test(v))out.push([k,v.slice(0,500)]);}catch{}return out.slice(0,40);};
 const add=(row)=>{if(events.length<max)events.push({...row,at:Math.round(performance.now())});};
 const originalFetch=window.fetch;
 const originalOpen=XMLHttpRequest.prototype.open,originalSend=XMLHttpRequest.prototype.send;
