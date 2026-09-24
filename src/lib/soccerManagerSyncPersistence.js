@@ -148,6 +148,7 @@ function transferEntities(entry, fallbackSetupId = null) {
     if (!localKey) return null;
     return entity('transfer', `${worldScope}:${localKey}`, worldScope, {
       setupId,
+      turn: entry.payload?.turn ?? null,
       ...transfer,
     });
   }));
