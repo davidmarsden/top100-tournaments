@@ -1,9 +1,6 @@
 (async()=>{try{
 const target='https://tournaments.smtop100.blog/admin/soccer-manager-sync',helloType='top100-sm-sync-hello',msgType='top100-sm-sync-payloads',readyType='top100-sm-sync-ready',ackType='top100-sm-sync-ack',enginePaths=new Set(['/js/projx/constants.js','/js/projx/jsutil.js','/js/projx/random.js','/js/projx/randomdata.js','/js/projx/attributes.js','/js/projx/formationdata.js','/js/projx/positions.js','/js/projx/matchreportcommentary.js','/js/pages/livematch.js','/js/pages/livematch2d.js','/js/common/multiplayer_videoplayer.js']);
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
-const traceScript='https://tournaments.smtop100.blog/sm-replay-network-trace.js';
-if(!window.liveMatchXML&&!window.__top100ReplayTraceStop&&confirm('Arm replay network trace? After this, open a completed match.')){const trace=document.createElement('script');trace.src=traceScript+'?v='+Date.now();trace.onerror=()=>alert('Could not load replay network trace helper.');document.documentElement.appendChild(trace);return;}
-if(window.__top100ReplayTraceStop&&confirm('Download the replay network trace now?')){window.__top100ReplayTraceStop();return;}
 const patterns=[/competition-ajax\.php/i,/club-ajax-mobile\.php/i,/playerchanges[^/]*\.php/i,/transfer[^/]*market[^/]*\.php/i];
 const sensitive=/(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)/i;
 const sanitize=u=>{try{const x=new URL(u,location.href);if(x.origin!==location.origin)return null;for(const k of [...x.searchParams.keys()])if(sensitive.test(k))x.searchParams.set(k,'[redacted]');x.hash='';return x.toString();}catch{return null;}};
