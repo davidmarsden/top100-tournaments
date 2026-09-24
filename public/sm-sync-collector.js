@@ -47,7 +47,7 @@ const captureReplayPageContext=()=>{
   const idPattern=/(fixture|fix|match|mid|game|club|sid|season|turn)/i;
   for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-match],[data-match-id],[data-fix],[data-id],input[type="hidden"]')).slice(0,300)){
     const candidates=[];
-    if(el.id&&idPattern.test(el.id)&&!sensitive.test(el.id))candidates.push(['id',el.id]);
+    if(el.id&&idPattern.test(el.id)&&!sensitive.test(el.id)&&el.type==='hidden'&&el.value)candidates.push([el.id,el.value]);
     if(el.name&&idPattern.test(el.name)&&!sensitive.test(el.name)&&el.value)candidates.push([el.name,el.value]);
     for(const attr of Array.from(el.attributes||[]))if(attr.name.startsWith('data-')&&idPattern.test(attr.name)&&!sensitive.test(attr.name))candidates.push([attr.name,attr.value]);
     for(const [key,value] of candidates){
@@ -58,7 +58,7 @@ const captureReplayPageContext=()=>{
     if(Object.keys(identifiers).length>=80)break;
   }
   const scriptSignals=[];
-  const signalPattern=/(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn)\s*[:=]\s*["']?([A-Za-z0-9_-]{1,80})/gi;
+  const signalPattern=/(?:^|[^A-Za-z0-9_$])(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn)(?![A-Za-z0-9_$])\s*[:=]\s*["']?([A-Za-z0-9_-]{1,80})/gi;
   for(const script of Array.from(document.scripts||[])){
     if(script.src)continue;
     const source=script.textContent||'';
