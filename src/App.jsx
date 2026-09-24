@@ -3,6 +3,7 @@ import AdminGate from './components/AdminGate.jsx';
 import AuthSessionBridge from './components/AuthSessionBridge.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
 import ManagerEntry from './components/ManagerEntry.jsx';
+import ManagerSquadDashboard from './components/ManagerSquadDashboard.jsx';
 import PublicVotingResults from './components/PublicVotingResults.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
 import SoccerManagerSyncPage from './components/SoccerManagerSyncPage.jsx';
@@ -24,6 +25,10 @@ function isManagerChatPath() {
   return /^\/manager\/chat\/?$/.test(window.location.pathname);
 }
 
+function isManagerSquadPath() {
+  return /^\/manager\/squad\/?$/.test(window.location.pathname);
+}
+
 function isChatPath() {
   return /^\/chat\/?$/.test(window.location.pathname);
 }
@@ -34,6 +39,10 @@ function isManagerHostRegistrationPath() {
 
 function isManagerHostChatPath() {
   return /^\/(?:manager\/)?chat\/?$/.test(window.location.pathname);
+}
+
+function isManagerHostSquadPath() {
+  return /^\/(?:manager\/)?squad\/?$/.test(window.location.pathname);
 }
 
 function isManagerHostPortalPath() {
@@ -89,6 +98,7 @@ export default function App() {
   if (isManagerHost()) {
     if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
     if (isManagerHostChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
+    if (isManagerHostSquadPath()) return <ManagerShell><ManagerSquadDashboard /></ManagerShell>;
     if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerEntry registrationMode /></ManagerShell>;
     if (isManagerHostPortalPath()) return <ManagerShell><ManagerEntry /></ManagerShell>;
     forwardManagerHostPathToTournaments();
@@ -99,6 +109,10 @@ export default function App() {
   if (isChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
   if (isManagerChatPath()) {
     window.location.replace(`https://manager.smtop100.blog/chat${window.location.search}`);
+    return null;
+  }
+  if (isManagerSquadPath()) {
+    window.location.replace(`https://manager.smtop100.blog/squad${window.location.search}`);
     return null;
   }
   if (isManagerPath()) {
