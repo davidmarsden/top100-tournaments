@@ -461,17 +461,41 @@ export function normalizeClubFinance(input) {
   };
 }
 
-export function detectSoccerManagerPayload(input) {
+export function detectSoccerManagerPayload(input, context = {}) {
   if (input?.gwData && input?.tables && (input?.results || input?.fixtures)) return 'competition';
   if (Array.isArray(input?.changes) || Array.isArray(input?.new)) return 'playerChanges';
   if (Array.isArray(input?.Transfers)) return 'transfers';
   if (Array.isArray(input?.Weekly) && ('_seasonBalance' in input || '_seasonTotalIn' in input)) return 'clubFinance';
   if (findClubSquadRows(input).length) return 'clubSquad';
+
+  // A genuinely empty squad has no player rows to identify it by shape.
+  // Use only the already-sanitized request context for the known read-only
+  // club squad endpoint so an empty clubinitdata2 response can still produce
+  // an authoritative squad_scope roster marker.
+  try {
+    const sourceUrl = context?.sourceUrl ? new URL(context.sourceUrl) : null;
+    const action = sourceUrl?.searchParams?.get('action');
+    const clubId = sourceUrl?.searchParams?.get('clubid');
+    const setupId = sourceUrl?.searchParams?.get('sid');
+    if (
+      sourceUrl?.protocol === 'https:'
+      && (sourceUrl.hostname === 'soccermanager.com' || sourceUrl.hostname.endsWith('.soccermanager.com'))
+      && /\/club-ajax-mobile\.php$/i.test(sourceUrl.pathname)
+      && action === 'clubinitdata2'
+      && nonZeroId(clubId)
+      && nonZeroId(setupId)
+    ) {
+      return 'clubSquad';
+    }
+  } catch {
+    // Invalid context is not a squad signal; fall through to unsupported.
+  }
+
   return null;
 }
 
 export function normalizeSoccerManagerPayload(input, context = {}) {
-  switch (detectSoccerManagerPayload(input)) {
+  switch (detectSoccerManagerPayload(input, context)) {
     case 'competition': return normalizeCompetitionSnapshot(input);
     case 'playerChanges': return normalizePlayerChanges(input);
     case 'transfers': return normalizeTransfers(input);
