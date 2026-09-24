@@ -7,13 +7,17 @@ function money(value) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(amount);
 }
 
+function hasNumber(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
 function number(value, digits = 1) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+  if (!hasNumber(value)) return '—';
+  return Number(value).toFixed(digits);
 }
 
 function mean(rows, field) {
-  const values = rows.map((row) => Number(row[field])).filter(Number.isFinite);
+  const values = rows.map((row) => row[field]).filter(hasNumber).map(Number);
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
@@ -82,18 +86,18 @@ export default function ManagerSquadDashboard() {
     seniorAverageRating: mean(seniorPlayers, 'rating'),
     seniorAverageAge: mean(seniorPlayers, 'age'),
     seniorValue: seniorPlayers.reduce((sum, player) => sum + (Number(player.value) || 0), 0),
-    expiring: seniorPlayers.filter((player) => Number(player.contract) <= 1).length,
-    firstTeamReady: seniorPlayers.filter((player) => Number(player.rating) >= 89).length,
+    expiring: seniorPlayers.filter((player) => hasNumber(player.contract) && Number(player.contract) <= 1).length,
+    firstTeamReady: seniorPlayers.filter((player) => hasNumber(player.rating) && Number(player.rating) >= 89).length,
     youthAverageRating: mean(youthPlayers, 'rating'),
   }), [seniorPlayers, youthPlayers]);
 
   const alerts = useMemo(() => seniorPlayers
     .map((player) => {
       const flags = [];
-      if (Number(player.contract) <= 1) flags.push('contract ≤1');
-      if (Number(player.condition) < 80) flags.push(`condition ${player.condition}`);
-      if (Number(player.morale) < 80) flags.push(`morale ${player.morale}`);
-      if (Number(player.age) >= 33 && Number(player.rating) <= 89) flags.push('succession watch');
+      if (hasNumber(player.contract) && Number(player.contract) <= 1) flags.push('contract ≤1');
+      if (hasNumber(player.condition) && Number(player.condition) < 80) flags.push(`condition ${player.condition}`);
+      if (hasNumber(player.morale) && Number(player.morale) < 80) flags.push(`morale ${player.morale}`);
+      if (hasNumber(player.age) && hasNumber(player.rating) && Number(player.age) >= 33 && Number(player.rating) <= 89) flags.push('succession watch');
       return flags.length ? { player, flags } : null;
     })
     .filter(Boolean)
@@ -101,7 +105,7 @@ export default function ManagerSquadDashboard() {
     .slice(0, 12), [seniorPlayers]);
 
   const performers = useMemo(() => [...seniorPlayers]
-    .filter((player) => Number.isFinite(Number(player.averagePerformance)))
+    .filter((player) => hasNumber(player.averagePerformance))
     .sort((a, b) => Number(b.averagePerformance) - Number(a.averagePerformance))
     .slice(0, 8), [seniorPlayers]);
 
