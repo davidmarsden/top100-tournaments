@@ -77,8 +77,8 @@ function isVotingPath() {
   return /^\/vote\/?$/.test(window.location.pathname);
 }
 
-function ManagerShell({ children }) {
-  return <Top100BrandShell product="My Matches" current="manager">{children}</Top100BrandShell>;
+function ManagerShell({ children, product = 'My Matches' }) {
+  return <Top100BrandShell product={product} current="manager">{children}</Top100BrandShell>;
 }
 
 function forwardManagerHostPathToTournaments() {
@@ -98,7 +98,7 @@ export default function App() {
   if (isManagerHost()) {
     if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
     if (isManagerHostChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
-    if (isManagerHostSquadPath()) return <ManagerShell><ManagerSquadDashboard /></ManagerShell>;
+    if (isManagerHostSquadPath()) return <ManagerShell product="Squad & Transfers"><ManagerSquadDashboard /></ManagerShell>;
     if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerEntry registrationMode /></ManagerShell>;
     if (isManagerHostPortalPath()) return <ManagerShell><ManagerEntry /></ManagerShell>;
     forwardManagerHostPathToTournaments();
