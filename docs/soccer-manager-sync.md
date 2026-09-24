@@ -248,3 +248,9 @@ The collector deliberately runs in the already-authenticated Soccer Manager brow
 6. Add scheduled/change notifications only after the sync path and archive adapters are stable and auditable.
 
 Stable Soccer Manager ids should be treated as source keys. Top 100 names remain display fields, not identity keys.
+
+### Match replay diagnostics
+
+When a completed Soccer Manager match page exposes the replay payload as `window.liveMatchXML`, the browser collector copies that XML into the Sync workbench as a temporary diagnostic only. The capture is capped at 2,000,000 characters, keeps only the sanitized current Soccer Manager page URL as metadata, and is not included in normal staging or archive persistence.
+
+The workbench independently checks the source origin and size before exposing **Download match replay diagnostics**. The resulting `top100-sm-match-replay-diagnostics-YYYY-MM-DD.json` file contains the original capture timestamp, sanitized match-page URL, XML text and any capture error. This first-pass diagnostic is intended to reveal the real multiplayer replay schema before any normalized match archive is designed.
