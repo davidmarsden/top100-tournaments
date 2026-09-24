@@ -15,6 +15,7 @@ export const MATCH_ENGINE_DIAGNOSTIC_PATHS = Object.freeze([
   '/js/projx/matchreportcommentary.js',
   '/js/pages/livematch.js',
   '/js/pages/livematch2d.js',
+  '/js/common/multiplayer_videoplayer.js',
 ]);
 
 export function isAllowedSoccerManagerOrigin(origin) {
