@@ -292,3 +292,12 @@ The first known acceptance case is Top 100 fixture `282010118`, Hellas Verona 3â
 The match-engine diagnostics allowlist also includes `/js/common/multiplayer_videoplayer.js`. Soccer Manager loads this alongside the live-match renderer, while `livematch.js` itself only consumes the already-populated `window.liveMatchXML`. Capturing the video-player source is therefore the evidence-gathering step for identifying the authenticated replay-loader request used by completed fixtures.
 
 Do not guess or hard-code a replay endpoint from fixture IDs. Once the loader contract is observed, the intended bulk workflow is: derive completed fixture IDs from approved world/match data, fetch replays from the authenticated Soccer Manager tab with bounded concurrency and resumable progress, normalize each replay through the existing match replay normalizer, and stage deduplicated `match_snapshot` entities for review.
+
+
+### Replay page context diagnostics
+
+Because the completed-match renderer consumes an already-populated `window.liveMatchXML`, the collector can also capture a bounded diagnostic of the document that supplied it. The diagnostic contains the sanitized current page URL and query parameters, likely fixture/match identifiers from data attributes and hidden inputs, up to eight bounded inline-script excerpts that mention `liveMatchXML`/fixture/match, and a bounded HTML excerpt around the first `liveMatchXML` occurrence.
+
+This context is diagnostic-only: it is not added to normalized sync payloads, staged for review, or persisted to Supabase. Sensitive-looking query parameter names use the collector's existing redaction rule. The workbench independently checks the Soccer Manager origin and a 250,000-character total excerpt cap before exposing **Download replay page context**.
+
+The purpose is to identify the server-side completed-replay selection contract from observed page evidence rather than guessing an endpoint. Once a fixture selector/action is confirmed, bulk season harvesting can use that observed contract with bounded concurrency, resume/progress and the existing match replay normalizer.
