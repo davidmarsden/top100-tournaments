@@ -74,7 +74,11 @@ const redactReplayContextText=value=>{
       if(ch==='"'||ch==="'"){quote=ch;continue;}
       if(ch==='>'){end=i+1;break;}
     }
-    if(end<0)break;
+    if(end<0){
+      rebuilt+=text.slice(cursor,open.index)+redactHtmlTag(text.slice(open.index));
+      cursor=text.length;
+      break;
+    }
     rebuilt+=text.slice(cursor,open.index)+redactHtmlTag(text.slice(open.index,end));
     cursor=end;
     opener.lastIndex=end;
