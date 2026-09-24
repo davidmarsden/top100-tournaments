@@ -254,7 +254,9 @@ declare
   v_from_manager_source_id text;
   v_to_manager_source_id text;
   v_captured_at timestamptz;
+  scope_row record;
   squad_players_applied integer := 0;
+  squad_memberships_cleared integer := 0;
   player_snapshots_applied integer := 0;
   transfers_applied integer := 0;
   player_changes_applied integer := 0;
@@ -380,6 +382,52 @@ begin
     returning id into v_player_id;
 
     squad_players_applied := squad_players_applied + 1;
+  end loop;
+
+  -- Approved club-squad captures are authoritative for that club scope.
+  -- Clear stale current-team memberships for players absent from the latest approved squad in each captured club.
+  for scope_row in
+    select distinct data->>'clubId' as source_club_id
+    from public.soccer_manager_canonical_entities
+    where entity_type='squad_player'
+      and data->>'setupId'=setup_id
+      and nullif(trim(data->>'clubId'),'') is not null
+  loop
+    v_source_club_id := nullif(trim(scope_row.source_club_id), '');
+    if v_source_club_id is null then
+      continue;
+    end if;
+
+    v_team_id := null;
+    select link.target_id
+      into v_team_id
+    from public.soccer_manager_archive_links link
+    join public.teams team on team.id=link.target_id
+    where link.source_type='club'
+      and link.source_key=setup_id || ':' || v_source_club_id
+      and link.target_type='team';
+
+    if v_team_id is null then
+      continue;
+    end if;
+
+    update public.soccer_manager_players player
+      set current_team_id = null,
+          current_source_club_id = null,
+          updated_at = now()
+    where player.game_world_id = v_world_id
+      and player.current_team_id = v_team_id
+      and not exists (
+        select 1
+        from public.soccer_manager_canonical_entities canonical
+        where canonical.entity_type='squad_player'
+          and canonical.data->>'setupId'=setup_id
+          and canonical.data->>'clubId'=v_source_club_id
+          and nullif(trim(coalesce(canonical.data->>'playerDataId', canonical.data->>'playerId')), '') = player.source_player_id
+      );
+
+    get diagnostics v_case_matches = row_count;
+    squad_memberships_cleared := squad_memberships_cleared + v_case_matches;
   end loop;
 
   -- Immutable snapshots from every approved squad-player state.
@@ -629,11 +677,13 @@ begin
 
   -- Occurrence-keyed player changes are immutable identities, but their normalized data can be corrected by a later approval.
   for row_data in
-    select entity_key, data, version, last_approved_at
-    from public.soccer_manager_canonical_entities
-    where entity_type='player_change'
-      and data->>'setupId'=setup_id
-    order by entity_key
+    select canonical.entity_key, canonical.data, canonical.version,
+           canonical.last_approved_at, run.captured_at as source_captured_at
+    from public.soccer_manager_canonical_entities canonical
+    left join public.soccer_manager_sync_runs run on run.id=canonical.last_run_id
+    where canonical.entity_type='player_change'
+      and canonical.data->>'setupId'=setup_id
+    order by canonical.entity_key
   loop
     v_source_player_id := nullif(trim(coalesce(row_data.data->>'playerDataId', row_data.data->>'playerId')),'');
     if v_source_player_id = '0' then
@@ -681,7 +731,7 @@ begin
         and link.target_type='team';
     end if;
 
-    v_captured_at := coalesce(row_data.last_approved_at, now());
+    v_captured_at := coalesce(row_data.source_captured_at, row_data.last_approved_at, now());
 
     insert into public.soccer_manager_player_changes (
       game_world_id, source_entity_key, source_version, player_id, team_id, source_club_id,
@@ -738,6 +788,7 @@ begin
     jsonb_build_object(
       'setupId', setup_id,
       'squadPlayers', squad_players_applied,
+      'squadMembershipsCleared', squad_memberships_cleared,
       'playerSnapshots', player_snapshots_applied,
       'transfers', transfers_applied,
       'playerChanges', player_changes_applied,
@@ -750,6 +801,7 @@ begin
     'setupId', setup_id,
     'gameWorldId', v_world_id,
     'squadPlayers', squad_players_applied,
+    'squadMembershipsCleared', squad_memberships_cleared,
     'playerSnapshots', player_snapshots_applied,
     'transfers', transfers_applied,
     'playerChanges', player_changes_applied,
