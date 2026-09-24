@@ -150,19 +150,17 @@ begin
     end if;
   end loop;
 
-  insert into public.soccer_manager_archive_audit (
-    action,
-    setup_id,
-    performed_by,
-    details
-  ) values (
+  insert into public.audit_log(entity_type, entity_id, action, new_data, changed_by)
+  values (
+    'soccer_manager_archive',
+    v_world_id,
     'apply_tactics_archive',
-    setup_id,
-    user_id,
     jsonb_build_object(
+      'setupId', setup_id,
       'snapshotsApplied', snapshots_applied,
       'unmappedClubs', unmapped_clubs
-    )
+    ),
+    user_id::text
   );
 
   return jsonb_build_object(
