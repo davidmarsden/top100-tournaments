@@ -29,6 +29,29 @@ League titles are stored in `achievements`, not `honours`, because the current `
 Tournament fixtures/results, transfers, player history and analytics are deliberately outside this first adapter.
 
 
+
+## v0.5 player and transfer archive
+
+The second archive layer adds a separate **Apply players & transfers** action for each approved Soccer Manager world. It remains independent from both source review and the core archive apply.
+
+The adapter consumes approved canonical `squad_player`, `transfer` and `player_change` entities and writes four private archive surfaces:
+
+- `soccer_manager_players` — one stable player identity per game world and Soccer Manager player-data id, enriched by the latest approved squad state;
+- `soccer_manager_player_snapshots` — immutable snapshots of every approved squad-player state, including rating/value/contract/performance and tactical current-state fields;
+- `soccer_manager_transfers` — one stable transfer record per Soccer Manager transfer entity, updated as the same deal progresses through later approved states;
+- `soccer_manager_player_changes` — occurrence-keyed rating/position/new-player events.
+
+Squad `playerDataId` is preferred as the cross-surface player identity because transfer-market rows use that underlying player id. The world-specific squad `playerId` is retained separately. If a transfer or player-change event is approved before the player has appeared in a squad capture, the adapter creates a minimal player identity and a later squad apply enriches it rather than creating a second player.
+
+Current club/team membership is set only from approved squad state. Transfer history does **not** move a player's current team, because old completed transfers can still appear in the market history and must not overwrite a newer squad capture. Transfer club and manager references are resolved through the existing stable Soccer Manager archive links where possible; unresolved club references are counted and reported instead of guessed.
+
+Transfer normalization now preserves the source turn alongside each transfer so later analytics can compare market activity by game turn as well as by the source's human date label.
+
+All four tables are admin-private in v0.5. Squad snapshots include morale, condition, wages and other tactical/current-state data, so public player pages should later be built from an explicit curated view rather than granting anonymous access to the raw archive tables.
+
+The adapter is idempotent: current player records are upserted, transfer/change entities keep stable source identities, and player snapshots are inserted once per approved entity/version sequence.
+
+
 ## Production bootstrap — 23 September 2026
 
 The core archive adapter was deployed to the Top 100 production Supabase project and bootstrapped from the normalized full-league capture taken on 22 September 2026 for Soccer Manager setup `239138`.
@@ -174,7 +197,7 @@ The collector deliberately runs in the already-authenticated Soccer Manager brow
 ## Next phases
 
 1. Add authoritative-scope removal detection for complete league, manager-assignment and squad snapshots.
-2. Add dedicated immutable transfer and player/player-change archives fed from approved canonical events.
+2. Build curated public player/transfer views and archive browsing on top of the private v0.5 player/transfer archive.
 3. Match approved Soccer Manager fixtures/results to friendly-tournament records without guessing on ambiguous teams or ties.
 4. Build player/transfer analytics and the Hamburger SV manager dashboard from canonical history rather than live page state.
 5. Expand endpoint discovery as more Soccer Manager JSON surfaces are confirmed.
