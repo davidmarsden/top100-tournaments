@@ -294,7 +294,14 @@ export default function SoccerManagerSyncPage() {
             const boundedMap = (value, keys) => Object.fromEntries(keys.map((key) => [key, value[key]]));
             const entriesValid = paramKeys.every((key) => key.length <= 120 && typeof rawParams[key] === 'string' && rawParams[key].length <= 500)
               && identifierKeys.every((key) => key.length <= 120 && typeof rawIdentifiers[key] === 'string' && rawIdentifiers[key].length <= 500);
-            const navigationValid = rawNavigation.every((value) => value && (value.kind === 'form' || value.kind === 'link') && typeof value.url === 'string' && value.url.length <= 2000);
+            const navigationValid = rawNavigation.every((value) => {
+              if (!value || (value.kind !== 'form' && value.kind !== 'link') || typeof value.url !== 'string' || value.url.length > 2000) return false;
+              try {
+                return new URL(value.url).origin === event.origin;
+              } catch {
+                return false;
+              }
+            });
             if (entriesValid && navigationValid) {
               candidate = {
                 pageUrl: row.pageUrl,
