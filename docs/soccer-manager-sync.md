@@ -43,13 +43,13 @@ The adapter consumes approved canonical `squad_player`, `transfer` and `player_c
 
 Squad `playerDataId` is preferred as the cross-surface player identity because transfer-market rows use that underlying player id. The world-specific squad `playerId` is retained separately. If a transfer or player-change event is approved before the player has appeared in a squad capture, the adapter creates a minimal player identity and a later squad apply enriches it rather than creating a second player.
 
-Current club/team membership is set only from approved squad state. Transfer history does **not** move a player's current team, because old completed transfers can still appear in the market history and must not overwrite a newer squad capture. Transfer club and manager references are resolved through the existing stable Soccer Manager archive links where possible; unresolved club references are counted and reported instead of guessed.
+Current club/team membership is set only from approved squad state. Each approved club-squad scope is treated as authoritative: players previously attached to that mapped team but absent from the latest approved squad for that club have their current-team fields cleared. Transfer history does **not** move a player's current team, because old completed transfers can still appear in the market history and must not overwrite a newer squad capture. Transfer club and manager references are resolved through the existing stable Soccer Manager archive links where possible; unresolved club references are counted and reported instead of guessed.
 
 Transfer normalization now preserves the source turn alongside each transfer so later analytics can compare market activity by game turn as well as by the source's human date label.
 
 All four tables are admin-private in v0.5. Squad snapshots include morale, condition, wages and other tactical/current-state data, so public player pages should later be built from an explicit curated view rather than granting anonymous access to the raw archive tables.
 
-The adapter is idempotent: current player records are upserted, transfer/change entities keep stable source identities, and player snapshots are inserted once per approved entity/version sequence.
+The adapter is idempotent: current player records are upserted, authoritative squad-scope removals clear stale current-team membership without deleting player history, transfer/change entities keep stable source identities, and player snapshots are inserted once per approved entity/version sequence. Player-change chronology uses the source sync run's capture time rather than the later review timestamp.
 
 
 ## Production bootstrap — 23 September 2026
