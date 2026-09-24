@@ -31,8 +31,53 @@ for(const entry of resources){try{const u=new URL(entry.name,location.href);if(u
 const matchEngineSources=[];
 let engineBytes=0;
 const maxFileChars=2000000,maxTotalChars=6000000;
-const maxReplayChars=2000000;
-let matchReplay=null;
+const maxReplayChars=2000000,maxReplayContextChars=250000;
+let matchReplay=null,replayPageContext=null;
+const safeReplayContextValue=value=>{
+  if(value===null||value===undefined)return null;
+  const text=String(value);
+  if(text.length>500)return text.slice(0,500);
+  return text;
+};
+const captureReplayPageContext=()=>{
+  const safePageUrl=sanitize(location.href);
+  const params={};
+  try{const page=new URL(location.href);for(const [key,value] of page.searchParams.entries()){if(sensitive.test(key))params[key]='[redacted]';else params[key]=safeReplayContextValue(value);}}catch{}
+  const scripts=[];
+  for(const script of Array.from(document.scripts||[])){
+    if(script.src)continue;
+    const source=script.textContent||'';
+    if(!/liveMatchXML|fixture|match/i.test(source))continue;
+    let excerpt=source;
+    const marker=source.indexOf('liveMatchXML');
+    if(marker>=0){const start=Math.max(0,marker-3000),end=Math.min(source.length,marker+12000);excerpt=source.slice(start,end);}
+    if(excerpt.length>20000)excerpt=excerpt.slice(0,20000);
+    scripts.push(excerpt);
+    if(scripts.length>=8)break;
+  }
+  const identifiers={};
+  const idPattern=/(fixture|fix|match|mid|game|club|sid|season|turn)/i;
+  for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-match],[data-match-id],[data-fix],[data-id],input[type="hidden"]')).slice(0,300)){
+    const pairs=[];
+    if(el.id)pairs.push(['id',el.id]);
+    if(el.name)pairs.push(['name',el.name]);
+    for(const attr of Array.from(el.attributes||[]))if(attr.name.startsWith('data-'))pairs.push([attr.name,attr.value]);
+    if(el.type==='hidden'&&el.value)pairs.push(['value',el.value]);
+    const label=pairs.map(([k,v])=>k+'='+v).join(' ');
+    if(!idPattern.test(label))continue;
+    const key=(el.id||el.name||pairs.find(([k])=>k.startsWith('data-'))?.[0]||'element')+':'+Object.keys(identifiers).length;
+    identifiers[key]=safeReplayContextValue(label);
+    if(Object.keys(identifiers).length>=80)break;
+  }
+  let htmlAroundReplay=null;
+  try{
+    const html=document.documentElement?.outerHTML||'';
+    const marker=html.indexOf('liveMatchXML');
+    if(marker>=0)htmlAroundReplay=html.slice(Math.max(0,marker-10000),Math.min(html.length,marker+30000));
+    if(htmlAroundReplay&&htmlAroundReplay.length>maxReplayContextChars)htmlAroundReplay=htmlAroundReplay.slice(0,maxReplayContextChars);
+  }catch{}
+  return {url:safePageUrl,title:document.title||null,params,identifiers,inlineScripts:scripts,htmlAroundReplay,error:null};
+};
 try{
   const replayXml=typeof window.liveMatchXML==='string'?window.liveMatchXML:null;
   if(replayXml){
@@ -46,11 +91,16 @@ try{
 }catch(err){
   matchReplay={url:sanitize(location.href),xml:null,error:err&&err.message?err.message:'Replay capture failed'};
 }
+try{
+  if(matchReplay)replayPageContext=captureReplayPageContext();
+}catch(err){
+  replayPageContext={url:sanitize(location.href),title:document.title||null,params:{},identifiers:{},inlineScripts:[],htmlAroundReplay:null,error:err&&err.message?err.message:'Replay page context capture failed'};
+}
 for(const u of engineCandidates){try{const res=await fetch(u.href,{credentials:'include',cache:'no-store'});const finalUrl=new URL(res.url||u.href,location.href);if(finalUrl.origin!==location.origin||finalUrl.pathname!==u.pathname){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Redirected outside allowlisted asset path'});continue;}if(!res.ok){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'HTTP '+res.status});continue;}const contentType=(res.headers.get('content-type')||'').toLowerCase();if(!(contentType.includes('javascript')||contentType.includes('ecmascript')||contentType.includes('text/plain'))){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Unexpected content type '+(contentType||'unknown')});continue;}const text=await res.text();if(text.length>maxFileChars){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Source exceeded '+maxFileChars+' characters'});continue;}if(engineBytes+text.length>maxTotalChars){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Bundle exceeded '+maxTotalChars+' characters'});continue;}engineBytes+=text.length;matchEngineSources.push({url:u.origin+u.pathname,source:text,error:null});}catch(err){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:err&&err.message?err.message:'Fetch failed'});}}
 if(!payloads.length&&!diagnostics.length&&!matchEngineSources.length&&!matchReplay){window.removeEventListener('message',onMessage);alert('Top 100 Sync could not see any same-origin resource requests or match replay data on this page.');return;}
 for(let i=0;i<30&&!ready;i++){try{win.postMessage({type:helloType,version:1,session,sourceOrigin:location.origin},'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 if(!ready){window.removeEventListener('message',onMessage);alert('Top 100 Sync opened, but the newly loaded page did not become ready. Make sure you are signed in there and try again.');return;}
-const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads,diagnostics,matchEngineSources,matchReplay};
+const packet={type:msgType,version:1,session,sourceOrigin:location.origin,capturedAt:new Date().toISOString(),payloads,diagnostics,matchEngineSources,matchReplay,replayPageContext};
 for(let i=0;i<30&&!done;i++){try{win.postMessage(packet,'https://tournaments.smtop100.blog');}catch{}await new Promise(r=>setTimeout(r,1000));}
 window.removeEventListener('message',onMessage);
 if(!done)alert('Top 100 Sync became ready, but did not acknowledge the data. Try again.');
