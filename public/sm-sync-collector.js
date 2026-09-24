@@ -39,121 +39,39 @@ const safeReplayContextValue=value=>{
   if(text.length>500)return text.slice(0,500);
   return text;
 };
-const redactReplayContextText=value=>{
-  if(value===null||value===undefined)return value;
-  let text=String(value);
-  const sensitiveName='[A-Za-z0-9_-]*(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)[A-Za-z0-9_-]*';
-  const sensitiveField=/(token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)/i;
-  const attr=/([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(?:\\(["'])([\s\S]*?)(?:\\\2|$)|"([^"]*)(?:"|$)|'([^']*)(?:'|$)|([^\s"'=<>\x60]+))/g;
-  const redactHtmlTag=tag=>{
-    const attrs=[];
-    let match;
-    while((match=attr.exec(tag))!==null)attrs.push({name:match[1],value:match[3]??match[4]??match[5]??match[6]??'',start:match.index,end:attr.lastIndex,raw:match[0]});
-    attr.lastIndex=0;
-    const nameAttr=attrs.find(item=>item.name.toLowerCase()==='name');
-    if(!nameAttr||!sensitiveField.test(nameAttr.value))return tag;
-    const secretAttr=attrs.find(item=>/^(?:value|content)$/i.test(item.name));
-    if(!secretAttr)return tag;
-    const eq=secretAttr.raw.indexOf('=');
-    if(eq<0)return tag;
-    const prefix=secretAttr.raw.slice(0,eq+1);
-    const rawValue=secretAttr.raw.slice(eq+1);
-    const escapedQuote=rawValue[0]==='\\\\'&&(rawValue[1]==='"'||rawValue[1]==="'")?rawValue.slice(0,2):'';
-    const quote=!escapedQuote&&(rawValue[0]==='"'||rawValue[0]==="'")?rawValue[0]:'';
-    const replacement=prefix+(escapedQuote?escapedQuote+'[redacted]'+escapedQuote:quote?quote+'[redacted]'+quote:'[redacted]');
-    return tag.slice(0,secretAttr.start)+replacement+tag.slice(secretAttr.end);
-  };
-  let rebuilt='',cursor=0;
-  const opener=/<(?:input|meta)\b/gi;
-  let open;
-  while((open=opener.exec(text))!==null){
-    let quote=null,end=-1;
-    for(let i=opener.lastIndex;i<text.length;i++){
-      const ch=text[i];
-      if(quote){if(ch===quote)quote=null;continue;}
-      if(ch==='"'||ch==="'"){quote=ch;continue;}
-      if(ch==='>'){end=i+1;break;}
-    }
-    if(end<0){
-      rebuilt+=text.slice(cursor,open.index)+redactHtmlTag(text.slice(open.index));
-      cursor=text.length;
-      break;
-    }
-    rebuilt+=text.slice(cursor,open.index)+redactHtmlTag(text.slice(open.index,end));
-    cursor=end;
-    opener.lastIndex=end;
-  }
-  if(cursor)text=rebuilt+text.slice(cursor);
-  const redactQuotedSensitive=(input,prefixPattern)=>{
-    const opener=new RegExp(prefixPattern+"([\\\"'\\x60])","gi");
-    let output='',cursor=0,match;
-    while((match=opener.exec(input))!==null){
-      const delimiter=match[1];
-      let end=opener.lastIndex;
-      for(;end<input.length;end++){
-        if(input[end]!==delimiter)continue;
-        let slashes=0;
-        for(let j=end-1;j>=0&&input.charCodeAt(j)===92;j--)slashes++;
-        if(slashes%2===0)break;
-      }
-      if(end>=input.length){
-        output+=input.slice(cursor,match.index)+match[0]+'[redacted]';
-        cursor=input.length;
-        break;
-      }
-      output+=input.slice(cursor,match.index)+match[0]+'[redacted]'+delimiter;
-      cursor=end+1;
-      opener.lastIndex=end+1;
-    }
-    return cursor?output+input.slice(cursor):input;
-  };
-  text=redactQuotedSensitive(text,"(?:[A-Za-z_$][\\w$]*\\s*\\[\\s*)?[\\\"'\\x60]?"+sensitiveName+"[\\\"'\\x60]?(?:\\s*\\])?\\s*[:=]\\s*");
-  const escapedJson=new RegExp("((?:\\\\[\\\"']|&quot;|&#34;|&#x22;)"+sensitiveName+"(?:\\\\[\\\"']|&quot;|&#34;|&#x22;)\\s*:\\s*)(\\\\[\\\"']|&quot;|&#34;|&#x22;)([\\s\\S]*?)(\\\\[\\\"']|&quot;|&#34;|&#x22;)","gi");
-  text=text.replace(escapedJson,(whole,prefix,open,value,close)=>prefix+open+'[redacted]'+close);
-  text=redactQuotedSensitive(text,"(?:data-)?"+sensitiveName+"\\s*=\\s*");
-  text=text.replace(new RegExp("([?&]"+sensitiveName+"=)[^&#\\s\\\"'<>]*","gi"),'$1[redacted]');
-  text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
-  text=text.replace(new RegExp("([\\\"']?"+sensitiveName+"[\\\"']?\\s*[:=]\\s*)[^\\\"'\\s,;}<]*","gi"),'$1[redacted]');
-  return text;
-};
 const captureReplayPageContext=()=>{
   const safePageUrl=sanitize(location.href);
   const params={};
-  try{const page=new URL(location.href);for(const [key,value] of page.searchParams.entries()){if(sensitive.test(key))params[key]='[redacted]';else params[key]=safeReplayContextValue(value);}}catch{}
-  const scripts=[];
-  for(const script of Array.from(document.scripts||[])){
-    if(script.src)continue;
-    const source=script.textContent||'';
-    const markerMatch=/liveMatchXML|fixture|match/i.exec(source);
-    if(!markerMatch)continue;
-    const marker=markerMatch.index;
-    const start=Math.max(0,marker-5000),end=Math.min(source.length,marker+15000);
-    const excerpt=redactReplayContextText(source.slice(start,end));
-    scripts.push(excerpt);
-    if(scripts.length>=8)break;
-  }
+  try{const page=new URL(location.href);for(const [key,value] of page.searchParams.entries()){if(sensitive.test(key))params[key]='[redacted]';else if(/fixture|fix|match|mid|game|club|sid|season|turn|action/i.test(key))params[key]=safeReplayContextValue(value);}}catch{}
   const identifiers={};
   const idPattern=/(fixture|fix|match|mid|game|club|sid|season|turn)/i;
   for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-match],[data-match-id],[data-fix],[data-id],input[type="hidden"]')).slice(0,300)){
-    const pairs=[];
-    if(el.id)pairs.push(['id',el.id]);
-    if(el.name)pairs.push(['name',el.name]);
-    for(const attr of Array.from(el.attributes||[]))if(attr.name.startsWith('data-'))pairs.push([attr.name,attr.value]);
-    if(el.type==='hidden'&&el.value)pairs.push(['value',el.value]);
-    const label=pairs.map(([k,v])=>k+'='+(sensitive.test(k)||sensitive.test(String(el.id||''))||sensitive.test(String(el.name||''))?'[redacted]':v)).join(' ');
-    if(!idPattern.test(label))continue;
-    const key=(el.id||el.name||pairs.find(([k])=>k.startsWith('data-'))?.[0]||'element')+':'+Object.keys(identifiers).length;
-    identifiers[key]=safeReplayContextValue(redactReplayContextText(label));
+    const candidates=[];
+    if(el.id&&idPattern.test(el.id)&&!sensitive.test(el.id))candidates.push(['id',el.id]);
+    if(el.name&&idPattern.test(el.name)&&!sensitive.test(el.name)&&el.value)candidates.push([el.name,el.value]);
+    for(const attr of Array.from(el.attributes||[]))if(attr.name.startsWith('data-')&&idPattern.test(attr.name)&&!sensitive.test(attr.name))candidates.push([attr.name,attr.value]);
+    for(const [key,value] of candidates){
+      if(sensitive.test(String(value)))continue;
+      identifiers[key+':'+Object.keys(identifiers).length]=safeReplayContextValue(value);
+      if(Object.keys(identifiers).length>=80)break;
+    }
     if(Object.keys(identifiers).length>=80)break;
   }
-  let htmlAroundReplay=null;
-  try{
-    const html=document.documentElement?.outerHTML||'';
-    const marker=html.indexOf('liveMatchXML');
-    if(marker>=0)htmlAroundReplay=redactReplayContextText(html.slice(Math.max(0,marker-10000),Math.min(html.length,marker+30000)));
-    if(htmlAroundReplay&&htmlAroundReplay.length>maxReplayContextChars)htmlAroundReplay=htmlAroundReplay.slice(0,maxReplayContextChars);
-  }catch{}
-  return {url:safePageUrl,title:document.title||null,params,identifiers,inlineScripts:scripts,htmlAroundReplay,error:null};
+  const scriptSignals=[];
+  const signalPattern=/(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn)\s*[:=]\s*["']?([A-Za-z0-9_-]{1,80})/gi;
+  for(const script of Array.from(document.scripts||[])){
+    if(script.src)continue;
+    const source=script.textContent||'';
+    let match;
+    while((match=signalPattern.exec(source))!==null){
+      if(sensitive.test(match[1])||sensitive.test(match[2]))continue;
+      scriptSignals.push({key:match[1],value:safeReplayContextValue(match[2])});
+      if(scriptSignals.length>=120)break;
+    }
+    signalPattern.lastIndex=0;
+    if(scriptSignals.length>=120)break;
+  }
+  return {pageUrl:safePageUrl,params,identifiers,scriptSignals};
 };
 try{
   const replayXml=typeof window.liveMatchXML==='string'?window.liveMatchXML:null;
