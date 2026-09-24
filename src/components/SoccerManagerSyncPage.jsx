@@ -294,20 +294,40 @@ export default function SoccerManagerSyncPage() {
             const boundedMap = (value, keys) => Object.fromEntries(keys.map((key) => [key, value[key]]));
             const entriesValid = paramKeys.every((key) => key.length <= 120 && typeof rawParams[key] === 'string' && rawParams[key].length <= 500)
               && identifierKeys.every((key) => key.length <= 120 && typeof rawIdentifiers[key] === 'string' && rawIdentifiers[key].length <= 500);
-            const navigationValid = rawNavigation.every((value) => {
-              if (!value || (value.kind !== 'form' && value.kind !== 'link') || typeof value.url !== 'string' || value.url.length > 2000) return false;
-              try {
-                return new URL(value.url).origin === event.origin;
-              } catch {
-                return false;
+            const replayKey = (key) => /^(?:fixture(?:-?id)?|fix(?:id)?|match(?:-?id)?|mid|game(?:-?id)?|club(?:-?id)?|clubid|sid|season|turn)$/i.test(String(key || ''));
+            const navigation = [];
+            let navigationValid = true;
+            for (const value of rawNavigation) {
+              if (!value || (value.kind !== 'form' && value.kind !== 'link') || typeof value.url !== 'string' || value.url.length > 2000) {
+                navigationValid = false;
+                break;
               }
-            });
+              try {
+                const incoming = new URL(value.url);
+                if (incoming.origin !== event.origin) {
+                  navigationValid = false;
+                  break;
+                }
+                const projected = new URL(incoming.origin + incoming.pathname);
+                for (const [key, entry] of incoming.searchParams.entries()) {
+                  if (replayKey(key)) projected.searchParams.append(key, entry.slice(0, 500));
+                }
+                if (![...projected.searchParams.keys()].length) {
+                  navigationValid = false;
+                  break;
+                }
+                navigation.push({ kind: value.kind, url: projected.href });
+              } catch {
+                navigationValid = false;
+                break;
+              }
+            }
             if (entriesValid && navigationValid) {
               candidate = {
                 pageUrl: row.pageUrl,
                 params: boundedMap(rawParams, paramKeys),
                 identifiers: boundedMap(rawIdentifiers, identifierKeys),
-                navigation: rawNavigation.map(({ kind, url: navigationUrl }) => ({ kind, url: navigationUrl })),
+                navigation,
               };
             }
           }
