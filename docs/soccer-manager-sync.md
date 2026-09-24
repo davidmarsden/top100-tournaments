@@ -29,6 +29,29 @@ League titles are stored in `achievements`, not `honours`, because the current `
 Tournament fixtures/results, transfers, player history and analytics are deliberately outside this first adapter.
 
 
+
+## v0.5 player and transfer archive
+
+The second archive layer adds a separate **Apply players & transfers** action for each approved Soccer Manager world. It remains independent from both source review and the core archive apply.
+
+The adapter consumes approved canonical `squad_player`, `transfer` and `player_change` entities and writes four private archive surfaces:
+
+- `soccer_manager_players` — one stable player identity per game world and Soccer Manager player-data id, enriched by the latest approved squad state;
+- `soccer_manager_player_snapshots` — immutable snapshots of every approved squad-player state, including rating/value/contract/performance and tactical current-state fields;
+- `soccer_manager_transfers` — one stable transfer record per Soccer Manager transfer entity, updated as the same deal progresses through later approved states;
+- `soccer_manager_player_changes` — occurrence-keyed rating/position/new-player events.
+
+Squad `playerDataId` is preferred as the cross-surface player identity because transfer-market rows use that underlying player id. The world-specific squad `playerId` is retained separately. If a transfer or player-change event is approved before the player has appeared in a squad capture, the adapter creates a minimal player identity and a later squad apply enriches it rather than creating a second player.
+
+Current club/team membership is set only from approved squad state. Every squad capture also stages a `squad_scope` canonical entity containing the complete roster of stable player IDs for that club, including an empty roster. Empty `clubinitdata2` responses are recognized from the sanitized request URL context (`clubid`, `sid`, `action=clubinitdata2`) even when there are no player rows to identify the payload by shape. The trusted endpoint also lowers the squad detector threshold from two qualifying player rows to one, so a legitimate one-player squad is not mistaken for an empty roster; the stricter two-row heuristic remains in place for untrusted/shape-only detection. Once reviewed, that scope marker is the authoritative current roster: players previously attached to the mapped team but absent from the approved roster have their current-team fields cleared. Transfer history does **not** move a player's current team, because old completed transfers can still appear in the market history and must not overwrite a newer squad capture. Transfer club and manager references are resolved through the existing stable Soccer Manager archive links where possible; unresolved club references are counted and reported instead of guessed.
+
+Transfer normalization now preserves the source turn alongside each transfer so later analytics can compare market activity by game turn as well as by the source's human date label.
+
+All four tables are admin-private in v0.5. Squad snapshots include morale, condition, wages and other tactical/current-state data, so public player pages should later be built from an explicit curated view rather than granting anonymous access to the raw archive tables.
+
+The adapter is idempotent: current player records are upserted, authoritative squad-scope removals clear stale current-team membership without deleting player history, transfer/change entities keep stable source identities, and player snapshots are inserted once per approved entity/version sequence. Player-change chronology uses the source sync run's capture time rather than the later review timestamp.
+
+
 ## Production bootstrap — 23 September 2026
 
 The core archive adapter was deployed to the Top 100 production Supabase project and bootstrapped from the normalized full-league capture taken on 22 September 2026 for Soccer Manager setup `239138`.
@@ -69,7 +92,7 @@ Three private, global-admin-only tables form the source layer:
 - `soccer_manager_sync_changes` — the review queue of new/changed canonical entities;
 - `soccer_manager_canonical_entities` — the latest approved Soccer Manager source state.
 
-The browser converts each normalized response into stable source entities before staging. Current entity types include worlds, divisions, standings, manager assignments, fixtures/results, season history, player leaderboards, squad players, transfers, player changes and club finance snapshots. Player-change normalization preserves a source event ID/date/turn when present, and canonical player-change events are staged only when one of those occurrence discriminators is available; this prevents a later repeated rating/position transition from being collapsed into an earlier event. World-specific market events first use the entry's own sanitized source URL for `sid`, treating placeholder zero IDs as absent just like the main normalizer, then fall back only when the entire captured batch has one unambiguous world. Repeated squad captures of the same `(setupId, clubId)` are deduplicated before deciding whether a fallback club context is unique. Batch ambiguity detection includes the sanitized source context of every captured entry, not just competition and squad responses; if no single world can be established, the event is not staged as a canonical entity.
+The browser converts each normalized response into stable source entities before staging. Current entity types include worlds, divisions, standings, manager assignments, fixtures/results, season history, player leaderboards, squad scopes, squad players, transfers, player changes and club finance snapshots. Player-change normalization preserves a source event ID/date/turn when present, and canonical player-change events are staged only when one of those occurrence discriminators is available; this prevents a later repeated rating/position transition from being collapsed into an earlier event. World-specific market events first use the entry's own sanitized source URL for `sid`, treating placeholder zero IDs as absent just like the main normalizer, then fall back only when the entire captured batch has one unambiguous world. Repeated squad captures of the same `(setupId, clubId)` are deduplicated before deciding whether a fallback club context is unique. Batch ambiguity detection includes the sanitized source context of every captured entry, not just competition and squad responses; if no single world can be established, the event is not staged as a canonical entity.
 
 The staging RPC compares incoming entities with the approved canonical source state and creates review rows only when the normalized JSON is new or changed. Each staged change also records the canonical version it was compared against. Re-running an unchanged sync therefore produces a zero-change reviewed run rather than another pile of duplicate work.
 
@@ -174,7 +197,7 @@ The collector deliberately runs in the already-authenticated Soccer Manager brow
 ## Next phases
 
 1. Add authoritative-scope removal detection for complete league, manager-assignment and squad snapshots.
-2. Add dedicated immutable transfer and player/player-change archives fed from approved canonical events.
+2. Build curated public player/transfer views and archive browsing on top of the private v0.5 player/transfer archive.
 3. Match approved Soccer Manager fixtures/results to friendly-tournament records without guessing on ambiguous teams or ties.
 4. Build player/transfer analytics and the Hamburger SV manager dashboard from canonical history rather than live page state.
 5. Expand endpoint discovery as more Soccer Manager JSON surfaces are confirmed.

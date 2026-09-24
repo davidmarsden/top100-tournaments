@@ -126,15 +126,31 @@ function squadEntities(entry) {
   if (!setupId || !clubId) return [];
 
   const scope = `${setupId}:club:${clubId}`;
-  return compact((payload.players || []).map((player) => {
-    const playerKey = player?.playerDataId || player?.playerId;
-    if (!playerKey) return null;
-    return entity('squad_player', `${setupId}:${playerKey}`, scope, {
+  const players = payload.players || [];
+  const rosterPlayerIds = players
+    .map((player) => nonZeroSourceId(player?.playerDataId) || nonZeroSourceId(player?.playerId))
+    .filter(Boolean);
+
+  const rows = [
+    entity('squad_scope', scope, scope, {
+      setupId,
+      clubId,
+      rosterPlayerIds,
+      playerCount: rosterPlayerIds.length,
+    }),
+  ];
+
+  for (const player of players) {
+    const playerKey = nonZeroSourceId(player?.playerDataId) || nonZeroSourceId(player?.playerId);
+    if (!playerKey) continue;
+    rows.push(entity('squad_player', `${setupId}:${playerKey}`, scope, {
       setupId,
       clubId,
       ...player,
-    });
-  }));
+    }));
+  }
+
+  return compact(rows);
 }
 
 function transferEntities(entry, fallbackSetupId = null) {
@@ -148,6 +164,7 @@ function transferEntities(entry, fallbackSetupId = null) {
     if (!localKey) return null;
     return entity('transfer', `${worldScope}:${localKey}`, worldScope, {
       setupId,
+      turn: entry.payload?.turn ?? null,
       ...transfer,
     });
   }));

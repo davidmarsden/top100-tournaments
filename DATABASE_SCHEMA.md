@@ -418,6 +418,32 @@ Purpose: Immutable versioned league-table history created when an administrator 
 | `captured_at` | `timestamptz` | Required |
 | `created_at` | `timestamptz` | Default `now()` |
 
+
+## Table `soccer_manager_players`
+
+Purpose: Private world-scoped Soccer Manager player identity/current-state archive. Uses the underlying Soccer Manager player-data id as the stable cross-surface source identity when available.
+
+Key fields include `game_world_id`, `source_player_id`, `source_squad_player_id`, identity/display fields, rating/position, `current_team_id`, source club id, value/wages/contract, morale/condition, appearances/performance, youth/goalkeeper/transfer-list flags and last-seen timestamps. `(game_world_id, source_player_id)` is unique.
+
+## Table `soccer_manager_player_snapshots`
+
+Purpose: Immutable versioned snapshots of approved squad-player states for player-history and analytics.
+
+Each row records `source_entity_key` + `source_version`, game world, player, mapped team/source club, rating/value/contract/performance fields, `captured_at` and the normalized approved source JSON. The source entity/version pair is unique.
+
+## Table `soccer_manager_transfers`
+
+Purpose: Private transfer archive keyed by stable Soccer Manager transfer entities.
+
+Stores the world/player, mapped source/destination teams and managers where known, source club names/ids, player attributes at transfer time, fee/value, accepted-date label, source turn, status, illegal-deal metadata, exchange-player JSON and approved normalized source data. `source_entity_key` is unique.
+
+## Table `soccer_manager_player_changes`
+
+Purpose: Private occurrence-keyed archive of Soccer Manager player rating/position/new-player events.
+
+Stores world/player/team, source club, event/change type, old/new rating and position IDs, value, event date/turn, capture time and approved normalized source data. `source_entity_key` is unique.
+
+
 ## Table `tournament_round_dates`
 
 Purpose: Stores bracket/round schedule presets. These can be set before fixtures are known, then applied as rounds are generated.

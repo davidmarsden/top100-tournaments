@@ -275,7 +275,8 @@ export function normalizePlayerChanges(input) {
     eventId: textOrNull(record.PlayerChangeID ?? record.ChangeID ?? record.EventID ?? record.eventId),
     eventDate: textOrNull(record.ChangeDate ?? record.EventDate ?? record.Date ?? record.ratchgdate),
     turn: numberOrNull(record.TurnNum ?? record.Turn ?? batchTurn),
-    playerId: textOrNull(record.PlayerID ?? record.PlayerDataID),
+    playerId: firstNonZeroId(record.PlayerDataID, record.PlayerID),
+    playerDataId: firstNonZeroId(record.PlayerDataID),
     name: textOrNull(record.PlayerName),
     age: numberOrNull(record.PlayerAge),
     clubId: textOrNull(record.ClubID),
@@ -344,7 +345,7 @@ export function normalizeTransfers(input) {
 }
 
 
-function findClubSquadRows(input) {
+function findClubSquadRows(input, minimumRows = 2) {
   if (!input || typeof input !== 'object') return [];
   const candidates = [];
 
@@ -375,13 +376,32 @@ function findClubSquadRows(input) {
   }
 
   visit(input);
-  const qualifying = candidates.filter((candidate) => candidate.width >= 2);
+  const qualifying = candidates.filter((candidate) => candidate.width >= minimumRows);
   qualifying.sort((a, b) => (b.score - a.score) || (b.width - a.width));
   return qualifying[0]?.rows || [];
 }
 
+function isTrustedClubSquadContext(context = {}) {
+  try {
+    const sourceUrl = context?.sourceUrl ? new URL(context.sourceUrl) : null;
+    const action = sourceUrl?.searchParams?.get('action');
+    const clubId = sourceUrl?.searchParams?.get('clubid');
+    const setupId = sourceUrl?.searchParams?.get('sid');
+    return Boolean(
+      sourceUrl?.protocol === 'https:'
+      && (sourceUrl.hostname === 'soccermanager.com' || sourceUrl.hostname.endsWith('.soccermanager.com'))
+      && /\/club-ajax-mobile\.php$/i.test(sourceUrl.pathname)
+      && action === 'clubinitdata2'
+      && nonZeroId(clubId)
+      && nonZeroId(setupId)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeClubSquad(input, context = {}) {
-  const rows = findClubSquadRows(input);
+  const rows = findClubSquadRows(input, isTrustedClubSquadContext(context) ? 1 : 2);
   const sourceContext = parseSourceContext(context.sourceUrl);
   return {
     kind: 'clubSquad',
@@ -460,17 +480,26 @@ export function normalizeClubFinance(input) {
   };
 }
 
-export function detectSoccerManagerPayload(input) {
+export function detectSoccerManagerPayload(input, context = {}) {
   if (input?.gwData && input?.tables && (input?.results || input?.fixtures)) return 'competition';
   if (Array.isArray(input?.changes) || Array.isArray(input?.new)) return 'playerChanges';
   if (Array.isArray(input?.Transfers)) return 'transfers';
   if (Array.isArray(input?.Weekly) && ('_seasonBalance' in input || '_seasonTotalIn' in input)) return 'clubFinance';
   if (findClubSquadRows(input).length) return 'clubSquad';
+
+  // The trusted clubinitdata2 endpoint can legitimately contain one or zero players.
+  // For that endpoint only, accept a single qualifying row; if there are none,
+  // still classify it as a squad so an authoritative empty squad_scope can be staged.
+  if (isTrustedClubSquadContext(context)) {
+    if (findClubSquadRows(input, 1).length) return 'clubSquad';
+    return 'clubSquad';
+  }
+
   return null;
 }
 
 export function normalizeSoccerManagerPayload(input, context = {}) {
-  switch (detectSoccerManagerPayload(input)) {
+  switch (detectSoccerManagerPayload(input, context)) {
     case 'competition': return normalizeCompetitionSnapshot(input);
     case 'playerChanges': return normalizePlayerChanges(input);
     case 'transfers': return normalizeTransfers(input);

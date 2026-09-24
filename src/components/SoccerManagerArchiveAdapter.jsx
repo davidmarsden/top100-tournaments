@@ -14,7 +14,7 @@ function worldLabel(world) {
 export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
   const [worlds, setWorlds] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [busySetupId, setBusySetupId] = useState(null);
+  const [busyAction, setBusyAction] = useState(null);
   const [status, setStatus] = useState('');
   const loadRequestRef = useRef(0);
 
@@ -45,8 +45,8 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
   }, [loadWorlds, refreshToken]);
 
   async function applyCoreArchive(setupId) {
-    if (!supabase || busySetupId) return;
-    setBusySetupId(setupId);
+    if (!supabase || busyAction) return;
+    setBusyAction(`core:${setupId}`);
     setStatus('');
     const { data, error } = await supabase.rpc('apply_soccer_manager_core_archive', {
       target_setup_id: setupId,
@@ -64,7 +64,32 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
         + (result.skippedAssignments ? ` ${result.skippedAssignments} assignment(s) were skipped because no approved club mapping existed.` : ''),
       );
     }
-    setBusySetupId(null);
+    setBusyAction(null);
+  }
+
+  async function applyPlayerTransferArchive(setupId) {
+    if (!supabase || busyAction) return;
+    setBusyAction(`players:${setupId}`);
+    setStatus('');
+    const { data, error } = await supabase.rpc('apply_soccer_manager_player_transfer_archive', {
+      target_setup_id: setupId,
+    });
+
+    if (error) {
+      setStatus(`Player/transfer archive apply failed for world ${setupId}: ${error.message}`);
+    } else {
+      const result = data || {};
+      setStatus(
+        `Applied player/transfer archive for world ${result.setupId || setupId}: `
+        + `${result.squadPlayers || 0} squad players, ${result.squadMembershipsCleared || 0} stale squad membership(s) cleared, `
+        + `${result.playerSnapshots || 0} new player snapshots, ${result.transfers || 0} transfers and `
+        + `${result.playerChanges || 0} player-change events.`
+        + (result.unmappedTransferClubs
+          ? ` ${result.unmappedTransferClubs} transfer club reference(s) could not yet be mapped to Top 100 teams.`
+          : ''),
+      );
+    }
+    setBusyAction(null);
   }
 
   return <section className="card module-card">
@@ -73,9 +98,9 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
       <h2>Apply approved data to the archive</h2>
     </div>
     <p>
-      This step is separate from sync review. It reads only approved canonical Soccer Manager entities
-      and applies the core archive spine: world, clubs, managers, current manager assignments, season
-      history, league titles and versioned standing snapshots.
+      These steps are separate from sync review. They read only approved canonical Soccer Manager entities.
+      The core adapter applies the world/club/manager/season spine; the player &amp; transfer adapter adds
+      private player identities, versioned squad snapshots, transfer records and player-change events.
     </p>
     <p className="muted">
       Stable Soccer Manager IDs are kept in a private source-to-archive map. Re-running the adapter is
@@ -91,13 +116,22 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
           <strong>World {world.entity_key}</strong>
           <span>{worldLabel(world)} · canonical v{world.version}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => applyCoreArchive(world.entity_key)}
-          disabled={busySetupId !== null}
-        >
-          {busySetupId === world.entity_key ? 'Applying…' : 'Apply core archive'}
-        </button>
+        <div className="button-row">
+          <button
+            type="button"
+            onClick={() => applyCoreArchive(world.entity_key)}
+            disabled={busyAction !== null}
+          >
+            {busyAction === `core:${world.entity_key}` ? 'Applying…' : 'Apply core archive'}
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPlayerTransferArchive(world.entity_key)}
+            disabled={busyAction !== null}
+          >
+            {busyAction === `players:${world.entity_key}` ? 'Applying…' : 'Apply players & transfers'}
+          </button>
+        </div>
       </div>)}
     </div>}
 
