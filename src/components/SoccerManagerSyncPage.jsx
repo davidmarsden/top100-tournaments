@@ -282,22 +282,16 @@ export default function SoccerManagerSyncPage() {
       if (message.replayPageContext && typeof message.replayPageContext === 'object') {
         const row = message.replayPageContext;
         try {
-          const url = new URL(row.url);
-          const inlineScripts = Array.isArray(row.inlineScripts)
-            ? row.inlineScripts.filter((value) => typeof value === 'string').slice(0, 8)
+          const url = new URL(row.pageUrl);
+          const scriptSignals = Array.isArray(row.scriptSignals)
+            ? row.scriptSignals.filter((value) => value && typeof value.key === 'string' && typeof value.value === 'string').slice(0, 120)
             : [];
-          const inlineChars = inlineScripts.reduce((total, value) => total + value.length, 0);
-          const htmlAroundReplay = typeof row.htmlAroundReplay === 'string' ? row.htmlAroundReplay : null;
-          const totalChars = inlineChars + (htmlAroundReplay?.length || 0);
-          if (url.origin === event.origin && totalChars <= 250000) {
+          if (url.origin === event.origin) {
             replayContextRow = {
-              url: row.url,
-              title: typeof row.title === 'string' ? row.title.slice(0, 500) : null,
+              pageUrl: row.pageUrl,
               params: row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? row.params : {},
               identifiers: row.identifiers && typeof row.identifiers === 'object' && !Array.isArray(row.identifiers) ? row.identifiers : {},
-              inlineScripts,
-              htmlAroundReplay,
-              error: typeof row.error === 'string' ? row.error : null,
+              scriptSignals,
             };
           }
         } catch {
@@ -539,15 +533,15 @@ export default function SoccerManagerSyncPage() {
     {!!replayPageContext && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Replay-loader diagnostics</p><h2>Replay page context</h2></div>
       <p className="muted">
-        Captures only the selected replay page URL/query context, likely fixture/match identifiers, and bounded inline-script/HTML excerpts around <code>liveMatchXML</code>. This is diagnostic-only and is never staged or persisted.
+        Captures only structural replay-selection data: the page URL/query context, likely fixture/match identifiers, and allowlisted identifier/value signals extracted from inline scripts. No arbitrary script or HTML excerpts cross origins. This is diagnostic-only and is never staged or persisted.
         {diagnosticsCapturedAt ? ` Captured ${new Date(diagnosticsCapturedAt).toLocaleString('en-GB')}.` : ''}
       </p>
       <div className="overview-metrics">
         <article><span>Query fields</span><strong>{Object.keys(replayPageContext.params || {}).length}</strong></article>
         <article><span>Identifiers</span><strong>{Object.keys(replayPageContext.identifiers || {}).length}</strong></article>
-        <article><span>Inline excerpts</span><strong>{replayPageContext.inlineScripts?.length || 0}</strong></article>
+        <article><span>Script signals</span><strong>{replayPageContext.scriptSignals?.length || 0}</strong></article>
       </div>
-      <p className="muted"><code>{replayPageContext.url}</code></p>
+      <p className="muted"><code>{replayPageContext.pageUrl}</code></p>
       <div className="button-row">
         <button type="button" className="secondary" onClick={downloadReplayPageContextDiagnostics}>
           Download replay page context
