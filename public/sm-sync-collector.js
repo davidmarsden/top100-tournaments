@@ -92,14 +92,18 @@ const redactReplayContextText=value=>{
         for(let j=end-1;j>=0&&input.charCodeAt(j)===92;j--)slashes++;
         if(slashes%2===0)break;
       }
-      if(end>=input.length)break;
+      if(end>=input.length){
+        output+=input.slice(cursor,match.index)+match[0]+'[redacted]';
+        cursor=input.length;
+        break;
+      }
       output+=input.slice(cursor,match.index)+match[0]+'[redacted]'+delimiter;
       cursor=end+1;
       opener.lastIndex=end+1;
     }
     return cursor?output+input.slice(cursor):input;
   };
-  text=redactQuotedSensitive(text,"[\\\"'\\x60]?"+sensitiveName+"[\\\"'\\x60]?\\s*[:=]\\s*");
+  text=redactQuotedSensitive(text,"(?:[A-Za-z_$][\\w$]*\\s*\\[\\s*)?[\\\"'\\x60]?"+sensitiveName+"[\\\"'\\x60]?(?:\\s*\\])?\\s*[:=]\\s*");
   text=redactQuotedSensitive(text,"(?:data-)?"+sensitiveName+"\\s*=\\s*");
   text=text.replace(new RegExp("([?&]"+sensitiveName+"=)[^&#\\s\\\"'<>]*","gi"),'$1[redacted]');
   text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
