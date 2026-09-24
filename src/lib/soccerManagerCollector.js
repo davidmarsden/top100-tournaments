@@ -37,7 +37,7 @@ const existing=document.getElementById('top100-sm-sync-collector-script');
 if(existing){existing.onerror=null;existing.onload=null;existing.remove();}
 const script=document.createElement('script');
 script.id='top100-sm-sync-collector-script';
-script.src='https://tournaments.smtop100.blog/sm-sync-collector.js?v='+Date.now();
+script.src='https://tournaments.smtop100.blog/sm-sync-collector.js?v='+Date.now()+'&invocation='+encodeURIComponent(session);
 script.async=true;
 script.onerror=()=>{
   const active=window.__top100SmSyncBootstrap;
