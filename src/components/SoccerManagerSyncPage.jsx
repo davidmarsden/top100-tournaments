@@ -108,6 +108,7 @@ export default function SoccerManagerSyncPage() {
   const [diagnostics, setDiagnostics] = useState([]);
   const [diagnosticsCapturedAt, setDiagnosticsCapturedAt] = useState(null);
   const [matchEngineSources, setMatchEngineSources] = useState([]);
+  const [matchReplay, setMatchReplay] = useState(null);
   const [stageStatus, setStageStatus] = useState('');
   const [stageBusy, setStageBusy] = useState(false);
   const [reviewRefreshToken, setReviewRefreshToken] = useState(0);
@@ -217,8 +218,30 @@ export default function SoccerManagerSyncPage() {
         engineSeenPaths.add(pathname);
         engineRows.push(row);
       }
+      let replayRow = null;
+      if (message.matchReplay && typeof message.matchReplay === 'object') {
+        const row = message.matchReplay;
+        let validUrl = false;
+        if (typeof row.url === 'string') {
+          try {
+            validUrl = new URL(row.url).origin === event.origin;
+          } catch {
+            validUrl = false;
+          }
+        }
+        const xmlValid = row.xml === null || (typeof row.xml === 'string' && row.xml.length <= 2000000);
+        const errorValid = row.error === null || row.error === undefined || typeof row.error === 'string';
+        if (validUrl && xmlValid && errorValid) {
+          replayRow = {
+            url: row.url,
+            xml: typeof row.xml === 'string' ? row.xml : null,
+            error: row.error || null,
+          };
+        }
+      }
       setDiagnostics(diagnosticRows);
       setMatchEngineSources(engineRows);
+      setMatchReplay(replayRow);
       setDiagnosticsCapturedAt(typeof message.capturedAt === 'string' ? message.capturedAt : null);
 
       const entries = message.payloads.slice(-20).map((item, index) => {
@@ -245,7 +268,8 @@ export default function SoccerManagerSyncPage() {
       const sourceCount = engineRows.filter((row) => typeof row.source === 'string').length;
       setCollectorStatus(
         `Last browser sync: ${new Date().toLocaleString('en-GB')} · ${event.origin}`
-        + (engineRows.length ? ` · match-engine sources ${sourceCount}/${engineRows.length}` : ''),
+        + (engineRows.length ? ` · match-engine sources ${sourceCount}/${engineRows.length}` : '')
+        + (replayRow ? ` · match replay ${replayRow.xml ? 'captured' : 'detected'}` : ''),
       );
 
       if (event.source && typeof event.source.postMessage === 'function') {
@@ -280,6 +304,7 @@ export default function SoccerManagerSyncPage() {
     const allErrors = [...readErrors, ...errors];
     setDiagnosticsCapturedAt(null);
     setMatchEngineSources([]);
+    setMatchReplay(null);
     setPayloads(next);
     setStatus(allErrors.length ? `Loaded ${next.length} file(s). ${allErrors.join(' ')}` : `Loaded and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'}.`);
     // Always remount the native input after an import attempt. Browsers often
@@ -342,6 +367,22 @@ export default function SoccerManagerSyncPage() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadMatchReplayDiagnostics() {
+    if (!matchReplay) return;
+    const blob = new Blob([JSON.stringify({
+      capturedAt: diagnosticsCapturedAt,
+      pageUrl: matchReplay.url,
+      xml: matchReplay.xml,
+      error: matchReplay.error,
+    }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `top100-sm-match-replay-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return <main className="app-shell">
     <section className="hero"><div className="hero-row"><div><p className="eyebrow">Top 100 data tools</p><h1>Soccer Manager Sync</h1><p>Turn Soccer Manager's internal JSON responses into clean Top 100 records, stage the differences privately, and review them before anything can flow into the public archive.</p></div><div className="button-row"><a className="button secondary" href="/admin">Tournament admin</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div></section>
 
@@ -363,7 +404,7 @@ export default function SoccerManagerSyncPage() {
         <p className="muted">Supported now: competition snapshot, club squad, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
-      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setMatchEngineSources([]); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
+      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setMatchEngineSources([]); setMatchReplay(null); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
       {stageStatus && <p className="status">{stageStatus}</p>}
     </section>
 
@@ -399,6 +440,24 @@ export default function SoccerManagerSyncPage() {
           </tr>;
         })}
       </tbody></table></div>
+    </section>}
+
+    {!!matchReplay && <section className="card module-card">
+      <div className="card-header"><p className="eyebrow">Match replay diagnostics</p><h2>Completed match XML</h2></div>
+      <p className="muted">
+        Temporary diagnostic capture of the replay XML already present in the Soccer Manager page. It is not staged or persisted to the Top 100 database.
+        {diagnosticsCapturedAt ? ` Captured ${new Date(diagnosticsCapturedAt).toLocaleString('en-GB')}.` : ''}
+      </p>
+      <div className="overview-metrics">
+        <article><span>Status</span><strong>{matchReplay.error || (matchReplay.xml ? 'Captured' : 'Detected')}</strong></article>
+        <article><span>Size</span><strong>{typeof matchReplay.xml === 'string' ? `${matchReplay.xml.length.toLocaleString('en-GB')} chars` : '—'}</strong></article>
+      </div>
+      <p className="muted"><code>{matchReplay.url}</code></p>
+      <div className="button-row">
+        <button type="button" className="secondary" onClick={downloadMatchReplayDiagnostics} disabled={!matchReplay.xml}>
+          Download match replay diagnostics
+        </button>
+      </div>
     </section>}
 
     <SoccerManagerSyncReview refreshToken={reviewRefreshToken} onReviewComplete={() => setArchiveRefreshToken((value) => value + 1)} />
