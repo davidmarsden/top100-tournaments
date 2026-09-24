@@ -289,13 +289,21 @@ export default function SoccerManagerSyncPage() {
           const paramKeys = Object.keys(rawParams);
           const identifierKeys = Object.keys(rawIdentifiers);
           const shapeWithinLimits = paramKeys.length <= 40 && identifierKeys.length <= 80 && rawSignals.length <= 120;
-          const boundedMap = (value, keys) => Object.fromEntries(keys.map((key) => [key, value[key]]));
-          const entriesValid = [...paramKeys.map((key) => [key, rawParams[key]]), ...identifierKeys.map((key) => [key, rawIdentifiers[key]])]
-            .every(([key, entry]) => typeof key === 'string' && key.length <= 120 && typeof entry === 'string' && entry.length <= 500);
-          const signalsValid = rawSignals.every((value) => value && typeof value.key === 'string' && value.key.length <= 80 && typeof value.value === 'string' && value.value.length <= 500);
-          const candidate = shapeWithinLimits && entriesValid && signalsValid
-            ? { pageUrl: row.pageUrl, params: boundedMap(rawParams, paramKeys), identifiers: boundedMap(rawIdentifiers, identifierKeys), scriptSignals: rawSignals }
-            : null;
+          let candidate = null;
+          if (shapeWithinLimits) {
+            const boundedMap = (value, keys) => Object.fromEntries(keys.map((key) => [key, value[key]]));
+            const entriesValid = paramKeys.every((key) => key.length <= 120 && typeof rawParams[key] === 'string' && rawParams[key].length <= 500)
+              && identifierKeys.every((key) => key.length <= 120 && typeof rawIdentifiers[key] === 'string' && rawIdentifiers[key].length <= 500);
+            const signalsValid = rawSignals.every((value) => value && typeof value.key === 'string' && value.key.length <= 80 && typeof value.value === 'string' && value.value.length <= 500);
+            if (entriesValid && signalsValid) {
+              candidate = {
+                pageUrl: row.pageUrl,
+                params: boundedMap(rawParams, paramKeys),
+                identifiers: boundedMap(rawIdentifiers, identifierKeys),
+                scriptSignals: rawSignals.map(({ key, value }) => ({ key, value })),
+              };
+            }
+          }
           if (candidate && url.origin === event.origin && JSON.stringify(candidate).length <= 100000) {
             replayContextRow = candidate;
           }
