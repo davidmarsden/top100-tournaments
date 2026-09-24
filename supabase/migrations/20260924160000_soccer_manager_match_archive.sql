@@ -401,6 +401,7 @@ begin
       ) values (
         v_snapshot_id,
         concat_ws(':',
+          coalesce(child->>'sequence', ''),
           coalesce(child->>'minute', ''),
           coalesce(child->>'fixtureId', ''),
           coalesce(child->>'teamSide', ''),
