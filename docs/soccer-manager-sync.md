@@ -53,6 +53,29 @@ The adapter is idempotent: current player records are upserted, authoritative sq
 
 
 
+## v0.7 tactics capture and archive
+
+The sync workbench now recognizes the authenticated club tactics response observed at:
+
+`club-ajax-mobile.php?action=tacticsdraw&getdata=1&gettemplate=1&clubid=…`
+
+Detection is URL-context first so the tactics response cannot be mistaken for a normal club-squad response simply because it also contains player rows.
+
+The tactics normalizer currently extracts only fields observed and useful for Top 100 analysis:
+
+- team instruction codes: aggression, attacking/passing style, focus passing, tempo, pressing, counterattack, men behind ball, tight marking, offside, playmaker/target-man switches, width, fluidity, creativity, forwards, wide play, back line, sweeper keeper, captain and penalty taker;
+- formation id where the response exposes one;
+- player tactical state including stable player ids, kit/slot number, arrow, rating, age, value, foot, contract, appearances, goals/assists, expected appearances, games played, average rating, form, position, morale, fitness, injury date and suspended/injured state;
+- the response turn date where present.
+
+Raw authenticated responses remain browser-only. Only the normalized subset is staged.
+
+Each reviewed tactical occurrence becomes a private `tactics_snapshot` canonical entity. The provisional occurrence key is `(setup, club, turnDate)` when a turn date exists; same-day corrections are retained as canonical versions instead of overwriting archive history. If no turn date is available, the entity falls back to the club's latest tactical state. This is intentionally provisional: once a real Soccer Manager match/turn source id is discovered, fixture/result linkage should use that stable id rather than inferred dates.
+
+Approved tactical versions are copied explicitly into `soccer_manager_tactics_snapshots` by the admin-only `apply_soccer_manager_tactics_archive()` action. The archive table is private/admin-readable and stores normalized instruction/player JSON plus source capture time. It is not yet exposed on the manager dashboard.
+
+The purpose is historical correlation rather than mirroring the live tactics screen: later analysis can compare tactical instructions, selection, fitness and morale against results, player performance and any match-engine statistics we discover.
+
 ## v0.6 manager squad dashboard
 
 The Manager Portal now has a private **Squad & Transfers** view backed by `get_my_soccer_manager_dashboard()`.

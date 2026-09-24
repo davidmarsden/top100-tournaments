@@ -210,6 +210,27 @@ function playerChangeEntities(entry, fallbackSetupId = null) {
   return rows;
 }
 
+
+function tacticsEntities(entry, fallbackContext = {}) {
+  const payload = entry.payload;
+  const context = parseSourceContext(entry.sourceUrl);
+  const setupId = payload?.club?.setupId || context.setupId || fallbackContext.setupId || null;
+  const clubId = payload?.club?.clubId || context.clubId || fallbackContext.clubId || null;
+  if (!setupId || !clubId) return [];
+
+  const scope = `${setupId}:club:${clubId}`;
+  const occurrence = payload?.turnDate ? `date:${payload.turnDate}` : 'state';
+
+  return [entity('tactics_snapshot', `${scope}:tactics:${occurrence}`, scope, {
+    setupId,
+    clubId,
+    turnDate: payload?.turnDate || null,
+    formationId: payload?.formationId || null,
+    instructions: payload?.instructions || {},
+    players: payload?.players || [],
+  })];
+}
+
 function financeEntities(entry, fallbackContext = {}) {
   const context = parseSourceContext(entry.sourceUrl);
   const setupId = context.setupId || fallbackContext.setupId || null;
@@ -235,7 +256,7 @@ function inferSyncContext(entries) {
       setupIds.add(String(entry.payload.world.setupId));
     }
 
-    if (entry?.payload?.kind === 'clubSquad') {
+    if (entry?.payload?.kind === 'clubSquad' || entry?.payload?.kind === 'clubTactics') {
       const setupId = entry.payload?.club?.setupId || sourceContext.setupId;
       const clubId = entry.payload?.club?.clubId || sourceContext.clubId;
       if (setupId) setupIds.add(String(setupId));
@@ -271,6 +292,7 @@ export function extractSoccerManagerEntities(entries) {
     if (entry.payload.kind === 'clubSquad') entities = squadEntities(entry);
     if (entry.payload.kind === 'transfers') entities = transferEntities(entry, inferred.setupId);
     if (entry.payload.kind === 'playerChanges') entities = playerChangeEntities(entry, inferred.setupId);
+    if (entry.payload.kind === 'clubTactics') entities = tacticsEntities(entry, inferred.club || {});
     if (entry.payload.kind === 'clubFinance') entities = financeEntities(entry, inferred.club || {});
 
     for (const row of entities) {
