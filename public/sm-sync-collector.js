@@ -40,10 +40,20 @@ const safeReplayContextValue=value=>{
   return text;
 };
 const captureReplayPageContext=()=>{
-  const safePageUrl=sanitize(location.href);
   const isReplayIdentifier=name=>/^(?:data-)?(?:fixture(?:-?id)?|fix(?:id)?|match(?:-?id)?|mid|game(?:-?id)?|club(?:-?id)?|clubid|sid|season|turn)$/i.test(String(name||''));
   const params={};
-  try{const page=new URL(location.href);for(const [key,value] of page.searchParams.entries()){if(isReplayIdentifier(key)&&!sensitive.test(key)&&!sensitive.test(String(value)))params[key]=safeReplayContextValue(value);}}catch{}
+  let safePageUrl=location.origin+location.pathname;
+  try{
+    const page=new URL(location.href),projectedPage=new URL(page.origin+page.pathname);
+    for(const [key,value] of page.searchParams.entries()){
+      if(isReplayIdentifier(key)&&!sensitive.test(key)&&!sensitive.test(String(value))){
+        const safeValue=safeReplayContextValue(value);
+        params[key]=safeValue;
+        projectedPage.searchParams.append(key,safeValue);
+      }
+    }
+    safePageUrl=projectedPage.href;
+  }catch{}
   const identifiers={};
   for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-fixtureid],[data-fix],[data-fixid],[data-match],[data-match-id],[data-matchid],[data-mid],[data-game],[data-game-id],[data-gameid],[data-club],[data-club-id],[data-clubid],[data-sid],[data-season],[data-turn],[data-id],input[type="hidden"]')).slice(0,300)){
     const candidates=[];
@@ -58,18 +68,26 @@ const captureReplayPageContext=()=>{
     if(Object.keys(identifiers).length>=80)break;
   }
   const navigation=[];
-  for(const el of Array.from(document.querySelectorAll('a[href],form[action]')).slice(0,300)){
-    const raw=el.tagName==='FORM'?el.getAttribute('action'):el.getAttribute('href');
+  for(const el of Array.from(document.querySelectorAll('a[href],form')).slice(0,300)){
+    const isForm=el.tagName==='FORM';
+    const raw=isForm?(el.getAttribute('action')||location.href):el.getAttribute('href');
     if(!raw)continue;
     try{
       const url=new URL(raw,location.href);
       if(url.origin!==location.origin)continue;
       const structural=new URL(url.origin+url.pathname);
       for(const [key,value] of url.searchParams.entries()){
-        if(isReplayIdentifier(key))structural.searchParams.append(key,safeReplayContextValue(value));
+        if(isReplayIdentifier(key)&&!sensitive.test(String(value)))structural.searchParams.append(key,safeReplayContextValue(value));
+      }
+      if(isForm){
+        for(const control of Array.from(el.elements||[]).slice(0,100)){
+          const key=control.name||control.id;
+          const value=control.value;
+          if(isReplayIdentifier(key)&&value!==undefined&&!sensitive.test(String(value)))structural.searchParams.append(key,safeReplayContextValue(value));
+        }
       }
       if(![...structural.searchParams.keys()].length)continue;
-      navigation.push({kind:el.tagName==='FORM'?'form':'link',url:structural.href});
+      navigation.push({kind:isForm?'form':'link',url:structural.href});
       if(navigation.length>=80)break;
     }catch{}
   }
