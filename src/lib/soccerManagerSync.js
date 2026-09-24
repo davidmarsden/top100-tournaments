@@ -450,6 +450,164 @@ export function normalizeClubSquad(input, context = {}) {
   };
 }
 
+
+function isTrustedTacticsContext(context = {}) {
+  try {
+    const sourceUrl = context?.sourceUrl ? new URL(context.sourceUrl) : null;
+    return Boolean(
+      sourceUrl?.protocol === 'https:'
+      && (sourceUrl.hostname === 'soccermanager.com' || sourceUrl.hostname.endsWith('.soccermanager.com'))
+      && /\/club-ajax-mobile\.php$/i.test(sourceUrl.pathname)
+      && sourceUrl.searchParams.get('action') === 'tacticsdraw'
+      && sourceUrl.searchParams.get('getdata') === '1'
+      && nonZeroId(sourceUrl.searchParams.get('clubid'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function findTacticsPlayerRows(input) {
+  if (!input || typeof input !== 'object') return [];
+  const candidates = [];
+
+  function visit(value, depth = 0) {
+    if (!value || depth > 5) return;
+    if (Array.isArray(value)) {
+      const rows = value.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+      const qualifying = rows.filter((row) => {
+        const playerId = firstNonZeroId(row.PlayerDataID, row.playerdataid, row.PlayerID, row.playerid);
+        const rating = firstNumber(row.RatingRaw, row.Rating, row.PlayerRating, row.rating);
+        const name = firstText(row.PlayerName, row.playername, row.PlayerSurname, row.playersurname);
+        return playerId !== null && (rating !== null || name !== null);
+      });
+      if (qualifying.length) {
+        const score = qualifying.reduce((sum, row) => (
+          sum
+          + (firstNonZeroId(row.PlayerDataID, row.playerdataid) ? 3 : 0)
+          + (firstText(row.PlayerName, row.playername) ? 2 : 0)
+          + (firstNumber(row.RatingRaw, row.Rating, row.PlayerRating, row.rating) !== null ? 1 : 0)
+          + (row.Arrow !== undefined || row.kitNumRaw !== undefined ? 2 : 0)
+        ), 0);
+        candidates.push({ rows: qualifying, score });
+      }
+      for (const row of value) visit(row, depth + 1);
+      return;
+    }
+    for (const child of Object.values(value)) visit(child, depth + 1);
+  }
+
+  visit(input);
+  candidates.sort((a, b) => b.score - a.score || b.rows.length - a.rows.length);
+  return candidates[0]?.rows || [];
+}
+
+function tacticalInstructionValue(value) {
+  const number = numberOrNull(value);
+  return number !== null ? number : textOrNull(value);
+}
+
+export function normalizeClubTactics(input, context = {}) {
+  const sourceContext = parseSourceContext(context.sourceUrl);
+  const instructionSource = input?.Tactics?.Instructions
+    || input?.tactics?.Instructions
+    || input?.Tactics?.instructions
+    || input?.tactics?.instructions
+    || {};
+  const rows = findTacticsPlayerRows(input);
+  const turnDates = rows
+    .map((row) => firstText(row._turnDate, row.turnDate, row.TurnDate))
+    .filter(Boolean);
+
+  const instructions = {
+    aggression: tacticalInstructionValue(instructionSource.aggression),
+    attackingStyle: tacticalInstructionValue(instructionSource.attackingstyle),
+    passingStyle: tacticalInstructionValue(instructionSource.passingstyle),
+    focusPassing: tacticalInstructionValue(instructionSource.focuspassing),
+    tempo: tacticalInstructionValue(instructionSource.tempo),
+    pressing: tacticalInstructionValue(instructionSource.pressing),
+    counterAttack: tacticalInstructionValue(instructionSource.counterattack),
+    menBehindBall: tacticalInstructionValue(instructionSource.menbehindball),
+    tightMarking: tacticalInstructionValue(instructionSource.tightmarking),
+    playOffside: tacticalInstructionValue(instructionSource.playoffside),
+    usePlaymaker: tacticalInstructionValue(instructionSource.useplaymaker),
+    useTargetMan: tacticalInstructionValue(instructionSource.usetargetman),
+    width: tacticalInstructionValue(instructionSource.width),
+    fluidity: tacticalInstructionValue(instructionSource.fluidity),
+    creativity: tacticalInstructionValue(instructionSource.creativity),
+    forwards: tacticalInstructionValue(instructionSource.forwards),
+    widePlay: tacticalInstructionValue(instructionSource.wideplay),
+    backLine: tacticalInstructionValue(instructionSource.backline),
+    sweeperKeeper: tacticalInstructionValue(instructionSource.sweeperkeeper),
+    captain: tacticalInstructionValue(instructionSource.captain),
+    penaltyTaker: tacticalInstructionValue(instructionSource.penaltytaker),
+  };
+
+  return {
+    kind: 'clubTactics',
+    club: {
+      clubId: firstNonZeroId(
+        input?.clubid,
+        input?.ClubID,
+        input?.clubID,
+        input?.club?.clubid,
+        input?.club?.ClubID,
+        sourceContext.clubId,
+      ),
+      setupId: firstNonZeroId(
+        input?.sid,
+        input?.setupID,
+        input?.SetupID,
+        input?.club?.sid,
+        input?.club?.setupID,
+        sourceContext.setupId,
+      ),
+    },
+    turnDate: turnDates[0] || firstText(input?._turnDate, input?.turnDate, input?.TurnDate),
+    formationId: firstText(
+      input?.Tactics?.FormationID,
+      input?.Tactics?.formationid,
+      input?.tactics?.FormationID,
+      input?.tactics?.formationid,
+    ),
+    instructions,
+    schema: {
+      instructionKeys: Object.keys(instructionSource).sort((a, b) => a.localeCompare(b)),
+      playerKeys: fieldNames(rows),
+    },
+    players: rows.map((record) => ({
+      playerDataId: firstNonZeroId(record.PlayerDataID, record.playerdataid),
+      playerId: firstNonZeroId(record.PlayerID, record.playerid),
+      name: firstText(record.PlayerName, record.playername),
+      surname: firstText(record.PlayerSurname, record.playersurname),
+      kitNumber: firstNumber(record.kitNumRaw, record.KitNumRaw, record.kitNum),
+      arrow: firstText(record.Arrow, record.arrow),
+      age: firstNumber(record.Age, record.age),
+      rating: firstNumber(record.RatingRaw, record.Rating, record.PlayerRating, record.rating),
+      value: firstNumber(record.Value, record.valueraw),
+      foot: firstText(record.FootDisplay, record.Foot, record.foot),
+      contract: firstNumber(record.Contract, record.contract),
+      appearances: firstNumber(record.Apps, record.app),
+      substituteAppearances: firstNumber(record.SubApps, record.subapp),
+      goals: firstNumber(record.Goals, record.gs, record.goals),
+      assists: firstNumber(record.Assists, record.as, record.assists),
+      expectedAppearances: firstNumber(record.expected),
+      gamesPlayed: firstNumber(record.gamesPlayed),
+      averageRating: firstNumber(record.AveRating, record.avp),
+      form: firstText(record.Form, record.form),
+      position: firstPosition(record.Position, record.playerposition, record.LiveMultiPositionDis),
+      positionRaw: firstNumber(record.PositionRaw, record.playerpositionid),
+      positionBin: firstText(record.PositionBin),
+      morale: firstNumber(record.MoraleRaw, record.morale),
+      fitness: firstNumber(record.FitnessRaw, record.Fitness, record.conraw, record.condition),
+      injuryDate: firstText(record._injuryDate, record.injuryDate),
+      turnDate: firstText(record._turnDate, record.turnDate),
+      suspendedOrInjured: firstBoolean(record.SuspendedOrInjured),
+      photo: firstText(record.PhotFileName, record.PhotoFilename, record.photofilename),
+    })),
+  };
+}
+
 export function normalizeClubFinance(input) {
   return {
     kind: 'clubFinance',
@@ -485,6 +643,7 @@ export function detectSoccerManagerPayload(input, context = {}) {
   if (Array.isArray(input?.changes) || Array.isArray(input?.new)) return 'playerChanges';
   if (Array.isArray(input?.Transfers)) return 'transfers';
   if (Array.isArray(input?.Weekly) && ('_seasonBalance' in input || '_seasonTotalIn' in input)) return 'clubFinance';
+  if (isTrustedTacticsContext(context)) return 'clubTactics';
   if (findClubSquadRows(input).length) return 'clubSquad';
 
   // The trusted clubinitdata2 endpoint can legitimately contain one or zero players.
@@ -504,6 +663,7 @@ export function normalizeSoccerManagerPayload(input, context = {}) {
     case 'playerChanges': return normalizePlayerChanges(input);
     case 'transfers': return normalizeTransfers(input);
     case 'clubFinance': return normalizeClubFinance(input);
+    case 'clubTactics': return normalizeClubTactics(input, context);
     case 'clubSquad': return normalizeClubSquad(input, context);
     default: throw new Error('Unsupported Soccer Manager JSON response.');
   }
@@ -532,6 +692,16 @@ export function summarizeNormalizedPayload(payload) {
   }
   if (payload.kind === 'clubFinance') {
     return { type: 'Club finance', weeks: payload.weekly.length, seasonBalance: payload.season.balance, seasonProfit: payload.season.profit };
+  }
+  if (payload.kind === 'clubTactics') {
+    return {
+      type: 'Club tactics',
+      club: payload.club.clubId,
+      world: payload.club.setupId,
+      turnDate: payload.turnDate,
+      players: payload.players.length,
+      instructionFields: payload.schema?.instructionKeys?.length || 0,
+    };
   }
   if (payload.kind === 'clubSquad') {
     return {
