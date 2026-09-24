@@ -10,11 +10,15 @@ const matched=resources.map(e=>e.name).filter(u=>patterns.some(r=>r.test(u)));
 const seen=new Set(),urls=[];
 for(let i=matched.length-1;i>=0;i--){if(seen.has(matched[i]))continue;seen.add(matched[i]);urls.push(matched[i]);}
 urls.reverse();
+let invocation=null;
+try{invocation=new URL(document.currentScript&&document.currentScript.src?document.currentScript.src:'',location.href).searchParams.get('invocation');}catch{}
 const bootstrap=window.__top100SmSyncBootstrap;
-const session=bootstrap&&typeof bootstrap.session==='string'&&bootstrap.session?bootstrap.session:(crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
+const ownsBootstrap=!!(invocation&&bootstrap&&bootstrap.session===invocation&&bootstrap.win&&!bootstrap.win.closed);
+if(!ownsBootstrap)return;
+const session=bootstrap.session;
 const syncUrl=target+'?collectorSession='+encodeURIComponent(session);
-const win=bootstrap&&bootstrap.win&&!bootstrap.win.closed?bootstrap.win:window.open(syncUrl,'top100-sm-sync');
-delete window.__top100SmSyncBootstrap;
+const win=bootstrap.win;
+if(window.__top100SmSyncBootstrap===bootstrap)delete window.__top100SmSyncBootstrap;
 if(!win){alert('Please allow pop-ups for Soccer Manager, then try Top 100 Sync again.');return;}
 let ready=false,done=false;
 const onMessage=e=>{if(e.origin!=='https://tournaments.smtop100.blog'||e.source!==win||!e.data||e.data.session!==session)return;if(e.data.type===readyType)ready=true;if(e.data.type===ackType){done=true;window.removeEventListener('message',onMessage);}};
