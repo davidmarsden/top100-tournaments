@@ -385,16 +385,18 @@ begin
     squad_players_applied := squad_players_applied + 1;
   end loop;
 
-  -- Approved club-squad captures are authoritative for that club scope.
-  -- Clear stale current-team memberships for players absent from the latest approved squad in each captured club.
+  -- Approved squad-scope markers are authoritative current rosters.
+  -- They are reviewed canonical entities, so removals (including an empty squad)
+  -- are explicit source truth rather than inferred from accumulated player rows.
   for scope_row in
-    select distinct data->>'clubId' as source_club_id
+    select entity_key, data
     from public.soccer_manager_canonical_entities
-    where entity_type='squad_player'
+    where entity_type='squad_scope'
       and data->>'setupId'=setup_id
       and nullif(trim(data->>'clubId'),'') is not null
+    order by entity_key
   loop
-    v_source_club_id := nullif(trim(scope_row.source_club_id), '');
+    v_source_club_id := nullif(trim(scope_row.data->>'clubId'), '');
     if v_source_club_id is null then
       continue;
     end if;
@@ -420,11 +422,8 @@ begin
       and player.current_team_id = v_team_id
       and not exists (
         select 1
-        from public.soccer_manager_canonical_entities canonical
-        where canonical.entity_type='squad_player'
-          and canonical.data->>'setupId'=setup_id
-          and canonical.data->>'clubId'=v_source_club_id
-          and nullif(trim(coalesce(canonical.data->>'playerDataId', canonical.data->>'playerId')), '') = player.source_player_id
+        from jsonb_array_elements_text(coalesce(scope_row.data->'rosterPlayerIds', '[]'::jsonb)) roster(source_player_id)
+        where roster.source_player_id = player.source_player_id
       );
 
     get diagnostics v_cleared_count = row_count;
