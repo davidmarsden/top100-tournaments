@@ -43,15 +43,15 @@ const redactReplayContextText=value=>{
   if(value===null||value===undefined)return value;
   let text=String(value);
   const sensitiveName='[A-Za-z0-9_-]*(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)[A-Za-z0-9_-]*';
-  const htmlTag=/<(?:input|meta)\\b[^>]*>/gi;
+  const sensitiveExact=new RegExp('^'+sensitiveName+'$','i');
   const attr=/([A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\\x60]+))/g;
-  text=text.replace(htmlTag,tag=>{
+  const redactHtmlTag=tag=>{
     const attrs=[];
     let match;
     while((match=attr.exec(tag))!==null)attrs.push({name:match[1],value:match[2]??match[3]??match[4]??'',start:match.index,end:attr.lastIndex,raw:match[0]});
     attr.lastIndex=0;
     const nameAttr=attrs.find(item=>item.name.toLowerCase()==='name');
-    if(!nameAttr||!new RegExp('^'+sensitiveName+'$','i').test(nameAttr.value))return tag;
+    if(!nameAttr||!sensitiveExact.test(nameAttr.value))return tag;
     const secretAttr=attrs.find(item=>/^(?:value|content)$/i.test(item.name));
     if(!secretAttr)return tag;
     const eq=secretAttr.raw.indexOf('=');
@@ -61,10 +61,31 @@ const redactReplayContextText=value=>{
     const quote=rawValue[0]==='"'||rawValue[0]==="'"?rawValue[0]:'';
     const replacement=prefix+(quote?quote+'[redacted]'+quote:'[redacted]');
     return tag.slice(0,secretAttr.start)+replacement+tag.slice(secretAttr.end);
-  });
+  };
+  let rebuilt='',cursor=0;
+  const opener=/<(?:input|meta)\\b/gi;
+  let open;
+  while((open=opener.exec(text))!==null){
+    let quote=null,end=-1;
+    for(let i=opener.lastIndex;i<text.length;i++){
+      const ch=text[i];
+      if(quote){if(ch===quote)quote=null;continue;}
+      if(ch==='"'||ch==="'"){quote=ch;continue;}
+      if(ch==='>'){end=i+1;break;}
+    }
+    if(end<0)break;
+    rebuilt+=text.slice(cursor,open.index)+redactHtmlTag(text.slice(open.index,end));
+    cursor=end;
+    opener.lastIndex=end;
+  }
+  if(cursor)text=rebuilt+text.slice(cursor);
+  const quotedAssignment=new RegExp("([\\\"']?"+sensitiveName+"[\\\"']?\\s*[:=]\\s*)([\\\"'])([\\s\\S]*?)\\2","gi");
+  text=text.replace(quotedAssignment,'$1$2[redacted]$2');
+  const quotedAttribute=new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*)([\\\"'])([\\s\\S]*?)\\2","gi");
+  text=text.replace(quotedAttribute,'$1$2[redacted]$2');
   text=text.replace(new RegExp("([?&]"+sensitiveName+"=)[^&#\\s\\\"'<>]*","gi"),'$1[redacted]');
-  text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*[\\\"']?)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
-  text=text.replace(new RegExp("([\\\"']?"+sensitiveName+"[\\\"']?\\s*[:=]\\s*[\\\"']?)[^\\\"'\\s,;}<]*","gi"),'$1[redacted]');
+  text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
+  text=text.replace(new RegExp("([\\\"']?"+sensitiveName+"[\\\"']?\\s*[:=]\\s*)[^\\\"'\\s,;}<]*","gi"),'$1[redacted]');
   return text;
 };
 const captureReplayPageContext=()=>{
