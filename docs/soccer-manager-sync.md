@@ -28,6 +28,35 @@ League titles are stored in `achievements`, not `honours`, because the current `
 
 Tournament fixtures/results, transfers, player history and analytics are deliberately outside this first adapter.
 
+
+## Production bootstrap — 23 September 2026
+
+The core archive adapter was deployed to the Top 100 production Supabase project and bootstrapped from the normalized full-league capture taken on 22 September 2026 for Soccer Manager setup `239138`.
+
+Because the persistent staging tables were still empty at deployment time, the normalized capture was rebuilt into the same core entity shapes used by the application and staged as the initial reviewed baseline: 1 world, 5 divisions, 100 standings, 100 current manager assignments and 27 season-history rows (233 entities total). Fixtures, player leaders, transfers, player changes, squad data and finance data were deliberately left for their dedicated later adapters.
+
+The bootstrap exposed several live-data identity/status details that are now part of the documented contract:
+
+- Soccer Manager's `managed` field is a status code, not a boolean. In the live baseline, `managed = 2` identifies the 99 genuinely occupied clubs, while `managed = 1` identified FC Schalke 04 with Clint McKAY's application still pending. The adapter therefore treats `2` (or an explicit true/yes boolean-like value) as current/occupied and leaves `1` unoccupied.
+- Stable Soccer Manager manager ids remain authoritative across display-name changes. The production bootstrap explicitly linked the existing Top 100 identities for three pre-existing normalized-name duplicates and linked Soccer Manager manager `22959444` to the established Melvin Udall manager record when the source display changed from `5️⃣8️⃣` to `6️⃣0️⃣`.
+
+The first archive apply had already inserted all 100 immutable standing snapshots and 27 league-title achievements before the managed-flag mismatch was discovered. After the managed-flag hotfix, the same approved baseline was reapplied idempotently. The corrected production state is:
+
+- 100 current clubs imported;
+- 99 current managers resolved;
+- 99 world-scoped manager assignments;
+- 99 occupied Top 100 club-directory rows;
+- FC Schalke 04 remains unoccupied while Clint McKAY's application is pending;
+- 27 seasons;
+- 27 Soccer Manager league-title achievements;
+- 100 standing snapshots;
+- 1 skipped non-current assignment on the corrected apply (the pending Schalke application).
+
+The later corrected apply inserted zero additional standing snapshots, confirming the snapshot path is idempotent for an already-applied approved baseline. It also deactivated Clint McKAY's Top 100 world membership when clearing the incorrectly-created Schalke assignment. The audit log preserves the bootstrap applies and corrections.
+
+Operationally, future imports should continue to use **stage → review/approve → Apply core archive**. If an identity match is ambiguous, the adapter must stop and the stable source id must be linked deliberately; it must not guess or create a parallel identity.
+
+
 ## v0.3 persistent staging and review
 
 The Sync workbench can now **Stage for review** after a successful browser sync or JSON import.
