@@ -285,3 +285,10 @@ The private match archive consists of:
 All tables have RLS enabled and are readable only by authenticated global admins; anonymous access is revoked. The admin-only `apply_soccer_manager_match_archive(text)` RPC reads only approved `match_snapshot` changes, maps match clubs through the existing Soccer Manager archive links, and inserts immutable versioned snapshots plus queryable child rows. Re-running the adapter is idempotent.
 
 The first known acceptance case is Top 100 fixture `282010118`, Hellas Verona 3–0 Hamburger SV. Its captured replay contains 36 players, 11 key events, 10 chance groups, one substitution batch, 89 domination-minute rows and seven game-world score events.
+
+
+### Bulk replay discovery
+
+The match-engine diagnostics allowlist also includes `/js/common/multiplayer_videoplayer.js`. Soccer Manager loads this alongside the live-match renderer, while `livematch.js` itself only consumes the already-populated `window.liveMatchXML`. Capturing the video-player source is therefore the evidence-gathering step for identifying the authenticated replay-loader request used by completed fixtures.
+
+Do not guess or hard-code a replay endpoint from fixture IDs. Once the loader contract is observed, the intended bulk workflow is: derive completed fixture IDs from approved world/match data, fetch replays from the authenticated Soccer Manager tab with bounded concurrency and resumable progress, normalize each replay through the existing match replay normalizer, and stage deduplicated `match_snapshot` entities for review.
