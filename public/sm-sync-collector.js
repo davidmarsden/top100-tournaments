@@ -45,7 +45,7 @@ const captureReplayPageContext=()=>{
   try{const page=new URL(location.href);for(const [key,value] of page.searchParams.entries()){if(sensitive.test(key))params[key]='[redacted]';else if(/fixture|fix|match|mid|game|club|sid|season|turn|action/i.test(key))params[key]=safeReplayContextValue(value);}}catch{}
   const identifiers={};
   const isReplayIdentifier=name=>/^(?:data-)?(?:fixture(?:-?id)?|fix(?:id)?|match(?:-?id)?|mid|game(?:-?id)?|club(?:-?id)?|clubid|sid|season|turn)$/i.test(String(name||''));
-  for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-fix],[data-fixid],[data-match],[data-match-id],[data-mid],[data-game],[data-game-id],[data-club],[data-club-id],[data-clubid],[data-sid],[data-season],[data-turn],[data-id],input[type="hidden"]')).slice(0,300)){
+  for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-fixtureid],[data-fix],[data-fixid],[data-match],[data-match-id],[data-matchid],[data-mid],[data-game],[data-game-id],[data-gameid],[data-club],[data-club-id],[data-clubid],[data-sid],[data-season],[data-turn],[data-id],input[type="hidden"]')).slice(0,300)){
     const candidates=[];
     if(el.id&&isReplayIdentifier(el.id)&&!sensitive.test(el.id)&&el.type==='hidden'&&el.value)candidates.push([el.id,el.value]);
     if(el.name&&isReplayIdentifier(el.name)&&!sensitive.test(el.name)&&el.value)candidates.push([el.name,el.value]);
@@ -64,9 +64,12 @@ const captureReplayPageContext=()=>{
     try{
       const url=new URL(raw,location.href);
       if(url.origin!==location.origin)continue;
-      const relevant=[...url.searchParams.keys()].some((key)=>/(fixture|fix|match|mid|game|club|sid|season|turn|action)/i.test(key));
-      if(!relevant)continue;
-      navigation.push({kind:el.tagName==='FORM'?'form':'link',url:sanitize(url.href)});
+      const structural=new URL(url.origin+url.pathname);
+      for(const [key,value] of url.searchParams.entries()){
+        if(isReplayIdentifier(key))structural.searchParams.append(key,safeReplayContextValue(value));
+      }
+      if(![...structural.searchParams.keys()].length)continue;
+      navigation.push({kind:el.tagName==='FORM'?'form':'link',url:structural.href});
       if(navigation.length>=80)break;
     }catch{}
   }
