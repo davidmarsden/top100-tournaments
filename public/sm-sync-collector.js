@@ -57,41 +57,20 @@ const captureReplayPageContext=()=>{
     }
     if(Object.keys(identifiers).length>=80)break;
   }
-  const scriptSignals=[];
-  const signalPattern=/(?:^|[^A-Za-z0-9_$])(?:(["'])(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn)\1|(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn))(?![A-Za-z0-9_$])\s*[:=]\s*(?:"([^"\\\r\n]{1,80})"|'([^'\\\r\n]{1,80})'|([0-9][A-Za-z0-9_-]{0,79}))(?=[ \t]*(?:[,;}\]]|$))/gi;
-  const executableOnly=(source)=>{
-    let out='',quote=null,lineComment=false,blockComment=false;
-    for(let i=0;i<source.length;i++){
-      const ch=source[i],next=source[i+1];
-      if(lineComment){if(ch==='\\n'){lineComment=false;out+='\\n';}else out+=' ';continue;}
-      if(blockComment){if(ch==='*'&&next==='/'){out+='  ';i++;blockComment=false;}else out+=ch==='\\n'?'\\n':' ';continue;}
-      if(quote){
-        if(ch==='\\\\'){out+='  ';i++;continue;}
-        if(ch===quote){quote=null;out+=ch;}else out+=ch==='\\n'?'\\n':ch;
-        continue;
-      }
-      if(ch==='/'&&next==='/'){out+='  ';i++;lineComment=true;continue;}
-      if(ch==='/'&&next==='*'){out+='  ';i++;blockComment=true;continue;}
-      if(ch==='\x60'){quote='\x60';out+=' ';continue;}
-      out+=ch;
-    }
-    return out;
-  };
-  for(const script of Array.from(document.scripts||[])){
-    if(script.src)continue;
-    const source=executableOnly(script.textContent||'');
-    let match;
-    while((match=signalPattern.exec(source))!==null){
-      const signalKey=match[2]??match[3];
-      const signalValue=match[4]??match[5]??match[6];
-      if(!signalKey||!signalValue||sensitive.test(signalKey)||sensitive.test(signalValue))continue;
-      scriptSignals.push({key:signalKey,value:safeReplayContextValue(signalValue)});
-      if(scriptSignals.length>=120)break;
-    }
-    signalPattern.lastIndex=0;
-    if(scriptSignals.length>=120)break;
+  const navigation=[];
+  for(const el of Array.from(document.querySelectorAll('a[href],form[action]')).slice(0,300)){
+    const raw=el.tagName==='FORM'?el.getAttribute('action'):el.getAttribute('href');
+    if(!raw)continue;
+    try{
+      const url=new URL(raw,location.href);
+      if(url.origin!==location.origin)continue;
+      const relevant=[...url.searchParams.keys()].some((key)=>/(fixture|fix|match|mid|game|club|sid|season|turn|action)/i.test(key));
+      if(!relevant)continue;
+      navigation.push({kind:el.tagName==='FORM'?'form':'link',url:sanitize(url.href)});
+      if(navigation.length>=80)break;
+    }catch{}
   }
-  return {pageUrl:safePageUrl,params,identifiers,scriptSignals};
+  return {pageUrl:safePageUrl,params,identifiers,navigation};
 };
 try{
   const replayXml=typeof window.liveMatchXML==='string'?window.liveMatchXML:null;
