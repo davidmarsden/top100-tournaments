@@ -43,9 +43,9 @@ const redactReplayContextText=value=>{
   if(value===null||value===undefined)return value;
   let text=String(value);
   const sensitiveName='(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)';
-  text=text.replace(new RegExp('([?&]'+sensitiveName+'=)[^&#\\s"\\'<>]*','gi'),'$1[redacted]');
-  text=text.replace(new RegExp('((?:data-)?'+sensitiveName+'\\s*=\\s*["\\']?)[^"\\'\\s<>;&]*','gi'),'$1[redacted]');
-  text=text.replace(new RegExp('(["\\']?'+sensitiveName+'["\\']?\\s*[:=]\\s*["\\']?)[^"\\'\\s,;}<]*','gi'),'$1[redacted]');
+  text=text.replace(new RegExp("([?&]"+sensitiveName+"=)[^&#\\s\\\"'<>]*","gi"),'$1[redacted]');
+  text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*[\\\"']?)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
+  text=text.replace(new RegExp("([\\\"']?"+sensitiveName+"[\\\"']?\\s*[:=]\\s*[\\\"']?)[^\\\"'\\s,;}<]*","gi"),'$1[redacted]');
   return text;
 };
 const captureReplayPageContext=()=>{
