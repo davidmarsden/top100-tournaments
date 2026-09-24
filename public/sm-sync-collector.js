@@ -42,7 +42,7 @@ const safeReplayContextValue=value=>{
 const redactReplayContextText=value=>{
   if(value===null||value===undefined)return value;
   let text=String(value);
-  const sensitiveName='(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)';
+  const sensitiveName='[A-Za-z0-9_-]*(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)[A-Za-z0-9_-]*';
   text=text.replace(new RegExp("([?&]"+sensitiveName+"=)[^&#\\s\\\"'<>]*","gi"),'$1[redacted]');
   text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*[\\\"']?)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
   text=text.replace(new RegExp("([\\\"']?"+sensitiveName+"[\\\"']?\\s*[:=]\\s*[\\\"']?)[^\\\"'\\s,;}<]*","gi"),'$1[redacted]');
