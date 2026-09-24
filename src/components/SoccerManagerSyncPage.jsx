@@ -283,16 +283,22 @@ export default function SoccerManagerSyncPage() {
         const row = message.replayPageContext;
         try {
           const url = new URL(row.pageUrl);
+          const boundedMap = (value, maxEntries) => {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+            return Object.fromEntries(Object.entries(value)
+              .filter(([key, entry]) => typeof key === 'string' && key.length <= 120 && typeof entry === 'string' && entry.length <= 500)
+              .slice(0, maxEntries));
+          };
+          const params = boundedMap(row.params, 40);
+          const identifiers = boundedMap(row.identifiers, 80);
           const scriptSignals = Array.isArray(row.scriptSignals)
-            ? row.scriptSignals.filter((value) => value && typeof value.key === 'string' && typeof value.value === 'string').slice(0, 120)
+            ? row.scriptSignals
+              .filter((value) => value && typeof value.key === 'string' && value.key.length <= 80 && typeof value.value === 'string' && value.value.length <= 500)
+              .slice(0, 120)
             : [];
-          if (url.origin === event.origin) {
-            replayContextRow = {
-              pageUrl: row.pageUrl,
-              params: row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? row.params : {},
-              identifiers: row.identifiers && typeof row.identifiers === 'object' && !Array.isArray(row.identifiers) ? row.identifiers : {},
-              scriptSignals,
-            };
+          const candidate = { pageUrl: row.pageUrl, params, identifiers, scriptSignals };
+          if (url.origin === event.origin && JSON.stringify(candidate).length <= 100000) {
+            replayContextRow = candidate;
           }
         } catch {
           replayContextRow = null;
