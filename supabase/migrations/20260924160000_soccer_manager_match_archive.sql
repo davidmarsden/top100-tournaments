@@ -253,6 +253,8 @@ begin
     if v_home_team_id is null then unmapped_clubs := unmapped_clubs + 1; end if;
     if v_away_team_id is null then unmapped_clubs := unmapped_clubs + 1; end if;
 
+    v_snapshot_id := null;
+
     insert into public.soccer_manager_match_snapshots (
       source_entity_key,
       source_version,
