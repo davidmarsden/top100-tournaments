@@ -454,7 +454,7 @@ export default function SoccerManagerSyncPage() {
       </div>
       <p className="muted"><code>{matchReplay.url}</code></p>
       <div className="button-row">
-        <button type="button" className="secondary" onClick={downloadMatchReplayDiagnostics} disabled={!matchReplay.xml}>
+        <button type="button" className="secondary" onClick={downloadMatchReplayDiagnostics}>
           Download match replay diagnostics
         </button>
       </div>
