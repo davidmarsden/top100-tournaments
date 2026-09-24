@@ -1,0 +1,163 @@
+import { useEffect, useMemo, useState } from 'react';
+import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+
+function money(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '—';
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(amount);
+}
+
+function number(value, digits = 1) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+}
+
+function mean(rows, field) {
+  const values = rows.map((row) => Number(row[field])).filter(Number.isFinite);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function positionGroup(player) {
+  if (player.goalkeeper || /^GK\b/i.test(player.position || '')) return 'Goalkeepers';
+  const position = String(player.position || '');
+  if (/(^|[,(])(?:AM|F)\b/i.test(position)) return 'Attack';
+  if (/(^|[,(])(?:DM|M)\b/i.test(position)) return 'Midfield';
+  if (/(^|[,(])D\b/i.test(position)) return 'Defence';
+  return 'Other';
+}
+
+function playerName(player) {
+  return player.name || player.surname || `Player ${player.sourcePlayerId || ''}`.trim();
+}
+
+function sortByRatingThenValue(a, b) {
+  return Number(b.rating || 0) - Number(a.rating || 0) || Number(b.value || 0) - Number(a.value || 0);
+}
+
+export default function ManagerSquadDashboard() {
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  async function loadDashboard() {
+    setLoading(true);
+    setError('');
+    try {
+      if (!hasSupabaseConfig || !supabase) throw new Error('Supabase is not connected.');
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!sessionData.session) {
+        setDashboard(null);
+        return;
+      }
+      const { data, error: rpcError } = await supabase.rpc('get_my_soccer_manager_dashboard');
+      if (rpcError) throw rpcError;
+      setDashboard(data || null);
+    } catch (loadError) {
+      setError(loadError?.message || 'Could not load your squad dashboard.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadDashboard(); }, []);
+
+  const players = dashboard?.players || [];
+  const transfers = dashboard?.transfers || [];
+  const groups = useMemo(() => {
+    const output = new Map();
+    for (const player of players) {
+      const group = positionGroup(player);
+      if (!output.has(group)) output.set(group, []);
+      output.get(group).push(player);
+    }
+    return ['Goalkeepers', 'Defence', 'Midfield', 'Attack', 'Other']
+      .filter((group) => output.has(group))
+      .map((group) => ({ name: group, players: output.get(group).sort(sortByRatingThenValue) }));
+  }, [players]);
+
+  const metrics = useMemo(() => ({
+    averageRating: mean(players, 'rating'),
+    averageAge: mean(players, 'age'),
+    totalValue: players.reduce((sum, player) => sum + (Number(player.value) || 0), 0),
+    averageCondition: mean(players, 'condition'),
+    averageMorale: mean(players, 'morale'),
+    expiring: players.filter((player) => Number(player.contract) <= 1).length,
+    elite: players.filter((player) => Number(player.rating) >= 90).length,
+  }), [players]);
+
+  const alerts = useMemo(() => players
+    .map((player) => {
+      const flags = [];
+      if (Number(player.contract) <= 1) flags.push('contract ≤1');
+      if (Number(player.condition) < 80) flags.push(`condition ${player.condition}`);
+      if (Number(player.morale) < 80) flags.push(`morale ${player.morale}`);
+      if (Number(player.age) >= 33 && Number(player.rating) <= 89) flags.push('succession watch');
+      return flags.length ? { player, flags } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.flags.length - a.flags.length || sortByRatingThenValue(a.player, b.player))
+    .slice(0, 12), [players]);
+
+  const performers = useMemo(() => [...players]
+    .filter((player) => Number.isFinite(Number(player.averagePerformance)))
+    .sort((a, b) => Number(b.averagePerformance) - Number(a.averagePerformance))
+    .slice(0, 8), [players]);
+
+  if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading squad dashboard…</h1></section></main>;
+  if (!dashboard && !error) return <main className="manager-portal-shell"><section className="card manager-login-card"><h1>Sign in first</h1><p className="muted">Use your Manager Portal sign-in, then come back to Squad &amp; Transfers.</p><a className="button" href="/">Go to Manager Portal</a></section></main>;
+  if (error) return <main className="manager-portal-shell"><section className="card manager-login-card"><h1>Couldn’t load the dashboard</h1><p className="status">{error}</p><button type="button" onClick={loadDashboard}>Try again</button></section></main>;
+
+  return <main className="manager-portal-shell squad-dashboard">
+    <section className="manager-portal-hero">
+      <div>
+        <p className="eyebrow">Squad &amp; Transfers · {dashboard.gameWorldName || 'Top 100'}</p>
+        <h1>{dashboard.teamName || 'Your club'}</h1>
+        <p>{dashboard.managerName} · private manager view</p>
+      </div>
+      <div className="button-row"><a className="button secondary" href="/">My Matches</a><button type="button" className="secondary" onClick={loadDashboard}>Refresh</button></div>
+    </section>
+
+    <section className="portal-metrics squad-metrics">
+      <article><span>Squad</span><strong>{players.length} players</strong></article>
+      <article><span>Average rating</span><strong>{number(metrics.averageRating)}</strong></article>
+      <article><span>Average age</span><strong>{number(metrics.averageAge)}</strong></article>
+      <article><span>Squad value</span><strong>{money(metrics.totalValue)}</strong></article>
+      <article><span>90+ rating</span><strong>{metrics.elite}</strong></article>
+      <article><span>Contract ≤1</span><strong>{metrics.expiring}</strong></article>
+      <article><span>Condition</span><strong>{number(metrics.averageCondition, 0)}</strong></article>
+      <article><span>Morale</span><strong>{number(metrics.averageMorale, 0)}</strong></article>
+    </section>
+
+    {dashboard.standing && <section className="card squad-standing">
+      <div className="card-header"><p className="eyebrow">League snapshot</p><h2>Division {dashboard.standing.division} · {dashboard.standing.position ? `#${dashboard.standing.position}` : 'Position TBC'}</h2></div>
+      <div className="squad-standing-grid">
+        <span><strong>{dashboard.standing.points ?? '—'}</strong> pts</span>
+        <span><strong>{dashboard.standing.played ?? '—'}</strong> played</span>
+        <span><strong>{dashboard.standing.won ?? '—'}–{dashboard.standing.drawn ?? '—'}–{dashboard.standing.lost ?? '—'}</strong> W-D-L</span>
+        <span><strong>{dashboard.standing.goalDifference > 0 ? '+' : ''}{dashboard.standing.goalDifference ?? '—'}</strong> GD</span>
+      </div>
+    </section>}
+
+    <section className="portal-grid">
+      <article className="card portal-panel">
+        <div className="card-header"><p className="eyebrow">Performance</p><h2>Top performers</h2></div>
+        <div className="squad-list">{performers.map((player) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{player.position || '—'} · {player.rating ?? '—'} rated · {player.goals ?? 0}G {player.assists ?? 0}A</span></div><b>{number(player.averagePerformance, 2)}</b></div>)}</div>
+      </article>
+      <article className="card portal-panel">
+        <div className="card-header"><p className="eyebrow">Attention</p><h2>Squad watchlist</h2></div>
+        {alerts.length ? <div className="squad-list">{alerts.map(({ player, flags }) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{player.age ?? '—'} · {player.position || '—'} · {player.rating ?? '—'} rated</span></div><div className="squad-tags">{flags.map((flag) => <span key={flag}>{flag}</span>)}</div></div>)}</div> : <p className="muted">No immediate contract, condition, morale or succession flags.</p>}
+      </article>
+    </section>
+
+    <section className="card portal-panel">
+      <div className="card-header"><p className="eyebrow">Depth</p><h2>Squad by position</h2></div>
+      <div className="squad-depth-grid">{groups.map((group) => <article key={group.name}><h3>{group.name} <span>{group.players.length}</span></h3><div className="squad-depth-players">{group.players.map((player) => <div key={player.id}><strong>{playerName(player)}</strong><span>{player.rating ?? '—'} · age {player.age ?? '—'} · {money(player.value)}</span></div>)}</div></article>)}</div>
+    </section>
+
+    <section className="card portal-panel">
+      <div className="card-header"><p className="eyebrow">Market</p><h2>Transfers involving {dashboard.teamName}</h2></div>
+      {transfers.length ? <div className="squad-list">{transfers.map((transfer) => <div className="squad-list-row transfer-row" key={transfer.id}><div><strong><span className={`transfer-direction ${transfer.direction}`}>{transfer.direction === 'in' ? 'IN' : 'OUT'}</span> {transfer.playerName}</strong><span>{transfer.rating ?? '—'} · {transfer.position || '—'} · {transfer.counterpartyClubName || 'Unknown club'}{transfer.counterpartyIsTop100 ? ' · Top 100' : ' · external club'}</span></div><div className="transfer-money"><b>{money(transfer.amount)}</b><span>{transfer.acceptedDate || 'Date unknown'}{transfer.turn ? ` · turn ${transfer.turn}` : ''}</span></div></div>)}</div> : <p className="muted">No archived transfers involving this club yet.</p>}
+    </section>
+  </main>;
+}
