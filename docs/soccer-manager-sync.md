@@ -254,3 +254,34 @@ Stable Soccer Manager ids should be treated as source keys. Top 100 names remain
 When a completed Soccer Manager match page exposes the replay payload as `window.liveMatchXML`, the browser collector copies that XML into the Sync workbench as a temporary diagnostic only. The capture is capped at 2,000,000 characters, keeps only the sanitized current Soccer Manager page URL as metadata, and is not included in normal staging or archive persistence.
 
 The workbench independently checks the source origin and size before exposing **Download match replay diagnostics**. The resulting `top100-sm-match-replay-diagnostics-YYYY-MM-DD.json` file contains the original capture timestamp, sanitized match-page URL, XML text and any capture error. This first-pass diagnostic is intended to reveal the real multiplayer replay schema before any normalized match archive is designed.
+
+
+## v0.8 completed-match archive
+
+A completed match replay captured through `window.liveMatchXML` can now be normalized into a reviewable `matchReplay` payload. The normalizer resolves the current Soccer Manager fixture from the replay's own club directory and game-world fixture list rather than guessing from the selected club alone.
+
+The normalized payload deliberately excludes the raw XML. It keeps:
+
+- world/setup id and stable Soccer Manager fixture id
+- competition code/name and home/away source club ids/names
+- final score derived from structured goal key-events
+- matchday player ids/names and home/away side
+- structured key events
+- chance groups with shooter/provider/goalkeeper ids, outcome, attack type and available 2D detail codes
+- substitution batches reconstructed from the replay commentary
+- minute-level domination as the source `l` value, stored neutrally as `leftValue`
+- game-world fixture and score timelines
+
+Staging creates one canonical `match_snapshot` entity per `setupId + fixtureId`. A later approved recapture of the same fixture becomes a new source version instead of a duplicate match.
+
+The private match archive consists of:
+
+- `soccer_manager_match_snapshots`
+- `soccer_manager_match_players`
+- `soccer_manager_match_events`
+- `soccer_manager_match_domination`
+- `soccer_manager_match_world_scores`
+
+All tables have RLS enabled and are readable only by authenticated global admins; anonymous access is revoked. The admin-only `apply_soccer_manager_match_archive(text)` RPC reads only approved `match_snapshot` changes, maps match clubs through the existing Soccer Manager archive links, and inserts immutable versioned snapshots plus queryable child rows. Re-running the adapter is idempotent.
+
+The first known acceptance case is Top 100 fixture `282010118`, Hellas Verona 3–0 Hamburger SV. Its captured replay contains 36 players, 11 key events, 10 chance groups, one substitution batch, 89 domination-minute rows and seven game-world score events.

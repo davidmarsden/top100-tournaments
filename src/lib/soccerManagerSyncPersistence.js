@@ -231,6 +231,15 @@ function tacticsEntities(entry, fallbackContext = {}) {
   })];
 }
 
+function matchReplayEntities(entry) {
+  const payload = entry.payload;
+  const setupId = payload?.source?.setupId || null;
+  const fixtureId = payload?.source?.fixtureId || null;
+  if (!setupId || !fixtureId) return [];
+  const scope = String(setupId);
+  return [entity('match_snapshot', `${scope}:fixture:${fixtureId}`, scope, payload)];
+}
+
 function financeEntities(entry, fallbackContext = {}) {
   const context = parseSourceContext(entry.sourceUrl);
   const setupId = context.setupId || fallbackContext.setupId || null;
@@ -254,6 +263,10 @@ function inferSyncContext(entries) {
 
     if (entry?.payload?.kind === 'competition' && entry.payload?.world?.setupId) {
       setupIds.add(String(entry.payload.world.setupId));
+    }
+
+    if (entry?.payload?.kind === 'matchReplay' && entry.payload?.source?.setupId) {
+      setupIds.add(String(entry.payload.source.setupId));
     }
 
     if (entry?.payload?.kind === 'clubSquad' || entry?.payload?.kind === 'clubTactics') {
@@ -293,6 +306,7 @@ export function extractSoccerManagerEntities(entries) {
     if (entry.payload.kind === 'transfers') entities = transferEntities(entry, inferred.setupId);
     if (entry.payload.kind === 'playerChanges') entities = playerChangeEntities(entry, inferred.setupId);
     if (entry.payload.kind === 'clubTactics') entities = tacticsEntities(entry, inferred.club || {});
+    if (entry.payload.kind === 'matchReplay') entities = matchReplayEntities(entry);
     if (entry.payload.kind === 'clubFinance') entities = financeEntities(entry, inferred.club || {});
 
     for (const row of entities) {
