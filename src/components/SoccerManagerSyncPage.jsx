@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeSoccerManagerPayload, summarizeNormalizedPayload } from '../lib/soccerManagerSync';
-import { collectorBookmarklet, isAllowedSoccerManagerOrigin, soccerManagerCollectorProtocol } from '../lib/soccerManagerCollector';
+import {
+  collectorBookmarklet,
+  isAllowedSoccerManagerOrigin,
+  MATCH_ENGINE_DIAGNOSTIC_PATHS,
+  soccerManagerCollectorProtocol,
+} from '../lib/soccerManagerCollector';
 import { normalizedPayloadForPersistence, stageSoccerManagerSync } from '../lib/soccerManagerSyncPersistence';
 import SoccerManagerSyncReview from './SoccerManagerSyncReview.jsx';
 import SoccerManagerArchiveAdapter from './SoccerManagerArchiveAdapter.jsx';
@@ -102,6 +107,7 @@ export default function SoccerManagerSyncPage() {
   const [collectorStatus, setCollectorStatus] = useState('');
   const [diagnostics, setDiagnostics] = useState([]);
   const [diagnosticsCapturedAt, setDiagnosticsCapturedAt] = useState(null);
+  const [matchEngineSources, setMatchEngineSources] = useState([]);
   const [stageStatus, setStageStatus] = useState('');
   const [stageBusy, setStageBusy] = useState(false);
   const [reviewRefreshToken, setReviewRefreshToken] = useState(0);
@@ -186,7 +192,33 @@ export default function SoccerManagerSyncPage() {
       const diagnosticRows = Array.isArray(message.diagnostics)
         ? message.diagnostics.slice(-50).filter((row) => typeof row?.url === 'string')
         : [];
+      const allowedEnginePaths = new Set(MATCH_ENGINE_DIAGNOSTIC_PATHS);
+      const engineRows = [];
+      const engineSeenPaths = new Set();
+      let engineChars = 0;
+      for (const row of Array.isArray(message.matchEngineSources) ? message.matchEngineSources : []) {
+        if (engineRows.length >= MATCH_ENGINE_DIAGNOSTIC_PATHS.length) break;
+        if (!row || typeof row.url !== 'string') continue;
+        let pathname;
+        try {
+          const url = new URL(row.url);
+          if (url.origin !== event.origin || !allowedEnginePaths.has(url.pathname)) continue;
+          pathname = url.pathname;
+        } catch {
+          continue;
+        }
+        if (engineSeenPaths.has(pathname)) continue;
+        if (row.source !== null && typeof row.source !== 'string') continue;
+        if (typeof row.source === 'string') {
+          if (row.source.length > 2000000 || engineChars + row.source.length > 6000000) continue;
+          engineChars += row.source.length;
+        }
+        if (row.error !== null && row.error !== undefined && typeof row.error !== 'string') continue;
+        engineSeenPaths.add(pathname);
+        engineRows.push(row);
+      }
       setDiagnostics(diagnosticRows);
+      setMatchEngineSources(engineRows);
       setDiagnosticsCapturedAt(typeof message.capturedAt === 'string' ? message.capturedAt : null);
 
       const entries = message.payloads.slice(-20).map((item, index) => {
@@ -210,7 +242,11 @@ export default function SoccerManagerSyncPage() {
           : diagnosticRows.length
             ? `No supported JSON response matched yet. Captured ${diagnosticRows.length} recent Soccer Manager request URL${diagnosticRows.length === 1 ? '' : 's'} for diagnosis.`
             : 'No supported JSON responses or request diagnostics were received.');
-      setCollectorStatus(`Last browser sync: ${new Date().toLocaleString('en-GB')} · ${event.origin}`);
+      const sourceCount = engineRows.filter((row) => typeof row.source === 'string').length;
+      setCollectorStatus(
+        `Last browser sync: ${new Date().toLocaleString('en-GB')} · ${event.origin}`
+        + (engineRows.length ? ` · match-engine sources ${sourceCount}/${engineRows.length}` : ''),
+      );
 
       if (event.source && typeof event.source.postMessage === 'function') {
         event.source.postMessage({ type: soccerManagerCollectorProtocol.ackType, session: collectorSession, accepted: next.length, rejected: errors.length }, event.origin);
@@ -243,6 +279,7 @@ export default function SoccerManagerSyncPage() {
     const { next, errors } = normalizeCapturedEntries(entries);
     const allErrors = [...readErrors, ...errors];
     setDiagnosticsCapturedAt(null);
+    setMatchEngineSources([]);
     setPayloads(next);
     setStatus(allErrors.length ? `Loaded ${next.length} file(s). ${allErrors.join(' ')}` : `Loaded and normalized ${next.length} Soccer Manager response${next.length === 1 ? '' : 's'}.`);
     // Always remount the native input after an import attempt. Browsers often
@@ -288,6 +325,23 @@ export default function SoccerManagerSyncPage() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadMatchEngineDiagnostics() {
+    const blob = new Blob([JSON.stringify({
+      capturedAt: diagnosticsCapturedAt,
+      files: matchEngineSources.map((row) => ({
+        url: row.url,
+        source: typeof row.source === 'string' ? row.source : null,
+        error: row.error || null,
+      })),
+    }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `top100-sm-match-engine-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return <main className="app-shell">
     <section className="hero"><div className="hero-row"><div><p className="eyebrow">Top 100 data tools</p><h1>Soccer Manager Sync</h1><p>Turn Soccer Manager's internal JSON responses into clean Top 100 records, stage the differences privately, and review them before anything can flow into the public archive.</p></div><div className="button-row"><a className="button secondary" href="/admin">Tournament admin</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div></section>
 
@@ -309,7 +363,7 @@ export default function SoccerManagerSyncPage() {
         <p className="muted">Supported now: competition snapshot, club squad, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
-      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
+      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setMatchEngineSources([]); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
       {stageStatus && <p className="status">{stageStatus}</p>}
     </section>
 
@@ -319,6 +373,31 @@ export default function SoccerManagerSyncPage() {
       <div className="button-row"><button type="button" className="secondary" onClick={downloadDiagnostics}>Download diagnostics</button></div>
       <div className="table-wrap"><table><thead><tr><th>#</th><th>Type</th><th>Request</th></tr></thead><tbody>
         {diagnostics.map((row, index) => <tr key={`${row.url}:${row.startTime ?? index}`}><td>{index + 1}</td><td>{row.initiatorType || '—'}</td><td><code>{row.url}</code></td></tr>)}
+      </tbody></table></div>
+    </section>}
+
+    {!!matchEngineSources.length && <section className="card module-card">
+      <div className="card-header"><p className="eyebrow">Match-engine diagnostics</p><h2>Captured Soccer Manager source files</h2></div>
+      <p className="muted">
+        Exact allowlisted same-origin JavaScript files only. The bundle contains static source text and source URLs;
+        it does not include cookies, request headers or authenticated JSON response bodies.
+        {diagnosticsCapturedAt ? ` Captured ${new Date(diagnosticsCapturedAt).toLocaleString('en-GB')}.` : ''}
+      </p>
+      <div className="button-row">
+        <button type="button" className="secondary" onClick={downloadMatchEngineDiagnostics}>
+          Download match-engine diagnostics
+        </button>
+      </div>
+      <div className="table-wrap"><table><thead><tr><th>File</th><th>Status</th><th>Size</th></tr></thead><tbody>
+        {matchEngineSources.map((row) => {
+          let fileName = row.url;
+          try { fileName = new URL(row.url).pathname.split('/').filter(Boolean).pop() || row.url; } catch {}
+          return <tr key={row.url}>
+            <td><code>{fileName}</code></td>
+            <td>{row.error || 'Captured'}</td>
+            <td>{typeof row.source === 'string' ? `${row.source.length.toLocaleString('en-GB')} chars` : '—'}</td>
+          </tr>;
+        })}
       </tbody></table></div>
     </section>}
 
