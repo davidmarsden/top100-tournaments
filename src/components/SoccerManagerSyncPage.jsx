@@ -292,9 +292,10 @@ export default function SoccerManagerSyncPage() {
           let candidate = null;
           if (shapeWithinLimits) {
             const boundedMap = (value, keys) => Object.fromEntries(keys.map((key) => [key, value[key]]));
-            const entriesValid = paramKeys.every((key) => key.length <= 120 && typeof rawParams[key] === 'string' && rawParams[key].length <= 500)
-              && identifierKeys.every((key) => key.length <= 120 && typeof rawIdentifiers[key] === 'string' && rawIdentifiers[key].length <= 500);
-            const replayKey = (key) => /^(?:fixture(?:-?id)?|fix(?:id)?|match(?:-?id)?|mid|game(?:-?id)?|club(?:-?id)?|clubid|sid|season|turn)$/i.test(String(key || ''));
+            const replayKey = (key) => /^(?:data-)?(?:fixture(?:-?id)?|fix(?:id)?|match(?:-?id)?|mid|game(?:-?id)?|club(?:-?id)?|clubid|sid|season|turn)$/i.test(String(key || ''));
+            const identifierBase = (key) => String(key || '').replace(/:\d+$/, '');
+            const entriesValid = paramKeys.every((key) => replayKey(key) && key.length <= 120 && typeof rawParams[key] === 'string' && rawParams[key].length <= 500)
+              && identifierKeys.every((key) => replayKey(identifierBase(key)) && key.length <= 120 && typeof rawIdentifiers[key] === 'string' && rawIdentifiers[key].length <= 500);
             const navigation = [];
             let navigationValid = true;
             for (const value of rawNavigation) {
