@@ -345,7 +345,7 @@ export function normalizeTransfers(input) {
 }
 
 
-function findClubSquadRows(input) {
+function findClubSquadRows(input, minimumRows = 2) {
   if (!input || typeof input !== 'object') return [];
   const candidates = [];
 
@@ -376,13 +376,32 @@ function findClubSquadRows(input) {
   }
 
   visit(input);
-  const qualifying = candidates.filter((candidate) => candidate.width >= 2);
+  const qualifying = candidates.filter((candidate) => candidate.width >= minimumRows);
   qualifying.sort((a, b) => (b.score - a.score) || (b.width - a.width));
   return qualifying[0]?.rows || [];
 }
 
+function isTrustedClubSquadContext(context = {}) {
+  try {
+    const sourceUrl = context?.sourceUrl ? new URL(context.sourceUrl) : null;
+    const action = sourceUrl?.searchParams?.get('action');
+    const clubId = sourceUrl?.searchParams?.get('clubid');
+    const setupId = sourceUrl?.searchParams?.get('sid');
+    return Boolean(
+      sourceUrl?.protocol === 'https:'
+      && (sourceUrl.hostname === 'soccermanager.com' || sourceUrl.hostname.endsWith('.soccermanager.com'))
+      && /\/club-ajax-mobile\.php$/i.test(sourceUrl.pathname)
+      && action === 'clubinitdata2'
+      && nonZeroId(clubId)
+      && nonZeroId(setupId)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeClubSquad(input, context = {}) {
-  const rows = findClubSquadRows(input);
+  const rows = findClubSquadRows(input, isTrustedClubSquadContext(context) ? 1 : 2);
   const sourceContext = parseSourceContext(context.sourceUrl);
   return {
     kind: 'clubSquad',
@@ -468,27 +487,12 @@ export function detectSoccerManagerPayload(input, context = {}) {
   if (Array.isArray(input?.Weekly) && ('_seasonBalance' in input || '_seasonTotalIn' in input)) return 'clubFinance';
   if (findClubSquadRows(input).length) return 'clubSquad';
 
-  // A genuinely empty squad has no player rows to identify it by shape.
-  // Use only the already-sanitized request context for the known read-only
-  // club squad endpoint so an empty clubinitdata2 response can still produce
-  // an authoritative squad_scope roster marker.
-  try {
-    const sourceUrl = context?.sourceUrl ? new URL(context.sourceUrl) : null;
-    const action = sourceUrl?.searchParams?.get('action');
-    const clubId = sourceUrl?.searchParams?.get('clubid');
-    const setupId = sourceUrl?.searchParams?.get('sid');
-    if (
-      sourceUrl?.protocol === 'https:'
-      && (sourceUrl.hostname === 'soccermanager.com' || sourceUrl.hostname.endsWith('.soccermanager.com'))
-      && /\/club-ajax-mobile\.php$/i.test(sourceUrl.pathname)
-      && action === 'clubinitdata2'
-      && nonZeroId(clubId)
-      && nonZeroId(setupId)
-    ) {
-      return 'clubSquad';
-    }
-  } catch {
-    // Invalid context is not a squad signal; fall through to unsupported.
+  // The trusted clubinitdata2 endpoint can legitimately contain one or zero players.
+  // For that endpoint only, accept a single qualifying row; if there are none,
+  // still classify it as a squad so an authoritative empty squad_scope can be staged.
+  if (isTrustedClubSquadContext(context)) {
+    if (findClubSquadRows(input, 1).length) return 'clubSquad';
+    return 'clubSquad';
   }
 
   return null;
