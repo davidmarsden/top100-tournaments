@@ -92,6 +92,29 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
     setBusyAction(null);
   }
 
+  async function applyTacticsArchive(setupId) {
+    if (!supabase || busyAction) return;
+    setBusyAction(`tactics:${setupId}`);
+    setStatus('');
+    const { data, error } = await supabase.rpc('apply_soccer_manager_tactics_archive', {
+      target_setup_id: setupId,
+    });
+
+    if (error) {
+      setStatus(`Tactics archive apply failed for world ${setupId}: ${error.message}`);
+    } else {
+      const result = data || {};
+      setStatus(
+        `Applied tactics archive for world ${result.setupId || setupId}: `
+        + `${result.tacticsSnapshots || 0} new tactical snapshot(s).`
+        + (result.unmappedClubs
+          ? ` ${result.unmappedClubs} club reference(s) could not yet be mapped to Top 100 teams.`
+          : ''),
+      );
+    }
+    setBusyAction(null);
+  }
+
   return <section className="card module-card">
     <div className="card-header">
       <p className="eyebrow">v0.4 · archive adapters</p>
@@ -100,7 +123,8 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
     <p>
       These steps are separate from sync review. They read only approved canonical Soccer Manager entities.
       The core adapter applies the world/club/manager/season spine; the player &amp; transfer adapter adds
-      private player identities, versioned squad snapshots, transfer records and player-change events.
+      private player identities, versioned squad snapshots, transfer records and player-change events; the
+      tactics adapter preserves approved tactical instructions and player-selection state as private snapshots.
     </p>
     <p className="muted">
       Stable Soccer Manager IDs are kept in a private source-to-archive map. Re-running the adapter is
@@ -130,6 +154,13 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
             disabled={busyAction !== null}
           >
             {busyAction === `players:${world.entity_key}` ? 'Applying…' : 'Apply players & transfers'}
+          </button>
+          <button
+            type="button"
+            onClick={() => applyTacticsArchive(world.entity_key)}
+            disabled={busyAction !== null}
+          >
+            {busyAction === `tactics:${world.entity_key}` ? 'Applying…' : 'Apply tactics archive'}
           </button>
         </div>
       </div>)}
