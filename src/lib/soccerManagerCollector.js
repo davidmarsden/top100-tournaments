@@ -34,12 +34,19 @@ const win=window.open('https://tournaments.smtop100.blog/admin/soccer-manager-sy
 if(!win){alert('Please allow pop-ups for Soccer Manager, then try Top 100 Sync again.');return;}
 window.__top100SmSyncBootstrap={session,win};
 const existing=document.getElementById('top100-sm-sync-collector-script');
-if(existing)existing.remove();
+if(existing){existing.onerror=null;existing.onload=null;existing.remove();}
 const script=document.createElement('script');
 script.id='top100-sm-sync-collector-script';
 script.src='https://tournaments.smtop100.blog/sm-sync-collector.js?v='+Date.now();
 script.async=true;
-script.onerror=()=>{try{win.close();}catch{}delete window.__top100SmSyncBootstrap;alert('Top 100 Sync could not load its collector script. Soccer Manager may be blocking external scripts.');};
+script.onerror=()=>{
+  const active=window.__top100SmSyncBootstrap;
+  if(active&&active.session===session&&active.win===win){
+    try{win.close();}catch{}
+    delete window.__top100SmSyncBootstrap;
+    alert('Top 100 Sync could not load its collector script. Soccer Manager may be blocking external scripts.');
+  }
+};
 (document.head||document.documentElement).appendChild(script);
 }catch(err){alert('Top 100 Sync failed: '+(err&&err.message?err.message:String(err)));}})();`;
   return 'javascript:' + encodeURIComponent(code);
