@@ -80,10 +80,8 @@ const captureReplayPageContext=()=>{
         if(isReplayIdentifier(key)&&!sensitive.test(String(value)))structural.searchParams.append(key,safeReplayContextValue(value));
       }
       if(isForm){
-        for(const control of Array.from(el.elements||[]).slice(0,100)){
-          const key=control.name||control.id;
-          const value=control.value;
-          if(isReplayIdentifier(key)&&value!==undefined&&!sensitive.test(String(value)))structural.searchParams.append(key,safeReplayContextValue(value));
+        for(const [key,value] of Array.from(new FormData(el).entries()).slice(0,100)){
+          if(typeof value==='string'&&isReplayIdentifier(key)&&!sensitive.test(value))structural.searchParams.append(key,safeReplayContextValue(value));
         }
       }
       if(![...structural.searchParams.keys()].length)continue;
@@ -91,7 +89,8 @@ const captureReplayPageContext=()=>{
       if(navigation.length>=80)break;
     }catch{}
   }
-  return {pageUrl:safePageUrl,params,identifiers,navigation};
+  const context={pageUrl:safePageUrl,params,identifiers,navigation};
+  return JSON.stringify(context).length<=maxReplayContextChars?context:null;
 };
 try{
   const replayXml=typeof window.liveMatchXML==='string'?window.liveMatchXML:null;
@@ -108,8 +107,8 @@ try{
 }
 try{
   if(matchReplay)replayPageContext=captureReplayPageContext();
-}catch(err){
-  replayPageContext={url:sanitize(location.href),title:document.title||null,params:{},identifiers:{},inlineScripts:[],htmlAroundReplay:null,error:err&&err.message?err.message:'Replay page context capture failed'};
+}catch{
+  replayPageContext=null;
 }
 for(const u of engineCandidates){try{const res=await fetch(u.href,{credentials:'include',cache:'no-store'});const finalUrl=new URL(res.url||u.href,location.href);if(finalUrl.origin!==location.origin||finalUrl.pathname!==u.pathname){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Redirected outside allowlisted asset path'});continue;}if(!res.ok){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'HTTP '+res.status});continue;}const contentType=(res.headers.get('content-type')||'').toLowerCase();if(!(contentType.includes('javascript')||contentType.includes('ecmascript')||contentType.includes('text/plain'))){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Unexpected content type '+(contentType||'unknown')});continue;}const text=await res.text();if(text.length>maxFileChars){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Source exceeded '+maxFileChars+' characters'});continue;}if(engineBytes+text.length>maxTotalChars){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:'Bundle exceeded '+maxTotalChars+' characters'});continue;}engineBytes+=text.length;matchEngineSources.push({url:u.origin+u.pathname,source:text,error:null});}catch(err){matchEngineSources.push({url:u.origin+u.pathname,source:null,error:err&&err.message?err.message:'Fetch failed'});}}
 if(!payloads.length&&!diagnostics.length&&!matchEngineSources.length&&!matchReplay){window.removeEventListener('message',onMessage);alert('Top 100 Sync could not see any same-origin resource requests or match replay data on this page.');return;}
