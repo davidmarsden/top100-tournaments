@@ -43,6 +43,9 @@ create index if not exists soccer_manager_players_world_team_idx
 create index if not exists soccer_manager_players_world_rating_idx
   on public.soccer_manager_players(game_world_id, rating desc nulls last);
 
+create index if not exists soccer_manager_players_current_team_idx
+  on public.soccer_manager_players(current_team_id);
+
 alter table public.soccer_manager_players enable row level security;
 
 revoke all on table public.soccer_manager_players from anon, authenticated;
@@ -94,6 +97,9 @@ create index if not exists soccer_manager_player_snapshots_player_captured_idx
 
 create index if not exists soccer_manager_player_snapshots_world_captured_idx
   on public.soccer_manager_player_snapshots(game_world_id, captured_at desc);
+
+create index if not exists soccer_manager_player_snapshots_team_idx
+  on public.soccer_manager_player_snapshots(team_id);
 
 alter table public.soccer_manager_player_snapshots enable row level security;
 
@@ -156,6 +162,12 @@ create index if not exists soccer_manager_transfers_from_team_idx
 create index if not exists soccer_manager_transfers_to_team_idx
   on public.soccer_manager_transfers(to_team_id, last_seen_at desc);
 
+create index if not exists soccer_manager_transfers_from_manager_idx
+  on public.soccer_manager_transfers(from_manager_id, last_seen_at desc);
+
+create index if not exists soccer_manager_transfers_to_manager_idx
+  on public.soccer_manager_transfers(to_manager_id, last_seen_at desc);
+
 alter table public.soccer_manager_transfers enable row level security;
 
 revoke all on table public.soccer_manager_transfers from anon, authenticated;
@@ -199,6 +211,9 @@ create index if not exists soccer_manager_player_changes_player_captured_idx
 
 create index if not exists soccer_manager_player_changes_world_captured_idx
   on public.soccer_manager_player_changes(game_world_id, captured_at desc);
+
+create index if not exists soccer_manager_player_changes_team_idx
+  on public.soccer_manager_player_changes(team_id);
 
 alter table public.soccer_manager_player_changes enable row level security;
 
@@ -643,11 +658,11 @@ begin
     on conflict (game_world_id, source_player_id) do update
       set name=coalesce(public.soccer_manager_players.name, excluded.name),
           age=coalesce(public.soccer_manager_players.age, excluded.age),
-          rating=coalesce(excluded.rating, public.soccer_manager_players.rating),
-          position=coalesce(excluded.position, public.soccer_manager_players.position),
-          position_id=coalesce(excluded.position_id, public.soccer_manager_players.position_id),
+          rating=coalesce(public.soccer_manager_players.rating, excluded.rating),
+          position=coalesce(public.soccer_manager_players.position, excluded.position),
+          position_id=coalesce(public.soccer_manager_players.position_id, excluded.position_id),
           nationality=coalesce(public.soccer_manager_players.nationality, excluded.nationality),
-          value=coalesce(excluded.value, public.soccer_manager_players.value),
+          value=coalesce(public.soccer_manager_players.value, excluded.value),
           last_seen_at=greatest(public.soccer_manager_players.last_seen_at, excluded.last_seen_at),
           updated_at=now()
     returning id into v_player_id;
