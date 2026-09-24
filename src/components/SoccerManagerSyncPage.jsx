@@ -150,7 +150,9 @@ export default function SoccerManagerSyncPage() {
   const totalSummary = useMemo(() => payloads.map((entry) => ({
     id: entry.id,
     name: entry.name,
-    ...summarizeNormalizedPayload(entry.payload),
+    ...(entry.payload?.kind === 'matchReplay'
+      ? summarizeMatchReplay(entry.payload)
+      : summarizeNormalizedPayload(entry.payload)),
   })), [payloads]);
 
   function normalizeCapturedEntries(entries) {
