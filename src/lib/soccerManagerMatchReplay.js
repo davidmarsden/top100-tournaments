@@ -186,10 +186,12 @@ export function normalizeSoccerManagerMatchReplay(xml, pageUrl) {
   })).filter((row) => row.minute !== null && row.leftValue !== null);
 
   const worldScores = [];
+  let worldScoreSequence = 0;
   for (const group of Array.from(root.querySelectorAll(':scope > gwst'))) {
     const minute = number(group.getAttribute('t'));
     for (const node of Array.from(group.querySelectorAll(':scope > gws'))) {
       worldScores.push({
+        sequence: worldScoreSequence++,
         minute,
         fixtureId: text(node.getAttribute('fix')),
         teamSide: text(node.getAttribute('c')),
