@@ -43,6 +43,10 @@ const redactReplayContextText=value=>{
   if(value===null||value===undefined)return value;
   let text=String(value);
   const sensitiveName='[A-Za-z0-9_-]*(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|key)[A-Za-z0-9_-]*';
+  const pairedNameValue=new RegExp('(<(?:input|meta)\\b[^>]*\\bname\\s*=\\s*(["\\\'])('+sensitiveName+')\\2[^>]*\\b(?:value|content)\\s*=\\s*)(["\\\'])([^"\\\']*)(\\4)','gi');
+  const pairedValueName=new RegExp('(<(?:input|meta)\\b[^>]*\\b(?:value|content)\\s*=\\s*)(["\\\'])([^"\\\']*)(\\2)([^>]*\\bname\\s*=\\s*(["\\\'])('+sensitiveName+')\\6)','gi');
+  text=text.replace(pairedNameValue,'$1$4[redacted]$6');
+  text=text.replace(pairedValueName,'$1$2[redacted]$4$5');
   text=text.replace(new RegExp("([?&]"+sensitiveName+"=)[^&#\\s\\\"'<>]*","gi"),'$1[redacted]');
   text=text.replace(new RegExp("((?:data-)?"+sensitiveName+"\\s*=\\s*[\\\"']?)[^\\\"'\\s<>;&]*","gi"),'$1[redacted]');
   text=text.replace(new RegExp("([\\\"']?"+sensitiveName+"[\\\"']?\\s*[:=]\\s*[\\\"']?)[^\\\"'\\s,;}<]*","gi"),'$1[redacted]');
