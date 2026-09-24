@@ -64,9 +64,11 @@ export default function ManagerSquadDashboard() {
 
   const players = dashboard?.players || [];
   const transfers = dashboard?.transfers || [];
+  const seniorPlayers = useMemo(() => players.filter((player) => player.youth !== true), [players]);
+  const youthPlayers = useMemo(() => players.filter((player) => player.youth === true), [players]);
   const groups = useMemo(() => {
     const output = new Map();
-    for (const player of players) {
+    for (const player of seniorPlayers) {
       const group = positionGroup(player);
       if (!output.has(group)) output.set(group, []);
       output.get(group).push(player);
@@ -74,19 +76,18 @@ export default function ManagerSquadDashboard() {
     return ['Goalkeepers', 'Defence', 'Midfield', 'Attack', 'Other']
       .filter((group) => output.has(group))
       .map((group) => ({ name: group, players: output.get(group).sort(sortByRatingThenValue) }));
-  }, [players]);
+  }, [seniorPlayers]);
 
   const metrics = useMemo(() => ({
-    averageRating: mean(players, 'rating'),
-    averageAge: mean(players, 'age'),
-    totalValue: players.reduce((sum, player) => sum + (Number(player.value) || 0), 0),
-    averageCondition: mean(players, 'condition'),
-    averageMorale: mean(players, 'morale'),
-    expiring: players.filter((player) => Number(player.contract) <= 1).length,
-    elite: players.filter((player) => Number(player.rating) >= 90).length,
-  }), [players]);
+    seniorAverageRating: mean(seniorPlayers, 'rating'),
+    seniorAverageAge: mean(seniorPlayers, 'age'),
+    seniorValue: seniorPlayers.reduce((sum, player) => sum + (Number(player.value) || 0), 0),
+    expiring: seniorPlayers.filter((player) => Number(player.contract) <= 1).length,
+    firstTeamReady: seniorPlayers.filter((player) => Number(player.rating) >= 89).length,
+    youthAverageRating: mean(youthPlayers, 'rating'),
+  }), [seniorPlayers, youthPlayers]);
 
-  const alerts = useMemo(() => players
+  const alerts = useMemo(() => seniorPlayers
     .map((player) => {
       const flags = [];
       if (Number(player.contract) <= 1) flags.push('contract ≤1');
@@ -97,12 +98,16 @@ export default function ManagerSquadDashboard() {
     })
     .filter(Boolean)
     .sort((a, b) => b.flags.length - a.flags.length || sortByRatingThenValue(a.player, b.player))
-    .slice(0, 12), [players]);
+    .slice(0, 12), [seniorPlayers]);
 
-  const performers = useMemo(() => [...players]
+  const performers = useMemo(() => [...seniorPlayers]
     .filter((player) => Number.isFinite(Number(player.averagePerformance)))
     .sort((a, b) => Number(b.averagePerformance) - Number(a.averagePerformance))
-    .slice(0, 8), [players]);
+    .slice(0, 8), [seniorPlayers]);
+
+  const prospects = useMemo(() => [...youthPlayers]
+    .sort(sortByRatingThenValue)
+    .slice(0, 12), [youthPlayers]);
 
   if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading squad dashboard…</h1></section></main>;
   if (!dashboard && !error) return <main className="manager-portal-shell"><section className="card manager-login-card"><h1>Sign in first</h1><p className="muted">Use your Manager Portal sign-in, then come back to Squad &amp; Transfers.</p><a className="button" href="/">Go to Manager Portal</a></section></main>;
@@ -119,14 +124,14 @@ export default function ManagerSquadDashboard() {
     </section>
 
     <section className="portal-metrics squad-metrics">
-      <article><span>Squad</span><strong>{players.length} players</strong></article>
-      <article><span>Average rating</span><strong>{number(metrics.averageRating)}</strong></article>
-      <article><span>Average age</span><strong>{number(metrics.averageAge)}</strong></article>
-      <article><span>Squad value</span><strong>{money(metrics.totalValue)}</strong></article>
-      <article><span>90+ rating</span><strong>{metrics.elite}</strong></article>
-      <article><span>Contract ≤1</span><strong>{metrics.expiring}</strong></article>
-      <article><span>Condition</span><strong>{number(metrics.averageCondition, 0)}</strong></article>
-      <article><span>Morale</span><strong>{number(metrics.averageMorale, 0)}</strong></article>
+      <article><span>Senior squad</span><strong>{seniorPlayers.length}</strong></article>
+      <article><span>Senior rating</span><strong>{number(metrics.seniorAverageRating)}</strong></article>
+      <article><span>Senior age</span><strong>{number(metrics.seniorAverageAge)}</strong></article>
+      <article><span>Senior value</span><strong>{money(metrics.seniorValue)}</strong></article>
+      <article><span>89+ senior players</span><strong>{metrics.firstTeamReady}</strong></article>
+      <article><span>Senior contract ≤1</span><strong>{metrics.expiring}</strong></article>
+      <article><span>Youth squad</span><strong>{youthPlayers.length}</strong></article>
+      <article><span>Youth rating</span><strong>{number(metrics.youthAverageRating)}</strong></article>
     </section>
 
     {dashboard.standing && <section className="card squad-standing">
@@ -153,6 +158,11 @@ export default function ManagerSquadDashboard() {
     <section className="card portal-panel">
       <div className="card-header"><p className="eyebrow">Depth</p><h2>Squad by position</h2></div>
       <div className="squad-depth-grid">{groups.map((group) => <article key={group.name}><h3>{group.name} <span>{group.players.length}</span></h3><div className="squad-depth-players">{group.players.map((player) => <div key={player.id}><strong>{playerName(player)}</strong><span>{player.rating ?? '—'} · age {player.age ?? '—'} · {money(player.value)}</span></div>)}</div></article>)}</div>
+    </section>
+
+    <section className="card portal-panel">
+      <div className="card-header"><p className="eyebrow">Development</p><h2>Youth pipeline</h2></div>
+      <div className="squad-depth-grid">{prospects.map((player) => <article key={player.id}><h3>{playerName(player)} <span>{player.rating ?? '—'}</span></h3><div className="squad-depth-players"><div><strong>{player.position || '—'}</strong><span>age {player.age ?? '—'} · {money(player.value)} · contract {player.contract ?? '—'}</span></div></div></article>)}</div>
     </section>
 
     <section className="card portal-panel">
