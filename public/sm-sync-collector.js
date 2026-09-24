@@ -45,7 +45,7 @@ const captureReplayPageContext=()=>{
   try{const page=new URL(location.href);for(const [key,value] of page.searchParams.entries()){if(sensitive.test(key))params[key]='[redacted]';else if(/fixture|fix|match|mid|game|club|sid|season|turn|action/i.test(key))params[key]=safeReplayContextValue(value);}}catch{}
   const identifiers={};
   const idPattern=/(fixture|fix|match|mid|game|club|sid|season|turn)/i;
-  for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-match],[data-match-id],[data-fix],[data-id],input[type="hidden"]')).slice(0,300)){
+  for(const el of Array.from(document.querySelectorAll('[data-fixture],[data-fixture-id],[data-fix],[data-fixid],[data-match],[data-match-id],[data-mid],[data-game],[data-game-id],[data-club],[data-club-id],[data-clubid],[data-sid],[data-season],[data-turn],[data-id],input[type="hidden"]')).slice(0,300)){
     const candidates=[];
     if(el.id&&idPattern.test(el.id)&&!sensitive.test(el.id)&&el.type==='hidden'&&el.value)candidates.push([el.id,el.value]);
     if(el.name&&idPattern.test(el.name)&&!sensitive.test(el.name)&&el.value)candidates.push([el.name,el.value]);
@@ -58,15 +58,34 @@ const captureReplayPageContext=()=>{
     if(Object.keys(identifiers).length>=80)break;
   }
   const scriptSignals=[];
-  const signalPattern=/(?:^|[^A-Za-z0-9_$])(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn)(?![A-Za-z0-9_$])\s*[:=]\s*(?:"([^"\\\r\n]{1,80})"|'([^'\\\r\n]{1,80})'|([0-9][A-Za-z0-9_-]{0,79}))(?=[ \t]*(?:[,;}\]]|$))/gi;
+  const signalPattern=/(?:^|[^A-Za-z0-9_$])(?:(["'])(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn)\1|(fixture(?:Id)?|fixid|match(?:Id)?|mid|game(?:Id)?|clubid|sid|season|turn))(?![A-Za-z0-9_$])\s*[:=]\s*(?:"([^"\\\r\n]{1,80})"|'([^'\\\r\n]{1,80})'|([0-9][A-Za-z0-9_-]{0,79}))(?=[ \t]*(?:[,;}\]]|$))/gi;
+  const executableOnly=(source)=>{
+    let out='',quote=null,lineComment=false,blockComment=false;
+    for(let i=0;i<source.length;i++){
+      const ch=source[i],next=source[i+1];
+      if(lineComment){if(ch==='\\n'){lineComment=false;out+='\\n';}else out+=' ';continue;}
+      if(blockComment){if(ch==='*'&&next==='/'){out+='  ';i++;blockComment=false;}else out+=ch==='\\n'?'\\n':' ';continue;}
+      if(quote){
+        if(ch==='\\\\'){out+='  ';i++;continue;}
+        if(ch===quote){quote=null;out+=ch;}else out+=ch==='\\n'?'\\n':ch;
+        continue;
+      }
+      if(ch==='/'&&next==='/'){out+='  ';i++;lineComment=true;continue;}
+      if(ch==='/'&&next==='*'){out+='  ';i++;blockComment=true;continue;}
+      if(ch==='\x60'){quote='\x60';out+=' ';continue;}
+      out+=ch;
+    }
+    return out;
+  };
   for(const script of Array.from(document.scripts||[])){
     if(script.src)continue;
-    const source=script.textContent||'';
+    const source=executableOnly(script.textContent||'');
     let match;
     while((match=signalPattern.exec(source))!==null){
-      const signalValue=match[2]??match[3]??match[4];
-      if(!signalValue||sensitive.test(match[1])||sensitive.test(signalValue))continue;
-      scriptSignals.push({key:match[1],value:safeReplayContextValue(signalValue)});
+      const signalKey=match[2]??match[3];
+      const signalValue=match[4]??match[5]??match[6];
+      if(!signalKey||!signalValue||sensitive.test(signalKey)||sensitive.test(signalValue))continue;
+      scriptSignals.push({key:signalKey,value:safeReplayContextValue(signalValue)});
       if(scriptSignals.length>=120)break;
     }
     signalPattern.lastIndex=0;
