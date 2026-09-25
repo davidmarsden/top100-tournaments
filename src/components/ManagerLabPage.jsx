@@ -4,20 +4,36 @@ import { supabase } from '../lib/supabaseClient';
 const SETUP_ID = '239138';
 const HAMBURG_ID = '48506708';
 
+function numericValue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function pct(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? `${n.toFixed(1)}%` : '—';
+  const n = numericValue(value);
+  return n === null ? '—' : `${n.toFixed(1)}%`;
 }
 
 function avg(rows, key) {
-  const values = rows.map((row) => Number(row[key])).filter(Number.isFinite);
+  const values = rows.map((row) => numericValue(row[key])).filter((value) => value !== null);
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
+function firstValue(value) {
+  return Array.isArray(value) ? value[0] ?? null : value ?? null;
+}
+
 function tacticValue(match, key) {
-  const value = match?.tactics?.[key];
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
+  const tactics = match?.tactics;
+  if (!tactics) return null;
+  if (key === 'formation') {
+    return firstValue(tactics.formationNames) ?? firstValue(tactics.formationName) ?? firstValue(tactics.formation);
+  }
+  if (key === 'mentality') {
+    return firstValue(tactics.instructions?.mentality) ?? firstValue(tactics.mentality);
+  }
+  return firstValue(tactics[key]);
 }
 
 function resultPoints(result) {
@@ -60,7 +76,7 @@ export default function ManagerLabPage() {
   const tacticGroups = useMemo(() => {
     const map = new Map();
     rows.forEach((match) => {
-      const formation = tacticValue(match, 'formationName') || tacticValue(match, 'formation') || 'Unknown';
+      const formation = tacticValue(match, 'formation') || 'Unknown';
       const mentality = tacticValue(match, 'mentality') || 'Unknown';
       const key = `${formation} · ${mentality}`;
       const group = map.get(key) || { key, played: 0, points: 0, gf: 0, ga: 0 };
