@@ -8,7 +8,7 @@ if(window.__top100ReplayTraceStop){closePending();if(confirm('Download the repla
 if(!window.liveMatchXML&&confirm('Arm replay network trace? After this, open a completed match.')){closePending();load('top100-sm-replay-network-trace-script',origin+'/sm-replay-network-trace.js',()=>alert('Could not load replay network trace helper.'));return;}
 const session=(crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
 const win=pending;
-if(!win||win.closed){closePending();alert('Top 100 Sync lost its reserved window. Run the bookmarklet again.');return;}
+if(!win||win.closed){closePending();alert('Please allow pop-ups for Soccer Manager, then run Top 100 Sync again.');return;}
 try{win.location.replace(origin+'/admin/soccer-manager-sync?collectorSession='+encodeURIComponent(session));}catch{win.location=origin+'/admin/soccer-manager-sync?collectorSession='+encodeURIComponent(session);}
 if(window.__top100SmRouterWindow===pending)delete window.__top100SmRouterWindow;
 window.__top100SmSyncBootstrap={session,win};
