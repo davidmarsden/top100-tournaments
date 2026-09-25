@@ -371,3 +371,14 @@ Top 100 Sync now offers **Inspect schedule runtime**. It downloads:
 - same-origin Resource Timing entries whose URLs mention schedule/club/multi/fixture/result.
 
 The diagnostic does not fetch script source, alter Soccer Manager functions, or persist anything. It is intended to identify the exact code path/data source used by the Schedule UI so the authoritative fixture importer can be based on observed behavior rather than guessed endpoint parameters.
+
+
+## v0.15 authoritative Schedule → match-report backfill
+
+Runtime inspection established that Soccer Manager's own `MENU_clubScheduleDraw` reads the loaded club schedule through `API_getClubSchedule()` and classifies completed results with `Played == 1`. The Hamburg backfill therefore no longer crawls fixture references from opponent match reports.
+
+**Backfill Hamburg season** now requires Hamburger SV's Schedule to be loaded. It reads the authenticated in-memory schedule, retains Hamburg rows where `Played == 1`, excludes byes, validates non-zero fixture ids, and fetches each completed fixture directly from the already-confirmed `matchreport-ajax-mobile.php?action=mr` endpoint. A 100-fixture safety cap and small sequential delay remain.
+
+The version 3 export remains compatible with the existing `hamburgSeasonMatchBackfill` importer while adding a reconciliation block containing the authoritative schedule source, completed fixture count, compact schedule rows, failed fetches and explicit missing fixture ids. The old graph-discovery fetches and non-Hamburg bridge reports are removed.
+
+This makes Soccer Manager's own schedule the fixture index and each match report the authoritative match payload. Import remains a separate review/staging step; this browser helper still writes nothing to Supabase.
