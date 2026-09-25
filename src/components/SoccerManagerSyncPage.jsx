@@ -85,11 +85,14 @@ function FinancePreview({ payload }) {
 
 function MatchReplayPreview({ payload }) {
   const summary = summarizeMatchReplay(payload);
+  const displaySummary = payload.source?.sourceKind === 'matchreport-json'
+    ? Object.fromEntries(Object.entries(summary).filter(([key]) => !['chances', 'dominationMinutes'].includes(key)))
+    : summary;
   return <section className="card module-card">
     <div className="card-header"><p className="eyebrow">Match archive candidate</p><h2>{summary.match}</h2></div>
-    <SummaryCards summary={summary} />
-    <div className="grid two-columns">
-      <article>
+    <SummaryCards summary={displaySummary} />
+    <div className={`grid ${payload.source?.sourceKind === 'matchreport-json' ? '' : 'two-columns'}`}>
+      {payload.source?.sourceKind !== 'matchreport-json' && <article>
         <h3>Key chances</h3>
         <div className="entrant-list">
           {(payload.chances || []).map((chance) => <div className="entrant-row" key={`${chance.sequence}:${chance.minute}`}>
@@ -99,7 +102,7 @@ function MatchReplayPreview({ payload }) {
             </div>
           </div>)}
         </div>
-      </article>
+      </article>}
       <article>
         <h3>Substitutions</h3>
         <div className="entrant-list">
