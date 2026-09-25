@@ -44,6 +44,8 @@ export default function ManagerLabPage() {
   const [matches, setMatches] = useState([]);
   const [status, setStatus] = useState('Loading the S28 archive…');
   const [competition, setCompetition] = useState('All');
+  const [context, setContext] = useState('All');
+  const [strength, setStrength] = useState('All');
 
   useEffect(() => {
     let mounted = true;
@@ -64,7 +66,20 @@ export default function ManagerLabPage() {
   }, []);
 
   const competitions = useMemo(() => ['All', ...new Set(matches.map((row) => row.competition).filter(Boolean))], [matches]);
-  const rows = competition === 'All' ? matches : matches.filter((row) => row.competition === competition);
+  const contexts = useMemo(() => ['All', ...new Set(matches.map((row) => row.matchContext).filter(Boolean))], [matches]);
+  const strengthBand = (row) => {
+    const difference = numericValue(row.xiRatingDifference);
+    if (difference === null) return 'Unknown XI strength';
+    if (difference < -1) return 'Stronger opponent XI';
+    if (difference > 1) return 'Weaker opponent XI';
+    return 'Similar XI strength';
+  };
+  const strengthBands = ['All', 'Stronger opponent XI', 'Similar XI strength', 'Weaker opponent XI', 'Unknown XI strength'];
+  const rows = matches.filter((row) =>
+    (competition === 'All' || row.competition === competition) &&
+    (context === 'All' || row.matchContext === context) &&
+    (strength === 'All' || strengthBand(row) === strength)
+  );
   const wins = rows.filter((row) => row.result === 'W').length;
   const draws = rows.filter((row) => row.result === 'D').length;
   const losses = rows.filter((row) => row.result === 'L').length;
@@ -107,7 +122,11 @@ export default function ManagerLabPage() {
       <section className="card">
         <div className="manager-lab-toolbar">
           <div><h2>S28 at a glance</h2><p className="muted">{rows.length} archived matches in this view.</p></div>
-          <label>Competition<select value={competition} onChange={(event) => setCompetition(event.target.value)}>{competitions.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <div className="manager-lab-filters">
+            <label>Match context<select value={context} onChange={(event) => setContext(event.target.value)}>{contexts.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>XI strength<select value={strength} onChange={(event) => setStrength(event.target.value)}>{strengthBands.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Competition<select value={competition} onChange={(event) => setCompetition(event.target.value)}>{competitions.map((item) => <option key={item}>{item}</option>)}</select></label>
+          </div>
         </div>
         <div className="manager-lab-kpis">
           <article><span>Record</span><strong>{wins}–{draws}–{losses}</strong><small>W–D–L</small></article>
@@ -115,22 +134,23 @@ export default function ManagerLabPage() {
           <article><span>Goals</span><strong>{gf}–{ga}</strong><small>{rows.length ? ((gf-ga)/rows.length).toFixed(2) : '0.00'} GD / game</small></article>
           <article><span>Possession</span><strong>{pct(avg(rows, 'possession'))}</strong><small>average</small></article>
           <article><span>Shots</span><strong>{avg(rows, 'shots')?.toFixed(1) || '—'}</strong><small>{avg(rows, 'shotsOnTarget')?.toFixed(1) || '—'} on target</small></article>
+          <article><span>Starting XI</span><strong>{avg(rows, 'ourXiRating')?.toFixed(1) || '—'}</strong><small>{avg(rows, 'xiRatingDifference') === null ? 'strength difference unavailable' : `${avg(rows, 'xiRatingDifference') >= 0 ? '+' : ''}${avg(rows, 'xiRatingDifference').toFixed(1)} vs opponents`}</small></article>
         </div>
       </section>
 
       <section className="card">
         <h2>Tactical fingerprints</h2>
-        <p className="muted">Grouped by the opening formation and mentality captured in each report. Sample size is shown so a one-off result cannot masquerade as a pattern.</p>
-        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Setup</th><th>MP</th><th>PPG</th><th>GF</th><th>GA</th></tr></thead><tbody>
-          {tacticGroups.map((group) => <tr key={group.key}><td><strong>{group.key}</strong></td><td>{group.played}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gf}</td><td>{group.ga}</td></tr>)}
+        <p className="muted">Grouped by the opening formation and mentality captured in each report. Use Match context and XI strength above to compare like with like instead of mixing league first teams, rotated cup sides and weak SMFA opposition.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Setup</th><th>MP</th><th>PPG</th><th>GF</th><th>GA</th><th>GD/game</th></tr></thead><tbody>
+          {tacticGroups.map((group) => <tr key={group.key}><td><strong>{group.key}</strong></td><td>{group.played}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gf}</td><td>{group.ga}</td><td>{((group.gf - group.ga) / group.played).toFixed(2)}</td></tr>)}
         </tbody></table></div>
       </section>
 
       <section className="card">
         <h2>Match ledger</h2>
         <p className="muted">The audit trail behind the numbers. This deliberately reports what the archive contains rather than inventing xG or other unavailable metrics.</p>
-        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Date</th><th>Competition</th><th>Opponent</th><th>Result</th><th>Poss.</th><th>Shots</th><th>On target</th><th>Corners</th></tr></thead><tbody>
-          {[...rows].reverse().map((match) => <tr key={match.fixtureId}><td>{match.date || '—'}</td><td>{match.competition}</td><td>{match.venue} · {match.opponent}</td><td><strong className={`lab-result ${match.result}`}>{match.goalsFor}–{match.goalsAgainst}</strong></td><td>{pct(match.possession)}</td><td>{match.shots ?? '—'}</td><td>{match.shotsOnTarget ?? '—'}</td><td>{match.corners ?? '—'}</td></tr>)}
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Date</th><th>Context</th><th>Competition</th><th>Opponent</th><th>Result</th><th>Our XI</th><th>Opp XI</th><th>Δ XI</th><th>Poss.</th><th>Shots</th><th>On target</th><th>Corners</th></tr></thead><tbody>
+          {[...rows].reverse().map((match) => <tr key={match.fixtureId}><td>{match.date || '—'}</td><td>{match.matchContext || '—'}</td><td>{match.competition}</td><td>{match.venue} · {match.opponent}</td><td><strong className={`lab-result ${match.result}`}>{match.goalsFor}–{match.goalsAgainst}</strong></td><td>{numericValue(match.ourXiRating)?.toFixed(1) || '—'}</td><td>{numericValue(match.opponentXiRating)?.toFixed(1) || '—'}</td><td>{numericValue(match.xiRatingDifference) === null ? '—' : `${numericValue(match.xiRatingDifference) >= 0 ? '+' : ''}${numericValue(match.xiRatingDifference).toFixed(1)}`}</td><td>{pct(match.possession)}</td><td>{match.shots ?? '—'}</td><td>{match.shotsOnTarget ?? '—'}</td><td>{match.corners ?? '—'}</td></tr>)}
         </tbody></table></div>
       </section>
     </>}
