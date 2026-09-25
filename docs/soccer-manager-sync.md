@@ -301,3 +301,14 @@ Because the completed-match renderer consumes an already-populated `window.liveM
 This context is diagnostic-only: it is not added to normalized sync payloads, staged for review, or persisted to Supabase. The workbench independently requires the Soccer Manager origin, reconstructs query and identifier maps from bounded string entries (40 query fields, 80 identifiers, 500 characters per value), accepts at most 80 bounded same-origin replay navigation entries, and rejects the structural packet if its serialized size exceeds 100,000 characters. Arbitrary inline-script and HTML excerpts are never transferred.
 
 The purpose is to identify the server-side completed-replay selection contract from observed structural evidence rather than guessing an endpoint. Once a fixture selector/action is confirmed, bulk season harvesting can use that observed contract with bounded concurrency, resume/progress and the existing match replay normalizer.
+
+
+## v0.9 Hamburger SV current-season backfill pilot
+
+The Top 100 Sync router now offers **Backfill Hamburg season** as an explicit pilot action. Open one completed Hamburger SV match first so the authenticated Soccer Manager page supplies a known fixture id, then run the bookmarklet and choose the backfill action.
+
+The helper fetches that observed `matchreport-ajax-mobile.php?fixtureid=…&action=mr` contract with the existing authenticated browser session. It recursively discovers fixture records exposed by the seed report, restricts candidates to played fixtures involving stable Hamburger SV club id `48506708`, deduplicates fixture ids, and fetches the reports sequentially with a short delay and an 80-fixture safety cap.
+
+This pilot is deliberately **download/review only**. It does not stage or persist raw match reports in Supabase. The downloaded `top100-hamburg-season-match-backfill-YYYY-MM-DD.json` contains an import summary, normalized match identity/basic Hamburg statistics/schema inventory, the raw report payload for each discovered match, and per-fixture failures. This lets the first roughly 25 league matches plus current friendlies/cup matches validate discovery coverage and report consistency before persistence or all-100-club harvesting is enabled.
+
+The helper never crawls arbitrary clubs from the fixture graph: discovery is bounded to Hamburger SV rows from the seed response. If the seed response does not expose the full current-season fixture list, the diagnostic will make the shortfall visible rather than guessing missing fixture ids.
