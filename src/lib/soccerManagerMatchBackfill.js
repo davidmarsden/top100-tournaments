@@ -52,8 +52,7 @@ function eventMap(raw, field, timeField) {
   return Object.entries(values).flatMap(([playerId, count]) => {
     const total = Math.max(1, number(count) || 1);
     const rawTime = times && typeof times === 'object' ? times[playerId] : null;
-    const minute = number(Array.isArray(rawTime) ? rawTime[0] : rawTime);
-    return Array.from({ length: total }, (_, index) => ({ playerId: text(playerId), minute, occurrence: index }));
+    return Array.from({ length: total }, (_, index) => ({ playerId: text(playerId), minute: number(Array.isArray(rawTime) ? rawTime[index] : rawTime), occurrence: index }));
   });
 }
 
@@ -80,16 +79,27 @@ function structuredEvents(raw) {
 
 function substitutions(raw) {
   const on = Array.isArray(raw?.SubsOn) ? raw.SubsOn : [];
+  const homeIds = new Set((Array.isArray(raw?.h_playerid) ? raw.h_playerid : []).map(text).filter(Boolean));
+  const awayIds = new Set((Array.isArray(raw?.a_playerid) ? raw.a_playerid : []).map(text).filter(Boolean));
+  const teamSide = (onId, offId) => {
+    if (homeIds.has(onId) || homeIds.has(offId)) return 'h';
+    if (awayIds.has(onId) || awayIds.has(offId)) return 'a';
+    return null;
+  };
   const off = Array.isArray(raw?.SubsOff) ? raw.SubsOff : [];
   const times = Array.isArray(raw?.subTime) ? raw.subTime : [];
-  return on.map((playerId, index) => ({
+  return on.map((playerId, index) => {
+    const onId = text(playerId);
+    const offId = text(off[index]);
+    return {
     sequence: index,
     minute: number(times[index]),
-    teamSide: null,
+    teamSide: teamSide(onId, offId),
     type: 'substitution',
-    onPlayerIds: [text(playerId)].filter(Boolean),
-    offPlayerIds: [text(off[index])].filter(Boolean),
-  })).filter((row) => row.onPlayerIds.length || row.offPlayerIds.length);
+    onPlayerIds: [onId].filter(Boolean),
+    offPlayerIds: [offId].filter(Boolean),
+  };
+  }).filter((row) => row.onPlayerIds.length || row.offPlayerIds.length);
 }
 
 function tacticValue(raw, side, names) {
@@ -187,7 +197,8 @@ export function isHamburgSeasonBackfill(value) {
 
 export function normalizeHamburgSeasonBackfill(value, options = {}) {
   if (!isHamburgSeasonBackfill(value)) throw new Error('This is not a Hamburger SV season backfill file.');
-  const setupId = text(value?.setupId) || text(options.setupId);
+  const nonZeroId = (candidate) => { const id = text(candidate); return id && id !== '0' ? id : null; };
+  const setupId = nonZeroId(value?.setupId) || nonZeroId(options.setupId);
   if (!setupId || !/^\d+$/.test(setupId)) {
     throw new Error('The backfill file does not contain the Soccer Manager setup id. Use a v2 backfill export, or import this older pilot file from a Soccer Manager Sync page whose URL includes ?sid=….');
   }
