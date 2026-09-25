@@ -29,7 +29,7 @@ const reports=[],failures=[],fetched=new Set();
 const fetchReport=async(id)=>{const u=new URL('/matchreport-ajax-mobile.php',location.origin);u.searchParams.set('fixtureid',id);u.searchParams.set('action','mr');const response=await fetch(u.href,{credentials:'include'});if(!response.ok)throw new Error('HTTP '+response.status);return parseJson(response);};
 const addReport=(raw)=>{const id=fixtureId(raw);if(!id||fetched.has(id))return;fetched.add(id);reports.push(normalizeReport(raw));collectFixtures(raw,discovered);};
 addReport(seed);
-const queue=()=>[...discovered.values()].filter(row=>played(row)&&!fetched.has(fixtureId(row))).slice(0,MAX_DISCOVERY_REPORTS);
+const queue=()=>{const pending=[...discovered.values()].filter(row=>played(row)&&!fetched.has(fixtureId(row)));const target=[],bridge=[];for(const row of pending)(clubIds(row).includes(TARGET_CLUB_ID)?target:bridge).push(row);return [...target,...bridge].slice(0,MAX_DISCOVERY_REPORTS);};
 let discoveryFetches=0;
 while(discoveryFetches<MAX_DISCOVERY_REPORTS&&reports.length<MAX_FIXTURES){
  const next=queue()[0];if(!next)break;
