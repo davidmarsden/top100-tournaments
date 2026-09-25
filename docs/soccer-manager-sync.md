@@ -349,3 +349,12 @@ Schedule discovery on Hamburger SV observed the authenticated request `club-ajax
 The helper prefers the exact most-recent `scheduledraw` Resource Timing URL already requested by Soccer Manager. If that resource entry is unavailable, it reconstructs only the same observed contract using the current non-zero `clubid` and `sid`. It refetches the response with the existing authenticated browser session and downloads a bounded diagnostic (maximum 2 MB) containing either parsed JSON or the returned text plus content type/parse error.
 
 This remains diagnostic-only: it does not yet classify fixtures, fetch match reports, stage changes or persist raw schedule data. The captured response is the schema evidence required before turning `scheduledraw` into the authoritative index for the batch results importer. Once its fixture/result structure is confirmed, completed fixture ids can feed the already-confirmed match-report endpoint directly, with archive-id deduplication and optional league-only filtering.
+
+
+## v0.13 live schedule-data trace
+
+The first captured `scheduledraw&getdata=0&gettemplate=1` response proved to be the empty Schedule UI template rather than fixture data. The template invokes `MENU_clubScheduleDraw('fixtures')`, so Top 100 Sync now offers **Trace schedule data** to observe the subsequent request instead of guessing its parameters.
+
+Arm the trace, then use Soccer Manager's Schedule/Results/Friendlies controls so the application itself issues its normal requests. Run Top 100 Sync again and choose **Download schedule trace**. The helper records only same-origin `club-ajax-mobile.php?action=scheduledraw` requests, their non-sensitive query parameters, status/content type and bounded response body (2 MB per response, 40 events maximum). Fetch responses are read from clones so Soccer Manager keeps its original response; XHR capture observes the completed response without changing it. The original fetch/XHR methods are restored before download.
+
+This remains diagnostic-only. Its purpose is to establish the real data-request contract and schema before the batch importer relies on it.
