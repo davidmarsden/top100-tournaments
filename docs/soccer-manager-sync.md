@@ -325,3 +325,18 @@ Backfill exports are now version 2 and include the Soccer Manager setup id when 
 Incremental archive identity remains `setupId + fixtureId`: importing the same season bundle again produces the same match entity keys, while newly completed fixtures add new keys. The normal staging diff/review process therefore determines whether anything actually needs approval before the match archive adapter runs.
 
 The current Hamburg pilot intentionally leaves replay-only chance/domination/world-score arrays empty when the JSON report does not expose equivalent structured data. The report's own commentary is retained inside normalized match metadata for later schema work; it is not silently reinterpreted as replay XML.
+
+
+## v0.11 schedule-first batch result discovery diagnostic
+
+The next batch-import step starts from the selected club's **Schedule** screen rather than walking opponent match-report graphs. Top 100 Sync now offers **Discover schedule results**.
+
+Run it after opening the club Schedule page and allowing the fixture list to load. The helper is diagnostic-only: it inspects bounded same-origin Resource Timing metadata, schedule-like DOM rows, and same-origin navigation/form metadata for observed fixture identifiers. It does not guess fixture ids, fetch arbitrary endpoints, stage data, or write to Supabase.
+
+It downloads `top100-sm-schedule-discovery-YYYY-MM-DD.json` containing:
+- non-zero setup/club ids when present in the page URL;
+- fixture-id candidates and whether they came from DOM, resource timing or navigation;
+- bounded visible schedule-row text associated with observed fixture ids;
+- the latest 120 sanitized same-origin resource URLs.
+
+This diagnostic is intended to identify the authoritative schedule/fixture contract behind Soccer Manager's Schedule page. Once confirmed from a real capture, the batch importer can use that fixture list as its index, restrict it to completed results (and optionally league-only results), skip fixture ids already archived, and fetch each remaining report through the already-confirmed `matchreport-ajax-mobile.php?fixtureid=…&action=mr` contract.
