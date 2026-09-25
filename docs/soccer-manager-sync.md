@@ -312,3 +312,16 @@ The helper fetches that observed `matchreport-ajax-mobile.php?fixtureid=…&acti
 This pilot is deliberately **download/review only**. It does not stage or persist raw match reports in Supabase. The downloaded `top100-hamburg-season-match-backfill-YYYY-MM-DD.json` contains an import summary, normalized match identity/basic Hamburg statistics/schema inventory, the raw report payload for each discovered match, and per-fixture failures. This lets the first roughly 25 league matches plus current friendlies/cup matches validate discovery coverage and report consistency before persistence or all-100-club harvesting is enabled.
 
 The helper never crawls arbitrary clubs from the fixture graph: discovery is bounded to Hamburger SV rows from the seed response. If the seed response does not expose the full current-season fixture list, the diagnostic will make the shortfall visible rather than guessing missing fixture ids.
+
+
+## v0.10 season-match importer
+
+The Hamburger SV pilot bundle can now be imported through the Soccer Manager Sync file picker. A backfill is expanded into one canonical `matchReplay` payload per fixture, so the existing staging/review flow and `match_snapshot` archive adapter can be reused rather than creating a parallel persistence path.
+
+The JSON report normalizer keeps stable fixture/club/player ids, final score, competition/date, home/away possession/shots/shots-on-target/corners, matchday player identity and available player metadata, structured goals/cards/substitutions, tactical snapshots for both teams, and selected match metadata. Fields whose semantics are not yet established (including raw player-role and arrow arrays) are preserved neutrally inside the tactical snapshot rather than assigned speculative meanings. Raw Soccer Manager reports themselves are not staged.
+
+Backfill exports are now version 2 and include the Soccer Manager setup id when it is available from the current page or report. Older v1 pilot exports remain importable when the Sync page supplies a numeric `sid` query parameter.
+
+Incremental archive identity remains `setupId + fixtureId`: importing the same season bundle again produces the same match entity keys, while newly completed fixtures add new keys. The normal staging diff/review process therefore determines whether anything actually needs approval before the match archive adapter runs.
+
+The current Hamburg pilot intentionally leaves replay-only chance/domination/world-score arrays empty when the JSON report does not expose equivalent structured data. The report's own commentary is retained inside normalized match metadata for later schema work; it is not silently reinterpreted as replay XML.

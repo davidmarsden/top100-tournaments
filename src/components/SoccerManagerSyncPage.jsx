@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeSoccerManagerPayload, summarizeNormalizedPayload } from '../lib/soccerManagerSync';
 import { normalizeSoccerManagerMatchReplay, summarizeMatchReplay } from '../lib/soccerManagerMatchReplay';
+import { isHamburgSeasonBackfill, normalizeHamburgSeasonBackfill } from '../lib/soccerManagerMatchBackfill';
 import {
   collectorBookmarklet,
   isAllowedSoccerManagerOrigin,
@@ -414,12 +415,24 @@ export default function SoccerManagerSyncPage() {
     const readErrors = [];
     for (const file of Array.from(files || [])) {
       try {
-        entries.push({ name: file.name, raw: JSON.parse(await file.text()) });
+        const raw = JSON.parse(await file.text());
+        if (isHamburgSeasonBackfill(raw)) {
+          const pageSetupId = new URLSearchParams(window.location.search).get('sid');
+          const normalized = normalizeHamburgSeasonBackfill(raw, { setupId: pageSetupId });
+          entries.push(...normalized.entries.map((entry) => ({ ...entry, alreadyNormalized: true })));
+          readErrors.push(...normalized.errors.map((message) => `${file.name}: ${message}`));
+          readErrors.push(...normalized.failures.map((failure) => `${file.name}: fixture ${failure.fixtureId || '?'} was not captured: ${failure.error || 'unknown error'}`));
+        } else {
+          entries.push({ name: file.name, raw });
+        }
       } catch (error) {
         readErrors.push(`${file.name}: ${error.message}`);
       }
     }
-    const { next, errors } = normalizeCapturedEntries(entries);
+    const normalizedEntries = entries.filter((entry) => entry.alreadyNormalized).map(({ alreadyNormalized, ...entry }) => entry);
+    const rawEntries = entries.filter((entry) => !entry.alreadyNormalized);
+    const { next: normalizedRawEntries, errors } = normalizeCapturedEntries(rawEntries);
+    const next = [...normalizedEntries, ...normalizedRawEntries];
     const allErrors = [...readErrors, ...errors];
     setDiagnosticsCapturedAt(null);
     setMatchEngineSources([]);
@@ -535,7 +548,7 @@ export default function SoccerManagerSyncPage() {
       <div className="card-header"><p className="eyebrow">Fallback · preview only</p><h2>Import captured JSON</h2></div>
       <div className="sm-sync-drop">
         <input key={fileInputKey} id="sm-sync-files" type="file" accept=".json,application/json" multiple onChange={(event) => importFiles(event.target.files)} />
-        <p className="muted">Supported now: competition snapshot, club squad, player changes, transfer market and club finance responses. Raw files stay in your browser.</p>
+        <p className="muted">Supported now: competition snapshot, club squad, player changes, transfer market, club finance responses and Hamburger SV season-match backfills. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
       {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setMatchEngineSources([]); setMatchReplay(null); setReplayPageContext(null); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
