@@ -13,7 +13,9 @@ function number(value) {
 }
 
 function valueAt(value, index) {
-  return Array.isArray(value) ? value[index] : null;
+  if (Array.isArray(value)) return value[index];
+  if (value && typeof value === 'object') return value[index] ?? value[String(index)] ?? null;
+  return null;
 }
 
 function sideValue(raw, side, suffix) {
