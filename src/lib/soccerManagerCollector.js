@@ -32,12 +32,15 @@ export function collectorBookmarklet() {
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
 const id='top100-sm-sync-router-script';
 if(document.getElementById(id)){alert('Top 100 Sync is already loading.');return;}
+const pending=window.open('about:blank','top100-sm-sync');
+if(!pending){alert('Please allow pop-ups for Soccer Manager, then try Top 100 Sync again.');return;}
+window.__top100SmRouterWindow=pending;
 const script=document.createElement('script');
 script.id=id;
 script.src='https://tournaments.smtop100.blog/sm-sync-router.js?v='+Date.now();
 script.async=true;
 script.onload=()=>script.remove();
-script.onerror=()=>{script.remove();alert('Top 100 Sync could not load its router script. Soccer Manager may be blocking external scripts.');};
+script.onerror=()=>{script.remove();const pending=window.__top100SmRouterWindow;if(pending){try{pending.close();}catch{}delete window.__top100SmRouterWindow;}alert('Top 100 Sync could not load its router script. Soccer Manager may be blocking external scripts.');};
 (document.head||document.documentElement).appendChild(script);
 }catch(err){alert('Top 100 Sync failed: '+(err&&err.message?err.message:String(err)));}})();`;
   return 'javascript:' + encodeURIComponent(code);
