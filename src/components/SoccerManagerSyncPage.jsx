@@ -152,13 +152,15 @@ export default function SoccerManagerSyncPage() {
   const [reviewRefreshToken, setReviewRefreshToken] = useState(0);
   const [archiveRefreshToken, setArchiveRefreshToken] = useState(0);
   const collectorLinkRef = useRef(null);
-  const totalSummary = useMemo(() => payloads.map((entry) => ({
-    id: entry.id,
-    name: entry.name,
-    ...(entry.payload?.kind === 'matchReplay'
+  const totalSummary = useMemo(() => payloads.map((entry) => {
+    let summary = entry.payload?.kind === 'matchReplay'
       ? summarizeMatchReplay(entry.payload)
-      : summarizeNormalizedPayload(entry.payload)),
-  })), [payloads]);
+      : summarizeNormalizedPayload(entry.payload);
+    if (entry.payload?.source?.sourceKind === 'matchreport-json') {
+      summary = Object.fromEntries(Object.entries(summary).filter(([key]) => !['chances', 'dominationMinutes'].includes(key)));
+    }
+    return { id: entry.id, name: entry.name, ...summary };
+  }), [payloads]);
 
   function normalizeCapturedEntries(entries) {
     const next = [];
