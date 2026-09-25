@@ -393,3 +393,14 @@ Version 4 keeps the raw match-report JSON in the downloaded review bundle, retri
 The importer now preserves the observed tactical timeline arrays (including formation names/ids and tactic-action arrays) and distinguishes Soccer Manager overall player ratings from match-performance ratings. The Aston Villa fixture 280690206 is the acceptance case for tactical changes: its report contains multiple tactical states rather than duplicate snapshots.
 
 Raw reports remain download/review material only. Staging still normalizes the useful match-engine fields and does not persist the raw authenticated response wholesale.
+
+
+## v0.17 bounded game-world season backfill
+
+**Backfill game world** expands the proven completed-match capture beyond Hamburger SV without requiring a manual visit to every club. Start from any loaded Top 100 club Schedule. The helper seeds discovery from that authoritative `API_getClubSchedule()` result, fetches completed reports through the observed authenticated `matchreport-ajax-mobile.php?action=mr` contract, and recursively follows only completed non-zero fixture records exposed by those reports.
+
+The crawl is deliberately conservative: requests are sequential with a delay, each report is capped at 2 MB and retried at most three times, cross-world reports are rejected when a setup id is present, and a 1,600-report ceiling prevents an accidental unbounded crawl. Fixture ids are deduplicated before fetching.
+
+To keep mobile/tablet memory bounded, reports are emitted as numbered 100-report `worldSeasonMatchBackfill` JSON chunks during the crawl rather than accumulated into one enormous file. A final `00` manifest records the run id, clubs discovered, fixture/report counts, failures, remaining queue and whether the safety cap was reached. Import the numbered chunks—not the manifest—through the existing Soccer Manager Sync file picker. They normalize into the same stable `setupId + fixtureId` match entities and therefore reuse the existing review and archive adapter with normal deduplication.
+
+This is still an authenticated browser capture, not a server crawler. It never exports cookies or credentials and does not write directly to Supabase. Because cross-club discovery depends on completed fixture rows actually exposed inside Soccer Manager's match-report payloads, the manifest is the coverage authority: a run must not be described as a complete game-world season merely because the queue became empty. Coverage can later be reconciled against a separate authoritative world fixture index if one is discovered.
