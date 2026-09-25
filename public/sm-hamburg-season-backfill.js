@@ -42,7 +42,7 @@ const nonHamburgReports=reports.length-hamburgReports.length;
 reports.length=0;reports.push(...hamburgReports);
 const byCompetition={};for(const report of reports){const key=report.competition||'Unknown';byCompetition[key]=(byCompetition[key]||0)+1;}
 const data={kind:'hamburgSeasonMatchBackfill',version:1,capturedAt:new Date().toISOString(),sourcePage:location.origin+location.pathname,targetClub:{clubId:TARGET_CLUB_ID,name:TARGET_NAME},summary:{fixturesDiscovered:[...discovered.values()].filter(row=>clubIds(row).includes(TARGET_CLUB_ID)&&played(row)).length,reportsFetched:reports.length,discoveryReportsFetched:fetched.size,nonHamburgDiscoveryReports:nonHamburgReports,failures:failures.length,byCompetition},reports,failures};
-download(data);alert('Hamburg backfill complete: '+reports.length+' Hamburg reports fetched''+(failures.length?' ('+failures.length+' failed)':'')+'. JSON downloaded for review.');
+download(data);alert('Hamburg backfill complete: '+reports.length+' Hamburg reports fetched'+(failures.length?' ('+failures.length+' failed)':'')+'. JSON downloaded for review.');
 }catch(err){alert('Hamburg season backfill failed: '+String(err&&err.message||err));}finally{delete window.__top100HamburgBackfillRunning;}
 })();
 })();
