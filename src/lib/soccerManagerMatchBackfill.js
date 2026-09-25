@@ -1,0 +1,215 @@
+const HAMBURG_BACKFILL_KIND = 'hamburgSeasonMatchBackfill';
+
+function text(value) {
+  if (value === null || value === undefined) return null;
+  const out = String(value).trim();
+  return out || null;
+}
+
+function number(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const out = Number(value);
+  return Number.isFinite(out) ? out : null;
+}
+
+function valueAt(value, index) {
+  return Array.isArray(value) ? value[index] : null;
+}
+
+function sideValue(raw, side, suffix) {
+  return raw?.[`${side}${suffix}`];
+}
+
+function playerRows(raw, side) {
+  const ids = sideValue(raw, side, '_playerid');
+  if (!Array.isArray(ids)) return [];
+  const dataIds = sideValue(raw, side, '_playerdataid');
+  const names = sideValue(raw, side, '_playername');
+  const surnames = sideValue(raw, side, '_playersurname');
+  const pitchNames = sideValue(raw, side, '_playerpitchname');
+  const ages = sideValue(raw, side, '_playerage');
+  const feet = sideValue(raw, side, '_playerfoot');
+  const positions = sideValue(raw, side, '_playerposition');
+  const positionDescriptions = sideValue(raw, side, '_playerpositiondescription');
+  const ratings = sideValue(raw, side, '_playerrating');
+  return ids.map((id, index) => ({
+    playerId: text(id),
+    playerDataId: text(valueAt(dataIds, index)),
+    teamSide: side === 'h' ? 'h' : 'a',
+    name: text(valueAt(pitchNames, index)) || [text(valueAt(names, index)), text(valueAt(surnames, index))].filter(Boolean).join(' ') || null,
+    age: number(valueAt(ages, index)),
+    foot: text(valueAt(feet, index)),
+    position: text(valueAt(positions, index)),
+    positionDescription: text(valueAt(positionDescriptions, index)),
+    rating: number(valueAt(ratings, index)),
+  })).filter((row) => row.playerId);
+}
+
+function eventMap(raw, field, timeField) {
+  const values = raw?.[field];
+  const times = raw?.[timeField];
+  if (!values || typeof values !== 'object' || Array.isArray(values)) return [];
+  return Object.entries(values).flatMap(([playerId, count]) => {
+    const total = Math.max(1, number(count) || 1);
+    const rawTime = times && typeof times === 'object' ? times[playerId] : null;
+    const minute = number(Array.isArray(rawTime) ? rawTime[0] : rawTime);
+    return Array.from({ length: total }, (_, index) => ({ playerId: text(playerId), minute, occurrence: index }));
+  });
+}
+
+function structuredEvents(raw) {
+  const rows = [];
+  let sequence = 0;
+  const add = (type, playerId, minute, extra = {}) => {
+    if (!playerId) return;
+    rows.push({ sequence: sequence++, minute: number(minute), type, clubSide: null, playerId: text(playerId), secondaryPlayerId: null, ...extra });
+  };
+  for (const row of eventMap(raw, 'YellowCards', 'YellowCardsTime')) add('yellow', row.playerId, row.minute);
+  for (const row of eventMap(raw, 'RedCards', 'RedCardsTime')) add('red', row.playerId, row.minute);
+  const scorers = raw?.GoalScorers;
+  if (scorers && typeof scorers === 'object' && !Array.isArray(scorers)) {
+    for (const [playerId, count] of Object.entries(scorers)) {
+      const total = Math.max(1, number(count) || 1);
+      const goalTimes = [...(Array.isArray(raw?.HomeGS_PlayerID) ? raw.HomeGS_PlayerID.map((id, i) => [id, valueAt(raw.HomeGS_GoalTimes, i), 'h']) : []), ...(Array.isArray(raw?.AwayGS_PlayerID) ? raw.AwayGS_PlayerID.map((id, i) => [id, valueAt(raw.AwayGS_GoalTimes, i), 'a']) : [])]
+        .filter(([id]) => text(id) === text(playerId));
+      for (let i = 0; i < total; i += 1) add('goal', playerId, goalTimes[i]?.[1], { clubSide: goalTimes[i]?.[2] || null });
+    }
+  }
+  return rows.sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999)).map((row, index) => ({ ...row, sequence: index }));
+}
+
+function substitutions(raw) {
+  const on = Array.isArray(raw?.SubsOn) ? raw.SubsOn : [];
+  const off = Array.isArray(raw?.SubsOff) ? raw.SubsOff : [];
+  const times = Array.isArray(raw?.subTime) ? raw.subTime : [];
+  return on.map((playerId, index) => ({
+    sequence: index,
+    minute: number(times[index]),
+    teamSide: null,
+    type: 'substitution',
+    onPlayerIds: [text(playerId)].filter(Boolean),
+    offPlayerIds: [text(off[index])].filter(Boolean),
+  })).filter((row) => row.onPlayerIds.length || row.offPlayerIds.length);
+}
+
+function tacticValue(raw, side, names) {
+  for (const name of names) {
+    const value = raw?.[`${side}_${name}`];
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
+function tactics(raw, side) {
+  const fields = {
+    formation: ['formation', 'Formation'],
+    mentality: ['mentality', 'Mentality'],
+    passing: ['passing', 'Passing'],
+    attackingStyle: ['attackingstyle', 'attackingStyle', 'AttackingStyle'],
+    tempo: ['tempo', 'Tempo'],
+    pressing: ['pressing', 'Pressing'],
+    counterAttack: ['counterattack', 'counterAttack', 'CounterAttack'],
+    menBehindBall: ['menbehindball', 'menBehindBall', 'MenBehindBall'],
+    tightMarking: ['tightmarking', 'tightMarking', 'TightMarking'],
+    offsideTrap: ['offside', 'offsidetrap', 'offsideTrap', 'OffsideTrap'],
+    width: ['width', 'Width'],
+    creativity: ['creativity', 'Creativity'],
+    aggression: ['aggression', 'Aggression'],
+    shooting: ['shooting', 'Shooting'],
+    crossing: ['crossing', 'Crossing'],
+    defensiveLine: ['defensiveline', 'defensiveLine', 'DefensiveLine'],
+    sweeperKeeper: ['sweeperkeeper', 'sweeperKeeper', 'SweeperKeeper'],
+  };
+  const instructions = {};
+  for (const [key, names] of Object.entries(fields)) {
+    const value = tacticValue(raw, side, names);
+    if (value !== null && value !== undefined) instructions[key] = value;
+  }
+  return {
+    instructions,
+    playerRoles: tacticValue(raw, side, ['PlayerRole']),
+    arrows: tacticValue(raw, side, ['ArrowData']),
+    captainSlot: tacticValue(raw, side, ['captain']),
+    penaltyTakerSlot: tacticValue(raw, side, ['penaltyTaker']),
+    deadballTakerSlot: tacticValue(raw, side, ['deadballTaker']),
+    cornerTakerSlot: tacticValue(raw, side, ['cornerTaker']),
+    playMakerSlot: tacticValue(raw, side, ['playMaker']),
+    targetManSlot: tacticValue(raw, side, ['targetMan']),
+  };
+}
+
+function normalizeReport(report, setupId, capturedAt) {
+  const raw = report?.raw || {};
+  const fixtureId = text(report?.fixtureId ?? raw?.fixtureID ?? raw?.FixtureId);
+  if (!fixtureId) throw new Error('Backfill report is missing its fixture id.');
+  const homeClubId = text(report?.home?.clubId ?? raw?.HomeClubID);
+  const awayClubId = text(report?.away?.clubId ?? raw?.AwayClubID);
+  if (!homeClubId || !awayClubId) throw new Error(`Fixture ${fixtureId} is missing club ids.`);
+  return {
+    kind: 'matchReplay',
+    source: { setupId, fixtureId, pageUrl: null, sourceKind: 'matchreport-json', capturedAt },
+    competition: { code: text(raw?.CompType), name: text(report?.competition ?? raw?.TournName) },
+    fixture: {
+      date: text(report?.date ?? raw?.TurnDate),
+      homeClubId,
+      homeName: text(report?.home?.name ?? raw?.HomeTeamName),
+      awayClubId,
+      awayName: text(report?.away?.name ?? raw?.AwayTeamName),
+      homeScore: number(report?.home?.score ?? raw?.HomeTeamScore ?? raw?.HomeScore),
+      awayScore: number(report?.away?.score ?? raw?.AwayTeamScore ?? raw?.AwayScore),
+    },
+    stats: {
+      home: { possession: number(raw?.HomePoss), shots: number(raw?.HomeShotsOnGoal), shotsOnTarget: number(raw?.HomeShotsOnTarget), corners: number(raw?.HomeCorners) },
+      away: { possession: number(raw?.AwayPoss), shots: number(raw?.AwayShotsOnGoal), shotsOnTarget: number(raw?.AwayShotsOnTarget), corners: number(raw?.AwayCorners) },
+    },
+    players: [...playerRows(raw, 'h'), ...playerRows(raw, 'a')],
+    keyEvents: structuredEvents(raw),
+    chances: [],
+    substitutions: substitutions(raw),
+    domination: [],
+    worldFixtures: [],
+    worldScores: [],
+    tactics: { home: tactics(raw, 'h'), away: tactics(raw, 'a') },
+    matchReport: {
+      manOfMatch: text(raw?.ManOfMatch),
+      assists: raw?.Assists && typeof raw.Assists === 'object' ? raw.Assists : {},
+      injuries: raw?.Injuries ?? null,
+      commentary: Array.isArray(raw?.Commentary) ? raw.Commentary : [],
+      referee: { name: text(raw?.RefName), country: text(raw?.RefCountryName) },
+      attendance: number(raw?.Attendance),
+    },
+  };
+}
+
+export function isHamburgSeasonBackfill(value) {
+  return value?.kind === HAMBURG_BACKFILL_KIND && Array.isArray(value?.reports);
+}
+
+export function normalizeHamburgSeasonBackfill(value, options = {}) {
+  if (!isHamburgSeasonBackfill(value)) throw new Error('This is not a Hamburger SV season backfill file.');
+  const setupId = text(options.setupId);
+  if (!setupId || !/^\d+$/.test(setupId)) {
+    throw new Error('The backfill file does not contain the Soccer Manager setup id. Import it from a Soccer Manager Sync page whose URL includes ?sid=…, or supply the setup id explicitly.');
+  }
+  const capturedAt = text(value?.capturedAt) || new Date().toISOString();
+  const seen = new Set();
+  const entries = [];
+  const errors = [];
+  for (const report of value.reports) {
+    try {
+      const payload = normalizeReport(report, setupId, capturedAt);
+      const id = payload.source.fixtureId;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      entries.push({
+        id: `match-backfill:${setupId}:${id}`,
+        name: `Match report ${id}`,
+        sourceUrl: null,
+        payload,
+      });
+    } catch (error) {
+      errors.push(error.message);
+    }
+  }
+  return { entries, errors, failures: Array.isArray(value.failures) ? value.failures : [] };
+}
