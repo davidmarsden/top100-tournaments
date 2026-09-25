@@ -1,5 +1,5 @@
 (()=>{try{
-window.__top100SmRouterExecuted={at:Date.now(),version:'schedule-runtime-195'};
+window.__top100SmRouterExecuted={at:Date.now(),version:'world-backfill-203'};
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
 const origin='https://tournaments.smtop100.blog';
 const load=(id,src,onerror)=>{if(document.getElementById(id)){alert('Top 100 Sync helper is already loading.');return false;}const script=document.createElement('script');script.id=id;script.src=src+(src.includes('?')?'&':'?')+'v='+Date.now();script.async=true;script.onload=()=>script.remove();script.onerror=()=>{script.remove();if(onerror)onerror();};(document.head||document.documentElement).appendChild(script);return true;};
@@ -63,6 +63,7 @@ if(window.__top100ReplayTraceStop){
  button('Trace schedule data',()=>{closePending();load('top100-sm-schedule-network-trace-script',origin+'/sm-schedule-network-trace.js',()=>alert('Could not load schedule trace helper.'));});
  button('Capture schedule response',()=>{closePending();load('top100-sm-schedule-response-script',origin+'/sm-schedule-response.js',()=>alert('Could not load schedule response helper.'));});
  button('Discover schedule results',()=>{closePending();load('top100-sm-schedule-discovery-script',origin+'/sm-schedule-discovery.js',()=>alert('Could not load schedule discovery helper.'));});
+ button('Backfill game world',()=>{closePending();load('top100-sm-world-season-backfill-script',origin+'/sm-world-season-backfill.js',()=>alert('Could not load game-world backfill helper.'));},true);
  button('Backfill Hamburg season',()=>{closePending();load('top100-sm-hamburg-season-backfill-script',origin+'/sm-hamburg-season-backfill.js',()=>alert('Could not load Hamburg season backfill helper.'));});
  button('Normal sync',()=>runSync());
  button('Close',()=>closePending());
