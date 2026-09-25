@@ -201,7 +201,7 @@ th { color: #44546f; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .manager-lab-toolbar { display:flex; justify-content:space-between; gap:18px; align-items:end; }
 .manager-lab-toolbar h2 { margin-bottom:4px; }
 .manager-lab-toolbar label { min-width:220px; margin:0; }
-.manager-lab-kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-top:18px; }
+.manager-lab-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:18px; }
 .manager-lab-kpis article { display:grid; gap:4px; padding:16px; border:1px solid #e4ebf7; border-radius:16px; background:#fbfdff; }
 .manager-lab-kpis span,.manager-lab-kpis small { color:#5f6f8e; font-weight:800; }
 .manager-lab-kpis strong { font-size:1.65rem; line-height:1.05; }
@@ -213,3 +213,7 @@ th { color: #44546f; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .lab-result.L { background:#fee2e2; color:#991b1b; }
 @media (max-width:900px) { .manager-lab-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .manager-lab-toolbar { align-items:stretch; flex-direction:column; } }
 @media (max-width:520px) { .manager-lab-kpis { grid-template-columns:1fr; } }
+
+.manager-lab-filters { display:grid; grid-template-columns:repeat(3,minmax(170px,1fr)); gap:10px; align-items:end; }
+.manager-lab-filters label { min-width:0; }
+@media (max-width:900px) { .manager-lab-filters { grid-template-columns:1fr; } }
