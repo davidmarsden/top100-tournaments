@@ -12,13 +12,14 @@ const fetchReport=async id=>{const u=new URL('/matchreport-ajax-mobile.php',loca
 const reportWrapper=raw=>({fixtureId:text(raw?.fixtureID??raw?.FixtureId),date:text(raw?.TurnDate??raw?.FullTurnDate),competition:text(raw?.TournName??raw?.TournamentName),home:{clubId:text(raw?.HomeClubID),name:text(raw?.HomeTeamName),score:Number.isFinite(Number(raw?.HomeTeamScore))?Number(raw.HomeTeamScore):null},away:{clubId:text(raw?.AwayClubID),name:text(raw?.AwayTeamName),score:Number.isFinite(Number(raw?.AwayTeamScore))?Number(raw.AwayTeamScore):null},raw});
 const findFixtures=value=>{const out=[];const seen=new Set();const walk=(v,depth)=>{if(depth>9||v===null||v===undefined)return;if(Array.isArray(v)){for(const x of v)walk(x,depth+1);return;}if(typeof v!=='object')return;const id=fixtureId(v);if(id&&completed(v)&&!seen.has(id)){seen.add(id);out.push(id);}for(const x of Object.values(v))walk(x,depth+1);};walk(value,0);return out;};
 const download=(data,index)=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='top100-world-season-backfill-'+String(index).padStart(2,'0')+'-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500);};
+const saveBundle=(chunks,manifest)=>{const bundle={kind:'worldSeasonMatchBackfill',version:1,runId:manifest.runId,capturedAt:manifest.capturedAt,setupId:manifest.setupId,discovery:manifest.summary,clubs:manifest.clubs,reports:chunks.flat(),failures:manifest.failures};download(bundle,1);};
 (async()=>{window.__top100WorldBackfillRunning=true;try{
  if(typeof window.API_getClubSchedule!=='function')throw new Error('Soccer Manager schedule API is not loaded. Open a Top 100 club → Schedule, let it load, then try again.');
  const schedule=window.API_getClubSchedule();if(!Array.isArray(schedule)||!schedule.length)throw new Error('No loaded club schedule was found.');
  const seedIds=[...new Set(schedule.filter(completed).map(fixtureId))];if(!seedIds.length)throw new Error('The loaded schedule contains no completed fixtures.');
- const queue=[...seedIds],queued=new Set(queue),fetched=new Set(),failures=[];let current=[],chunkIndex=0,setupId=nonZeroId(new URL(location.href).searchParams.get('sid'))||nonZeroId(window.g_setupid??window.g_setupId??window.g_gameworldid),clubs=new Map();
+ const queue=[...seedIds],queued=new Set(queue),fetched=new Set(),failures=[],chunks=[];let current=[],setupId=nonZeroId(new URL(location.href).searchParams.get('sid'))||nonZeroId(window.g_setupid??window.g_setupId??window.g_gameworldid),clubs=new Map();
  const runId=new Date().toISOString().replace(/[:.]/g,'-');
- const flush=()=>{if(!current.length)return;chunkIndex++;download({kind:'worldSeasonMatchBackfill',version:1,runId,chunk:chunkIndex,capturedAt:new Date().toISOString(),setupId,discovery:{source:'schedule seed + completed-fixture graph'},reports:current,failures:[]},chunkIndex);current=[];};
+ const flush=()=>{if(!current.length)return;chunks.push(current);current=[];};
  while(queue.length&&fetched.size<MAX_REPORTS){
    const id=queue.shift();if(fetched.has(id))continue;
    try{
@@ -35,7 +36,10 @@ const download=(data,index)=>{const blob=new Blob([JSON.stringify(data,null,2)],
  }
  flush();
  if(!setupId)throw new Error('Could not establish the Soccer Manager setup id.');
- download({kind:'worldSeasonMatchBackfillManifest',version:1,runId,capturedAt:new Date().toISOString(),setupId,summary:{seedFixtures:seedIds.length,uniqueFixturesSeen:queued.size,reportsAttempted:fetched.size,reportsCaptured:fetched.size-failures.length,failures:failures.length,clubsSeen:clubs.size,queueRemaining:queue.length,safetyCap:MAX_REPORTS,chunks:chunkIndex},clubs:[...clubs].map(([clubId,name])=>({clubId,name})),failures},0);
- alert('Game-world crawl complete: '+(fetched.size-failures.length)+' reports captured across '+clubs.size+' clubs in '+chunkIndex+' import chunk(s).'+(queue.length?' Safety cap reached with '+queue.length+' fixture(s) still queued.':'')+' A manifest plus the import chunks were downloaded. Import the numbered chunks in Soccer Manager Sync.');
+ const manifest={kind:'worldSeasonMatchBackfillManifest',version:1,runId,capturedAt:new Date().toISOString(),setupId,summary:{source:'schedule seed + completed-fixture graph',seedFixtures:seedIds.length,uniqueFixturesSeen:queued.size,reportsAttempted:fetched.size,reportsCaptured:fetched.size-failures.length,failures:failures.length,clubsSeen:clubs.size,queueRemaining:queue.length,safetyCap:MAX_REPORTS,chunks:chunks.length},clubs:[...clubs].map(([clubId,name])=>({clubId,name})),failures};
+ const ok=confirm('Game-world crawl complete: '+manifest.summary.reportsCaptured+' reports across '+clubs.size+' clubs.'+(queue.length?' Safety cap reached with '+queue.length+' fixture(s) still queued.':'')+'\n\nTap OK to download one import bundle. This explicit tap avoids browsers blocking automatic multi-downloads.');
+ if(ok)saveBundle(chunks,manifest);
+ else window.__top100WorldBackfillResult={chunks,manifest};
+ alert(ok?'Backfill bundle downloaded. Import it in Soccer Manager Sync.':'Download cancelled. The captured result remains in this page as window.__top100WorldBackfillResult until you navigate away.');
 }catch(err){alert('Game-world backfill failed: '+String(err&&err.message||err));}finally{delete window.__top100WorldBackfillRunning;}})();
 })();
