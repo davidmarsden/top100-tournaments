@@ -24,13 +24,12 @@ function playerRows(raw, side) {
   const ids = sideValue(raw, side, '_playerid');
   if (!Array.isArray(ids)) return [];
   const dataIds = sideValue(raw, side, '_playerdataid');
-  const names = sideValue(raw, side, '_playername');
-  const surnames = sideValue(raw, side, '_playersurname');
-  const pitchNames = sideValue(raw, side, '_playerpitchname');
-  const ages = sideValue(raw, side, '_playerage');
-  const feet = sideValue(raw, side, '_playerfoot');
-  const positions = sideValue(raw, side, '_playerposition');
-  const positionDescriptions = sideValue(raw, side, '_playerpositiondescription');
+  const forenames = sideValue(raw, side, '_playerForename');
+  const surnames = sideValue(raw, side, '_playerSurname');
+  const ages = sideValue(raw, side, '_playerAge');
+  const feet = sideValue(raw, side, '_playerFoot');
+  const positions = sideValue(raw, side, '_playerPos');
+  const positionDescriptions = sideValue(raw, side, '_playerPosDesc');
   const ratings = sideValue(raw, side, '_playerrating');
   const overallRatings = raw?.[side === 'h' ? 'HomePlayerRating' : 'AwayPlayerRating'];
   const matchRatings = raw?.[`${side}_rating`];
@@ -38,14 +37,15 @@ function playerRows(raw, side) {
     playerId: text(id),
     playerDataId: text(valueAt(dataIds, index)),
     teamSide: side === 'h' ? 'h' : 'a',
-    name: text(valueAt(pitchNames, index)) || [text(valueAt(names, index)), text(valueAt(surnames, index))].filter(Boolean).join(' ') || null,
+    name: [text(valueAt(forenames, index)), text(valueAt(surnames, index))].filter(Boolean).join(' ') || null,
     age: number(valueAt(ages, index)),
     foot: text(valueAt(feet, index)),
     position: text(valueAt(positions, index)),
     positionDescription: text(valueAt(positionDescriptions, index)),
     rating: number(valueAt(ratings, index)),
     overallRating: number(overallRatings?.[index] ?? valueAt(ratings, index)),
-    matchRating: number(valueAt(matchRatings, index)),
+    matchRating: number(valueAt(matchRatings, index)) === 12 ? null : number(valueAt(matchRatings, index)),
+    rawMatchRating: number(valueAt(matchRatings, index)),
   })).filter((row) => row.playerId);
 }
 
