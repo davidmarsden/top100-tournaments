@@ -20,13 +20,13 @@ const idsFromElement=el=>{
  return [...new Set(out)];
 };
 const rows=[];
-for(const el of [...document.querySelectorAll('tr,li,.fixture,.fixture-row,.schedule-row,.match-row,[data-fixtureid],[data-fixture-id]')].slice(0,600)){
+for(const el of [...document.querySelectorAll('tr,li,.fixture,.fixture-row,.schedule-row,.match-row,[data-fixtureid],[data-fixture-id],[data-fixture],[data-fixid],[data-matchid],[data-match-id],[data-match]')].slice(0,600)){
  const ids=idsFromElement(el);if(!ids.length)continue;
  const rowText=text(el.innerText||el.textContent);if(!rowText)continue;
  rows.push({fixtureIds:ids,text:rowText.slice(0,500)});
  if(rows.length>=MAX_ROWS)break;
 }
-const resources=performance.getEntriesByType('resource').slice(-MAX_RESOURCES).map(e=>({url:sanitize(e.name),initiatorType:e.initiatorType||null,startTime:Math.round(e.startTime)})).filter(x=>x.url);
+const resources=performance.getEntriesByType('resource').filter(e=>safeUrl(e.name)).slice(-MAX_RESOURCES).map(e=>({url:sanitize(e.name),initiatorType:e.initiatorType||null,startTime:Math.round(e.startTime)})).filter(x=>x.url);
 const candidates=[];
 const seen=new Set();
 const add=(id,source)=>{if(!id||seen.has(id)||candidates.length>=MAX_CANDIDATES)return;seen.add(id);candidates.push({fixtureId:id,source});};
