@@ -30,8 +30,15 @@ script.onerror=()=>{
 
 };
 const existingMenu=document.getElementById('top100-sm-sync-menu');
-if(existingMenu){closePending();existingMenu.remove();return;}
+if(existingMenu){
+ closePending();
+ const existingPending=existingMenu.__top100PendingWindow;
+ if(existingPending){try{existingPending.close();}catch{}}
+ existingMenu.remove();
+ return;
+}
 const menu=document.createElement('div');
+menu.__top100PendingWindow=pending;
 menu.id='top100-sm-sync-menu';
 menu.setAttribute('role','dialog');
 menu.setAttribute('aria-label','Top 100 Sync');
