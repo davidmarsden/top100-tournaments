@@ -340,3 +340,12 @@ It downloads `top100-sm-schedule-discovery-YYYY-MM-DD.json` containing:
 - the latest 120 sanitized same-origin resource URLs.
 
 This diagnostic is intended to identify the authoritative schedule/fixture contract behind Soccer Manager's Schedule page. Once confirmed from a real capture, the batch importer can use that fixture list as its index, restrict it to completed results (and optionally league-only results), skip fixture ids already archived, and fetch each remaining report through the already-confirmed `matchreport-ajax-mobile.php?fixtureid=…&action=mr` contract.
+
+
+## v0.12 observed schedule response capture
+
+Schedule discovery on Hamburger SV observed the authenticated request `club-ajax-mobile.php?action=scheduledraw&getdata=0&gettemplate=1&clubid=…&sid=…`. Top 100 Sync therefore now offers **Capture schedule response**.
+
+The helper prefers the exact most-recent `scheduledraw` Resource Timing URL already requested by Soccer Manager. If that resource entry is unavailable, it reconstructs only the same observed contract using the current non-zero `clubid` and `sid`. It refetches the response with the existing authenticated browser session and downloads a bounded diagnostic (maximum 2 MB) containing either parsed JSON or the returned text plus content type/parse error.
+
+This remains diagnostic-only: it does not yet classify fixtures, fetch match reports, stage changes or persist raw schedule data. The captured response is the schema evidence required before turning `scheduledraw` into the authoritative index for the batch results importer. Once its fixture/result structure is confirmed, completed fixture ids can feed the already-confirmed match-report endpoint directly, with archive-id deduplication and optional league-only filtering.
