@@ -187,9 +187,9 @@ export function isHamburgSeasonBackfill(value) {
 
 export function normalizeHamburgSeasonBackfill(value, options = {}) {
   if (!isHamburgSeasonBackfill(value)) throw new Error('This is not a Hamburger SV season backfill file.');
-  const setupId = text(options.setupId);
+  const setupId = text(value?.setupId) || text(options.setupId);
   if (!setupId || !/^\d+$/.test(setupId)) {
-    throw new Error('The backfill file does not contain the Soccer Manager setup id. Import it from a Soccer Manager Sync page whose URL includes ?sid=…, or supply the setup id explicitly.');
+    throw new Error('The backfill file does not contain the Soccer Manager setup id. Use a v2 backfill export, or import this older pilot file from a Soccer Manager Sync page whose URL includes ?sid=….');
   }
   const capturedAt = text(value?.capturedAt) || new Date().toISOString();
   const seen = new Set();
