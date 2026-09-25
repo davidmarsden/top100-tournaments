@@ -404,3 +404,10 @@ The crawl is deliberately conservative: requests are sequential with a delay, ea
 Reports are accumulated internally in 100-report arrays so the crawler can release its active working batch while it runs, but it does **not** trigger background downloads: mobile Chromium/Safari can block automatic downloads once the original user gesture has expired. When the crawl finishes, an explicit confirmation tap downloads one `worldSeasonMatchBackfill` import bundle containing all captured reports plus the coverage manifest fields. If the user cancels that confirmation, the captured chunks and manifest remain temporarily available as `window.__top100WorldBackfillResult` until navigation. The bundle normalizes into the same stable `setupId + fixtureId` match entities and therefore reuses the existing review and archive adapter with normal deduplication.
 
 This is still an authenticated browser capture, not a server crawler. It never exports cookies or credentials and does not write directly to Supabase. Because cross-club discovery depends on completed fixture rows actually exposed inside Soccer Manager's match-report payloads, the manifest is the coverage authority: a run must not be described as a complete game-world season merely because the queue became empty. Coverage can later be reconciled against a separate authoritative world fixture index if one is discovered.
+
+
+### World-backfill progress and recovery
+
+The game-world crawler displays a fixed live progress panel while it runs. It reports captured/failed reports, discovered fixtures and clubs, queue depth, elapsed time, current fixture and retry attempt, and the latest completed result. **Stop & save** ends discovery after the current request attempt and offers the same single partial-bundle download used at normal completion; the manifest marks the run as user-stopped and records elapsed time and the remaining queue.
+
+Each match-report request now has a 15-second hard timeout using `AbortController`. A timed-out request enters the existing bounded three-attempt retry/backoff path instead of leaving the entire sequential crawl waiting indefinitely.
