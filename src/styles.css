@@ -217,3 +217,7 @@ th { color: #44546f; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .manager-lab-filters { display:grid; grid-template-columns:repeat(3,minmax(170px,1fr)); gap:10px; align-items:end; }
 .manager-lab-filters label { min-width:0; }
 @media (max-width:900px) { .manager-lab-filters { grid-template-columns:1fr; } }
+
+.manager-lab-matrix td { vertical-align:top; min-width:150px; }
+.manager-lab-matrix td strong,.manager-lab-matrix td small { display:block; }
+.manager-lab-matrix td small { margin-top:4px; color:#5f6f8e; line-height:1.45; font-weight:700; }

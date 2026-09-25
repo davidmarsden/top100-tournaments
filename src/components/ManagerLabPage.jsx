@@ -105,6 +105,30 @@ export default function ManagerLabPage() {
       .sort((a, b) => b.played - a.played || b.ppg - a.ppg);
   }, [rows]);
 
+  const leagueRows = matches.filter((row) => row.matchContext === 'League');
+  const mentalityMatrix = useMemo(() => {
+    const bands = ['Stronger opponent XI', 'Similar XI strength', 'Weaker opponent XI'];
+    const mentalities = ['Attacking', 'Normal', 'Defensive'];
+    return bands.map((band) => ({
+      band,
+      cells: mentalities.map((mentality) => {
+        const sample = leagueRows.filter((match) =>
+          strengthBand(match) === band && (tacticValue(match, 'mentality') || 'Unknown') === mentality
+        );
+        const samplePoints = sample.reduce((sum, match) => sum + resultPoints(match.result), 0);
+        const sampleGf = sample.reduce((sum, match) => sum + (Number(match.goalsFor) || 0), 0);
+        const sampleGa = sample.reduce((sum, match) => sum + (Number(match.goalsAgainst) || 0), 0);
+        return {
+          mentality,
+          played: sample.length,
+          ppg: sample.length ? samplePoints / sample.length : null,
+          gdPerGame: sample.length ? (sampleGf - sampleGa) / sample.length : null,
+          xiDifference: avg(sample, 'xiRatingDifference'),
+        };
+      }),
+    }));
+  }, [matches]);
+
   return <main className="app-shell manager-lab">
     <section className="hero">
       <div className="hero-row"><div>
@@ -136,6 +160,14 @@ export default function ManagerLabPage() {
           <article><span>Shots</span><strong>{avg(rows, 'shots')?.toFixed(1) || '—'}</strong><small>{avg(rows, 'shotsOnTarget')?.toFixed(1) || '—'} on target</small></article>
           <article><span>Starting XI</span><strong>{avg(rows, 'ourXiRating')?.toFixed(1) || '—'}</strong><small>{avg(rows, 'xiRatingDifference') === null ? 'strength difference unavailable' : `${avg(rows, 'xiRatingDifference') >= 0 ? '+' : ''}${avg(rows, 'xiRatingDifference').toFixed(1)} vs opponents`}</small></article>
         </div>
+      </section>
+
+      <section className="card">
+        <h2>Strength × mentality</h2>
+        <p className="muted">Division 1 only. This separates the effect of opponent XI strength from the opening mentality. Each cell shows matches played, PPG, GD/game and the average XI rating gap.</p>
+        <div className="table-wrap"><table className="manager-lab-table manager-lab-matrix"><thead><tr><th>Opponent XI</th><th>Attacking</th><th>Normal</th><th>Defensive</th></tr></thead><tbody>
+          {mentalityMatrix.map((row) => <tr key={row.band}><td><strong>{row.band}</strong></td>{row.cells.map((cell) => <td key={cell.mentality}>{cell.played ? <><strong>{cell.ppg.toFixed(2)} PPG</strong><small>{cell.played} MP · {cell.gdPerGame >= 0 ? '+' : ''}{cell.gdPerGame.toFixed(2)} GD/g<br />Δ XI {cell.xiDifference >= 0 ? '+' : ''}{cell.xiDifference.toFixed(1)}</small></> : <span className="muted">No matches</span>}</td>)}</tr>)}
+        </tbody></table></div>
       </section>
 
       <section className="card">
