@@ -5,7 +5,9 @@ const origin='https://tournaments.smtop100.blog';
 const load=(id,src,onerror)=>{if(document.getElementById(id)){alert('Top 100 Sync helper is already loading.');return false;}const script=document.createElement('script');script.id=id;script.src=src+(src.includes('?')?'&':'?')+'v='+Date.now();script.async=true;script.onload=()=>script.remove();script.onerror=()=>{script.remove();if(onerror)onerror();};(document.head||document.documentElement).appendChild(script);return true;};
 const pending=window.__top100SmRouterWindow;
 const closePending=()=>{if(pending){try{pending.close();}catch{}}if(window.__top100SmRouterWindow===pending)delete window.__top100SmRouterWindow;};
+let menuCleanup=null;
 const runSync=()=>{
+if(menuCleanup){window.removeEventListener('pagehide',menuCleanup);menuCleanup=null;}
 const session=(crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
 const win=pending;
 if(!win||win.closed){closePending();alert('Please allow pop-ups for Soccer Manager, then run Top 100 Sync again.');return;}
@@ -39,6 +41,8 @@ if(existingMenu){
 }
 const menu=document.createElement('div');
 menu.__top100PendingWindow=pending;
+menuCleanup=()=>{const owned=menu.__top100PendingWindow;if(owned){try{owned.close();}catch{}}};
+window.addEventListener('pagehide',menuCleanup,{once:true});
 menu.id='top100-sm-sync-menu';
 menu.setAttribute('role','dialog');
 menu.setAttribute('aria-label','Top 100 Sync');
