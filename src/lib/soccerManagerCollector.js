@@ -30,6 +30,9 @@ export function isAllowedSoccerManagerOrigin(origin) {
 export function collectorBookmarklet() {
   const code = `(()=>{try{
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
+const traceScript='https://tournaments.smtop100.blog/sm-replay-network-trace.js';
+if(window.__top100ReplayTraceStop){if(confirm('Download the replay network trace now?'))window.__top100ReplayTraceStop();return;}
+if(!window.liveMatchXML&&confirm('Arm replay network trace? After this, open a completed match.')){if(document.getElementById('top100-sm-replay-network-trace-script')){alert('Replay network trace is already loading.');return;}const trace=document.createElement('script');trace.id='top100-sm-replay-network-trace-script';trace.src=traceScript+'?v='+Date.now();trace.onload=()=>trace.remove();trace.onerror=()=>{trace.remove();alert('Could not load replay network trace helper.');};(document.head||document.documentElement).appendChild(trace);return;}
 const session=(crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
 const win=window.open('https://tournaments.smtop100.blog/admin/soccer-manager-sync?collectorSession='+encodeURIComponent(session),'top100-sm-sync');
 if(!win){alert('Please allow pop-ups for Soccer Manager, then try Top 100 Sync again.');return;}
