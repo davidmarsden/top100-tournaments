@@ -34,11 +34,12 @@ const id='top100-sm-sync-router-script';
 if(document.getElementById(id)){alert('Top 100 Sync is already loading.');return;}
 const pending=window.open('about:blank','top100-sm-sync-reserved-'+Date.now());
 window.__top100SmRouterWindow=pending||null;
+window.__top100SmRouterExecuted=null;
 const script=document.createElement('script');
 script.id=id;
 script.src='https://tournaments.smtop100.blog/sm-sync-router.js?v='+Date.now();
 script.async=true;
-script.onload=()=>script.remove();
+script.onload=()=>{script.remove();setTimeout(()=>{if(!window.__top100SmRouterExecuted){const pending=window.__top100SmRouterWindow;if(pending){try{pending.close();}catch{}delete window.__top100SmRouterWindow;}alert('Top 100 diagnostic: router file loaded, but its code did not execute.');}},0);};
 script.onerror=()=>{script.remove();const pending=window.__top100SmRouterWindow;if(pending){try{pending.close();}catch{}delete window.__top100SmRouterWindow;}alert('Top 100 Sync could not load its router script. Soccer Manager may be blocking external scripts.');};
 (document.head||document.documentElement).appendChild(script);
 }catch(err){alert('Top 100 Sync failed: '+(err&&err.message?err.message:String(err)));}})();`;
