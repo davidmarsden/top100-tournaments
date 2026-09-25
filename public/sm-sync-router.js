@@ -4,8 +4,8 @@ const origin='https://tournaments.smtop100.blog';
 const load=(id,src,onerror)=>{if(document.getElementById(id)){alert('Top 100 Sync helper is already loading.');return false;}const script=document.createElement('script');script.id=id;script.src=src+(src.includes('?')?'&':'?')+'v='+Date.now();script.async=true;script.onload=()=>script.remove();script.onerror=()=>{script.remove();if(onerror)onerror();};(document.head||document.documentElement).appendChild(script);return true;};
 const pending=window.__top100SmRouterWindow;
 const closePending=()=>{if(pending){try{pending.close();}catch{}}if(window.__top100SmRouterWindow===pending)delete window.__top100SmRouterWindow;};
-if(window.__top100ReplayTraceStop){closePending();if(confirm('Download the replay network trace now?'))window.__top100ReplayTraceStop();return;}
-if(!window.liveMatchXML&&confirm('Arm replay network trace? After this, open a completed match.')){closePending();load('top100-sm-replay-network-trace-script',origin+'/sm-replay-network-trace.js',()=>alert('Could not load replay network trace helper.'));return;}
+if(window.__top100ReplayTraceStop){closePending();if(confirm('Replay network trace is armed. Download it now?'))window.__top100ReplayTraceStop();return;}
+if(confirm('Trace a completed match?\n\nOK = arm replay network trace\nCancel = run normal Top 100 Sync')){closePending();load('top100-sm-replay-network-trace-script',origin+'/sm-replay-network-trace.js',()=>alert('Could not load replay network trace helper.'));return;}
 const session=(crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
 const win=pending;
 if(!win||win.closed){closePending();alert('Please allow pop-ups for Soccer Manager, then run Top 100 Sync again.');return;}
