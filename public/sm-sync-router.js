@@ -1,5 +1,5 @@
 (()=>{try{
-window.__top100SmRouterExecuted={at:Date.now(),version:'schedule-response-193'};
+window.__top100SmRouterExecuted={at:Date.now(),version:'schedule-network-trace-194'};
 if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||location.hostname.endsWith('.soccermanager.com'))){alert('Open Soccer Manager first, then run Top 100 Sync.');return;}
 const origin='https://tournaments.smtop100.blog';
 const load=(id,src,onerror)=>{if(document.getElementById(id)){alert('Top 100 Sync helper is already loading.');return false;}const script=document.createElement('script');script.id=id;script.src=src+(src.includes('?')?'&':'?')+'v='+Date.now();script.async=true;script.onload=()=>script.remove();script.onerror=()=>{script.remove();if(onerror)onerror();};(document.head||document.documentElement).appendChild(script);return true;};
@@ -48,15 +48,19 @@ menu.setAttribute('role','dialog');
 menu.setAttribute('aria-label','Top 100 Sync');
 menu.style.cssText='position:fixed;z-index:2147483647;left:50%;top:18px;transform:translateX(-50%);width:min(92vw,390px);box-sizing:border-box;padding:16px;border-radius:12px;background:#111;color:#fff;font:16px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.45);text-align:left';
 const title=document.createElement('div');title.textContent='Top 100 Sync';title.style.cssText='font-size:19px;font-weight:700;margin-bottom:6px';menu.appendChild(title);
-const note=document.createElement('div');note.textContent=window.__top100ReplayTraceStop?'Replay network trace is armed.':'What would you like to do?';note.style.cssText='margin-bottom:12px;color:#ddd';menu.appendChild(note);
+const note=document.createElement('div');note.textContent=window.__top100ReplayTraceStop?'Replay network trace is armed.':window.__top100ScheduleTraceStop?'Schedule network trace is armed.':'What would you like to do?';note.style.cssText='margin-bottom:12px;color:#ddd';menu.appendChild(note);
 const buttons=document.createElement('div');buttons.style.cssText='display:flex;gap:8px;flex-wrap:wrap';menu.appendChild(buttons);
 const button=(label,action,primary=false)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.style.cssText='border:0;border-radius:8px;padding:10px 12px;font:inherit;font-weight:650;cursor:pointer;background:'+(primary?'#fff':'#333')+';color:'+(primary?'#111':'#fff');b.onclick=()=>{menu.remove();action();};buttons.appendChild(b);};
 if(window.__top100ReplayTraceStop){
  button('Download trace',()=>{closePending();window.__top100ReplayTraceStop();},true);
  button('Close',()=>closePending());
+}else if(window.__top100ScheduleTraceStop){
+ button('Download schedule trace',()=>{closePending();window.__top100ScheduleTraceStop();},true);
+ button('Close',()=>closePending());
 }else{
  button('Trace completed match',()=>{closePending();load('top100-sm-replay-network-trace-script',origin+'/sm-replay-network-trace.js',()=>alert('Could not load replay network trace helper.'));},true);
- button('Capture schedule response',()=>{closePending();load('top100-sm-schedule-response-script',origin+'/sm-schedule-response.js',()=>alert('Could not load schedule response helper.'));},true);
+ button('Trace schedule data',()=>{closePending();load('top100-sm-schedule-network-trace-script',origin+'/sm-schedule-network-trace.js',()=>alert('Could not load schedule trace helper.'));},true);
+ button('Capture schedule response',()=>{closePending();load('top100-sm-schedule-response-script',origin+'/sm-schedule-response.js',()=>alert('Could not load schedule response helper.'));});
  button('Discover schedule results',()=>{closePending();load('top100-sm-schedule-discovery-script',origin+'/sm-schedule-discovery.js',()=>alert('Could not load schedule discovery helper.'));});
  button('Backfill Hamburg season',()=>{closePending();load('top100-sm-hamburg-season-backfill-script',origin+'/sm-hamburg-season-backfill.js',()=>alert('Could not load Hamburg season backfill helper.'));});
  button('Normal sync',()=>runSync());
