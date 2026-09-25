@@ -4,6 +4,7 @@ import AuthSessionBridge from './components/AuthSessionBridge.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
 import ManagerEntry from './components/ManagerEntry.jsx';
 import ManagerSquadDashboard from './components/ManagerSquadDashboard.jsx';
+import ManagerLabPage from './components/ManagerLabPage.jsx';
 import PublicVotingResults from './components/PublicVotingResults.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
 import SoccerManagerSyncPage from './components/SoccerManagerSyncPage.jsx';
@@ -59,6 +60,10 @@ function isResultSubmissionsPath() {
 
 function isSoccerManagerSyncPath() {
   return /^\/admin\/soccer-manager-sync\/?$/.test(window.location.pathname);
+}
+
+function isManagerLabPath() {
+  return /^\/admin\/manager-lab\/?$/.test(window.location.pathname);
 }
 
 function isAuthSessionBridgePath() {
@@ -130,6 +135,7 @@ export default function App() {
   if (isManagerAccountsPath()) return <AdminGate requireGlobal><ManagerAccountsPage /></AdminGate>;
   if (isResultSubmissionsPath()) return <AdminGate requireGlobal><ResultSubmissionsPage /></AdminGate>;
   if (isSoccerManagerSyncPath()) return <AdminGate requireGlobal><SoccerManagerSyncPage /></AdminGate>;
+  if (isManagerLabPath()) return <AdminGate requireGlobal><ManagerLabPage /></AdminGate>;
   if (!isAdminPath()) return <Top100BrandShell><TournamentRouter /></Top100BrandShell>;
   return <AdminGate><TournamentProvider><AdminDashboard /></TournamentProvider></AdminGate>;
 }
