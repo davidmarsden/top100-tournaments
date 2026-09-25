@@ -3,7 +3,7 @@ if(location.protocol!=='https:'||!(location.hostname==='soccermanager.com'||loca
 if(window.__top100HamburgBackfillRunning){alert('Hamburger SV season backfill is already running.');return;}
 const TARGET_CLUB_ID='48506708',TARGET_NAME='Hamburger SV',MAX_FIXTURES=80,DELAY_MS=180;
 const safeUrl=(raw)=>{try{const u=new URL(raw,location.href);return u.origin===location.origin?u:null;}catch{return null;}};
-const number=(v)=>{const n=Number(v);return Number.isFinite(n)?n:null;};
+const number=(v)=>{if(v===null||v===undefined||String(v).trim()==='')return null;const n=Number(v);return Number.isFinite(n)?n:null;};
 const text=(v)=>v===null||v===undefined?null:(String(v).trim()||null);
 const played=(row)=>String(row?.Played??row?.played??'')==='1'||number(row?.HomeScore??row?.homeScore)!==null&&number(row?.AwayScore??row?.awayScore)!==null&&Boolean(row?.FixtureUnixTime??row?.fixtureUnixTime);
 const fixtureId=(row)=>text(row?.FixtureId??row?.fixtureID??row?.fixtureId);
