@@ -18,8 +18,18 @@ window.__top100ScheduleTraceRunning=true;
  const response=await fetch(scheduleUrl.href,{credentials:'include',cache:'no-store'});
  if(!response.ok)throw new Error('HTTP '+response.status);
  const contentType=(response.headers.get('content-type')||'').toLowerCase();
- const body=await response.text();
- if(body.length>2000000)throw new Error('Schedule response exceeded 2,000,000 characters.');
+ const MAX_BYTES=2000000;
+ const reader=response.body&&response.body.getReader?response.body.getReader():null;
+ let body;
+ if(reader){
+   const decoder=new TextDecoder(),parts=[];let bytes=0;
+   try{
+     while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>MAX_BYTES){try{await reader.cancel();}catch{}throw new Error('Schedule response exceeded 2,000,000 bytes.');}parts.push(decoder.decode(value,{stream:true}));}
+     parts.push(decoder.decode());body=parts.join('');
+   }finally{try{reader.releaseLock();}catch{}}
+ }else{
+   const buffer=await response.arrayBuffer();if(buffer.byteLength>MAX_BYTES)throw new Error('Schedule response exceeded 2,000,000 bytes.');body=new TextDecoder().decode(buffer);
+ }
  let parsed=null,parseError=null;
  try{parsed=JSON.parse(body);}catch(err){parseError=err&&err.message?err.message:'Not JSON';}
  const data={kind:'soccerManagerScheduleResponse',version:1,capturedAt:new Date().toISOString(),sourcePage:location.origin+location.pathname,setupId,clubId,request:{path:scheduleUrl.pathname,action:scheduleUrl.searchParams.get('action'),getdata:scheduleUrl.searchParams.get('getdata'),gettemplate:scheduleUrl.searchParams.get('gettemplate')},response:{contentType,parseError,data:parsed,text:parsed===null?body:null}};
