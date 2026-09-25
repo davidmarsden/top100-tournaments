@@ -32,7 +32,7 @@ function playerRows(raw, side) {
   const feet = sideValue(raw, side, '_playerFoot');
   const positions = sideValue(raw, side, '_playerPos');
   const positionDescriptions = sideValue(raw, side, '_playerPosDesc');
-  const ratings = sideValue(raw, side, '_playerrating');
+  const ratings = sideValue(raw, side, '_playerRating') ?? sideValue(raw, side, '_playerrating');
   const overallRatings = raw?.[side === 'h' ? 'HomePlayerRating' : 'AwayPlayerRating'];
   const matchRatings = raw?.[`${side}_rating`];
   return ids.map((id, index) => ({
