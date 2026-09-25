@@ -13,7 +13,9 @@ function number(value) {
 }
 
 function valueAt(value, index) {
-  return Array.isArray(value) ? value[index] : null;
+  if (Array.isArray(value)) return value[index];
+  if (value && typeof value === 'object') return value[index] ?? value[String(index)] ?? null;
+  return null;
 }
 
 function sideValue(raw, side, suffix) {
@@ -30,7 +32,7 @@ function playerRows(raw, side) {
   const feet = sideValue(raw, side, '_playerFoot');
   const positions = sideValue(raw, side, '_playerPos');
   const positionDescriptions = sideValue(raw, side, '_playerPosDesc');
-  const ratings = sideValue(raw, side, '_playerrating');
+  const ratings = sideValue(raw, side, '_playerRating') ?? sideValue(raw, side, '_playerrating');
   const overallRatings = raw?.[side === 'h' ? 'HomePlayerRating' : 'AwayPlayerRating'];
   const matchRatings = raw?.[`${side}_rating`];
   return ids.map((id, index) => ({
