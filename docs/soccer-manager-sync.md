@@ -358,3 +358,16 @@ The first captured `scheduledraw&getdata=0&gettemplate=1` response proved to be 
 Arm the trace, then use Soccer Manager's Schedule/Results/Friendlies controls so the application itself issues its normal requests. Run Top 100 Sync again and choose **Download schedule trace**. The helper records only same-origin `club-ajax-mobile.php?action=scheduledraw` requests, their non-sensitive query parameters, status/content type and bounded response body (2 MB per response, 40 events maximum). Fetch responses are read from clones so Soccer Manager keeps its original response; XHR capture observes the completed response without changing it. The original fetch/XHR methods are restored before download.
 
 This remains diagnostic-only. Its purpose is to establish the real data-request contract and schema before the batch importer relies on it.
+
+
+## v0.14 schedule runtime inspection
+
+A live schedule trace produced zero `scheduledraw` events after switching the visible Schedule controls, so the next diagnostic inspects the already-loaded Soccer Manager runtime instead of assuming another network request.
+
+Top 100 Sync now offers **Inspect schedule runtime**. It downloads:
+- the source of known schedule functions when they are exposed on `window`, including `MENU_clubScheduleDraw`;
+- same-origin script URLs currently loaded by the page;
+- bounded inline script blocks that mention `MENU_clubScheduleDraw` or `scheduledraw`;
+- same-origin Resource Timing entries whose URLs mention schedule/club/multi/fixture/result.
+
+The diagnostic does not fetch script source, alter Soccer Manager functions, or persist anything. It is intended to identify the exact code path/data source used by the Schedule UI so the authoritative fixture importer can be based on observed behavior rather than guessed endpoint parameters.
