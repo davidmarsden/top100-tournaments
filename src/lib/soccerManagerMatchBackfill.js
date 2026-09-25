@@ -32,6 +32,8 @@ function playerRows(raw, side) {
   const positions = sideValue(raw, side, '_playerposition');
   const positionDescriptions = sideValue(raw, side, '_playerpositiondescription');
   const ratings = sideValue(raw, side, '_playerrating');
+  const overallRatings = raw?.[side === 'h' ? 'HomePlayerRating' : 'AwayPlayerRating'];
+  const matchRatings = raw?.[`${side}_rating`];
   return ids.map((id, index) => ({
     playerId: text(id),
     playerDataId: text(valueAt(dataIds, index)),
@@ -42,6 +44,8 @@ function playerRows(raw, side) {
     position: text(valueAt(positions, index)),
     positionDescription: text(valueAt(positionDescriptions, index)),
     rating: number(valueAt(ratings, index)),
+    overallRating: number(overallRatings?.[index] ?? valueAt(ratings, index)),
+    matchRating: number(valueAt(matchRatings, index)),
   })).filter((row) => row.playerId);
 }
 
@@ -112,22 +116,22 @@ function tacticValue(raw, side, names) {
 
 function tactics(raw, side) {
   const fields = {
-    formation: ['formation', 'Formation'],
-    mentality: ['mentality', 'Mentality'],
-    passing: ['passing', 'Passing'],
-    attackingStyle: ['attackingstyle', 'attackingStyle', 'AttackingStyle'],
-    tempo: ['tempo', 'Tempo'],
-    pressing: ['pressing', 'Pressing'],
+    formation: ['formationNames', 'formation', 'Formation'],
+    mentality: ['attackingStyleName', 'mentality', 'Mentality'],
+    passing: ['passingStyleName', 'passing', 'Passing'],
+    attackingStyle: ['focusPassingName', 'attackingstyle', 'attackingStyle', 'AttackingStyle'],
+    tempo: ['tempoName', 'tempo', 'Tempo'],
+    pressing: ['pressingName', 'pressing', 'Pressing'],
     counterAttack: ['counterattack', 'counterAttack', 'CounterAttack'],
     menBehindBall: ['menbehindball', 'menBehindBall', 'MenBehindBall'],
     tightMarking: ['tightmarking', 'tightMarking', 'TightMarking'],
     offsideTrap: ['offside', 'offsidetrap', 'offsideTrap', 'OffsideTrap'],
     width: ['width', 'Width'],
     creativity: ['creativity', 'Creativity'],
-    aggression: ['aggression', 'Aggression'],
+    aggression: ['aggressionName', 'aggression', 'Aggression'],
     shooting: ['shooting', 'Shooting'],
     crossing: ['crossing', 'Crossing'],
-    defensiveLine: ['defensiveline', 'defensiveLine', 'DefensiveLine'],
+    defensiveLine: ['backlineName', 'defensiveline', 'defensiveLine', 'DefensiveLine'],
     sweeperKeeper: ['sweeperkeeper', 'sweeperKeeper', 'SweeperKeeper'],
   };
   const instructions = {};
@@ -137,6 +141,9 @@ function tactics(raw, side) {
   }
   return {
     instructions,
+    actionTimeline: tacticValue(raw, side, ['tacticActions']),
+    formationIds: tacticValue(raw, side, ['formationId']),
+    formationNames: tacticValue(raw, side, ['formationNames']),
     playerRoles: tacticValue(raw, side, ['PlayerRole']),
     arrows: tacticValue(raw, side, ['ArrowData']),
     captainSlot: tacticValue(raw, side, ['captain']),
@@ -186,7 +193,13 @@ function normalizeReport(report, setupId, capturedAt) {
       injuries: raw?.Injuries ?? null,
       commentary: Array.isArray(raw?.Commentary) ? raw.Commentary : [],
       referee: { name: text(raw?.RefName), country: text(raw?.RefCountryName) },
-      attendance: number(raw?.Attendance),
+      attendance: number(String(raw?.Attendance ?? '').replace(/,/g, '')),
+      fullFidelity: {
+        tacticActions: { home: raw?.h_tacticActions ?? raw?.home_TacticActions ?? null, away: raw?.a_tacticActions ?? raw?.away_TacticActions ?? null },
+        formationNames: { home: raw?.h_formationNames ?? null, away: raw?.a_formationNames ?? null },
+        playerMatchRatings: { home: raw?.h_rating ?? null, away: raw?.a_rating ?? null },
+        playerOverallRatings: { home: raw?.HomePlayerRating ?? raw?.h_playerRating ?? null, away: raw?.AwayPlayerRating ?? raw?.a_playerRating ?? null },
+      },
     },
   };
 }
