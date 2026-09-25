@@ -1,4 +1,5 @@
 const HAMBURG_BACKFILL_KIND = 'hamburgSeasonMatchBackfill';
+const WORLD_BACKFILL_KIND = 'worldSeasonMatchBackfill';
 
 function text(value) {
   if (value === null || value === undefined) return null;
@@ -207,11 +208,11 @@ function normalizeReport(report, setupId, capturedAt) {
 }
 
 export function isHamburgSeasonBackfill(value) {
-  return value?.kind === HAMBURG_BACKFILL_KIND && Array.isArray(value?.reports);
+  return [HAMBURG_BACKFILL_KIND, WORLD_BACKFILL_KIND].includes(value?.kind) && Array.isArray(value?.reports);
 }
 
 export function normalizeHamburgSeasonBackfill(value, options = {}) {
-  if (!isHamburgSeasonBackfill(value)) throw new Error('This is not a Hamburger SV season backfill file.');
+  if (!isHamburgSeasonBackfill(value)) throw new Error('This is not a supported Soccer Manager season backfill file.');
   const nonZeroId = (candidate) => { const id = text(candidate); return id && id !== '0' ? id : null; };
   const setupId = nonZeroId(value?.setupId) || nonZeroId(options.setupId);
   if (!setupId || !/^\d+$/.test(setupId)) {
