@@ -382,3 +382,14 @@ Runtime inspection established that Soccer Manager's own `MENU_clubScheduleDraw`
 The version 3 export remains compatible with the existing `hamburgSeasonMatchBackfill` importer while adding a reconciliation block containing the authoritative schedule source, completed fixture count, compact schedule rows, failed fetches and explicit missing fixture ids. The old graph-discovery fetches and non-Hamburg bridge reports are removed.
 
 This makes Soccer Manager's own schedule the fixture index and each match report the authoritative match payload. Import remains a separate review/staging step; this browser helper still writes nothing to Supabase.
+
+
+## v0.16 full-fidelity season match capture
+
+The authoritative Hamburger SV Schedule backfill now treats each completed match report as the canonical full-fidelity source payload. The Schedule remains the fixture index, including scheduled friendlies that Soccer Manager already places in the regular club schedule; the separate Friendly scheduler does not need to be crawled merely to rediscover those completed fixtures.
+
+Version 4 keeps the raw match-report JSON in the downloaded review bundle, retries each report up to three times with bounded backoff, disables cache reuse, and caps each response at 2 MB. A transient request failure therefore no longer silently leaves an otherwise complete season one match short; persistent failures remain explicit in the reconciliation summary.
+
+The importer now preserves the observed tactical timeline arrays (including formation names/ids and tactic-action arrays) and distinguishes Soccer Manager overall player ratings from match-performance ratings. The Aston Villa fixture 280690206 is the acceptance case for tactical changes: its report contains multiple tactical states rather than duplicate snapshots.
+
+Raw reports remain download/review material only. Staging still normalizes the useful match-engine fields and does not persist the raw authenticated response wholesale.
