@@ -85,7 +85,7 @@ const ROLE_FAMILIES = {
   defender: new Set(['0','3','4','5']),
   fullback: new Set(['0','6','7']),
   midfield: new Set(['0','8','9','10','11','12']),
-  attacking: new Set(['0','13','14','15','16']),
+  attacking: new Set(['0','13','14','15','16','18']),
   forward: new Set(['0','17','19','20','21']),
 };
 
@@ -756,14 +756,16 @@ export default function ManagerLabPage() {
         })),
       })),
       playerRoleDecoder: {
-        replicatedFamily: replicatedFamilyRoleCodes,
+        replicatedFamily: {
+          codes: replicatedFamilyRoleCodes,
+          integrityIssues: replicatedFamilyRoleIntegrity,
+        },
         selectedClub: {
           sourceClubId: clubId,
           club: selectedClub?.name ?? null,
           formation: '4-2-3-1 B',
           codes: selectedClubRoleCodes,
           fingerprints: selectedClubRoleFingerprints,
-          integrityIssues: replicatedFamilyRoleIntegrity,
         },
       },
       instructionEffects: instructionEffects.map((effect) => ({
