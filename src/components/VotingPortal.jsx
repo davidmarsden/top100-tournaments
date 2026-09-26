@@ -208,14 +208,14 @@ export default function VotingPortal() {
       const resultsAvailable = isAdmin || vote.results_visibility === 'live' || manualReleased || (vote.results_visibility === 'after_close' && (vote.status === 'closed' || deadlinePassed));
       const canFinalise = isAdmin && !finalResult && (vote.status === 'closed' || (vote.status === 'open' && deadlinePassed));
       const canRelease = isAdmin && vote.results_visibility === 'manual_release' && !vote.results_released_at && Boolean(finalResult) && (vote.status === 'closed' || deadlinePassed);
-      return <section className="card" key={vote.id}>
+      return <section className={`card voting-card voting-card--${vote.status}`} key={vote.id}>
         <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : governanceLabel(vote.governance_kind)} · {vote.status}</p>
         <h2>{vote.title}</h2>
-        {vote.description && <p>{vote.description}</p>}
-        <p className="muted">Opens: {formatDate(vote.opens_at)} · Closes: {formatDate(vote.closes_at)}</p>
-        {vote.event_type === 'poll' && <p className="muted">Quorum: {vote.quorum_percent || 0}% · Decision: {vote.decision_rule}{vote.decision_rule !== 'plurality' ? ` at ${vote.threshold_percent}%` : ''} · Tie: {(vote.tie_policy || 'no_change').replaceAll('_', ' ')}</p>}
+        {vote.description && <div className="voting-card__proposal"><p>{vote.description}</p></div>}
+        <div className="voting-card__meta"><span><strong>Opens</strong> {formatDate(vote.opens_at)}</span><span><strong>Closes</strong> {formatDate(vote.closes_at)}</span></div>
+        {vote.event_type === 'poll' && <p className="voting-card__rules"><strong>Voting rules:</strong> quorum {vote.quorum_percent || 0}% · {vote.decision_rule}{vote.decision_rule !== 'plurality' ? ` at ${vote.threshold_percent}%` : ''} · tie: {(vote.tie_policy || 'no_change').replaceAll('_', ' ')}</p>}
         {existingBallot && <p><strong>Your ballot is saved.</strong> {canVote ? 'You may change it before the deadline.' : ''}</p>}
-        {eventQuestions.map((question) => <fieldset key={question.id} disabled={!canVote} style={{ border: 0, padding: 0, margin: '1.25rem 0' }}><legend><strong>{question.title}</strong>{question.required ? ' *' : ''}</legend>{question.description && <p className="muted">{question.description}</p>}{(optionsByQuestion.get(question.id) || []).map((option) => <label key={option.id} style={{ display: 'block', margin: '.5rem 0' }}><input type="radio" name={`question-${question.id}`} value={option.id} checked={String(answers[question.id] || '') === String(option.id)} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option.id }))} /> {option.label}</label>)}</fieldset>)}
+        {eventQuestions.map((question) => <fieldset className="voting-question" key={question.id} disabled={!canVote}><legend>{question.title}{question.required ? <span className="voting-required"> Required</span> : null}</legend>{question.description && <p className="muted">{question.description}</p>}<div className="voting-options">{(optionsByQuestion.get(question.id) || []).map((option) => <label className="voting-option" key={option.id}><input type="radio" name={`question-${question.id}`} value={option.id} checked={String(answers[question.id] || '') === String(option.id)} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option.id }))} /><span>{option.label}</span></label>)}</div></fieldset>)}
         {canVote && <button type="button" onClick={() => submitBallot(vote.id)}>{existingBallot ? 'Update vote' : 'Submit vote'}</button>}
         {isAdmin && vote.status === 'draft' && <button type="button" className="secondary" onClick={() => openEvent(vote.id)}>Open vote</button>}
         {isAdmin && vote.status === 'open' && !deadlinePassed && <button type="button" className="secondary" onClick={() => closeEvent(vote.id)}>Close vote now</button>}
