@@ -331,9 +331,10 @@ export default function ManagerLabPage() {
       const key = tacticSignature(match);
       const group = map.get(key) || {
         key, sample: match, played: 0, points: 0, gf: 0, ga: 0, xi: [], clubs: new Set(),
-        home: 0, away: 0,
+        home: 0, away: 0, matches: [],
       };
       group.played += 1;
+      group.matches.push(match);
       group.points += resultPoints(match.result);
       group.gf += Number(match.goalsFor) || 0;
       group.ga += Number(match.goalsAgainst) || 0;
@@ -351,8 +352,9 @@ export default function ManagerLabPage() {
       xiDifference: group.xi.length ? group.xi.reduce((a,b) => a+b, 0) / group.xi.length : null,
       evidence: group.played >= 12 && group.clubs.size >= 3 ? 'Broad' :
         group.played >= 6 && group.clubs.size >= 2 ? 'Developing' : 'Exploratory',
+      ...adjustedMetrics(group.matches, worldStrengthBaseline),
     })).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || b.ppg - a.ppg);
-  }, [worldFormulaMatches, worldFormulaStrength]);
+  }, [worldFormulaMatches, worldFormulaStrength, worldStrengthBaseline]);
 
   const worldFamilyGroups = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
@@ -543,12 +545,13 @@ export default function ManagerLabPage() {
             <label>Opponent XI<select value={worldFormulaStrength} onChange={(event) => setWorldFormulaStrength(event.target.value)}>{strengthBands.map((item) => <option key={item}>{item}</option>)}</select></label>
           </div>
           <p className="muted">{worldFormulaGroups.reduce((sum, group) => sum + group.played, 0)} team-match observations in this strength band. Evidence requires both repetition and use by multiple clubs; it is not a claim that a tactic causes the result.</p>
-          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>Clubs</th><th>Evidence</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>H/A</th></tr></thead><tbody>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>Clubs</th><th>Evidence</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>Adj PPG</th><th>H/A</th></tr></thead><tbody>
             {worldFormulaGroups.slice(0, 20).map((group) => <tr key={group.key}>
               <td><strong>{formulaText(group.sample)}</strong></td>
               <td>{group.played}</td><td>{group.clubCount}</td><td>{group.evidence}</td>
               <td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td>
               <td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td>
+              <td>{group.adjustedPpg === null ? '—' : `${group.adjustedPpg >= 0 ? '+' : ''}${group.adjustedPpg.toFixed(2)}`}</td>
               <td>{group.home}/{group.away}</td>
             </tr>)}
           </tbody></table></div>
