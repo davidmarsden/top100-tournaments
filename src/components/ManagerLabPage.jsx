@@ -38,6 +38,13 @@ function tacticValue(match, key) {
     tempo: 'tempo',
     pressing: 'pressing',
     defensiveLine: 'defensiveLine',
+    width: 'width',
+    aggression: 'aggression',
+    creativity: 'creativity',
+    counterAttack: 'counterAttack',
+    tightMarking: 'tightMarking',
+    menBehindBall: 'menBehindBall',
+    sweeperKeeper: 'sweeperKeeper',
   };
   const instructionKey = instructionKeys[key];
   return firstValue(instructionKey ? tactics.instructions?.[instructionKey] : tactics[key]);
@@ -62,6 +69,12 @@ export default function ManagerLabPage() {
   const [tempo, setTempo] = useState('All');
   const [pressing, setPressing] = useState('All');
   const [defensiveLine, setDefensiveLine] = useState('All');
+  const [width, setWidth] = useState('All');
+  const [aggression, setAggression] = useState('All');
+  const [counterAttack, setCounterAttack] = useState('All');
+  const [tightMarking, setTightMarking] = useState('All');
+  const [menBehindBall, setMenBehindBall] = useState('All');
+  const [sweeperKeeper, setSweeperKeeper] = useState('All');
 
   useEffect(() => {
     let mounted = true;
@@ -97,6 +110,12 @@ export default function ManagerLabPage() {
       setTempo('All');
       setPressing('All');
       setDefensiveLine('All');
+      setWidth('All');
+      setAggression('All');
+      setCounterAttack('All');
+      setTightMarking('All');
+      setMenBehindBall('All');
+      setSweeperKeeper('All');
       setStatus('');
     })();
     return () => { mounted = false; };
@@ -120,6 +139,12 @@ export default function ManagerLabPage() {
   const tempos = tacticOptions('tempo');
   const pressings = tacticOptions('pressing');
   const defensiveLines = tacticOptions('defensiveLine');
+  const widths = tacticOptions('width');
+  const aggressions = tacticOptions('aggression');
+  const counterAttacks = tacticOptions('counterAttack');
+  const tightMarkings = tacticOptions('tightMarking');
+  const menBehindBalls = tacticOptions('menBehindBall');
+  const sweeperKeepers = tacticOptions('sweeperKeeper');
   const selectedClub = clubs.find((club) => club.sourceClubId === clubId);
   const rows = matches.filter((row) =>
     (competition === 'All' || row.competition === competition) &&
@@ -131,7 +156,13 @@ export default function ManagerLabPage() {
     (attackingStyle === 'All' || tacticValue(row, 'attackingStyle') === attackingStyle) &&
     (tempo === 'All' || tacticValue(row, 'tempo') === tempo) &&
     (pressing === 'All' || tacticValue(row, 'pressing') === pressing) &&
-    (defensiveLine === 'All' || tacticValue(row, 'defensiveLine') === defensiveLine)
+    (defensiveLine === 'All' || tacticValue(row, 'defensiveLine') === defensiveLine) &&
+    (width === 'All' || tacticValue(row, 'width') === width) &&
+    (aggression === 'All' || tacticValue(row, 'aggression') === aggression) &&
+    (counterAttack === 'All' || tacticValue(row, 'counterAttack') === counterAttack) &&
+    (tightMarking === 'All' || tacticValue(row, 'tightMarking') === tightMarking) &&
+    (menBehindBall === 'All' || tacticValue(row, 'menBehindBall') === menBehindBall) &&
+    (sweeperKeeper === 'All' || tacticValue(row, 'sweeperKeeper') === sweeperKeeper)
   );
   const wins = rows.filter((row) => row.result === 'W').length;
   const draws = rows.filter((row) => row.result === 'D').length;
@@ -158,7 +189,7 @@ export default function ManagerLabPage() {
       .sort((a, b) => b.played - a.played || b.ppg - a.ppg);
   }, [rows]);
 
-  const leagueRows = matches.filter((row) => row.matchContext === 'League');
+  const leagueRows = rows.filter((row) => row.matchContext === 'League');
   const mentalityMatrix = useMemo(() => {
     const bands = ['Stronger opponent XI', 'Similar XI strength', 'Weaker opponent XI'];
     const mentalities = ['Attacking', 'Normal', 'Defensive'];
@@ -180,7 +211,25 @@ export default function ManagerLabPage() {
         };
       }),
     }));
-  }, [matches]);
+  }, [rows]);
+
+  const tacticProfile = useMemo(() => {
+    const keys = [
+      ['Formation', 'formation'], ['Mentality', 'mentality'], ['Passing', 'passingStyle'],
+      ['Attacking style', 'attackingStyle'], ['Tempo', 'tempo'], ['Pressing', 'pressing'],
+      ['Defensive line', 'defensiveLine'], ['Width', 'width'], ['Aggression', 'aggression'],
+      ['Counter attack', 'counterAttack'], ['Tight marking', 'tightMarking'],
+      ['Men behind ball', 'menBehindBall'], ['Sweeper keeper', 'sweeperKeeper'],
+    ];
+    return keys.map(([label, key]) => {
+      const counts = new Map();
+      rows.forEach((match) => {
+        const value = tacticValue(match, key);
+        if (value !== null && value !== undefined && value !== '') counts.set(String(value), (counts.get(String(value)) || 0) + 1);
+      });
+      return { label, values: [...counts.entries()].sort((a, b) => b[1] - a[1]) };
+    }).filter((item) => item.values.length);
+  }, [rows]);
 
   return <main className="app-shell manager-lab">
     <section className="hero">
@@ -211,6 +260,12 @@ export default function ManagerLabPage() {
             <label>Tempo<select value={tempo} onChange={(event) => setTempo(event.target.value)}>{tempos.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Pressing<select value={pressing} onChange={(event) => setPressing(event.target.value)}>{pressings.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Defensive line<select value={defensiveLine} onChange={(event) => setDefensiveLine(event.target.value)}>{defensiveLines.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Width<select value={width} onChange={(event) => setWidth(event.target.value)}>{widths.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Aggression<select value={aggression} onChange={(event) => setAggression(event.target.value)}>{aggressions.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Counter attack<select value={counterAttack} onChange={(event) => setCounterAttack(event.target.value)}>{counterAttacks.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Tight marking<select value={tightMarking} onChange={(event) => setTightMarking(event.target.value)}>{tightMarkings.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Men behind ball<select value={menBehindBall} onChange={(event) => setMenBehindBall(event.target.value)}>{menBehindBalls.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Sweeper keeper<select value={sweeperKeeper} onChange={(event) => setSweeperKeeper(event.target.value)}>{sweeperKeepers.map((item) => <option key={item}>{item}</option>)}</select></label>
           </div>
         </div>
         <div className="manager-lab-kpis">
@@ -225,15 +280,23 @@ export default function ManagerLabPage() {
 
       <section className="card">
         <h2>Strength × mentality</h2>
-        <p className="muted">Division 1 only. This separates the effect of opponent XI strength from the opening mentality. Each cell shows matches played, PPG, GD/game and the average XI rating gap.</p>
+        <p className="muted">Division 1 matches within the active filters. This separates opponent XI strength from opening mentality; changing a tactical filter above now changes this matrix too. Each cell shows matches played, PPG, GD/game and the average XI rating gap.</p>
         <div className="table-wrap"><table className="manager-lab-table manager-lab-matrix"><thead><tr><th>Opponent XI</th><th>Attacking</th><th>Normal</th><th>Defensive</th></tr></thead><tbody>
           {mentalityMatrix.map((row) => <tr key={row.band}><td><strong>{row.band}</strong></td>{row.cells.map((cell) => <td key={cell.mentality}>{cell.played ? <><strong>{cell.ppg.toFixed(2)} PPG</strong><small>{cell.played} MP · {cell.gdPerGame >= 0 ? '+' : ''}{cell.gdPerGame.toFixed(2)} GD/g<br />Δ XI {cell.xiDifference >= 0 ? '+' : ''}{cell.xiDifference.toFixed(1)}</small></> : <span className="muted">No matches</span>}</td>)}</tr>)}
         </tbody></table></div>
       </section>
 
       <section className="card">
+        <h2>Opening tactical profile</h2>
+        <p className="muted">The complete opening instruction package for the matches in the current view. Counts make it easy to spot a manager's defaults and the alternatives they actually used.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Instruction</th><th>Observed values</th></tr></thead><tbody>
+          {tacticProfile.map((item) => <tr key={item.label}><td><strong>{item.label}</strong></td><td>{item.values.map(([value, count]) => `${value} (${count})`).join(' · ')}</td></tr>)}
+        </tbody></table></div>
+      </section>
+
+      <section className="card">
         <h2>Tactical fingerprints</h2>
-        <p className="muted">Grouped by the opening formation and mentality captured in each report. Use Match context and XI strength above to compare like with like instead of mixing league first teams, rotated cup sides and weak SMFA opposition.</p>
+        <p className="muted">Grouped by opening formation and mentality after every active filter has been applied. The tactical profile above exposes the rest of the instruction package, so identical-looking formations can be separated by passing, tempo, pressing, defensive line and other instructions.</p>
         <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Setup</th><th>MP</th><th>PPG</th><th>GF</th><th>GA</th><th>GD/game</th></tr></thead><tbody>
           {tacticGroups.map((group) => <tr key={group.key}><td><strong>{group.key}</strong></td><td>{group.played}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gf}</td><td>{group.ga}</td><td>{((group.gf - group.ga) / group.played).toFixed(2)}</td></tr>)}
         </tbody></table></div>
