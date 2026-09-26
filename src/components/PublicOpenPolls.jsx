@@ -34,7 +34,7 @@ export default function PublicOpenPolls() {
     <section className="manager-portal-hero"><div><p className="eyebrow">Top 100</p><h1>Community Polls</h1><p>See what Top 100 managers are voting on. Polls are public to read; voting is for verified manager accounts.</p></div></section>
     {loading && <section className="card"><h2>Loading polls…</h2></section>}
     {!loading && message && <section className="warning-card"><strong>Polls unavailable.</strong><span>{message}</span></section>}
-    {!loading && !message && events.length === 0 && <section className="card"><h2>No open polls</h2><p>There are no Community Polls open for voting at the moment.</p><a className="button" href="/">See previous results</a></section>}
+    {!loading && !message && events.length === 0 && <section className="card"><h2>No open polls</h2><p>There are no Community Polls open for voting at the moment.</p><a className="button" href="/results">See previous results</a></section>}
     {!loading && events.map((event) => <section className="card" key={event.event_id}>
       <p className="eyebrow">Open Community Poll</p><h2>{event.event_title}</h2>
       {event.event_description && <p>{event.event_description}</p>}
@@ -45,6 +45,6 @@ export default function PublicOpenPolls() {
       <div className="button-row" style={{ marginTop: '1rem' }}><a className="button" href="/vote">Sign in and vote</a><a className="button secondary" href="https://manager.smtop100.blog/registrations">Create a manager account</a></div>
       <p className="muted">Already manage a Top 100 club but don't have an account yet? Create one to cast your vote.</p>
     </section>)}
-    <section className="card"><h2>Previous polls</h2><p>Completed polls and their published results stay in the archive.</p><a className="button secondary" href="/">View poll results</a></section>
+    <section className="card"><h2>Previous polls</h2><p>Completed polls and their published results stay in the archive.</p><a className="button secondary" href="/results">View poll results</a></section>
   </main>;
 }
