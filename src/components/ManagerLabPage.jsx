@@ -45,9 +45,6 @@ function tacticValue(match, key) {
     tightMarking: 'tightMarking',
     menBehindBall: 'menBehindBall',
     sweeperKeeper: 'sweeperKeeper',
-    offsideTrap: 'offsideTrap',
-    shooting: 'shooting',
-    crossing: 'crossing',
   };
   const instructionKey = instructionKeys[key];
   return firstValue(instructionKey ? tactics.instructions?.[instructionKey] : tactics[key]);
@@ -61,7 +58,7 @@ function normalizedTacticValue(match, key) {
 function displayTacticValue(key, value) {
   if (value === null || value === undefined || value === '') return '—';
   const text = String(value);
-  if (['counterAttack', 'tightMarking', 'menBehindBall', 'sweeperKeeper', 'offsideTrap'].includes(key)) {
+  if (['counterAttack', 'tightMarking', 'menBehindBall', 'sweeperKeeper'].includes(key)) {
     if (text === '1' || text === 'true') return 'On';
     if (text === '0' || text === 'false') return 'Off';
   }
@@ -73,12 +70,25 @@ function displayTacticValue(key, value) {
 }
 
 function tacticSignature(match) {
-  const keys = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','counterAttack','tightMarking','menBehindBall','offsideTrap','shooting','crossing','sweeperKeeper'];
+  const keys = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','counterAttack','tightMarking','menBehindBall','sweeperKeeper'];
   return keys.map((key) => normalizedTacticValue(match, key) ?? '—').join('|');
 }
 
 function resultPoints(result) {
   return result === 'W' ? 3 : result === 'D' ? 1 : 0;
+}
+
+const CURRENT_FORMULA_FIELDS = [
+  ['Formation','formation'], ['Mentality','mentality'], ['Passing','passingStyle'],
+  ['Attack','attackingStyle'], ['Tempo','tempo'], ['Press','pressing'], ['Line','defensiveLine'],
+  ['Width','width'], ['Aggression','aggression'], ['Creativity','creativity'],
+  ['CA','counterAttack'], ['TM','tightMarking'], ['MBB','menBehindBall'], ['SK','sweeperKeeper'],
+];
+
+function formulaText(match) {
+  return CURRENT_FORMULA_FIELDS
+    .map(([label, key]) => `${label}: ${displayTacticValue(key, tacticValue(match, key))}`)
+    .join(' · ');
 }
 
 export default function ManagerLabPage() {
@@ -102,7 +112,10 @@ export default function ManagerLabPage() {
   const [tightMarking, setTightMarking] = useState('All');
   const [menBehindBall, setMenBehindBall] = useState('All');
   const [sweeperKeeper, setSweeperKeeper] = useState('All');
-  const [compareClubIds, setCompareClubIds] = useState(['48506455', '48506561']);
+  const [venue, setVenue] = useState('All');
+  const [worldFormulaMatches, setWorldFormulaMatches] = useState([]);
+  const [worldFormulaStatus, setWorldFormulaStatus] = useState('');
+  const [worldFormulaStrength, setWorldFormulaStrength] = useState('Stronger opponent XI');
 
   useEffect(() => {
     let mounted = true;
@@ -144,6 +157,7 @@ export default function ManagerLabPage() {
       setTightMarking('All');
       setMenBehindBall('All');
       setSweeperKeeper('All');
+      setVenue('All');
       setStatus('');
     })();
     return () => { mounted = false; };
@@ -176,6 +190,7 @@ export default function ManagerLabPage() {
   const selectedClub = clubs.find((club) => club.sourceClubId === clubId);
   const rows = matches.filter((row) =>
     (competition === 'All' || row.competition === competition) &&
+    (venue === 'All' || row.venue === venue) &&
     (context === 'All' || row.matchContext === context) &&
     (strength === 'All' || strengthBand(row) === strength) &&
     (formation === 'All' || normalizedTacticValue(row, 'formation') === formation) &&
@@ -259,8 +274,53 @@ export default function ManagerLabPage() {
       ppg: group.points / group.played,
       gd: (group.gf - group.ga) / group.played,
       xiDifference: group.xi.length ? group.xi.reduce((a,b) => a+b, 0) / group.xi.length : null,
+      share: rows.length ? group.played / rows.length : 0,
+      confidence: group.played >= 8 ? 'Established' : group.played >= 4 ? 'Developing' : 'Exploratory',
     })).sort((a,b) => b.played - a.played || b.ppg - a.ppg);
   }, [rows]);
+
+  const worldFormulaGroups = useMemo(() => {
+    const filtered = worldFormulaMatches.filter((match) =>
+      worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength
+    );
+    const map = new Map();
+    filtered.forEach((match) => {
+      const key = tacticSignature(match);
+      const group = map.get(key) || {
+        key, sample: match, played: 0, points: 0, gf: 0, ga: 0, xi: [], clubs: new Set(),
+        home: 0, away: 0,
+      };
+      group.played += 1;
+      group.points += resultPoints(match.result);
+      group.gf += Number(match.goalsFor) || 0;
+      group.ga += Number(match.goalsAgainst) || 0;
+      const xi = numericValue(match.xiRatingDifference);
+      if (xi !== null) group.xi.push(xi);
+      if (match.sourceClubId) group.clubs.add(match.sourceClubId);
+      if (match.venue === 'H') group.home += 1; else if (match.venue === 'A') group.away += 1;
+      map.set(key, group);
+    });
+    return [...map.values()].map((group) => ({
+      ...group,
+      clubCount: group.clubs.size,
+      ppg: group.points / group.played,
+      gd: (group.gf - group.ga) / group.played,
+      xiDifference: group.xi.length ? group.xi.reduce((a,b) => a+b, 0) / group.xi.length : null,
+      evidence: group.played >= 12 && group.clubs.size >= 3 ? 'Broad' :
+        group.played >= 6 && group.clubs.size >= 2 ? 'Developing' : 'Exploratory',
+    })).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || b.ppg - a.ppg);
+  }, [worldFormulaMatches, worldFormulaStrength]);
+
+  async function loadWorldFormulaLab() {
+    setWorldFormulaStatus('Loading league formulas across the archived world…');
+    const { data, error } = await supabase.rpc('manager_lab_formula_matches', { target_setup_id: SETUP_ID });
+    if (error) {
+      setWorldFormulaStatus(`Formula Lab could not load: ${error.message}`);
+      return;
+    }
+    setWorldFormulaMatches(Array.isArray(data?.matches) ? data.matches : []);
+    setWorldFormulaStatus('');
+  }
 
   const tacticProfile = useMemo(() => {
     const keys = [
@@ -268,8 +328,7 @@ export default function ManagerLabPage() {
       ['Attacking style', 'attackingStyle'], ['Tempo', 'tempo'], ['Pressing', 'pressing'],
       ['Defensive line', 'defensiveLine'], ['Width', 'width'], ['Aggression', 'aggression'],
       ['Creativity', 'creativity'], ['Counter attack', 'counterAttack'], ['Tight marking', 'tightMarking'],
-      ['Men behind ball', 'menBehindBall'], ['Offside trap', 'offsideTrap'], ['Shooting', 'shooting'],
-      ['Crossing', 'crossing'], ['Sweeper keeper', 'sweeperKeeper'],
+      ['Men behind ball', 'menBehindBall'], ['Sweeper keeper', 'sweeperKeeper'],
     ];
     return keys.map(([label, key]) => {
       const counts = new Map();
@@ -303,6 +362,7 @@ export default function ManagerLabPage() {
             <label>Match context<select value={context} onChange={(event) => setContext(event.target.value)}>{contexts.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>XI strength<select value={strength} onChange={(event) => setStrength(event.target.value)}>{strengthBands.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Competition<select value={competition} onChange={(event) => setCompetition(event.target.value)}>{competitions.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Venue<select value={venue} onChange={(event) => setVenue(event.target.value)}><option>All</option><option value="H">Home</option><option value="A">Away</option></select></label>
             <label>Formation<select value={formation} onChange={(event) => setFormation(event.target.value)}>{formations.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Mentality<select value={mentality} onChange={(event) => setMentality(event.target.value)}>{mentalities.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Passing<select value={passing} onChange={(event) => setPassing(event.target.value)}>{passings.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -338,21 +398,42 @@ export default function ManagerLabPage() {
 
       <section className="card">
         <h2>Winning formulas</h2>
-        <p className="muted">Exact opening tactical packages in the current view. Treat this as evidence, not a magic-tactic ranking: MP shows repeatability, while PPG, GD/game and XI gap show the results and opponent-strength context.</p>
-        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>PPG</th><th>GD/game</th><th>Δ XI</th></tr></thead><tbody>
+        <p className="muted">Exact current-game opening tactical packages in the current view. Repeatability and consistency matter alongside results: Share is how often the formula was used in this view, while Evidence stops tiny samples masquerading as a magic tactic.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>Share</th><th>Evidence</th><th>PPG</th><th>GD/game</th><th>Δ XI</th></tr></thead><tbody>
           {formulaGroups.slice(0, 12).map((group) => {
             const m = group.sample;
-            const formulaFields = [
-              ['Formation','formation'], ['Mentality','mentality'], ['Passing','passingStyle'],
-              ['Attack','attackingStyle'], ['Tempo','tempo'], ['Press','pressing'], ['Line','defensiveLine'],
-              ['Width','width'], ['Aggression','aggression'], ['Creativity','creativity'],
-              ['CA','counterAttack'], ['TM','tightMarking'], ['MBB','menBehindBall'], ['Offside','offsideTrap'],
-              ['Shooting','shooting'], ['Crossing','crossing'], ['SK','sweeperKeeper'],
-            ];
-            const formula = formulaFields.map(([label, key]) => `${label}: ${displayTacticValue(key, tacticValue(m, key))}`).join(' · ');
-            return <tr key={group.key}><td><strong>{formula}</strong></td><td>{group.played}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td><td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td></tr>;
+            const formula = formulaText(m);
+            return <tr key={group.key}><td><strong>{formula}</strong></td><td>{group.played}</td><td>{(group.share * 100).toFixed(0)}%</td><td>{group.confidence}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td><td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td></tr>;
           })}
         </tbody></table></div>
+      </section>
+
+      <section className="card">
+        <div className="manager-lab-toolbar">
+          <div>
+            <h2>Formula Lab · whole world</h2>
+            <p className="muted">Division 1 evidence across every archived club, viewed from both sides of each match. This is the cross-manager test: recurring formulas become more interesting when they survive different squads and opponents.</p>
+          </div>
+          <div className="button-row">
+            {!worldFormulaMatches.length && <button className="button secondary" type="button" onClick={loadWorldFormulaLab}>Load world evidence</button>}
+          </div>
+        </div>
+        {worldFormulaStatus && <p className="status">{worldFormulaStatus}</p>}
+        {worldFormulaMatches.length > 0 && <>
+          <div className="manager-lab-filters">
+            <label>Opponent XI<select value={worldFormulaStrength} onChange={(event) => setWorldFormulaStrength(event.target.value)}>{strengthBands.map((item) => <option key={item}>{item}</option>)}</select></label>
+          </div>
+          <p className="muted">{worldFormulaGroups.reduce((sum, group) => sum + group.played, 0)} team-match observations in this strength band. Evidence requires both repetition and use by multiple clubs; it is not a claim that a tactic causes the result.</p>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>Clubs</th><th>Evidence</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>H/A</th></tr></thead><tbody>
+            {worldFormulaGroups.slice(0, 20).map((group) => <tr key={group.key}>
+              <td><strong>{formulaText(group.sample)}</strong></td>
+              <td>{group.played}</td><td>{group.clubCount}</td><td>{group.evidence}</td>
+              <td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td>
+              <td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td>
+              <td>{group.home}/{group.away}</td>
+            </tr>)}
+          </tbody></table></div>
+        </>}
       </section>
 
       <section className="card">
