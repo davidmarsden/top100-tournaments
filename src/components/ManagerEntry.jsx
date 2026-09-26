@@ -8,6 +8,7 @@ const LEGACY_MANAGER_ORIGIN = 'https://tournaments.smtop100.blog';
 const LEGACY_MIGRATION_KEY = 'top100-manager-legacy-session-migration-attempted';
 const BRIDGE_TIMEOUT_MS = 3000;
 const AUTH_CHECK_TIMEOUT_MS = 8000;
+const AUTH_RECOVERY_KEY = 'top100-manager-auth-recovery-attempted';
 
 function withAuthTimeout(promise, label = 'Sign-in check', ms = AUTH_CHECK_TIMEOUT_MS) {
   let timer;
@@ -112,10 +113,22 @@ export default function ManagerEntry({ registrationMode = false }) {
         });
         subscription = listener.subscription;
         setAuthLoading(false);
+        try { window.sessionStorage.removeItem(AUTH_RECOVERY_KEY); } catch { /* storage unavailable */ }
 
         if (!initialSession) tryLegacySessionMigration();
       } catch (error) {
         if (!active) return;
+        // Desktop browsers can occasionally leave Supabase's persisted auth state
+        // locked/stale after a magic-link callback. Recover once with a clean
+        // local session instead of leaving the portal on a loading/crash path.
+        try {
+          if (window.sessionStorage.getItem(AUTH_RECOVERY_KEY) !== '1') {
+            window.sessionStorage.setItem(AUTH_RECOVERY_KEY, '1');
+            await supabase.auth.signOut({ scope: 'local' });
+            window.location.reload();
+            return;
+          }
+        } catch { /* fall through to the visible recovery screen */ }
         setAuthError(error?.message || 'We could not check your sign-in. Please try again.');
         setAuthLoading(false);
       }
