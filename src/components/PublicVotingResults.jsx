@@ -64,7 +64,7 @@ export default function PublicVotingResults() {
     {!loading && events.map((event) => <section className="card" key={event.event_id}>
       <p className="eyebrow">Community Poll</p>
       <h2>{event.event_title}</h2>
-      {event.event_description && <p>{event.event_description}</p>}
+      {event.event_description && <div className="voting-card__proposal">{event.event_description.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
       <p className="muted">Closed: {formatDate(event.closes_at) || '—'} · Turnout: {event.ballots_cast}/{event.electorate_count} ({event.turnout_percent}%)</p>
       {event.decision_summary && <p><strong>{event.decision_summary}</strong></p>}
       {[...event.questions.values()].map((question) => <div key={question.id} style={{ marginTop: '1rem' }}>
