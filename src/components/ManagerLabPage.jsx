@@ -23,6 +23,23 @@ function firstValue(value) {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
 
+function indexedValues(value) {
+  if (Array.isArray(value)) return value.map((item, index) => [index, item]);
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([index, item]) => [Number(index), item])
+      .filter(([index]) => Number.isFinite(index))
+      .sort((a, b) => a[0] - b[0]);
+  }
+  return [];
+}
+
+function playerRoleEntries(match) {
+  return indexedValues(match?.tactics?.playerRoles)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([slot, value]) => ({ slot, code: String(value) }));
+}
+
 function tacticValue(match, key) {
   const tactics = match?.tactics;
   if (!tactics) return null;
@@ -582,6 +599,7 @@ export default function ManagerLabPage() {
         ...values,
         [key]: displayTacticValue(key, tacticValue(match, key)),
       }), {}),
+      playerRoles: playerRoleEntries(match),
       tacticSignature: tacticSignature(match),
       familySignature: tacticSignature(match, FAMILY_KEYS),
     });
@@ -660,6 +678,15 @@ export default function ManagerLabPage() {
           adjustedGd: variant.adjustedGd,
         })),
       })),
+      playerRoleDecoder: {
+        replicatedFamily: replicatedFamilyRoleCodes,
+        selectedClub: {
+          sourceClubId: clubId,
+          club: selectedClub?.name ?? null,
+          formation: '4-2-3-1 B',
+          codes: selectedClubRoleCodes,
+        },
+      },
       instructionEffects: instructionEffects.map((effect) => ({
         instruction: effect.label,
         key: effect.key,
@@ -733,6 +760,48 @@ export default function ManagerLabPage() {
     });
     return effects.sort((a,b) => b.matches - a.matches || b.strata - a.strata || b.deltaPpg - a.deltaPpg).slice(0, 20);
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
+
+  const replicatedFamilyRoleCodes = useMemo(() => {
+    if (!replicatedFamily) return [];
+    const matches = worldFormulaMatches.filter((match) =>
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength) &&
+      tacticSignature(match, FAMILY_KEYS) === replicatedFamily.key
+    );
+    const groups = new Map();
+    matches.forEach((match) => {
+      playerRoleEntries(match).forEach(({ slot, code }) => {
+        const key = `${slot}:${code}`;
+        const group = groups.get(key) || { slot, code, matches: 0, clubs: new Set(), divisions: new Set() };
+        group.matches += 1;
+        if (match.sourceClubId) group.clubs.add(match.sourceClubId);
+        if (match.competition) group.divisions.add(match.competition);
+        groups.set(key, group);
+      });
+    });
+    return [...groups.values()]
+      .map((group) => ({
+        slot: group.slot,
+        code: group.code,
+        matches: group.matches,
+        clubCount: group.clubs.size,
+        divisionCount: group.divisions.size,
+      }))
+      .sort((a, b) => a.slot - b.slot || b.matches - a.matches || a.code.localeCompare(b.code));
+  }, [worldFormulaMatches, worldFormulaStrength, replicatedFamily]);
+
+  const selectedClubRoleCodes = useMemo(() => {
+    const roleMatches = matches.filter((match) => normalizedTacticValue(match, 'formation') === '4-2-3-1 B');
+    const groups = new Map();
+    roleMatches.forEach((match) => {
+      playerRoleEntries(match).forEach(({ slot, code }) => {
+        const key = `${slot}:${code}`;
+        const group = groups.get(key) || { slot, code, matches: 0 };
+        group.matches += 1;
+        groups.set(key, group);
+      });
+    });
+    return [...groups.values()].sort((a, b) => a.slot - b.slot || b.matches - a.matches || a.code.localeCompare(b.code));
+  }, [matches]);
 
   async function loadWorldFormulaLab() {
     setWorldFormulaStatus('Loading league formulas across the archived world…');
@@ -878,6 +947,19 @@ export default function ManagerLabPage() {
             <td>{group.weightedAdjustedPpg === null ? '—' : <>{group.weightedAdjustedPpg >= 0 ? '+' : ''}{group.weightedAdjustedPpg.toFixed(2)} PPG<br /><small>{group.weightedAdjustedGd === null ? '—' : `${group.weightedAdjustedGd >= 0 ? '+' : ''}${group.weightedAdjustedGd.toFixed(2)} GD`}</small></>}</td>
           </tr>)}
         </tbody></table></div>
+      </section>}
+
+      {worldFormulaMatches.length > 0 && replicatedFamily && <section className="card">
+        <h2>Player Role Decoder · replicated 4-2-3-1 B</h2>
+        <p className="muted">Raw Soccer Manager PlayerRole codes by formation slot for the replicated 4-2-3-1 B · Attacking · Mixed · Down Both Flanks · Fast family. We are deliberately not guessing what a code means: once a known lineup identifies a role, we can label that code and test the same role pattern across clubs and divisions.</p>
+        {replicatedFamilyRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Raw role code</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
+          {replicatedFamilyRoleCodes.map((role) => <tr key={`${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td><code>{role.code}</code></td><td>{role.matches}</td><td>{role.clubCount}</td><td>{role.divisionCount}</td></tr>)}
+        </tbody></table></div> : <p className="muted">No PlayerRole values were archived for this family.</p>}
+        <h3>{selectedClub?.name || 'Selected club'} · 4-2-3-1 B reference</h3>
+        <p className="muted">These are the selected club's archived raw codes in 4-2-3-1 B. Tell me the player role used in each slot from a known Hamburger lineup and we can turn the raw codes into evidence-backed labels rather than assumptions.</p>
+        {selectedClubRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Raw role code</th><th>MP</th></tr></thead><tbody>
+          {selectedClubRoleCodes.map((role) => <tr key={`club:${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td><code>{role.code}</code></td><td>{role.matches}</td></tr>)}
+        </tbody></table></div> : <p className="muted">No archived 4-2-3-1 B PlayerRole values for this club.</p>}
       </section>}
 
       {worldFormulaMatches.length > 0 && replicatedFamily && <section className="card">
