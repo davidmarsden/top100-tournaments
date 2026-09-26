@@ -68,7 +68,7 @@ export default function VotingPortal() {
     setLoading(true); setMessage('');
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/vote`, shouldCreateUser: true },
+      options: { emailRedirectTo: 'https://vote.smtop100.blog/vote', shouldCreateUser: true },
     });
     setMessage(error ? error.message : 'Check your email for your secure voting sign-in link.');
     setLoading(false);
