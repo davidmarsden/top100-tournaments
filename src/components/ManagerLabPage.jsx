@@ -34,10 +34,36 @@ function indexedValues(value) {
   return [];
 }
 
+function roleCodeValues(value) {
+  // Archived match reports use two shapes here. Usually PlayerRole is wrapped
+  // once by the match-engine snapshot/timeline, so the first indexed value is
+  // the complete XI role vector. Older captures may store that vector directly.
+  const outer = indexedValues(value);
+  if (!outer.length) return [];
+  const firstNested = indexedValues(outer[0][1]);
+  if (firstNested.length) return firstNested;
+  return outer;
+}
+
 function playerRoleEntries(match) {
-  return indexedValues(match?.tactics?.playerRoles)
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+  return roleCodeValues(match?.tactics?.playerRoles)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '' && typeof value !== 'object')
     .map(([slot, value]) => ({ slot, code: String(value) }));
+}
+
+function playerRoleFingerprint(match) {
+  const values = roleCodeValues(match?.tactics?.playerRoles);
+  if (!values.length) return null;
+  // Keep the formation-slot identity even when an archived slot is empty or
+  // malformed, so distinct XI vectors can never collapse to the same key.
+  return values
+    .map(([slot, value]) => {
+      const code = value === null || value === undefined || value === '' || typeof value === 'object'
+        ? '—'
+        : String(value);
+      return `${slot + 1}:${code}`;
+    })
+    .join('|');
 }
 
 function tacticValue(match, key) {
@@ -685,6 +711,7 @@ export default function ManagerLabPage() {
           club: selectedClub?.name ?? null,
           formation: '4-2-3-1 B',
           codes: selectedClubRoleCodes,
+          fingerprints: selectedClubRoleFingerprints,
         },
       },
       instructionEffects: instructionEffects.map((effect) => ({
@@ -801,6 +828,19 @@ export default function ManagerLabPage() {
       });
     });
     return [...groups.values()].sort((a, b) => a.slot - b.slot || b.matches - a.matches || a.code.localeCompare(b.code));
+  }, [matches]);
+
+  const selectedClubRoleFingerprints = useMemo(() => {
+    const groups = new Map();
+    matches
+      .filter((match) => normalizedTacticValue(match, 'formation') === '4-2-3-1 B')
+      .forEach((match) => {
+        const fingerprint = playerRoleFingerprint(match);
+        if (fingerprint) groups.set(fingerprint, (groups.get(fingerprint) || 0) + 1);
+      });
+    return [...groups.entries()]
+      .map(([fingerprint, matchesPlayed]) => ({ fingerprint, matchesPlayed }))
+      .sort((a, b) => b.matchesPlayed - a.matchesPlayed || a.fingerprint.localeCompare(b.fingerprint));
   }, [matches]);
 
   async function loadWorldFormulaLab() {
@@ -960,6 +1000,13 @@ export default function ManagerLabPage() {
         {selectedClubRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Raw role code</th><th>MP</th></tr></thead><tbody>
           {selectedClubRoleCodes.map((role) => <tr key={`club:${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td><code>{role.code}</code></td><td>{role.matches}</td></tr>)}
         </tbody></table></div> : <p className="muted">No archived 4-2-3-1 B PlayerRole values for this club.</p>}
+        {selectedClubRoleFingerprints.length > 0 && <>
+          <h3>Complete XI role fingerprints</h3>
+          <p className="muted">Each row is the complete 11-slot PlayerRole vector recorded for an archived 4-2-3-1 B match. This keeps whole-lineup patterns separate from the per-slot decoder above.</p>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Raw XI fingerprint</th><th>MP</th></tr></thead><tbody>
+            {selectedClubRoleFingerprints.map((row) => <tr key={row.fingerprint}><td><code>{row.fingerprint}</code></td><td>{row.matchesPlayed}</td></tr>)}
+          </tbody></table></div>
+        </>}
       </section>}
 
       {worldFormulaMatches.length > 0 && replicatedFamily && <section className="card">
