@@ -411,3 +411,10 @@ This is still an authenticated browser capture, not a server crawler. It never e
 The game-world crawler displays a fixed live progress panel while it runs. It reports captured/failed reports, discovered fixtures and clubs, queue depth, elapsed time, current fixture and retry attempt, and the latest completed result. **Stop & save** ends discovery after the current request attempt and offers the same single partial-bundle download used at normal completion; the manifest marks the run as user-stopped and records elapsed time and the remaining queue.
 
 Each match-report request now has a 15-second hard timeout using `AbortController`. A timed-out request enters the existing bounded three-attempt retry/backoff path instead of leaving the entire sequential crawl waiting indefinitely.
+
+
+### Resuming a capped world crawl
+
+A game-world crawl can now continue from a previously downloaded `worldSeasonMatchBackfill` bundle. Choose **Backfill game world**, confirm that you want to resume, and select the earlier JSON bundle. The helper validates the setup id, reconstructs the discovered fixture graph from the saved raw reports, marks already captured fixture ids as fetched, and queues only unseen fixtures. Any failures recorded in the earlier bundle are deliberately removed from the fetched set and queued for retry.
+
+The continuation download contains **only newly captured reports**, so importing it does not restage the earlier 1,594-match payload. The 1,600-report safety ceiling applies to new attempts in each run rather than to the cumulative prior bundle. Resume metadata records the prior captured/failure counts and the remaining queue. This makes repeated continuation runs safe while retaining the existing stable `setupId + fixtureId` archive deduplication as a final guard.
