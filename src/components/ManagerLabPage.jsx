@@ -891,9 +891,9 @@ export default function ManagerLabPage() {
   }, [worldFormulaMatches, worldFormulaStrength]);
 
   const rawPlayerRoleInspector = useMemo(() => {
-    const suspectFixtureIds = new Set(replicatedFamilyRoleIntegrity.map((row) => String(row.fixtureId)));
+    const suspectKeys = new Set(replicatedFamilyRoleIntegrity.map((row) => `${row.fixtureId}:${row.sourceClubId}`));
     const suspects = worldFormulaMatches
-      .filter((match) => suspectFixtureIds.has(String(match.fixtureId)))
+      .filter((match) => suspectKeys.has(`${match.fixtureId}:${match.sourceClubId}`))
       .map((match) => ({
         kind: 'suspect',
         fixtureId: match.fixtureId ?? null,
