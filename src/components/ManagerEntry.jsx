@@ -124,7 +124,11 @@ export default function ManagerEntry({ registrationMode = false }) {
         try {
           if (window.sessionStorage.getItem(AUTH_RECOVERY_KEY) !== '1') {
             window.sessionStorage.setItem(AUTH_RECOVERY_KEY, '1');
-            await supabase.auth.signOut({ scope: 'local' });
+            // Do not call supabase.auth.signOut() here: a wedged getSession()
+            // can still own the same Web Lock and signOut would wait forever too.
+            // Remove this project's persisted auth token directly, then reload.
+            const projectRef = new URL(supabase.supabaseUrl).hostname.split('.')[0];
+            window.localStorage.removeItem(`sb-${projectRef}-auth-token`);
             window.location.reload();
             return;
           }
