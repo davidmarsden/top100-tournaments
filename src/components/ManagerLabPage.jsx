@@ -45,6 +45,9 @@ function tacticValue(match, key) {
     tightMarking: 'tightMarking',
     menBehindBall: 'menBehindBall',
     sweeperKeeper: 'sweeperKeeper',
+    offsideTrap: 'offsideTrap',
+    shooting: 'shooting',
+    crossing: 'crossing',
   };
   const instructionKey = instructionKeys[key];
   return firstValue(instructionKey ? tactics.instructions?.[instructionKey] : tactics[key]);
@@ -58,7 +61,7 @@ function normalizedTacticValue(match, key) {
 function displayTacticValue(key, value) {
   if (value === null || value === undefined || value === '') return '—';
   const text = String(value);
-  if (['counterAttack', 'tightMarking', 'menBehindBall', 'sweeperKeeper'].includes(key)) {
+  if (['counterAttack', 'tightMarking', 'menBehindBall', 'sweeperKeeper', 'offsideTrap'].includes(key)) {
     if (text === '1' || text === 'true') return 'On';
     if (text === '0' || text === 'false') return 'Off';
   }
@@ -70,7 +73,7 @@ function displayTacticValue(key, value) {
 }
 
 function tacticSignature(match) {
-  const keys = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','counterAttack','tightMarking','menBehindBall','sweeperKeeper'];
+  const keys = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','counterAttack','tightMarking','menBehindBall','offsideTrap','shooting','crossing','sweeperKeeper'];
   return keys.map((key) => normalizedTacticValue(match, key) ?? '—').join('|');
 }
 
@@ -265,7 +268,8 @@ export default function ManagerLabPage() {
       ['Attacking style', 'attackingStyle'], ['Tempo', 'tempo'], ['Pressing', 'pressing'],
       ['Defensive line', 'defensiveLine'], ['Width', 'width'], ['Aggression', 'aggression'],
       ['Creativity', 'creativity'], ['Counter attack', 'counterAttack'], ['Tight marking', 'tightMarking'],
-      ['Men behind ball', 'menBehindBall'], ['Sweeper keeper', 'sweeperKeeper'],
+      ['Men behind ball', 'menBehindBall'], ['Offside trap', 'offsideTrap'], ['Shooting', 'shooting'],
+      ['Crossing', 'crossing'], ['Sweeper keeper', 'sweeperKeeper'],
     ];
     return keys.map(([label, key]) => {
       const counts = new Map();
@@ -338,16 +342,14 @@ export default function ManagerLabPage() {
         <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>PPG</th><th>GD/game</th><th>Δ XI</th></tr></thead><tbody>
           {formulaGroups.slice(0, 12).map((group) => {
             const m = group.sample;
-            const formula = [
-              displayTacticValue('formation', tacticValue(m,'formation')),
-              displayTacticValue('mentality', tacticValue(m,'mentality')),
-              displayTacticValue('passingStyle', tacticValue(m,'passingStyle')),
-              displayTacticValue('attackingStyle', tacticValue(m,'attackingStyle')),
-              displayTacticValue('tempo', tacticValue(m,'tempo')),
-              displayTacticValue('pressing', tacticValue(m,'pressing')),
-              `CA ${displayTacticValue('counterAttack', tacticValue(m,'counterAttack'))}`,
-              `TM ${displayTacticValue('tightMarking', tacticValue(m,'tightMarking'))}`,
-            ].join(' · ');
+            const formulaFields = [
+              ['Formation','formation'], ['Mentality','mentality'], ['Passing','passingStyle'],
+              ['Attack','attackingStyle'], ['Tempo','tempo'], ['Press','pressing'], ['Line','defensiveLine'],
+              ['Width','width'], ['Aggression','aggression'], ['Creativity','creativity'],
+              ['CA','counterAttack'], ['TM','tightMarking'], ['MBB','menBehindBall'], ['Offside','offsideTrap'],
+              ['Shooting','shooting'], ['Crossing','crossing'], ['SK','sweeperKeeper'],
+            ];
+            const formula = formulaFields.map(([label, key]) => `${label}: ${displayTacticValue(key, tacticValue(m, key))}`).join(' · ');
             return <tr key={group.key}><td><strong>{formula}</strong></td><td>{group.played}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td><td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td></tr>;
           })}
         </tbody></table></div>
