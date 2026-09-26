@@ -50,6 +50,11 @@ function tacticValue(match, key) {
   return firstValue(instructionKey ? tactics.instructions?.[instructionKey] : tactics[key]);
 }
 
+function normalizedTacticValue(match, key) {
+  const value = tacticValue(match, key);
+  return value === null || value === undefined || value === '' ? null : String(value);
+}
+
 function resultPoints(result) {
   return result === 'W' ? 3 : result === 'D' ? 1 : 0;
 }
@@ -131,7 +136,7 @@ export default function ManagerLabPage() {
     return 'Similar XI strength';
   };
   const strengthBands = ['All', 'Stronger opponent XI', 'Similar XI strength', 'Weaker opponent XI', 'Unknown XI strength'];
-  const tacticOptions = (key) => ['All', ...new Set(matches.map((row) => tacticValue(row, key)).filter(Boolean))];
+  const tacticOptions = (key) => ['All', ...new Set(matches.map((row) => normalizedTacticValue(row, key)).filter((value) => value !== null))];
   const formations = tacticOptions('formation');
   const mentalities = tacticOptions('mentality');
   const passings = tacticOptions('passingStyle');
@@ -150,19 +155,19 @@ export default function ManagerLabPage() {
     (competition === 'All' || row.competition === competition) &&
     (context === 'All' || row.matchContext === context) &&
     (strength === 'All' || strengthBand(row) === strength) &&
-    (formation === 'All' || tacticValue(row, 'formation') === formation) &&
-    (mentality === 'All' || tacticValue(row, 'mentality') === mentality) &&
-    (passing === 'All' || tacticValue(row, 'passingStyle') === passing) &&
-    (attackingStyle === 'All' || tacticValue(row, 'attackingStyle') === attackingStyle) &&
-    (tempo === 'All' || tacticValue(row, 'tempo') === tempo) &&
-    (pressing === 'All' || tacticValue(row, 'pressing') === pressing) &&
-    (defensiveLine === 'All' || tacticValue(row, 'defensiveLine') === defensiveLine) &&
-    (width === 'All' || tacticValue(row, 'width') === width) &&
-    (aggression === 'All' || tacticValue(row, 'aggression') === aggression) &&
-    (counterAttack === 'All' || tacticValue(row, 'counterAttack') === counterAttack) &&
-    (tightMarking === 'All' || tacticValue(row, 'tightMarking') === tightMarking) &&
-    (menBehindBall === 'All' || tacticValue(row, 'menBehindBall') === menBehindBall) &&
-    (sweeperKeeper === 'All' || tacticValue(row, 'sweeperKeeper') === sweeperKeeper)
+    (formation === 'All' || normalizedTacticValue(row, 'formation') === formation) &&
+    (mentality === 'All' || normalizedTacticValue(row, 'mentality') === mentality) &&
+    (passing === 'All' || normalizedTacticValue(row, 'passingStyle') === passing) &&
+    (attackingStyle === 'All' || normalizedTacticValue(row, 'attackingStyle') === attackingStyle) &&
+    (tempo === 'All' || normalizedTacticValue(row, 'tempo') === tempo) &&
+    (pressing === 'All' || normalizedTacticValue(row, 'pressing') === pressing) &&
+    (defensiveLine === 'All' || normalizedTacticValue(row, 'defensiveLine') === defensiveLine) &&
+    (width === 'All' || normalizedTacticValue(row, 'width') === width) &&
+    (aggression === 'All' || normalizedTacticValue(row, 'aggression') === aggression) &&
+    (counterAttack === 'All' || normalizedTacticValue(row, 'counterAttack') === counterAttack) &&
+    (tightMarking === 'All' || normalizedTacticValue(row, 'tightMarking') === tightMarking) &&
+    (menBehindBall === 'All' || normalizedTacticValue(row, 'menBehindBall') === menBehindBall) &&
+    (sweeperKeeper === 'All' || normalizedTacticValue(row, 'sweeperKeeper') === sweeperKeeper)
   );
   const wins = rows.filter((row) => row.result === 'W').length;
   const draws = rows.filter((row) => row.result === 'D').length;
@@ -218,7 +223,7 @@ export default function ManagerLabPage() {
       ['Formation', 'formation'], ['Mentality', 'mentality'], ['Passing', 'passingStyle'],
       ['Attacking style', 'attackingStyle'], ['Tempo', 'tempo'], ['Pressing', 'pressing'],
       ['Defensive line', 'defensiveLine'], ['Width', 'width'], ['Aggression', 'aggression'],
-      ['Counter attack', 'counterAttack'], ['Tight marking', 'tightMarking'],
+      ['Creativity', 'creativity'], ['Counter attack', 'counterAttack'], ['Tight marking', 'tightMarking'],
       ['Men behind ball', 'menBehindBall'], ['Sweeper keeper', 'sweeperKeeper'],
     ];
     return keys.map(([label, key]) => {
