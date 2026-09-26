@@ -759,6 +759,7 @@ export default function ManagerLabPage() {
         replicatedFamily: {
           codes: replicatedFamilyRoleCodes,
           integrityIssues: replicatedFamilyRoleIntegrity,
+          rawInspector: rawPlayerRoleInspector,
         },
         selectedClub: {
           sourceClubId: clubId,
@@ -888,6 +889,36 @@ export default function ManagerLabPage() {
       }];
     });
   }, [worldFormulaMatches, worldFormulaStrength]);
+
+  const rawPlayerRoleInspector = useMemo(() => {
+    const suspectFixtureIds = new Set(replicatedFamilyRoleIntegrity.map((row) => String(row.fixtureId)));
+    const suspects = worldFormulaMatches
+      .filter((match) => suspectFixtureIds.has(String(match.fixtureId)))
+      .map((match) => ({
+        kind: 'suspect',
+        fixtureId: match.fixtureId ?? null,
+        club: match.club ?? match.sourceClubName ?? match.sourceClubId ?? 'Unknown club',
+        sourceClubId: match.sourceClubId ?? null,
+        division: match.competition ?? '—',
+        rawPlayerRoles: match?.tactics?.playerRoles ?? null,
+      }));
+    const hamburg = worldFormulaMatches.find((match) =>
+      String(match.sourceClubId) === '48506708' &&
+      normalizedTacticValue(match, 'formation') === '4-2-3-1 B' &&
+      roleCodeValues(match?.tactics?.playerRoles).length >= 11
+    );
+    return [
+      ...suspects,
+      ...(hamburg ? [{
+        kind: 'known-good',
+        fixtureId: hamburg.fixtureId ?? null,
+        club: hamburg.club ?? hamburg.sourceClubName ?? 'Hamburger SV',
+        sourceClubId: hamburg.sourceClubId ?? '48506708',
+        division: hamburg.competition ?? '—',
+        rawPlayerRoles: hamburg?.tactics?.playerRoles ?? null,
+      }] : []),
+    ];
+  }, [worldFormulaMatches, replicatedFamilyRoleIntegrity]);
 
   const selectedClubRoleCodes = useMemo(() => {
     const roleMatches = matches.filter((match) => normalizedTacticValue(match, 'formation') === '4-2-3-1 B');
@@ -1073,6 +1104,12 @@ export default function ManagerLabPage() {
         {replicatedFamilyRoleIntegrity.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Division</th><th>Fixture</th><th>Impossible assignment</th><th>Complete raw vector</th></tr></thead><tbody>
           {replicatedFamilyRoleIntegrity.map((row, index) => <tr key={`${row.fixtureId || 'fixture'}:${row.sourceClubId || 'club'}:${index}`}><td><strong>{row.club}</strong><br /><small>{row.sourceClubId || '—'}</small></td><td>{row.division}</td><td>{row.fixtureId || '—'}</td><td>{row.issues}</td><td><code>{row.fingerprint || '—'}</code></td></tr>)}
         </tbody></table></div> : <p className="muted">No impossible 4-2-3-1 B role/slot combinations found in this cohort.</p>}
+        <h3>Raw PlayerRole inspector</h3>
+        <p className="muted">Unmodified archived <code>tactics.playerRoles</code> for every integrity failure, plus one known-good Hamburger 4-2-3-1 B fixture for comparison. This deliberately bypasses the role-vector decoder so we can see the original nesting, keys and sparse values.</p>
+        {rawPlayerRoleInspector.length ? rawPlayerRoleInspector.map((row, index) => <details key={`raw-role:${row.kind}:${row.fixtureId || index}`}>
+          <summary><strong>{row.kind === 'known-good' ? 'Known-good comparison' : 'Suspect'} · {row.club}</strong> · {row.division} · fixture {row.fixtureId || '—'}</summary>
+          <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(row.rawPlayerRoles, null, 2)}</pre>
+        </details>) : <p className="muted">No raw PlayerRole records available for inspection.</p>}
         <h3>{selectedClub?.name || 'Selected club'} · 4-2-3-1 B reference</h3>
         <p className="muted">The selected club's archived 4-2-3-1 B roles, decoded with the same 0–21 Soccer Manager role dictionary.</p>
         {selectedClubRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Player role</th><th>Raw code</th><th>MP</th></tr></thead><tbody>
