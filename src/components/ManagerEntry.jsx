@@ -134,6 +134,7 @@ export default function ManagerEntry({ registrationMode = false }) {
     <>
       <ManagerPortal
         registrationMode={registrationMode}
+        returnTo={returnTo}
         session={session}
         authLoading={authLoading}
         authError={authError}
@@ -142,7 +143,6 @@ export default function ManagerEntry({ registrationMode = false }) {
         <ManagerReminderPreferences session={session} authLoading={authLoading} />
       )}
       {!registrationMode && <ManagerResourceHub />}
-      {!registrationMode && session && returnTo && <section className="card manager-login-card"><h2>Continue where you started</h2><p>Your Top 100 sign-in is ready.</p><a className="button" href={returnTo}>Continue</a></section>}
     </>
   );
 }
