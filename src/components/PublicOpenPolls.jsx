@@ -37,7 +37,7 @@ export default function PublicOpenPolls() {
     {!loading && !message && events.length === 0 && <section className="card"><h2>No open polls</h2><p>There are no Community Polls open for voting at the moment.</p><a className="button" href="/results">See previous results</a></section>}
     {!loading && events.map((event) => <section className="card" key={event.event_id}>
       <p className="eyebrow">Open Community Poll</p><h2>{event.event_title}</h2>
-      {event.event_description && <p>{event.event_description}</p>}
+      {event.event_description && <div className="voting-card__proposal">{event.event_description.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
       <p className="muted">Voting closes: {formatDate(event.closes_at) || 'No closing date set'} · {event.ballots_cast}/{event.electorate_count} eligible managers have voted</p>
       {[...event.questions.values()].map((question) => <div key={question.id} style={{ marginTop: '1rem' }}><h3>{question.title}</h3>
         {event.results_visibility === 'live' ? <ul>{question.options.map((option) => <li key={option.id}>{option.label}: <strong>{option.votes}</strong></li>)}</ul> : <p className="muted">Results will be shown according to this poll's result settings.</p>}
