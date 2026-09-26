@@ -293,10 +293,10 @@ function inferSyncContext(entries) {
   };
 }
 
-export function extractSoccerManagerEntities(entries) {
+export function extractSoccerManagerEntities(entries, options = {}) {
   const output = [];
   const seen = new Map();
-  const inferred = inferSyncContext(entries);
+  const inferred = options.inferredContext || inferSyncContext(entries);
 
   for (const entry of entries || []) {
     if (!entry?.payload?.kind) continue;
@@ -337,19 +337,28 @@ export async function stageSoccerManagerSync(entries, capturedAt = null, options
   let sourceCount = 0;
   let entityCount = 0;
 
+  // Preserve the original whole-import semantics before partitioning transport.
+  // Context inference must see every source, and entity deduplication remains
+  // whole-import last-wins even when duplicate fixtures straddle batch boundaries.
+  const inferredContext = inferSyncContext(entries);
+  const dedupedEntities = extractSoccerManagerEntities(entries, { inferredContext });
+  const entityBatchCount = Math.max(1, Math.ceil(dedupedEntities.length / batchSize));
+  const sourceBatchCount = Math.max(1, Math.ceil(entries.length / batchSize));
+  const batches = Math.max(sourceBatchCount, entityBatchCount);
+
   // Large world backfills can be tens or hundreds of MB when serialized. Sending the
-  // whole collection through one PostgREST RPC can fail at the browser/proxy layer,
-  // so stage bounded groups as independent review runs. Stable entity keys preserve
-  // the normal deduplication/versioning behaviour across those runs.
-  for (let offset = 0; offset < entries.length; offset += batchSize) {
-    const batch = entries.slice(offset, offset + batchSize);
-    const normalizedPayload = normalizedPayloadForPersistence(batch);
-    const entities = extractSoccerManagerEntities(batch);
-    if (!normalizedPayload.length) continue;
+  // whole collection through one PostgREST RPC can fail at the browser/proxy layer.
+  // Sources and the already-deduplicated entity stream are sliced independently so
+  // each canonical entity is staged exactly once across the review runs.
+  for (let batchIndex = 0; batchIndex < batches; batchIndex += 1) {
+    const sourceBatch = entries.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+    const normalizedPayload = normalizedPayloadForPersistence(sourceBatch);
+    const entities = dedupedEntities.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+    if (!normalizedPayload.length && !entities.length) continue;
 
     options.onProgress?.({
-      batch: Math.floor(offset / batchSize) + 1,
-      batches: Math.ceil(entries.length / batchSize),
+      batch: batchIndex + 1,
+      batches,
       stagedSources: sourceCount,
       totalSources: entries.length,
     });
