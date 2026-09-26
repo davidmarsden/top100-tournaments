@@ -128,12 +128,17 @@ function tactics(raw, side) {
     counterAttack: ['counterattack', 'counterAttack', 'CounterAttack'],
     menBehindBall: ['menbehindball', 'menBehindBall', 'MenBehindBall'],
     tightMarking: ['tightmarking', 'tightMarking', 'TightMarking'],
-    offsideTrap: ['offside', 'offsidetrap', 'offsideTrap', 'OffsideTrap'],
+    // Current Soccer Manager instructions. Keep raw values when the report does
+    // not expose a human-readable *Name field; we can decode codes only after
+    // observing them rather than guessing mappings.
+    usePlaymaker: ['useplaymaker', 'usePlaymaker', 'UsePlaymaker'],
+    useTargetMan: ['usetargetman', 'useTargetMan', 'UseTargetMan'],
     width: ['width', 'Width'],
+    fluidity: ['fluidityName', 'fluidity', 'Fluidity'],
     creativity: ['creativity', 'Creativity'],
+    forwards: ['forwardsName', 'forwards', 'Forwards'],
+    widePlay: ['wideplayName', 'widePlayName', 'wideplay', 'widePlay', 'WidePlay'],
     aggression: ['aggressionName', 'aggression', 'Aggression'],
-    shooting: ['shooting', 'Shooting'],
-    crossing: ['crossing', 'Crossing'],
     defensiveLine: ['backlineName', 'defensiveline', 'defensiveLine', 'DefensiveLine'],
     sweeperKeeper: ['sweeperkeeper', 'sweeperKeeper', 'SweeperKeeper'],
   };
