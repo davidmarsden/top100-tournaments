@@ -422,6 +422,136 @@ export default function ManagerLabPage() {
     }).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || (b.adjustedPpg ?? -99) - (a.adjustedPpg ?? -99));
   }, [worldFormulaMatches, worldDivisionMatches, worldFormulaDivision, worldFormulaStrength, worldStrengthBaseline]);
 
+  const crossDivisionFamilies = useMemo(() => {
+    const divisions = ['Division 1', 'Division 2', 'Division 3', 'Division 4', 'Division 5'];
+    const byFamily = new Map();
+
+    divisions.forEach((division) => {
+      const divisionMatches = worldFormulaMatches.filter((match) => match.competition === division);
+      const baseline = buildStrengthBaseline(divisionMatches);
+      const filtered = divisionMatches.filter((match) =>
+        worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength
+      );
+      const groups = new Map();
+      filtered.forEach((match) => {
+        const key = tacticSignature(match, FAMILY_KEYS);
+        const group = groups.get(key) || { key, sample: match, matches: [], clubs: new Set() };
+        group.matches.push(match);
+        if (match.sourceClubId) group.clubs.add(match.sourceClubId);
+        groups.set(key, group);
+      });
+      groups.forEach((group) => {
+        const adjusted = adjustedMetrics(group.matches, baseline);
+        const entry = byFamily.get(group.key) || {
+          key: group.key, sample: group.sample, divisions: {}, clubs: new Set(), played: 0,
+        };
+        group.clubs.forEach((club) => entry.clubs.add(club));
+        entry.played += group.matches.length;
+        entry.divisions[division] = {
+          played: group.matches.length,
+          adjustedPpg: adjusted.adjustedPpg,
+          adjustedGd: adjusted.adjustedGd,
+        };
+        byFamily.set(group.key, entry);
+      });
+    });
+
+    return [...byFamily.values()].map((group) => {
+      const observed = Object.values(group.divisions);
+      return {
+        ...group,
+        clubCount: group.clubs.size,
+        observedDivisions: observed.length,
+        positiveDivisions: observed.filter((item) => item.adjustedPpg !== null && item.adjustedPpg > 0).length,
+      };
+    }).sort((a, b) =>
+      b.observedDivisions - a.observedDivisions ||
+      b.clubCount - a.clubCount ||
+      b.played - a.played
+    );
+  }, [worldFormulaMatches, worldFormulaStrength]);
+
+  function downloadFormulaLabJson() {
+    const cleanFamily = (group) => ({
+      family: FAMILY_KEYS.reduce((values, key) => ({
+        ...values,
+        [key]: displayTacticValue(key, tacticValue(group.sample, key)),
+      }), {}),
+      matchesPlayed: group.played,
+      clubs: group.clubCount,
+      ppg: group.ppg,
+      gdPerGame: group.gd,
+      xiDifference: group.xiDifference,
+      adjustedPpg: group.adjustedPpg,
+      managerAdjustedPpg: group.managerAdjustedPpg,
+      adjustedGd: group.adjustedGd,
+    });
+    const cleanFormula = (group) => ({
+      formula: CURRENT_FORMULA_FIELDS.reduce((values, [label, key]) => ({
+        ...values,
+        [key]: displayTacticValue(key, tacticValue(group.sample, key)),
+      }), {}),
+      formulaText: formulaText(group.sample),
+      matchesPlayed: group.played,
+      clubs: group.clubCount,
+      evidence: group.evidence,
+      ppg: group.ppg,
+      gdPerGame: group.gd,
+      xiDifference: group.xiDifference,
+      adjustedPpg: group.adjustedPpg,
+      managerAdjustedPpg: group.managerAdjustedPpg,
+      home: group.home,
+      away: group.away,
+    });
+    const payload = {
+      kind: 'top100ManagerLabFormulaResults',
+      version: 1,
+      setupId: SETUP_ID,
+      season: 'S28',
+      generatedAt: new Date().toISOString(),
+      filters: {
+        division: worldFormulaDivision,
+        opponentXi: worldFormulaStrength,
+      },
+      observationCount: worldFormulaGroups.reduce((sum, group) => sum + group.played, 0),
+      formulas: worldFormulaGroups.map(cleanFormula),
+      families: worldFamilyGroups.map(cleanFamily),
+      crossDivisionFamilies: crossDivisionFamilies.map((group) => ({
+        family: FAMILY_KEYS.reduce((values, key) => ({
+          ...values,
+          [key]: displayTacticValue(key, tacticValue(group.sample, key)),
+        }), {}),
+        matchesPlayed: group.played,
+        clubs: group.clubCount,
+        observedDivisions: group.observedDivisions,
+        positiveDivisions: group.positiveDivisions,
+        divisions: group.divisions,
+      })),
+      instructionEffects: instructionEffects.map((effect) => ({
+        instruction: effect.label,
+        key: effect.key,
+        value: displayTacticValue(effect.key, effect.value),
+        matchedStrata: effect.strata,
+        matchesPlayed: effect.matches,
+        clubs: effect.clubCount,
+        deltaPpg: effect.deltaPpg,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const divisionSlug = worldFormulaDivision === 'All Top 100 divisions'
+      ? 'all-divisions'
+      : worldFormulaDivision.toLowerCase().replace(/\s+/g, '-');
+    const strengthSlug = worldFormulaStrength.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    link.href = url;
+    link.download = `top100-manager-lab-s28-${divisionSlug}-${strengthSlug}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   const instructionEffects = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
       (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
@@ -571,11 +701,12 @@ export default function ManagerLabPage() {
       <section className="card">
         <div className="manager-lab-toolbar">
           <div>
-            <h2>Formula Lab · whole world</h2>
+            <h2>Formula Lab · {worldFormulaDivision}</h2>
             <p className="muted">League evidence across all five Top 100 divisions, viewed from both sides of each match. Use the division filter to test whether a formula survives different competitive levels, squads and opponents.</p>
           </div>
           <div className="button-row">
             {!worldFormulaMatches.length && <button className="button secondary" type="button" onClick={loadWorldFormulaLab}>Load world evidence</button>}
+            {worldFormulaMatches.length > 0 && <button className="button secondary" type="button" onClick={downloadFormulaLabJson}>Download JSON results</button>}
           </div>
         </div>
         {worldFormulaStatus && <p className="status">{worldFormulaStatus}</p>}
@@ -598,6 +729,21 @@ export default function ManagerLabPage() {
           </tbody></table></div>
         </>}
       </section>
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>Cross-division replication · {worldFormulaStrength}</h2>
+        <p className="muted">The same core tactical family compared independently in Divisions 1–5. Each division cell shows matches played and strength-adjusted PPG. “Positive” counts only divisions where that family beat the XI-strength baseline; missing divisions are shown as — rather than treated as failures.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Family</th><th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th>MP</th><th>Clubs</th><th>Positive</th></tr></thead><tbody>
+          {crossDivisionFamilies.slice(0, 30).map((group) => <tr key={group.key}>
+            <td><strong>{FAMILY_KEYS.map((key) => displayTacticValue(key, tacticValue(group.sample, key))).join(' · ')}</strong></td>
+            {['Division 1','Division 2','Division 3','Division 4','Division 5'].map((division) => {
+              const cell = group.divisions[division];
+              return <td key={division}>{cell ? <>{cell.played} MP<br /><small>{cell.adjustedPpg === null ? '—' : `${cell.adjustedPpg >= 0 ? '+' : ''}${cell.adjustedPpg.toFixed(2)} Adj`}</small></> : '—'}</td>;
+            })}
+            <td>{group.played}</td><td>{group.clubCount}</td><td>{group.positiveDivisions}/{group.observedDivisions}</td>
+          </tr>)}
+        </tbody></table></div>
+      </section>}
 
       {worldFormulaMatches.length > 0 && <section className="card">
         <h2>Formula families · whole world</h2>
