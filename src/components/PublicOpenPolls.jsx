@@ -42,7 +42,7 @@ export default function PublicOpenPolls() {
       {[...event.questions.values()].map((question) => <div key={question.id} style={{ marginTop: '1rem' }}><h3>{question.title}</h3>
         {event.results_visibility === 'live' ? <ul>{question.options.map((option) => <li key={option.id}>{option.label}: <strong>{option.votes}</strong></li>)}</ul> : <p className="muted">Results will be shown according to this poll's result settings.</p>}
       </div>)}
-      <div className="button-row" style={{ marginTop: '1rem' }}><a className="button" href="/vote">Sign in and vote</a><a className="button secondary" href="https://manager.smtop100.blog/registrations">Create a manager account</a></div>
+      <div className="button-row" style={{ marginTop: '1rem' }}><a className="button" href="/vote">Sign in and vote</a><a className="button secondary" href="https://manager.smtop100.blog/?returnTo=https%3A%2F%2Fvote.smtop100.blog%2Fvote">Create or claim your manager account</a></div>
       <p className="muted">Already manage a Top 100 club but don't have an account yet? Create one to cast your vote.</p>
     </section>)}
     <section className="card"><h2>Previous polls</h2><p>Completed polls and their published results stay in the archive.</p><a className="button secondary" href="/results">View poll results</a></section>
