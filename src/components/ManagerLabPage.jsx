@@ -134,18 +134,20 @@ function buildManagerStrengthBaseline(matches) {
 function managerAdjustedMetrics(sample, baseline) {
   const eligible = sample.filter((match) => match.sourceClubId && xiBucket(match.xiRatingDifference) !== null);
   if (!eligible.length) return { managerAdjustedPpg: null, managerAdjustedGd: null, managerBaselineMatches: 0 };
-  let expectedPoints = 0, expectedGd = 0, used = 0, baselineMatches = 0;
+  let expectedPoints = 0, expectedGd = 0, baselineMatches = 0;
+  const usedMatches = [];
   eligible.forEach((match) => {
     const base = baseline.get(`${match.sourceClubId}|${xiBucket(match.xiRatingDifference)}`);
     if (!base?.played) return;
     expectedPoints += base.points / base.played;
     expectedGd += base.gd / base.played;
     baselineMatches += base.played;
-    used += 1;
+    usedMatches.push(match);
   });
+  const used = usedMatches.length;
   if (!used) return { managerAdjustedPpg: null, managerAdjustedGd: null, managerBaselineMatches: 0 };
-  const actualPoints = eligible.slice(0, used).reduce((sum, match) => sum + resultPoints(match.result), 0);
-  const actualGd = eligible.slice(0, used).reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0);
+  const actualPoints = usedMatches.reduce((sum, match) => sum + resultPoints(match.result), 0);
+  const actualGd = usedMatches.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0);
   return {
     managerAdjustedPpg: (actualPoints - expectedPoints) / used,
     managerAdjustedGd: (actualGd - expectedGd) / used,
