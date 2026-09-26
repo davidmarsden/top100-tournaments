@@ -351,7 +351,10 @@ export default function ManagerLabPage() {
     })).sort((a,b) => b.played - a.played || b.ppg - a.ppg);
   }, [rows]);
 
-  const worldStrengthBaseline = useMemo(() => buildStrengthBaseline(worldFormulaMatches), [worldFormulaMatches]);
+  const worldDivisionMatches = useMemo(() => worldFormulaMatches.filter((match) =>
+    worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision
+  ), [worldFormulaMatches, worldFormulaDivision]);
+  const worldStrengthBaseline = useMemo(() => buildStrengthBaseline(worldDivisionMatches), [worldDivisionMatches]);
 
   const worldFormulaGroups = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
@@ -385,9 +388,9 @@ export default function ManagerLabPage() {
       evidence: group.played >= 12 && group.clubs.size >= 3 ? 'Broad' :
         group.played >= 6 && group.clubs.size >= 2 ? 'Developing' : 'Exploratory',
       ...adjustedMetrics(group.matches, worldStrengthBaseline),
-      ...managerAdjustedMetrics(group.matches, worldFormulaMatches, TACTIC_KEYS),
+      ...managerAdjustedMetrics(group.matches, worldDivisionMatches, TACTIC_KEYS),
     })).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || b.ppg - a.ppg);
-  }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength, worldStrengthBaseline]);
+  }, [worldFormulaMatches, worldDivisionMatches, worldFormulaDivision, worldFormulaStrength, worldStrengthBaseline]);
 
   const worldFamilyGroups = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
@@ -414,10 +417,10 @@ export default function ManagerLabPage() {
         gd: gd / group.matches.length,
         xiDifference: avg(group.matches, 'xiRatingDifference'),
         ...adjusted,
-        ...managerAdjustedMetrics(group.matches, worldFormulaMatches, FAMILY_KEYS),
+        ...managerAdjustedMetrics(group.matches, worldDivisionMatches, FAMILY_KEYS),
       };
     }).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || (b.adjustedPpg ?? -99) - (a.adjustedPpg ?? -99));
-  }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength, worldStrengthBaseline]);
+  }, [worldFormulaMatches, worldDivisionMatches, worldFormulaDivision, worldFormulaStrength, worldStrengthBaseline]);
 
   const instructionEffects = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
