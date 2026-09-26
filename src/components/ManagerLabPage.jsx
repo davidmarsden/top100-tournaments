@@ -791,6 +791,7 @@ export default function ManagerLabPage() {
       })),
       playerRoleDecoder: {
         encodingAudit: playerRoleEncodingAudit,
+        validatedRoleAnalysis,
         replicatedFamily: {
           codes: replicatedFamilyRoleCodes,
           integrityIssues: replicatedFamilyRoleIntegrity,
@@ -1118,6 +1119,45 @@ export default function ManagerLabPage() {
     ];
   }, [worldFormulaMatches, replicatedFamilyRoleIntegrity]);
 
+  const validatedRoleAnalysis = useMemo(() => {
+    if (!worldFormulaMatches.length || !playerRoleEncodingAudit?.positionCodeProfiles?.length) return { assignments: [], anomalies: [], severity: [], clubs: [] };
+    const corroborated = new Set(playerRoleEncodingAudit.positionCodeProfiles.filter((r) => r.completeMatches > 0).map((r) => `${r.formation}:${r.key}:${r.code}`));
+    const observations = worldFormulaMatches.map((match) => {
+      const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
+      const formation = normalizedTacticValue(match, 'formation');
+      let anomalous = 0;
+      const assignments = [];
+      if (formation && ['complete-xi-timeline', 'direct-xi', 'sparse-keyed-timeline'].includes(encoding.kind)) {
+        encoding.openingEntries.forEach(([key, rawCode]) => {
+          const code = String(rawCode ?? '');
+          if (!code || code === '0' || typeof rawCode === 'object') return;
+          const complete = encoding.kind !== 'sparse-keyed-timeline';
+          const validated = complete || corroborated.has(`${formation}:${key}:${code}`);
+          if (!validated) anomalous += 1;
+          assignments.push({ key: String(key), code, role: playerRoleLabel(code), validated, complete });
+        });
+      }
+      return { match, formation, anomalous, assignments };
+    });
+    const metric = (rows) => {
+      if (!rows.length) return { matches: 0, ppg: null, gd: null, winRate: null };
+      const pts = rows.map((r) => resultPoints(r.match));
+      return { matches: rows.length, ppg: pts.reduce((a,b)=>a+b,0)/rows.length, gd: rows.reduce((s,r)=>s+(Number(r.match.goalsFor)-Number(r.match.goalsAgainst)),0)/rows.length, winRate: pts.filter((p)=>p===3).length/rows.length };
+    };
+    const sev = new Map();
+    observations.forEach((r) => { const k=r.anomalous>=4?'4+':String(r.anomalous); if(!sev.has(k)) sev.set(k,[]); sev.get(k).push(r); });
+    const severity=[...sev].map(([anomalies,rows])=>({anomalies,...metric(rows)})).sort((a,b)=>(a.anomalies==='4+'?99:+a.anomalies)-(b.anomalies==='4+'?99:+b.anomalies));
+    const cm=new Map();
+    observations.forEach((r)=>{const id=String(r.match.sourceClubId||r.match.club||'unknown');const x=cm.get(id)||{sourceClubId:r.match.sourceClubId,club:r.match.club||id,clean:[],anomalous:[]};(r.anomalous?x.anomalous:x.clean).push(r);cm.set(id,x);});
+    const clubs=[...cm.values()].filter((x)=>x.anomalous.length).map((x)=>({...x,cleanMetrics:metric(x.clean),anomalyMetrics:metric(x.anomalous)})).sort((a,b)=>b.anomalous.length-a.anomalous.length);
+    const build=(wantValidated)=>{
+      const m=new Map();
+      observations.forEach((r)=>r.assignments.filter((a)=>a.validated===wantValidated).forEach((a)=>{const id=`${r.formation}:${a.key}:${a.code}`;const x=m.get(id)||{formation:r.formation,key:a.key,code:a.code,role:a.role,rows:[],clubs:new Set(),complete:0,sparse:0};x.rows.push(r);if(r.match.sourceClubId)x.clubs.add(r.match.sourceClubId);if(a.complete)x.complete++;else x.sparse++;m.set(id,x);}));
+      return [...m.values()].map((x)=>({formation:x.formation,key:x.key,code:x.code,role:x.role,clubCount:x.clubs.size,complete:x.complete,sparse:x.sparse,...metric(x.rows)})).sort((a,b)=>b.matches-a.matches);
+    };
+    return { assignments: build(true), anomalies: build(false), severity, clubs };
+  }, [worldFormulaMatches, playerRoleEncodingAudit]);
+
   const selectedClubRoleCodes = useMemo(() => {
     const roleMatches = matches.filter((match) => normalizedTacticValue(match, 'formation') === '4-2-3-1 B');
     const groups = new Map();
@@ -1325,6 +1365,31 @@ export default function ManagerLabPage() {
           <summary><strong>Club-by-club role encoding</strong> · {playerRoleEncodingAudit.clubs.length} clubs</summary>
           <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Encoding shapes</th><th>Opening non-zero values</th><th>Sample opening raw state</th></tr></thead><tbody>
             {playerRoleEncodingAudit.clubs.map((row) => <tr key={row.sourceClubId || row.club}><td><strong>{row.club}</strong><br /><small>{row.sourceClubId || '—'}</small></td><td>{row.matches}</td><td>{row.encodings}</td><td>{row.assignedCounts}</td><td><code>{row.sampleOpening === null ? '—' : JSON.stringify(row.sampleOpening)}</code></td></tr>)}
+          </tbody></table></div>
+        </details>
+      </section>}
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>Player Role validation & anomaly performance</h2>
+        <p className="muted">Complete-XI assignments are trusted. Sparse assignments are validated only when the same formation, raw key and role code is corroborated by complete-XI evidence. Sparse-only combinations are quarantined as anomalies. Outcomes below are descriptive associations, not proof that an anomalous encoding affected the match engine.</p>
+        <h3>Anomaly severity</h3>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Anomalies / XI</th><th>MP</th><th>PPG</th><th>GD/game</th><th>Win %</th></tr></thead><tbody>
+          {validatedRoleAnalysis.severity.map((r)=><tr key={r.anomalies}><td><strong>{r.anomalies}</strong></td><td>{r.matches}</td><td>{r.ppg===null?'—':r.ppg.toFixed(2)}</td><td>{r.gd===null?'—':`${r.gd>=0?'+':''}${r.gd.toFixed(2)}`}</td><td>{r.winRate===null?'—':`${(r.winRate*100).toFixed(1)}%`}</td></tr>)}
+        </tbody></table></div>
+        <details><summary><strong>Clubs with anomalous role encodings</strong> · {validatedRoleAnalysis.clubs.length}</summary>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Anom MP</th><th>Anom PPG</th><th>Anom GD</th><th>Clean MP</th><th>Clean PPG</th><th>Clean GD</th></tr></thead><tbody>
+            {validatedRoleAnalysis.clubs.map((r)=><tr key={r.sourceClubId||r.club}><td><strong>{r.club}</strong></td><td>{r.anomalyMetrics.matches}</td><td>{r.anomalyMetrics.ppg===null?'—':r.anomalyMetrics.ppg.toFixed(2)}</td><td>{r.anomalyMetrics.gd===null?'—':r.anomalyMetrics.gd.toFixed(2)}</td><td>{r.cleanMetrics.matches}</td><td>{r.cleanMetrics.ppg===null?'—':r.cleanMetrics.ppg.toFixed(2)}</td><td>{r.cleanMetrics.gd===null?'—':r.cleanMetrics.gd.toFixed(2)}</td></tr>)}
+          </tbody></table></div>
+        </details>
+        <details><summary><strong>Quarantined sparse-only combinations</strong> · {validatedRoleAnalysis.anomalies.length}</summary>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation</th><th>Key</th><th>Code</th><th>Candidate role</th><th>MP</th><th>Clubs</th><th>PPG</th><th>GD/game</th></tr></thead><tbody>
+            {validatedRoleAnalysis.anomalies.map((r)=><tr key={`${r.formation}:${r.key}:${r.code}`}><td>{r.formation}</td><td><code>{r.key}</code></td><td><code>{r.code}</code></td><td>{r.role}</td><td>{r.matches}</td><td>{r.clubCount}</td><td>{r.ppg===null?'—':r.ppg.toFixed(2)}</td><td>{r.gd===null?'—':r.gd.toFixed(2)}</td></tr>)}
+          </tbody></table></div>
+        </details>
+        <details><summary><strong>Validated role assignments</strong> · {validatedRoleAnalysis.assignments.length}</summary>
+          <p className="muted">Complete-XI assignments plus sparse assignments corroborated by complete-XI evidence. Raw outcomes are a first descriptive view; XI-strength and tactical adjustment can follow once the decoder is stable.</p>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation</th><th>Slot</th><th>Role</th><th>MP</th><th>Complete</th><th>Validated sparse</th><th>Clubs</th><th>PPG</th><th>GD/game</th></tr></thead><tbody>
+            {validatedRoleAnalysis.assignments.map((r)=><tr key={`${r.formation}:${r.key}:${r.code}`}><td>{r.formation}</td><td>{Number(r.key)+1}</td><td>{r.role} <code>{r.code}</code></td><td>{r.matches}</td><td>{r.complete}</td><td>{r.sparse}</td><td>{r.clubCount}</td><td>{r.ppg===null?'—':r.ppg.toFixed(2)}</td><td>{r.gd===null?'—':r.gd.toFixed(2)}</td></tr>)}
           </tbody></table></div>
         </details>
       </section>}
