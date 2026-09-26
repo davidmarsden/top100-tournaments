@@ -41,6 +41,11 @@ function tacticValue(match, key) {
     width: 'width',
     aggression: 'aggression',
     creativity: 'creativity',
+    fluidity: 'fluidity',
+    forwards: 'forwards',
+    widePlay: 'widePlay',
+    usePlaymaker: 'usePlaymaker',
+    useTargetMan: 'useTargetMan',
     counterAttack: 'counterAttack',
     tightMarking: 'tightMarking',
     menBehindBall: 'menBehindBall',
@@ -58,7 +63,7 @@ function normalizedTacticValue(match, key) {
 function displayTacticValue(key, value) {
   if (value === null || value === undefined || value === '') return '—';
   const text = String(value);
-  if (['counterAttack', 'tightMarking', 'menBehindBall', 'sweeperKeeper'].includes(key)) {
+  if (['counterAttack', 'usePlaymaker', 'useTargetMan', 'tightMarking', 'menBehindBall', 'sweeperKeeper'].includes(key)) {
     if (text === '1' || text === 'true') return 'On';
     if (text === '0' || text === 'false') return 'Off';
   }
@@ -69,7 +74,7 @@ function displayTacticValue(key, value) {
   return labels[key]?.[text] || text;
 }
 
-const TACTIC_KEYS = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','counterAttack','tightMarking','menBehindBall','sweeperKeeper'];
+const TACTIC_KEYS = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','fluidity','forwards','widePlay','usePlaymaker','useTargetMan','counterAttack','tightMarking','menBehindBall','sweeperKeeper'];
 const FAMILY_KEYS = ['formation','mentality','passingStyle','attackingStyle','tempo'];
 
 function tacticSignature(match, keys = TACTIC_KEYS) {
@@ -153,6 +158,8 @@ const CURRENT_FORMULA_FIELDS = [
   ['Formation','formation'], ['Mentality','mentality'], ['Passing','passingStyle'],
   ['Attack','attackingStyle'], ['Tempo','tempo'], ['Press','pressing'], ['Line','defensiveLine'],
   ['Width','width'], ['Aggression','aggression'], ['Creativity','creativity'],
+  ['Fluidity','fluidity'], ['Forwards','forwards'], ['Wide play','widePlay'],
+  ['Use PM','usePlaymaker'], ['Use TM','useTargetMan'],
   ['CA','counterAttack'], ['TM','tightMarking'], ['MBB','menBehindBall'], ['SK','sweeperKeeper'],
 ];
 
