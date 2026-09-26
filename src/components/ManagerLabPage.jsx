@@ -69,9 +69,50 @@ function displayTacticValue(key, value) {
   return labels[key]?.[text] || text;
 }
 
-function tacticSignature(match) {
-  const keys = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','counterAttack','tightMarking','menBehindBall','sweeperKeeper'];
+const TACTIC_KEYS = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','counterAttack','tightMarking','menBehindBall','sweeperKeeper'];
+const FAMILY_KEYS = ['formation','mentality','passingStyle','attackingStyle','tempo'];
+
+function tacticSignature(match, keys = TACTIC_KEYS) {
   return keys.map((key) => normalizedTacticValue(match, key) ?? '—').join('|');
+}
+
+function xiBucket(value) {
+  const n = numericValue(value);
+  if (n === null) return null;
+  return Math.max(-8, Math.min(8, Math.round(n)));
+}
+
+function buildStrengthBaseline(matches) {
+  const buckets = new Map();
+  matches.forEach((match) => {
+    const bucket = xiBucket(match.xiRatingDifference);
+    if (bucket === null) return;
+    const entry = buckets.get(bucket) || { played: 0, points: 0, gd: 0 };
+    entry.played += 1;
+    entry.points += resultPoints(match.result);
+    entry.gd += (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0);
+    buckets.set(bucket, entry);
+  });
+  return buckets;
+}
+
+function adjustedMetrics(sample, baseline) {
+  const eligible = sample.filter((match) => xiBucket(match.xiRatingDifference) !== null);
+  if (!eligible.length) return { adjustedPpg: null, adjustedGd: null };
+  let expectedPoints = 0;
+  let expectedGd = 0;
+  eligible.forEach((match) => {
+    const base = baseline.get(xiBucket(match.xiRatingDifference));
+    if (!base?.played) return;
+    expectedPoints += base.points / base.played;
+    expectedGd += base.gd / base.played;
+  });
+  const actualPoints = eligible.reduce((sum, match) => sum + resultPoints(match.result), 0);
+  const actualGd = eligible.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0);
+  return {
+    adjustedPpg: (actualPoints - expectedPoints) / eligible.length,
+    adjustedGd: (actualGd - expectedGd) / eligible.length,
+  };
 }
 
 function resultPoints(result) {
@@ -279,6 +320,8 @@ export default function ManagerLabPage() {
     })).sort((a,b) => b.played - a.played || b.ppg - a.ppg);
   }, [rows]);
 
+  const worldStrengthBaseline = useMemo(() => buildStrengthBaseline(worldFormulaMatches), [worldFormulaMatches]);
+
   const worldFormulaGroups = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
       worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength
@@ -309,6 +352,82 @@ export default function ManagerLabPage() {
       evidence: group.played >= 12 && group.clubs.size >= 3 ? 'Broad' :
         group.played >= 6 && group.clubs.size >= 2 ? 'Developing' : 'Exploratory',
     })).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || b.ppg - a.ppg);
+  }, [worldFormulaMatches, worldFormulaStrength]);
+
+  const worldFamilyGroups = useMemo(() => {
+    const filtered = worldFormulaMatches.filter((match) =>
+      worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength
+    );
+    const map = new Map();
+    filtered.forEach((match) => {
+      const key = tacticSignature(match, FAMILY_KEYS);
+      const group = map.get(key) || { key, sample: match, matches: [], clubs: new Set() };
+      group.matches.push(match);
+      if (match.sourceClubId) group.clubs.add(match.sourceClubId);
+      map.set(key, group);
+    });
+    return [...map.values()].map((group) => {
+      const points = group.matches.reduce((sum, match) => sum + resultPoints(match.result), 0);
+      const gd = group.matches.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0);
+      const adjusted = adjustedMetrics(group.matches, worldStrengthBaseline);
+      return {
+        ...group,
+        played: group.matches.length,
+        clubCount: group.clubs.size,
+        ppg: points / group.matches.length,
+        gd: gd / group.matches.length,
+        xiDifference: avg(group.matches, 'xiRatingDifference'),
+        ...adjusted,
+      };
+    }).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || (b.adjustedPpg ?? -99) - (a.adjustedPpg ?? -99));
+  }, [worldFormulaMatches, worldFormulaStrength, worldStrengthBaseline]);
+
+  const instructionEffects = useMemo(() => {
+    const filtered = worldFormulaMatches.filter((match) =>
+      worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength
+    );
+    const fields = CURRENT_FORMULA_FIELDS.filter(([, key]) => !FAMILY_KEYS.includes(key));
+    const effects = [];
+    fields.forEach(([label, key]) => {
+      const controls = TACTIC_KEYS.filter((candidate) => candidate !== key);
+      const strata = new Map();
+      filtered.forEach((match) => {
+        const value = normalizedTacticValue(match, key);
+        if (value === null) return;
+        const stratumKey = tacticSignature(match, controls);
+        const stratum = strata.get(stratumKey) || new Map();
+        const sample = stratum.get(value) || [];
+        sample.push(match);
+        stratum.set(value, sample);
+        strata.set(stratumKey, stratum);
+      });
+      const pairTotals = new Map();
+      strata.forEach((values) => {
+        const variants = [...values.entries()];
+        if (variants.length < 2) return;
+        variants.forEach(([value, sample]) => {
+          const alternatives = variants.filter(([other]) => other !== value).flatMap(([, rows]) => rows);
+          if (!alternatives.length) return;
+          const actual = sample.reduce((sum, match) => sum + resultPoints(match.result), 0) / sample.length;
+          const comparison = alternatives.reduce((sum, match) => sum + resultPoints(match.result), 0) / alternatives.length;
+          const id = value;
+          const entry = pairTotals.get(id) || { label, key, value, strata: 0, matches: 0, weightedDelta: 0, clubs: new Set() };
+          entry.strata += 1;
+          entry.matches += sample.length;
+          entry.weightedDelta += (actual - comparison) * sample.length;
+          sample.forEach((match) => match.sourceClubId && entry.clubs.add(match.sourceClubId));
+          pairTotals.set(id, entry);
+        });
+      });
+      pairTotals.forEach((entry) => {
+        if (entry.strata >= 2 && entry.matches >= 3) effects.push({
+          ...entry,
+          deltaPpg: entry.weightedDelta / entry.matches,
+          clubCount: entry.clubs.size,
+        });
+      });
+    });
+    return effects.sort((a,b) => b.matches - a.matches || b.strata - a.strata || b.deltaPpg - a.deltaPpg).slice(0, 20);
   }, [worldFormulaMatches, worldFormulaStrength]);
 
   async function loadWorldFormulaLab() {
@@ -435,6 +554,28 @@ export default function ManagerLabPage() {
           </tbody></table></div>
         </>}
       </section>
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>Formula families · whole world</h2>
+        <p className="muted">Core tactical identities collapse the exact formulas to formation, mentality, passing, attacking style and tempo. Adj PPG/GD compare each result with the archived Division 1 baseline for roughly the same XI-rating gap; positive values mean the family beat that strength-matched baseline.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Family</th><th>MP</th><th>Clubs</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>Adj PPG</th><th>Adj GD</th></tr></thead><tbody>
+          {worldFamilyGroups.slice(0, 20).map((group) => <tr key={group.key}>
+            <td><strong>{FAMILY_KEYS.map((key) => displayTacticValue(key, tacticValue(group.sample, key))).join(' · ')}</strong></td>
+            <td>{group.played}</td><td>{group.clubCount}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td>
+            <td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td>
+            <td>{group.adjustedPpg === null ? '—' : `${group.adjustedPpg >= 0 ? '+' : ''}${group.adjustedPpg.toFixed(2)}`}</td>
+            <td>{group.adjustedGd === null ? '—' : `${group.adjustedGd >= 0 ? '+' : ''}${group.adjustedGd.toFixed(2)}`}</td>
+          </tr>)}
+        </tbody></table></div>
+      </section>}
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>Instruction effects · matched formulas</h2>
+        <p className="muted">Near-controlled comparisons: matches are only compared when every other current tactical instruction is identical. Δ PPG is the observed difference against the alternative instruction values in those matched strata. This is evidence of association, not proof of causation.</p>
+        {instructionEffects.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Instruction</th><th>Value</th><th>Matched strata</th><th>MP</th><th>Clubs</th><th>Δ PPG</th></tr></thead><tbody>
+          {instructionEffects.map((effect) => <tr key={`${effect.key}:${effect.value}`}><td><strong>{effect.label}</strong></td><td>{displayTacticValue(effect.key, effect.value)}</td><td>{effect.strata}</td><td>{effect.matches}</td><td>{effect.clubCount}</td><td>{effect.deltaPpg >= 0 ? '+' : ''}{effect.deltaPpg.toFixed(2)}</td></tr>)}
+        </tbody></table></div> : <p className="muted">Not enough exact near-matches yet to isolate a single instruction. More archived league matches will make this view progressively stronger.</p>}
+      </section>}
 
       <section className="card">
         <h2>Opening tactical profile</h2>
