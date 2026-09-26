@@ -47,7 +47,7 @@ function buildStandings(entries, matches) {
   return [...rows.values()].map((row) => ({ ...row, gd: row.gf - row.ga })).sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf || a.team.localeCompare(b.team));
 }
 
-export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '' }) {
+export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '', returnTo = '' }) {
   const [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [magicLinkStatus, setMagicLinkStatus] = useState('idle');
@@ -134,7 +134,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
       const { error } = await withPortalTimeout(
         supabase.auth.signInWithOtp({
           email: address,
-          options: { emailRedirectTo: `${window.location.origin}${registrationMode ? '/manager/registration' : '/manager'}`, shouldCreateUser: true },
+          options: { emailRedirectTo: `${window.location.origin}${registrationMode ? '/manager/registration' : '/manager'}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`, shouldCreateUser: true },
         }),
         'Sign-in link request',
         12000,
@@ -307,7 +307,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
     </main>;
   }
 
-  return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal · {selectedEntry?.tournaments?.game_worlds?.name || account.game_worlds?.name || 'Top 100'}</p><h1>{account.managers?.display_name || account.managers?.name || 'Top 100 Manager'}</h1><p>{selectedEntry ? `${selectedEntry.teams?.name} · ${selectedEntry.tournaments?.name}` : 'No active tournament entry found'}</p></div><div className="button-row">{organiserAssignments.length > 0 && <a className="button" href="/admin">{adminAssignments.length === 1 && organiserAssignments.length === 1 ? `Manage ${organiserAssignments[0].tournaments?.name || 'tournament'}` : 'Manage tournaments'}</a>}<a className="button secondary" href="/squad">Squad &amp; transfers</a><a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
+  return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal · {selectedEntry?.tournaments?.game_worlds?.name || account.game_worlds?.name || 'Top 100'}</p><h1>{account.managers?.display_name || account.managers?.name || 'Top 100 Manager'}</h1><p>{selectedEntry ? `${selectedEntry.teams?.name} · ${selectedEntry.tournaments?.name}` : 'No active tournament entry found'}</p></div><div className="button-row">{organiserAssignments.length > 0 && <a className="button" href="/admin">{adminAssignments.length === 1 && organiserAssignments.length === 1 ? `Manage ${organiserAssignments[0].tournaments?.name || 'tournament'}` : 'Manage tournaments'}</a>}{returnTo && <a className="button" href={returnTo}>Continue</a>}<a className="button secondary" href="/squad">Squad &amp; transfers</a><a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
     {entries.length > 1 && <section className="card portal-selector"><label>Tournament entry<select value={selectedEntry?.id || ''} onChange={(event) => setSelectedEntryId(event.target.value)}>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.tournaments?.name} — {entry.teams?.name}</option>)}</select></label></section>}
     {!selectedEntry ? <section className="card"><h2>Account linked successfully</h2><p>Your fixtures will appear here when you enter a competition.</p><a className="button" href="/manager/registration">Register for a tournament</a></section> : <>
       <section className="portal-metrics"><article><span>Team</span><strong>{selectedEntry.teams?.name}</strong></article><article><span>Group</span><strong>{selectedEntry.group_code ? `Group ${selectedEntry.group_code}` : 'TBC'}</strong></article><article><span>Position</span><strong>{ordinal(myPosition)}</strong></article><article><span>Record</span><strong>{results.length} played</strong></article></section>
