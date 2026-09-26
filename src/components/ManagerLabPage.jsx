@@ -904,7 +904,44 @@ export default function ManagerLabPage() {
       }
       byClub.set(clubKey, club);
     });
+    const assignmentCounts = new Map();
+    worldFormulaMatches.forEach((match) => {
+      const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
+      assignmentCounts.set(encoding.openingAssigned, (assignmentCounts.get(encoding.openingAssigned) || 0) + 1);
+    });
+
+    const sparseKeyProfiles = new Map();
+    worldFormulaMatches.forEach((match) => {
+      const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
+      if (encoding.kind !== 'sparse-keyed-timeline') return;
+      encoding.openingEntries.forEach(([key, role]) => {
+        if (role === null || role === undefined || role === '' || String(role) === '0' || typeof role === 'object') return;
+        const profileKey = `${key}:${String(role)}`;
+        const row = sparseKeyProfiles.get(profileKey) || {
+          key: String(key), code: String(role), matches: 0, clubs: new Set(), formations: new Set(),
+        };
+        row.matches += 1;
+        if (match.sourceClubId) row.clubs.add(match.sourceClubId);
+        const formation = tacticValue(match, 'formation');
+        if (formation) row.formations.add(formation);
+        sparseKeyProfiles.set(profileKey, row);
+      });
+    });
+
     return {
+      assignmentCensus: [...assignmentCounts.entries()]
+        .map(([assigned, matches]) => ({ assigned, matches, share: worldFormulaMatches.length ? matches / worldFormulaMatches.length : 0 }))
+        .sort((a, b) => a.assigned - b.assigned),
+      sparseKeyProfiles: [...sparseKeyProfiles.values()]
+        .map((row) => ({
+          key: row.key,
+          code: row.code,
+          role: playerRoleLabel(row.code),
+          matches: row.matches,
+          clubCount: row.clubs.size,
+          formations: [...row.formations].sort(),
+        }))
+        .sort((a, b) => Number(a.key) - Number(b.key) || b.matches - a.matches || Number(a.code) - Number(b.code)),
       shapes: [...byKind.values()].map((row) => ({
         kind: row.kind,
         matches: row.matches,
@@ -1194,6 +1231,18 @@ export default function ManagerLabPage() {
         <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Encoding</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
           {playerRoleEncodingAudit.shapes.map((row) => <tr key={row.kind}><td><strong>{row.kind}</strong></td><td>{row.matches}</td><td>{row.clubCount}</td><td>{row.divisionCount}</td></tr>)}
         </tbody></table></div>
+        <h3>Opening role-assignment census</h3>
+        <p className="muted">How many non-zero PlayerRole values are present in each opening archived state. This is an apparent assignment count, not yet proof that sparse keys are formation slots.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Assigned roles</th><th>Observations</th><th>Share</th></tr></thead><tbody>
+          {playerRoleEncodingAudit.assignmentCensus.map((row) => <tr key={row.assigned}><td><strong>{row.assigned}</strong></td><td>{row.matches}</td><td>{(row.share * 100).toFixed(1)}%</td></tr>)}
+        </tbody></table></div>
+        <details>
+          <summary><strong>Sparse key × role census</strong> · test whether sparse keys behave like formation slots</summary>
+          <p className="muted">For sparse keyed timelines only. Repeated role codes at keys where that role would be positionally impossible are evidence that the sparse keys have different semantics and should not be decoded as formation slots.</p>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Raw key</th><th>Role</th><th>Code</th><th>MP</th><th>Clubs</th><th>Formations</th></tr></thead><tbody>
+            {playerRoleEncodingAudit.sparseKeyProfiles.map((row) => <tr key={`${row.key}:${row.code}`}><td><strong>{row.key}</strong></td><td>{row.role}</td><td><code>{row.code}</code></td><td>{row.matches}</td><td>{row.clubCount}</td><td>{row.formations.join(', ') || '—'}</td></tr>)}
+          </tbody></table></div>
+        </details>
         <details>
           <summary><strong>Club-by-club role encoding</strong> · {playerRoleEncodingAudit.clubs.length} clubs</summary>
           <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Encoding shapes</th><th>Opening non-zero values</th><th>Sample opening raw state</th></tr></thead><tbody>
