@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 const SETUP_ID = '239138';
-const HAMBURG_ID = '48506708';
 
 function numericValue(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -42,17 +41,35 @@ function resultPoints(result) {
 
 export default function ManagerLabPage() {
   const [matches, setMatches] = useState([]);
+  const [clubs, setClubs] = useState([]);
+  const [clubId, setClubId] = useState('48506708');
   const [status, setStatus] = useState('Loading the S28 archive…');
   const [competition, setCompetition] = useState('All');
   const [context, setContext] = useState('All');
   const [strength, setStrength] = useState('All');
+  const [formation, setFormation] = useState('All');
+  const [mentality, setMentality] = useState('All');
+  const [passing, setPassing] = useState('All');
+  const [attackingStyle, setAttackingStyle] = useState('All');
+  const [tempo, setTempo] = useState('All');
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      const { data, error } = await supabase.rpc('manager_lab_clubs', { target_setup_id: SETUP_ID });
+      if (!mounted) return;
+      if (!error) setClubs(Array.isArray(data?.clubs) ? data.clubs : []);
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    setStatus('Loading the S28 archive…');
+    (async () => {
       const { data, error } = await supabase.rpc('manager_lab_match_summary', {
         target_setup_id: SETUP_ID,
-        target_source_club_id: HAMBURG_ID,
+        target_source_club_id: clubId,
       });
       if (!mounted) return;
       if (error) {
@@ -63,7 +80,7 @@ export default function ManagerLabPage() {
       setStatus('');
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [clubId]);
 
   const competitions = useMemo(() => ['All', ...new Set(matches.map((row) => row.competition).filter(Boolean))], [matches]);
   const contexts = useMemo(() => ['All', ...new Set(matches.map((row) => row.matchContext).filter(Boolean))], [matches]);
@@ -75,10 +92,22 @@ export default function ManagerLabPage() {
     return 'Similar XI strength';
   };
   const strengthBands = ['All', 'Stronger opponent XI', 'Similar XI strength', 'Weaker opponent XI', 'Unknown XI strength'];
+  const tacticOptions = (key) => ['All', ...new Set(matches.map((row) => tacticValue(row, key)).filter(Boolean))];
+  const formations = tacticOptions('formation');
+  const mentalities = tacticOptions('mentality');
+  const passings = tacticOptions('passingStyle');
+  const attackingStyles = tacticOptions('attackingStyle');
+  const tempos = tacticOptions('tempo');
+  const selectedClub = clubs.find((club) => club.sourceClubId === clubId);
   const rows = matches.filter((row) =>
     (competition === 'All' || row.competition === competition) &&
     (context === 'All' || row.matchContext === context) &&
-    (strength === 'All' || strengthBand(row) === strength)
+    (strength === 'All' || strengthBand(row) === strength) &&
+    (formation === 'All' || tacticValue(row, 'formation') === formation) &&
+    (mentality === 'All' || tacticValue(row, 'mentality') === mentality) &&
+    (passing === 'All' || tacticValue(row, 'passingStyle') === passing) &&
+    (attackingStyle === 'All' || tacticValue(row, 'attackingStyle') === attackingStyle) &&
+    (tempo === 'All' || tacticValue(row, 'tempo') === tempo)
   );
   const wins = rows.filter((row) => row.result === 'W').length;
   const draws = rows.filter((row) => row.result === 'D').length;
@@ -134,7 +163,7 @@ export default function ManagerLabPage() {
       <div className="hero-row"><div>
         <p className="eyebrow">Top 100 · Soccer Manager archive</p>
         <h1>Manager Lab</h1>
-        <p>Hamburger SV, S28. Evidence from the archived match reports — results, underlying match numbers and the tactics used.</p>
+        <p>{selectedClub?.name || 'Club'}, S28. Evidence from the archived match reports — results, underlying match numbers and the tactics used.</p>
       </div><div className="button-row">
         <a className="button secondary" href="/admin/soccer-manager-sync">Soccer Manager Sync</a>
         <a className="button secondary" href="/admin">Tournament admin</a>
@@ -147,9 +176,15 @@ export default function ManagerLabPage() {
         <div className="manager-lab-toolbar">
           <div><h2>S28 at a glance</h2><p className="muted">{rows.length} archived matches in this view.</p></div>
           <div className="manager-lab-filters">
+            <label>Club<select value={clubId} onChange={(event) => setClubId(event.target.value)}>{clubs.map((club) => <option key={club.sourceClubId} value={club.sourceClubId}>{club.name} ({club.matchCount})</option>)}</select></label>
             <label>Match context<select value={context} onChange={(event) => setContext(event.target.value)}>{contexts.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>XI strength<select value={strength} onChange={(event) => setStrength(event.target.value)}>{strengthBands.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Competition<select value={competition} onChange={(event) => setCompetition(event.target.value)}>{competitions.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Formation<select value={formation} onChange={(event) => setFormation(event.target.value)}>{formations.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Mentality<select value={mentality} onChange={(event) => setMentality(event.target.value)}>{mentalities.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Passing<select value={passing} onChange={(event) => setPassing(event.target.value)}>{passings.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Attacking style<select value={attackingStyle} onChange={(event) => setAttackingStyle(event.target.value)}>{attackingStyles.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Tempo<select value={tempo} onChange={(event) => setTempo(event.target.value)}>{tempos.map((item) => <option key={item}>{item}</option>)}</select></label>
           </div>
         </div>
         <div className="manager-lab-kpis">
