@@ -80,6 +80,27 @@ function playerRoleEntries(match) {
     .map(([slot, value]) => ({ slot, code: String(value), role: playerRoleLabel(value) }));
 }
 
+const ROLE_FAMILIES = {
+  keeper: new Set(['0','1','2']),
+  defender: new Set(['0','3','4','5']),
+  fullback: new Set(['0','6','7']),
+  midfield: new Set(['0','8','9','10','11','12']),
+  attacking: new Set(['0','13','14','15','16','18']),
+  forward: new Set(['0','17','19','20','21']),
+};
+
+const FORMATION_4231B_SLOT_FAMILIES = [
+  'keeper', 'fullback', 'fullback', 'defender', 'defender',
+  'midfield', 'attacking', 'midfield', 'forward', 'attacking', 'attacking',
+];
+
+function impossible4231BRoleEntries(match) {
+  return playerRoleEntries(match).filter(({ slot, code }) => {
+    const family = FORMATION_4231B_SLOT_FAMILIES[slot];
+    return family && !ROLE_FAMILIES[family]?.has(code);
+  });
+}
+
 function playerRoleFingerprint(match) {
   const values = roleCodeValues(match?.tactics?.playerRoles);
   if (!values.length) return null;
@@ -735,7 +756,10 @@ export default function ManagerLabPage() {
         })),
       })),
       playerRoleDecoder: {
-        replicatedFamily: replicatedFamilyRoleCodes,
+        replicatedFamily: {
+          codes: replicatedFamilyRoleCodes,
+          integrityIssues: replicatedFamilyRoleIntegrity,
+        },
         selectedClub: {
           sourceClubId: clubId,
           club: selectedClub?.name ?? null,
@@ -845,6 +869,25 @@ export default function ManagerLabPage() {
       }))
       .sort((a, b) => a.slot - b.slot || b.matches - a.matches || a.code.localeCompare(b.code));
   }, [worldFormulaMatches, worldFormulaStrength, replicatedFamily]);
+
+  const replicatedFamilyRoleIntegrity = useMemo(() => {
+    const familyMatches = worldFormulaMatches.filter((match) =>
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength) &&
+      tacticSignature(match, FAMILY_KEYS) === '4-2-3-1 B|Attacking|Mixed|Down Both Flanks|Fast'
+    );
+    return familyMatches.flatMap((match) => {
+      const impossible = impossible4231BRoleEntries(match);
+      if (!impossible.length) return [];
+      return [{
+        fixtureId: match.fixtureId ?? null,
+        club: match.club ?? match.sourceClubName ?? match.sourceClubId ?? 'Unknown club',
+        sourceClubId: match.sourceClubId ?? null,
+        division: match.competition ?? '—',
+        fingerprint: playerRoleFingerprint(match),
+        issues: impossible.map(({ slot, code, role }) => `Slot ${slot + 1}: ${role} (${code})`).join(' · '),
+      }];
+    });
+  }, [worldFormulaMatches, worldFormulaStrength]);
 
   const selectedClubRoleCodes = useMemo(() => {
     const roleMatches = matches.filter((match) => normalizedTacticValue(match, 'formation') === '4-2-3-1 B');
@@ -1025,6 +1068,11 @@ export default function ManagerLabPage() {
         {replicatedFamilyRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Player role</th><th>Raw code</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
           {replicatedFamilyRoleCodes.map((role) => <tr key={`${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td>{playerRoleLabel(role.code)}</td><td><code>{role.code}</code></td><td>{role.matches}</td><td>{role.clubCount}</td><td>{role.divisionCount}</td></tr>)}
         </tbody></table></div> : <p className="muted">No PlayerRole values were archived for this family.</p>}
+        <h3>Role-data integrity</h3>
+        <p className="muted">Flags role codes that cannot belong to their apparent 4-2-3-1 B formation slot. These rows are diagnostic only and are not evidence about which player roles perform better.</p>
+        {replicatedFamilyRoleIntegrity.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Division</th><th>Fixture</th><th>Impossible assignment</th><th>Complete raw vector</th></tr></thead><tbody>
+          {replicatedFamilyRoleIntegrity.map((row, index) => <tr key={`${row.fixtureId || 'fixture'}:${row.sourceClubId || 'club'}:${index}`}><td><strong>{row.club}</strong><br /><small>{row.sourceClubId || '—'}</small></td><td>{row.division}</td><td>{row.fixtureId || '—'}</td><td>{row.issues}</td><td><code>{row.fingerprint || '—'}</code></td></tr>)}
+        </tbody></table></div> : <p className="muted">No impossible 4-2-3-1 B role/slot combinations found in this cohort.</p>}
         <h3>{selectedClub?.name || 'Selected club'} · 4-2-3-1 B reference</h3>
         <p className="muted">The selected club's archived 4-2-3-1 B roles, decoded with the same 0–21 Soccer Manager role dictionary.</p>
         {selectedClubRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Player role</th><th>Raw code</th><th>MP</th></tr></thead><tbody>
