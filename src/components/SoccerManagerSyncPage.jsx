@@ -457,7 +457,7 @@ export default function SoccerManagerSyncPage() {
     setStageStatus('');
     try {
       const result = await stageSoccerManagerSync(payloads, diagnosticsCapturedAt, {
-        batchSize: 100,
+        batchSize: 20,
         onProgress: ({ batch, batches, stagedSources, totalSources }) => {
           setStageStatus(`Staging batch ${batch} of ${batches}… ${stagedSources} of ${totalSources} source responses staged.`);
         },
