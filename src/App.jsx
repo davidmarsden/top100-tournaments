@@ -7,6 +7,7 @@ import ManagerEntry from './components/ManagerEntry.jsx';
 import ManagerSquadDashboard from './components/ManagerSquadDashboard.jsx';
 import ManagerLabPage from './components/ManagerLabPage.jsx';
 import PublicVotingResults from './components/PublicVotingResults.jsx';
+import PublicOpenPolls from './components/PublicOpenPolls.jsx';
 import ResultSubmissionsPage from './components/ResultSubmissionsPage.jsx';
 import SoccerManagerSyncPage from './components/SoccerManagerSyncPage.jsx';
 import Top100BrandShell from './components/Top100BrandShell.jsx';
@@ -33,6 +34,7 @@ function isVotingHost() { return window.location.hostname === 'vote.smtop100.blo
 function isManagerHost() { return window.location.hostname === 'manager.smtop100.blog'; }
 function isAdminHost() { return window.location.hostname === 'admin.smtop100.blog'; }
 function isVotingPath() { return /^\/vote\/?$/.test(window.location.pathname); }
+function isPollResultsPath() { return /^\/results\/?$/.test(window.location.pathname); }
 
 function ManagerShell({ children, product = 'My Matches' }) {
   return <Top100BrandShell product={product} current="manager">{children}</Top100BrandShell>;
@@ -50,7 +52,8 @@ export default function App() {
 
   if (isVotingHost()) {
     if (isVotingPath()) return <Top100BrandShell product="Community Polls" current="vote"><VotingEntry /></Top100BrandShell>;
-    return <Top100BrandShell product="Community Polls" current="voting-results"><PublicVotingResults /></Top100BrandShell>;
+    if (isPollResultsPath()) return <Top100BrandShell product="Community Polls" current="voting-results"><PublicVotingResults /></Top100BrandShell>;
+    return <Top100BrandShell product="Community Polls" current="polls"><PublicOpenPolls /></Top100BrandShell>;
   }
 
   if (isManagerHost()) {
