@@ -599,6 +599,7 @@ export default function ManagerLabPage() {
         ...values,
         [key]: displayTacticValue(key, tacticValue(match, key)),
       }), {}),
+      playerRoles: playerRoleEntries(match),
       tacticSignature: tacticSignature(match),
       familySignature: tacticSignature(match, FAMILY_KEYS),
     });
@@ -677,6 +678,15 @@ export default function ManagerLabPage() {
           adjustedGd: variant.adjustedGd,
         })),
       })),
+      playerRoleDecoder: {
+        replicatedFamily: replicatedFamilyRoleCodes,
+        selectedClub: {
+          sourceClubId: clubId,
+          club: selectedClub?.name ?? null,
+          formation: '4-2-3-1 B',
+          codes: selectedClubRoleCodes,
+        },
+      },
       instructionEffects: instructionEffects.map((effect) => ({
         instruction: effect.label,
         key: effect.key,
@@ -780,7 +790,7 @@ export default function ManagerLabPage() {
   }, [worldFormulaMatches, worldFormulaStrength, replicatedFamily]);
 
   const selectedClubRoleCodes = useMemo(() => {
-    const roleMatches = rows.filter((match) => normalizedTacticValue(match, 'formation') === '4-2-3-1 B');
+    const roleMatches = matches.filter((match) => normalizedTacticValue(match, 'formation') === '4-2-3-1 B');
     const groups = new Map();
     roleMatches.forEach((match) => {
       playerRoleEntries(match).forEach(({ slot, code }) => {
@@ -791,7 +801,7 @@ export default function ManagerLabPage() {
       });
     });
     return [...groups.values()].sort((a, b) => a.slot - b.slot || b.matches - a.matches || a.code.localeCompare(b.code));
-  }, [rows]);
+  }, [matches]);
 
   async function loadWorldFormulaLab() {
     setWorldFormulaStatus('Loading league formulas across the archived world…');
