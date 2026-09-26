@@ -20,6 +20,7 @@ function withAuthTimeout(promise, label = 'Sign-in check', ms = AUTH_CHECK_TIMEO
 }
 
 export default function ManagerEntry({ registrationMode = false }) {
+  const returnTo = (() => { const value = new URLSearchParams(window.location.search).get('returnTo'); try { const url = new URL(value || ''); return url.hostname.endsWith('.smtop100.blog') ? url.toString() : ''; } catch { return ''; } })();
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
@@ -133,6 +134,7 @@ export default function ManagerEntry({ registrationMode = false }) {
     <>
       <ManagerPortal
         registrationMode={registrationMode}
+        returnTo={returnTo}
         session={session}
         authLoading={authLoading}
         authError={authError}
