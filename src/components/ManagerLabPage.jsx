@@ -922,7 +922,8 @@ export default function ManagerLabPage() {
         };
         row.matches += 1;
         if (match.sourceClubId) row.clubs.add(match.sourceClubId);
-        if (match.tactics?.formation) row.formations.add(match.tactics.formation);
+        const formation = tacticValue(match, 'formation');
+        if (formation) row.formations.add(formation);
         sparseKeyProfiles.set(profileKey, row);
       });
     });
@@ -1233,7 +1234,7 @@ export default function ManagerLabPage() {
         <h3>Opening role-assignment census</h3>
         <p className="muted">How many non-zero PlayerRole values are present in each opening archived state. This is an apparent assignment count, not yet proof that sparse keys are formation slots.</p>
         <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Assigned roles</th><th>Observations</th><th>Share</th></tr></thead><tbody>
-          {playerRoleEncodingAudit.assignmentCensus.map((row) => <tr key={row.assigned}><td><strong>{row.assigned}</strong></td><td>{row.matches}</td><td>{formatPercent(row.share)}</td></tr>)}
+          {playerRoleEncodingAudit.assignmentCensus.map((row) => <tr key={row.assigned}><td><strong>{row.assigned}</strong></td><td>{row.matches}</td><td>{(row.share * 100).toFixed(1)}%</td></tr>)}
         </tbody></table></div>
         <details>
           <summary><strong>Sparse key × role census</strong> · test whether sparse keys behave like formation slots</summary>
