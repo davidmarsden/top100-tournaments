@@ -118,26 +118,36 @@ export default function SoccerManagerArchiveAdapter({ refreshToken = 0 }) {
   async function applyMatchArchive(setupId) {
     if (!supabase || busyAction) return;
     setBusyAction(`matches:${setupId}`);
-    setStatus('');
-    const { data, error } = await supabase.rpc('apply_soccer_manager_match_archive', {
-      target_setup_id: setupId,
-    });
-
-    if (error) {
-      setStatus(`Match archive apply failed for world ${setupId}: ${error.message}`);
-    } else {
-      const result = data || {};
-      setStatus(
-        `Applied match archive for world ${result.setupId || setupId}: `
-        + `${result.matchSnapshots || 0} new match snapshot(s), ${result.matchPlayers || 0} player row(s), `
-        + `${result.matchEvents || 0} event row(s), ${result.dominationMinutes || 0} domination minute(s) and `
-        + `${result.worldScoreEvents || 0} game-world score event(s).`
-        + (result.unmappedClubs
-          ? ` ${result.unmappedClubs} match club reference(s) could not yet be mapped to Top 100 teams.`
-          : ''),
-      );
+    setStatus('Preparing match archive batches…');
+    let cursor = null;
+    let batch = 0;
+    const totals = { matchSnapshots: 0, matchPlayers: 0, matchEvents: 0, dominationMinutes: 0, worldScoreEvents: 0, unmappedClubs: 0 };
+    try {
+      while (true) {
+        batch += 1;
+        setStatus(`Applying match archive batch ${batch}… ${totals.matchSnapshots} new snapshots and ${totals.matchPlayers} player rows archived so far.`);
+        const { data, error } = await supabase.rpc('apply_soccer_manager_match_archive_batch', {
+          target_setup_id: setupId, target_after_entity_key: cursor, target_limit: 25,
+        });
+        if (error) throw error;
+        const result = data || {};
+        totals.matchSnapshots += Number(result.matchSnapshots || 0);
+        totals.matchPlayers += Number(result.matchPlayers || 0);
+        totals.matchEvents += Number(result.matchEvents || 0);
+        totals.dominationMinutes += Number(result.dominationMinutes || 0);
+        totals.worldScoreEvents += Number(result.worldScoreEvents || 0);
+        totals.unmappedClubs += Number(result.unmappedClubs || 0);
+        const nextCursor = result.lastEntityKey || null;
+        if (!result.hasMore) break;
+        if (!nextCursor || nextCursor === cursor) throw new Error('Batch cursor did not advance; archive apply stopped safely.');
+        cursor = nextCursor;
+      }
+      setStatus(`Applied match archive for world ${setupId} in ${batch} batch${batch === 1 ? '' : 'es'}: ${totals.matchSnapshots} new match snapshot(s), ${totals.matchPlayers} player row(s), ${totals.matchEvents} event row(s), ${totals.dominationMinutes} domination minute(s) and ${totals.worldScoreEvents} game-world score event(s).${totals.unmappedClubs ? ` ${totals.unmappedClubs} match club reference(s) could not yet be mapped to Top 100 teams.` : ''}`);
+    } catch (error) {
+      setStatus(`Match archive apply stopped after ${Math.max(0, batch - 1)} completed batch(es) for world ${setupId}: ${error.message}. Completed batches are safe to keep; run Apply matches archive again to resume idempotently.`);
+    } finally {
+      setBusyAction(null);
     }
-    setBusyAction(null);
   }
 
   return <section className="card module-card">
