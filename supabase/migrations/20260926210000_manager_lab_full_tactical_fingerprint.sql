@@ -1,0 +1,7 @@
+-- Formula Lab reads the complete archived tactics payload. Current extra dimensions
+-- (fluidity, forwards, wide play, playmaker/target-man switches) are preserved by
+-- the match normalizer when reports expose them. Player role arrays remain raw
+-- until their numeric codes can be mapped from observed evidence rather than guessed.
+--
+-- No RPC shape change is required: manager_lab_formula_matches already returns the
+-- tactics JSON object intact. This migration is intentionally documentation-only.
