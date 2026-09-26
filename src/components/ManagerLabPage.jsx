@@ -87,6 +87,16 @@ export default function ManagerLabPage() {
         return;
       }
       setMatches(Array.isArray(data?.matches) ? data.matches : []);
+      setCompetition('All');
+      setContext('All');
+      setStrength('All');
+      setFormation('All');
+      setMentality('All');
+      setPassing('All');
+      setAttackingStyle('All');
+      setTempo('All');
+      setPressing('All');
+      setDefensiveLine('All');
       setStatus('');
     })();
     return () => { mounted = false; };
