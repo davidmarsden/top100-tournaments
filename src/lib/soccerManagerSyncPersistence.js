@@ -327,22 +327,53 @@ export function normalizedPayloadForPersistence(entries) {
   }));
 }
 
-export async function stageSoccerManagerSync(entries, capturedAt = null) {
+export async function stageSoccerManagerSync(entries, capturedAt = null, options = {}) {
   if (!supabase) throw new Error('Supabase is not connected.');
-  const normalizedPayload = normalizedPayloadForPersistence(entries);
-  const entities = extractSoccerManagerEntities(entries);
-  if (!normalizedPayload.length) throw new Error('There is no normalized Soccer Manager data to stage.');
+  if (!Array.isArray(entries) || !entries.length) throw new Error('There is no normalized Soccer Manager data to stage.');
 
-  const { data, error } = await supabase.rpc('stage_soccer_manager_sync', {
-    target_payload: normalizedPayload,
-    target_entities: entities,
-    target_captured_at: capturedAt || new Date().toISOString(),
-  });
-  if (error) throw error;
+  const batchSize = Math.max(1, Number(options.batchSize) || 100);
+  const timestamp = capturedAt || new Date().toISOString();
+  const runIds = [];
+  let sourceCount = 0;
+  let entityCount = 0;
+
+  // Large world backfills can be tens or hundreds of MB when serialized. Sending the
+  // whole collection through one PostgREST RPC can fail at the browser/proxy layer,
+  // so stage bounded groups as independent review runs. Stable entity keys preserve
+  // the normal deduplication/versioning behaviour across those runs.
+  for (let offset = 0; offset < entries.length; offset += batchSize) {
+    const batch = entries.slice(offset, offset + batchSize);
+    const normalizedPayload = normalizedPayloadForPersistence(batch);
+    const entities = extractSoccerManagerEntities(batch);
+    if (!normalizedPayload.length) continue;
+
+    options.onProgress?.({
+      batch: Math.floor(offset / batchSize) + 1,
+      batches: Math.ceil(entries.length / batchSize),
+      stagedSources: sourceCount,
+      totalSources: entries.length,
+    });
+
+    const { data, error } = await supabase.rpc('stage_soccer_manager_sync', {
+      target_payload: normalizedPayload,
+      target_entities: entities,
+      target_captured_at: timestamp,
+    });
+    if (error) {
+      const completed = runIds.length ? ` after staging ${runIds.length} earlier batch(es) successfully` : '';
+      throw new Error(`${error.message}${completed}`);
+    }
+    runIds.push(data);
+    sourceCount += normalizedPayload.length;
+    entityCount += entities.length;
+  }
+
+  if (!runIds.length) throw new Error('There is no normalized Soccer Manager data to stage.');
   return {
-    runId: data,
-    sourceCount: normalizedPayload.length,
-    entityCount: entities.length,
+    runId: runIds[runIds.length - 1],
+    runIds,
+    sourceCount,
+    entityCount,
   };
 }
 
