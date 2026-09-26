@@ -296,7 +296,7 @@ export default function ManagerLabPage() {
       group.ga += Number(match.goalsAgainst) || 0;
       const xi = numericValue(match.xiRatingDifference);
       if (xi !== null) group.xi.push(xi);
-      if (match.club) group.clubs.add(match.club);
+      if (match.sourceClubId) group.clubs.add(match.sourceClubId);
       if (match.venue === 'H') group.home += 1; else if (match.venue === 'A') group.away += 1;
       map.set(key, group);
     });
