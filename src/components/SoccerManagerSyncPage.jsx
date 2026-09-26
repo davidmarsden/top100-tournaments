@@ -456,8 +456,16 @@ export default function SoccerManagerSyncPage() {
     setStageBusy(true);
     setStageStatus('');
     try {
-      const result = await stageSoccerManagerSync(payloads, diagnosticsCapturedAt);
-      setStageStatus(`Staged sync #${result.runId}: ${result.sourceCount} source response${result.sourceCount === 1 ? '' : 's'} and ${result.entityCount} normalized entities. Review the differences below before approving them into the canonical source layer.`);
+      const result = await stageSoccerManagerSync(payloads, diagnosticsCapturedAt, {
+        batchSize: 100,
+        onProgress: ({ batch, batches, stagedSources, totalSources }) => {
+          setStageStatus(`Staging batch ${batch} of ${batches}… ${stagedSources} of ${totalSources} source responses staged.`);
+        },
+      });
+      const runLabel = result.runIds.length === 1
+        ? `sync #${result.runId}`
+        : `${result.runIds.length} sync batches (#${result.runIds[0]}–#${result.runIds[result.runIds.length - 1]})`;
+      setStageStatus(`Staged ${runLabel}: ${result.sourceCount} source response${result.sourceCount === 1 ? '' : 's'} and ${result.entityCount} normalized entities. Review the batches below before approving them into the canonical source layer.`);
       setReviewRefreshToken((value) => value + 1);
     } catch (error) {
       setStageStatus(`Could not stage this sync: ${error.message}`);
