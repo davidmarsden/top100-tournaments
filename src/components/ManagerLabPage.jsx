@@ -940,13 +940,21 @@ export default function ManagerLabPage() {
     worldFormulaMatches.forEach((match) => {
       const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
       if (!['complete-xi-timeline', 'direct-xi', 'sparse-keyed-timeline'].includes(encoding.kind)) return;
-      const formation = normalizedTacticValue(match, 'formation') || 'Unknown';
+      const formation = normalizedTacticValue(match, 'formation');
+      const hasKnownFormation = Boolean(formation);
       encoding.openingEntries.forEach(([key, role]) => {
         if (role === null || role === undefined || role === '' || String(role) === '0' || typeof role === 'object') return;
-        const id = `${formation}:${key}:${String(role)}`;
+        // Unknown formations must never corroborate one another: two records
+        // sharing a raw key/code may come from entirely different shapes.
+        // Keep them visible in the audit, but isolate each observation.
+        const formationKey = hasKnownFormation
+          ? formation
+          : `Unknown:${match.fixtureId ?? 'fixture'}:${match.sourceClubId ?? 'club'}:${encoding.kind}`;
+        const id = `${formationKey}:${key}:${String(role)}`;
         const row = positionCodeEvidence.get(id) || {
-          formation, key: String(key), code: String(role),
+          formation: formation || 'Unknown', key: String(key), code: String(role),
           completeMatches: 0, sparseMatches: 0, clubs: new Set(), divisions: new Set(),
+          formationKnown: hasKnownFormation,
         };
         if (encoding.kind === 'sparse-keyed-timeline') row.sparseMatches += 1;
         else row.completeMatches += 1;
@@ -965,9 +973,11 @@ export default function ManagerLabPage() {
       sparseMatches: row.sparseMatches,
       clubCount: row.clubs.size,
       divisionCount: row.divisions.size,
-      evidence: row.completeMatches > 0
-        ? (row.sparseMatches > 0 ? 'complete + sparse' : 'complete XI')
-        : 'sparse only',
+      evidence: !row.formationKnown
+        ? (row.sparseMatches > 0 ? 'unknown formation · sparse' : 'unknown formation · complete XI')
+        : row.completeMatches > 0
+          ? (row.sparseMatches > 0 ? 'complete + sparse' : 'complete XI')
+          : 'sparse only',
     })).sort((a, b) =>
       a.formation.localeCompare(b.formation) ||
       Number(a.key) - Number(b.key) ||
