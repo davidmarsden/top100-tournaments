@@ -52,8 +52,18 @@ function playerRoleEntries(match) {
 }
 
 function playerRoleFingerprint(match) {
-  const entries = playerRoleEntries(match);
-  return entries.length ? entries.map(({ code }) => code).join(',') : null;
+  const values = roleCodeValues(match?.tactics?.playerRoles);
+  if (!values.length) return null;
+  // Keep the formation-slot identity even when an archived slot is empty or
+  // malformed, so distinct XI vectors can never collapse to the same key.
+  return values
+    .map(([slot, value]) => {
+      const code = value === null || value === undefined || value === '' || typeof value === 'object'
+        ? '—'
+        : String(value);
+      return `${slot + 1}:${code}`;
+    })
+    .join('|');
 }
 
 function tacticValue(match, key) {
