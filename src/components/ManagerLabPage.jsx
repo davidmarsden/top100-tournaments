@@ -897,7 +897,10 @@ export default function ManagerLabPage() {
       club.kinds.set(encoding.kind, (club.kinds.get(encoding.kind) || 0) + 1);
       club.assignedCounts.set(encoding.openingAssigned, (club.assignedCounts.get(encoding.openingAssigned) || 0) + 1);
       if (!club.sampleOpening && encoding.kind !== 'no-role-data') {
-        club.sampleOpening = match?.tactics?.playerRoles?.[0] ?? match?.tactics?.playerRoles ?? null;
+        const rawPlayerRoles = match?.tactics?.playerRoles ?? null;
+        club.sampleOpening = encoding.kind.startsWith('direct-')
+          ? rawPlayerRoles
+          : rawPlayerRoles?.[0] ?? rawPlayerRoles ?? null;
       }
       byClub.set(clubKey, club);
     });
@@ -1185,13 +1188,8 @@ export default function ManagerLabPage() {
         </tbody></table></div>
       </section>}
 
-      {worldFormulaMatches.length > 0 && replicatedFamily && <section className="card">
-        <h2>Player roles · replicated 4-2-3-1 B</h2>
-        <p className="muted">Soccer Manager PlayerRole codes decoded from the current role menus and the archived Hamburger reference lineup. The raw code remains visible for auditability while the role name lets us compare the same jobs across clubs and divisions.</p>
-        {replicatedFamilyRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Player role</th><th>Raw code</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
-          {replicatedFamilyRoleCodes.map((role) => <tr key={`${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td>{playerRoleLabel(role.code)}</td><td><code>{role.code}</code></td><td>{role.matches}</td><td>{role.clubCount}</td><td>{role.divisionCount}</td></tr>)}
-        </tbody></table></div> : <p className="muted">No PlayerRole values were archived for this family.</p>}
-        <h3>PlayerRole encoding audit · whole world</h3>
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>PlayerRole encoding audit · whole world</h2>
         <p className="muted">Opponent player roles are the one tactical choice Soccer Manager does not expose in the match report UI, so this treats the archived representation as evidence rather than assuming every shape is an XI. “Assigned” counts non-zero values in the opening archived state; sparse keyed timelines may represent managers who only assigned some roles, but that remains a hypothesis until independently verified.</p>
         <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Encoding</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
           {playerRoleEncodingAudit.shapes.map((row) => <tr key={row.kind}><td><strong>{row.kind}</strong></td><td>{row.matches}</td><td>{row.clubCount}</td><td>{row.divisionCount}</td></tr>)}
@@ -1202,6 +1200,14 @@ export default function ManagerLabPage() {
             {playerRoleEncodingAudit.clubs.map((row) => <tr key={row.sourceClubId || row.club}><td><strong>{row.club}</strong><br /><small>{row.sourceClubId || '—'}</small></td><td>{row.matches}</td><td>{row.encodings}</td><td>{row.assignedCounts}</td><td><code>{row.sampleOpening === null ? '—' : JSON.stringify(row.sampleOpening)}</code></td></tr>)}
           </tbody></table></div>
         </details>
+      </section>}
+
+      {worldFormulaMatches.length > 0 && replicatedFamily && <section className="card">
+        <h2>Player roles · replicated 4-2-3-1 B</h2>
+        <p className="muted">Soccer Manager PlayerRole codes decoded from the current role menus and the archived Hamburger reference lineup. The raw code remains visible for auditability while the role name lets us compare the same jobs across clubs and divisions.</p>
+        {replicatedFamilyRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Player role</th><th>Raw code</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
+          {replicatedFamilyRoleCodes.map((role) => <tr key={`${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td>{playerRoleLabel(role.code)}</td><td><code>{role.code}</code></td><td>{role.matches}</td><td>{role.clubCount}</td><td>{role.divisionCount}</td></tr>)}
+        </tbody></table></div> : <p className="muted">No PlayerRole values were archived for this family.</p>}
         <h3>Role-data integrity</h3>
         <p className="muted">Flags role codes that cannot belong to their apparent 4-2-3-1 B formation slot. These rows are diagnostic only and are not evidence about which player roles perform better.</p>
         {replicatedFamilyRoleIntegrity.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Division</th><th>Fixture</th><th>Impossible assignment</th><th>Complete raw vector</th></tr></thead><tbody>
