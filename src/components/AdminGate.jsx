@@ -82,7 +82,7 @@ export default function AdminGate({ children, requireGlobal = false }) {
         return;
       }
       const bypassManagerBridge = new URLSearchParams(window.location.search).get('platform') === '1';
-      if (window.location.hostname === 'tournaments.smtop100.blog' && !bypassManagerBridge) {
+      if (['tournaments.smtop100.blog', 'admin.smtop100.blog'].includes(window.location.hostname) && !bypassManagerBridge) {
         tryManagerSessionBridge();
         return;
       }
