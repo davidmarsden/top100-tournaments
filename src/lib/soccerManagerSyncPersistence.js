@@ -334,6 +334,7 @@ export async function stageSoccerManagerSync(entries, capturedAt = null, options
   const batchSize = Math.max(1, Number(options.batchSize) || 100);
   const timestamp = capturedAt || new Date().toISOString();
   const runIds = [];
+  const importId = globalThis.crypto?.randomUUID?.() || null;
   let sourceCount = 0;
   let entityCount = 0;
 
@@ -367,6 +368,7 @@ export async function stageSoccerManagerSync(entries, capturedAt = null, options
       target_payload: normalizedPayload,
       target_entities: entities,
       target_captured_at: timestamp,
+      target_import_id: importId,
     });
     if (error) {
       const completed = runIds.length ? ` after staging ${runIds.length} earlier batch(es) successfully` : '';
@@ -381,9 +383,40 @@ export async function stageSoccerManagerSync(entries, capturedAt = null, options
   return {
     runId: runIds[runIds.length - 1],
     runIds,
+    importId,
     sourceCount,
     entityCount,
   };
+}
+
+export async function reviewSoccerManagerSyncRuns(runIds, decision, options = {}) {
+  if (!supabase) throw new Error('Supabase is not connected.');
+  const ids = [...new Set((runIds || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+  if (!ids.length) throw new Error('No Soccer Manager sync runs were selected.');
+
+  let reviewedCount = 0;
+  const completedRunIds = [];
+  for (let index = 0; index < ids.length; index += 1) {
+    const runId = ids[index];
+    options.onProgress?.({
+      index: index + 1,
+      total: ids.length,
+      runId,
+      reviewedCount,
+    });
+    try {
+      const reviewed = await reviewSoccerManagerSyncRun(runId, decision);
+      reviewedCount += reviewed;
+      completedRunIds.push(runId);
+    } catch (error) {
+      const completed = completedRunIds.length
+        ? ` after completing ${completedRunIds.length} earlier run(s): #${completedRunIds[0]}–#${completedRunIds[completedRunIds.length - 1]}`
+        : '';
+      throw new Error(`Sync #${runId} failed: ${error.message}${completed}`);
+    }
+  }
+
+  return { reviewedCount, completedRunIds };
 }
 
 export async function reviewSoccerManagerSyncChange(changeId, decision) {

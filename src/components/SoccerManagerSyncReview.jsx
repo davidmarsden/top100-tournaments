@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { reviewSoccerManagerSyncChange, reviewSoccerManagerSyncRun } from '../lib/soccerManagerSyncPersistence';
+import { reviewSoccerManagerSyncChange, reviewSoccerManagerSyncRun, reviewSoccerManagerSyncRuns } from '../lib/soccerManagerSyncPersistence';
 
 function formatWhen(value) {
   if (!value) return '—';
@@ -34,6 +34,18 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
     selectedRunIdRef.current = selectedRunId;
   }, [selectedRunId]);
 
+  const importGroup = useMemo(() => {
+    if (!selectedRunId) return [];
+    const selected = runs.find((run) => run.id === selectedRunId);
+    if (!selected) return [];
+    if (!selected.import_id) return [];
+    return runs
+      .filter((run) => run.status !== 'reviewed'
+        && run.change_count > 0
+        && run.import_id === selected.import_id)
+      .sort((a, b) => a.id - b.id);
+  }, [runs, selectedRunId]);
+
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) || null,
     [runs, selectedRunId],
@@ -63,7 +75,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
     const requestId = runRequestRef.current + 1;
     runRequestRef.current = requestId;
     setLoadingRuns(true);
-    const fields = 'id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at';
+    const fields = 'id, import_id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at';
 
     const unresolvedRuns = [];
     let unresolvedCursor = null;
@@ -195,6 +207,32 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
     }
   }
 
+  async function reviewImport(decision) {
+    if (importGroup.length < 2 || busyId) return;
+    const ids = importGroup.map((run) => run.id);
+    const changeCount = importGroup.reduce((sum, run) => sum + Number(run.change_count || 0), 0);
+    const verb = decision === 'approved' ? 'approve' : 'reject';
+    if (!window.confirm(`Really ${verb} this staged import: ${ids.length} sync batches (#${ids[0]}–#${ids[ids.length - 1]}) containing ${changeCount} changes? Runs are reviewed sequentially and stop on the first failure.`)) return;
+
+    setBusyId('import');
+    setStatus('');
+    try {
+      const result = await reviewSoccerManagerSyncRuns(ids, decision, {
+        onProgress: ({ index, total, runId, reviewedCount }) => {
+          setStatus(`${decision === 'approved' ? 'Approving' : 'Rejecting'} import batch ${index} of ${total} (sync #${runId})… ${reviewedCount} changes completed.`);
+        },
+      });
+      setStatus(`Import review complete: ${result.completedRunIds.length} sync batches and ${result.reviewedCount} changes ${decision}.`);
+      await Promise.all([loadRuns(), loadChanges(selectedRunId)]);
+      if (typeof onReviewComplete === 'function') onReviewComplete();
+    } catch (error) {
+      setStatus(`Import review stopped: ${error.message}`);
+      await Promise.all([loadRuns(), loadChanges(selectedRunId)]);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function reviewRun(decision) {
     if (!selectedRunId || !pendingCount || !allChangesLoaded) return;
     const verb = decision === 'approved' ? 'approve' : 'reject';
@@ -258,6 +296,14 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
               <strong>Sync #{selectedRun.id}</strong>
               <p className="muted">{selectedRun.source_count} source response{selectedRun.source_count === 1 ? '' : 's'} · {selectedRun.entity_count} normalized entities · {selectedRun.change_count} changes</p>
             </div>
+            {importGroup.length > 1 && <div className="button-row">
+              <button type="button" onClick={() => reviewImport('approved')} disabled={Boolean(busyId)}>
+                Approve import ({importGroup.length} batches)
+              </button>
+              <button type="button" className="secondary" onClick={() => reviewImport('rejected')} disabled={Boolean(busyId)}>
+                Reject import
+              </button>
+            </div>}
             {!!pendingCount && <div className="button-row">
               <button type="button" onClick={() => reviewRun('approved')} disabled={Boolean(busyId) || !allChangesLoaded}>Approve all ({pendingCount})</button>
               <button type="button" className="secondary" onClick={() => reviewRun('rejected')} disabled={Boolean(busyId) || !allChangesLoaded}>Reject all</button>
