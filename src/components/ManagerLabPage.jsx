@@ -549,6 +549,35 @@ export default function ManagerLabPage() {
   }, [worldFormulaMatches, worldFormulaStrength, replicatedFamily]);
 
   function downloadFormulaLabJson() {
+    const filteredObservations = worldFormulaMatches.filter((match) =>
+      (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength)
+    );
+    // Formula Lab analyses also depend on matches outside the visible sample:
+    // strength baselines use the full selected-division cohort, while cross-division
+    // replication and its drill-down use the complete five-division league corpus.
+    // Export that full source cohort so every derived result in this payload is reproducible.
+    const sourceObservations = worldFormulaMatches;
+    const cleanObservation = (match) => ({
+      fixtureId: match.fixtureId ?? null,
+       division: match.competition ?? null,
+      clubId: match.sourceClubId ?? null,
+      opponent: match.opponent ?? null,
+      venue: match.venue ?? null,
+      result: match.result ?? null,
+      goalsFor: numericValue(match.goalsFor),
+      goalsAgainst: numericValue(match.goalsAgainst),
+      ourXiRating: numericValue(match.ourXiRating),
+      opponentXiRating: numericValue(match.opponentXiRating),
+      xiRatingDifference: numericValue(match.xiRatingDifference),
+      xiStrengthBand: strengthBand(match),
+      tactics: CURRENT_FORMULA_FIELDS.reduce((values, [, key]) => ({
+        ...values,
+        [key]: displayTacticValue(key, tacticValue(match, key)),
+      }), {}),
+      tacticSignature: tacticSignature(match),
+      familySignature: tacticSignature(match, FAMILY_KEYS),
+    });
     const cleanFamily = (group) => ({
       family: FAMILY_KEYS.reduce((values, key) => ({
         ...values,
@@ -582,7 +611,7 @@ export default function ManagerLabPage() {
     });
     const payload = {
       kind: 'top100ManagerLabFormulaResults',
-      version: 1,
+      version: 2,
       setupId: SETUP_ID,
       season: 'S28',
       generatedAt: new Date().toISOString(),
@@ -590,7 +619,10 @@ export default function ManagerLabPage() {
         division: worldFormulaDivision,
         opponentXi: worldFormulaStrength,
       },
-      observationCount: worldFormulaGroups.reduce((sum, group) => sum + group.played, 0),
+      observationCount: filteredObservations.length,
+      sourceObservationCount: sourceObservations.length,
+      observations: filteredObservations.map(cleanObservation),
+      sourceObservations: sourceObservations.map(cleanObservation),
       formulas: worldFormulaGroups.map(cleanFormula),
       families: worldFamilyGroups.map(cleanFamily),
       crossDivisionFamilies: crossDivisionFamilies.map((group) => ({
