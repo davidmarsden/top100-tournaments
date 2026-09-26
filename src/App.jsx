@@ -45,6 +45,7 @@ function forwardManagerHostPathToTournaments() {
 }
 
 export default function App() {
+  if (isAdminHost() && isAuthSessionBridgePath()) return <AuthSessionBridge />;
   if (isAdminHost()) return <AdminGate requireGlobal><Top100BrandShell product="Control Room" current="admin"><AdminControlRoom /></Top100BrandShell></AdminGate>;
 
   if (isVotingHost()) {
