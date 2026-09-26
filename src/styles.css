@@ -243,3 +243,8 @@ th { color: #44546f; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .voting-option input[type="radio"] { width: 1.25rem; height: 1.25rem; margin: 0; flex: 0 0 auto; accent-color: #0b63e6; }
 .voting-option:focus-within { outline: 3px solid rgba(11, 99, 230, .25); outline-offset: 2px; }
 @media (max-width: 640px) { .voting-card__proposal { font-size: 1rem; } .voting-option { padding: .85rem; } }
+
+.voting-card__proposal p + p { margin-top: .85rem; }
+.voting-card__edit { margin: 1rem 0 1.25rem; }
+.voting-card__edit textarea { min-height: 12rem; line-height: 1.5; }
+.voting-card__edit-button { margin: 0 0 1rem; }
