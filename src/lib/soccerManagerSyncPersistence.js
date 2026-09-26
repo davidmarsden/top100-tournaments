@@ -334,6 +334,7 @@ export async function stageSoccerManagerSync(entries, capturedAt = null, options
   const batchSize = Math.max(1, Number(options.batchSize) || 100);
   const timestamp = capturedAt || new Date().toISOString();
   const runIds = [];
+  const importId = globalThis.crypto?.randomUUID?.() || null;
   let sourceCount = 0;
   let entityCount = 0;
 
@@ -367,6 +368,7 @@ export async function stageSoccerManagerSync(entries, capturedAt = null, options
       target_payload: normalizedPayload,
       target_entities: entities,
       target_captured_at: timestamp,
+      target_import_id: importId,
     });
     if (error) {
       const completed = runIds.length ? ` after staging ${runIds.length} earlier batch(es) successfully` : '';
@@ -381,6 +383,7 @@ export async function stageSoccerManagerSync(entries, capturedAt = null, options
   return {
     runId: runIds[runIds.length - 1],
     runIds,
+    importId,
     sourceCount,
     entityCount,
   };
