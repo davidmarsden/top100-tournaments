@@ -900,6 +900,12 @@ export default function ManagerLabPage() {
         club: match.club ?? match.sourceClubName ?? match.sourceClubId ?? 'Unknown club',
         sourceClubId: match.sourceClubId ?? null,
         division: match.competition ?? '—',
+        date: match.date ?? null,
+        opponent: match.opponent ?? match.opponentName ?? null,
+        venue: match.venue ?? null,
+        score: match.goalsFor !== null && match.goalsFor !== undefined && match.goalsAgainst !== null && match.goalsAgainst !== undefined
+          ? `${match.goalsFor}–${match.goalsAgainst}`
+          : null,
         rawPlayerRoles: match?.tactics?.playerRoles ?? null,
       }));
     const hamburg = worldFormulaMatches.find((match) =>
@@ -915,6 +921,12 @@ export default function ManagerLabPage() {
         club: hamburg.club ?? hamburg.sourceClubName ?? 'Hamburger SV',
         sourceClubId: hamburg.sourceClubId ?? '48506708',
         division: hamburg.competition ?? '—',
+        date: hamburg.date ?? null,
+        opponent: hamburg.opponent ?? hamburg.opponentName ?? null,
+        venue: hamburg.venue ?? null,
+        score: hamburg.goalsFor !== null && hamburg.goalsFor !== undefined && hamburg.goalsAgainst !== null && hamburg.goalsAgainst !== undefined
+          ? `${hamburg.goalsFor}–${hamburg.goalsAgainst}`
+          : null,
         rawPlayerRoles: hamburg?.tactics?.playerRoles ?? null,
       }] : []),
     ];
@@ -1107,7 +1119,7 @@ export default function ManagerLabPage() {
         <h3>Raw PlayerRole inspector</h3>
         <p className="muted">Unmodified archived <code>tactics.playerRoles</code> for every integrity failure, plus one known-good Hamburger 4-2-3-1 B fixture for comparison. This deliberately bypasses the role-vector decoder so we can see the original nesting, keys and sparse values.</p>
         {rawPlayerRoleInspector.length ? rawPlayerRoleInspector.map((row, index) => <details key={`raw-role:${row.kind}:${row.fixtureId || index}`}>
-          <summary><strong>{row.kind === 'known-good' ? 'Known-good comparison' : 'Suspect'} · {row.club}</strong> · {row.division} · fixture {row.fixtureId || '—'}</summary>
+          <summary><strong>{row.kind === 'known-good' ? 'Known-good comparison' : 'Suspect'} · {row.club}</strong> · {row.division} · {row.date || 'date unknown'} · {row.venue ? `${row.venue} · ` : ''}{row.opponent || 'opponent unknown'}{row.score ? ` · ${row.score}` : ''} · fixture {row.fixtureId || '—'}</summary>
           <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(row.rawPlayerRoles, null, 2)}</pre>
         </details>) : <p className="muted">No raw PlayerRole records available for inspection.</p>}
         <h3>{selectedClub?.name || 'Selected club'} · 4-2-3-1 B reference</h3>
