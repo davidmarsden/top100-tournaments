@@ -1,3 +1,6 @@
+import { useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
+
 const TOOLS = [
   { title: 'Community Polls', description: 'Create, open, close and finalise manager polls.', href: 'https://vote.smtop100.blog/vote', action: 'Manage polls' },
   { title: 'Manager accounts', description: 'Manage Top 100 manager identities and account lifecycle.', href: 'https://tournaments.smtop100.blog/admin/manager-accounts', action: 'Manage managers' },
@@ -10,6 +13,29 @@ const TOOLS = [
 ];
 
 export default function AdminControlRoom() {
+  useEffect(() => {
+    let cancelled = false;
+    let frames = [];
+
+    async function shareSession() {
+      const { data } = await supabase.auth.getSession();
+      if (cancelled || !data.session) return;
+      const targets = ['https://manager.smtop100.blog/auth/session-bridge'];
+      frames = targets.map((src) => {
+        const frame = document.createElement('iframe');
+        frame.src = src;
+        frame.title = 'Top 100 sign-in bridge';
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.display = 'none';
+        document.body.appendChild(frame);
+        return frame;
+      });
+    }
+
+    shareSession();
+    return () => { cancelled = true; frames.forEach((frame) => frame.parentNode?.removeChild(frame)); };
+  }, []);
+
   return <main className="manager-portal-shell">
     <section className="manager-portal-hero"><div><p className="eyebrow">Top 100 Admin</p><h1>Control Room</h1><p>One front door for the tools scattered across the Top 100 network.</p></div></section>
     <section className="manager-resource-hub" aria-labelledby="admin-tools-heading">
