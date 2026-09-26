@@ -26,6 +26,9 @@ export default function VotingPortal() {
   const [loading, setLoading] = useState(true);
   const [results, setResults] = useState({});
   const [finalResults, setFinalResults] = useState({});
+  const [editingEventId, setEditingEventId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setLoading(false); return undefined; }
@@ -180,6 +183,23 @@ export default function VotingPortal() {
     setResults((current) => ({ ...current, [eventId]: data || [] }));
   }
 
+  function startEdit(vote) {
+    setEditingEventId(vote.id);
+    setEditTitle(vote.title || '');
+    setEditDescription(vote.description || '');
+  }
+
+  async function saveEdit(vote) {
+    const { error } = await supabase.from('voting_events').update({
+      title: editTitle.trim(),
+      description: editDescription.trim(),
+    }).eq('id', vote.id);
+    if (error) return setMessage(error.message);
+    setEditingEventId(null);
+    setMessage('Poll text updated.');
+    await loadVoting();
+  }
+
   async function logout() { await supabase.auth.signOut(); setMessage('Signed out.'); }
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Voting unavailable.</strong><span>Supabase is not connected.</span></section></main>;
@@ -210,10 +230,17 @@ export default function VotingPortal() {
       const canRelease = isAdmin && vote.results_visibility === 'manual_release' && !vote.results_released_at && Boolean(finalResult) && (vote.status === 'closed' || deadlinePassed);
       return <section className={`card voting-card voting-card--${vote.status}`} key={vote.id}>
         <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : governanceLabel(vote.governance_kind)} · {vote.status}</p>
-        <h2>{vote.title}</h2>
-        {vote.description && <div className="voting-card__proposal"><p>{vote.description}</p></div>}
+        {editingEventId === vote.id ? <div className="voting-card__edit">
+          <label>Poll title<input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
+          <label>Description <span className="muted">— blank lines become separate paragraphs</span><textarea rows={8} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label>
+          <div className="button-row"><button type="button" onClick={() => saveEdit(vote)}>Save changes</button><button type="button" className="secondary" onClick={() => setEditingEventId(null)}>Cancel</button></div>
+        </div> : <>
+          <h2>{vote.title}</h2>
+          {vote.description && <div className="voting-card__proposal">{vote.description.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
+        </>}
         <div className="voting-card__meta"><span><strong>Opens</strong> {formatDate(vote.opens_at)}</span><span><strong>Closes</strong> {formatDate(vote.closes_at)}</span></div>
         {vote.event_type === 'poll' && <p className="voting-card__rules"><strong>Voting rules:</strong> quorum {vote.quorum_percent || 0}% · {vote.decision_rule}{vote.decision_rule !== 'plurality' ? ` at ${vote.threshold_percent}%` : ''} · tie: {(vote.tie_policy || 'no_change').replaceAll('_', ' ')}</p>}
+        {isAdmin && editingEventId !== vote.id && <button type="button" className="secondary voting-card__edit-button" onClick={() => startEdit(vote)}>Edit poll text</button>}
         {existingBallot && <p><strong>Your ballot is saved.</strong> {canVote ? 'You may change it before the deadline.' : ''}</p>}
         {eventQuestions.map((question) => <fieldset className="voting-question" key={question.id} disabled={!canVote}><legend>{question.title}{question.required ? <span className="voting-required"> Required</span> : null}</legend>{question.description && <p className="muted">{question.description}</p>}<div className="voting-options">{(optionsByQuestion.get(question.id) || []).map((option) => <label className="voting-option" key={option.id}><input type="radio" name={`question-${question.id}`} value={option.id} checked={String(answers[question.id] || '') === String(option.id)} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option.id }))} /><span>{option.label}</span></label>)}</div></fieldset>)}
         {canVote && <button type="button" onClick={() => submitBallot(vote.id)}>{existingBallot ? 'Update vote' : 'Submit vote'}</button>}
