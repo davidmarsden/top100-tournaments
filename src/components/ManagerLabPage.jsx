@@ -34,6 +34,35 @@ function indexedValues(value) {
   return [];
 }
 
+const PLAYER_ROLE_LABELS = {
+  '0': 'None',
+  '1': 'Modern Keeper',
+  '2': 'Keeper',
+  '3': 'Stopper',
+  '4': 'General Defender',
+  '5': 'Ball Playing Defender',
+  '6': 'Fullback',
+  '7': 'Wingback',
+  '8': 'Ball-Winning Midfielder',
+  '9': 'Deep Playmaker',
+  '10': 'General Midfielder',
+  '11': 'Box-To-Box Midfielder',
+  '12': 'Play Maker',
+  '13': 'Advanced Playmaker',
+  '14': 'Support Striker',
+  '15': 'Wide Midfielder',
+  '16': 'Winger',
+  '17': 'General Forward',
+  '18': 'Wide Forward',
+  '19': 'Finisher',
+  '20': 'Deep Forward',
+  '21': 'Target Man',
+};
+
+function playerRoleLabel(code) {
+  return PLAYER_ROLE_LABELS[String(code)] || 'Unknown role';
+}
+
 function roleCodeValues(value) {
   // Archived match reports use two shapes here. Usually PlayerRole is wrapped
   // once by the match-engine snapshot/timeline, so the first indexed value is
@@ -48,7 +77,7 @@ function roleCodeValues(value) {
 function playerRoleEntries(match) {
   return roleCodeValues(match?.tactics?.playerRoles)
     .filter(([, value]) => value !== null && value !== undefined && value !== '' && typeof value !== 'object')
-    .map(([slot, value]) => ({ slot, code: String(value) }));
+    .map(([slot, value]) => ({ slot, code: String(value), role: playerRoleLabel(value) }));
 }
 
 function playerRoleFingerprint(match) {
@@ -61,7 +90,8 @@ function playerRoleFingerprint(match) {
       const code = value === null || value === undefined || value === '' || typeof value === 'object'
         ? '—'
         : String(value);
-      return `${slot + 1}:${code}`;
+      const role = code === '—' ? 'Unknown role' : playerRoleLabel(code);
+      return `${slot + 1}:${code} ${role}`;
     })
     .join('|');
 }
@@ -990,19 +1020,19 @@ export default function ManagerLabPage() {
       </section>}
 
       {worldFormulaMatches.length > 0 && replicatedFamily && <section className="card">
-        <h2>Player Role Decoder · replicated 4-2-3-1 B</h2>
-        <p className="muted">Raw Soccer Manager PlayerRole codes by formation slot for the replicated 4-2-3-1 B · Attacking · Mixed · Down Both Flanks · Fast family. We are deliberately not guessing what a code means: once a known lineup identifies a role, we can label that code and test the same role pattern across clubs and divisions.</p>
-        {replicatedFamilyRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Raw role code</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
-          {replicatedFamilyRoleCodes.map((role) => <tr key={`${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td><code>{role.code}</code></td><td>{role.matches}</td><td>{role.clubCount}</td><td>{role.divisionCount}</td></tr>)}
+        <h2>Player roles · replicated 4-2-3-1 B</h2>
+        <p className="muted">Soccer Manager PlayerRole codes decoded from the current role menus and the archived Hamburger reference lineup. The raw code remains visible for auditability while the role name lets us compare the same jobs across clubs and divisions.</p>
+        {replicatedFamilyRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Player role</th><th>Raw code</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
+          {replicatedFamilyRoleCodes.map((role) => <tr key={`${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td>{playerRoleLabel(role.code)}</td><td><code>{role.code}</code></td><td>{role.matches}</td><td>{role.clubCount}</td><td>{role.divisionCount}</td></tr>)}
         </tbody></table></div> : <p className="muted">No PlayerRole values were archived for this family.</p>}
         <h3>{selectedClub?.name || 'Selected club'} · 4-2-3-1 B reference</h3>
-        <p className="muted">These are the selected club's archived raw codes in 4-2-3-1 B. Tell me the player role used in each slot from a known Hamburger lineup and we can turn the raw codes into evidence-backed labels rather than assumptions.</p>
-        {selectedClubRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Raw role code</th><th>MP</th></tr></thead><tbody>
-          {selectedClubRoleCodes.map((role) => <tr key={`club:${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td><code>{role.code}</code></td><td>{role.matches}</td></tr>)}
+        <p className="muted">The selected club's archived 4-2-3-1 B roles, decoded with the same 0–21 Soccer Manager role dictionary.</p>
+        {selectedClubRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Player role</th><th>Raw code</th><th>MP</th></tr></thead><tbody>
+          {selectedClubRoleCodes.map((role) => <tr key={`club:${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td>{playerRoleLabel(role.code)}</td><td><code>{role.code}</code></td><td>{role.matches}</td></tr>)}
         </tbody></table></div> : <p className="muted">No archived 4-2-3-1 B PlayerRole values for this club.</p>}
         {selectedClubRoleFingerprints.length > 0 && <>
           <h3>Complete XI role fingerprints</h3>
-          <p className="muted">Each row is the complete 11-slot PlayerRole vector recorded for an archived 4-2-3-1 B match. This keeps whole-lineup patterns separate from the per-slot decoder above.</p>
+          <p className="muted">Each row is the complete 11-slot PlayerRole vector recorded for an archived 4-2-3-1 B match, now labelled with the decoded role names while retaining each raw code.</p>
           <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Raw XI fingerprint</th><th>MP</th></tr></thead><tbody>
             {selectedClubRoleFingerprints.map((row) => <tr key={row.fingerprint}><td><code>{row.fingerprint}</code></td><td>{row.matchesPlayed}</td></tr>)}
           </tbody></table></div>
