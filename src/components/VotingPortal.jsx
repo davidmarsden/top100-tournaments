@@ -215,7 +215,6 @@ export default function VotingPortal() {
     <section className="manager-portal-hero"><div><p className="eyebrow">Top 100</p><h1>Manager Voting</h1><p>{account ? `Signed in as ${account.managers?.display_name || account.managers?.name || 'manager'}.` : `Signed in as ${session.user.email}.`}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section>
     {message && <p className="status">{message}</p>}
     {loading && <section className="card"><h2>Loading…</h2></section>}
-    {!loading && isAdmin && <AdminPollBuilder onCreated={loadVoting} setMessage={setMessage} />}
     {!loading && !account && !isAdmin && <section className="card"><h2>Manager account required</h2><p>Your email is authenticated, but it is not linked to an active Top 100 manager account. Use the Manager Portal to claim or restore your manager identity first.</p><a href="https://manager.smtop100.blog/">Go to Manager Portal</a></section>}
     {!loading && isAdmin && !account && <section className="card"><h2>Administrator mode</h2><p>You can create, open, close and finalise voting events, but you need an active manager account to cast a ballot.</p></section>}
     {!loading && canRenderEvents && events.length === 0 && <section className="card"><h2>No votes available</h2><p>There are no voting events available at the moment.</p></section>}
@@ -256,5 +255,6 @@ export default function VotingPortal() {
         {resultRows.length > 0 && <div style={{ marginTop: '1rem' }}>{resultRows.map((row) => <div key={`${row.question_id}-${row.option_id}`}>{row.question_title}: {row.option_label} — <strong>{row.votes}</strong></div>)}</div>}
       </section>;
     })}
+    {!loading && isAdmin && <AdminPollBuilder onCreated={loadVoting} setMessage={setMessage} />}
   </main>;
 }
