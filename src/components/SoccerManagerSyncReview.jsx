@@ -38,11 +38,11 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
     if (!selectedRunId) return [];
     const selected = runs.find((run) => run.id === selectedRunId);
     if (!selected) return [];
-    const capturedAt = new Date(selected.captured_at).getTime();
+    if (!selected.import_id) return [];
     return runs
       .filter((run) => run.status !== 'reviewed'
         && run.change_count > 0
-        && Math.abs(new Date(run.captured_at).getTime() - capturedAt) < 1000)
+        && run.import_id === selected.import_id)
       .sort((a, b) => a.id - b.id);
   }, [runs, selectedRunId]);
 
@@ -75,7 +75,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
     const requestId = runRequestRef.current + 1;
     runRequestRef.current = requestId;
     setLoadingRuns(true);
-    const fields = 'id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at';
+    const fields = 'id, import_id, status, captured_at, source_count, entity_count, change_count, created_at, reviewed_at';
 
     const unresolvedRuns = [];
     let unresolvedCursor = null;
@@ -227,7 +227,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
       if (typeof onReviewComplete === 'function') onReviewComplete();
     } catch (error) {
       setStatus(`Import review stopped: ${error.message}`);
-      await loadRuns();
+      await Promise.all([loadRuns(), loadChanges(selectedRunId)]);
     } finally {
       setBusyId(null);
     }
