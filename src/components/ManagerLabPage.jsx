@@ -32,7 +32,15 @@ function tacticValue(match, key) {
   if (key === 'mentality') {
     return firstValue(tactics.instructions?.mentality) ?? firstValue(tactics.mentality);
   }
-  return firstValue(tactics[key]);
+  const instructionKeys = {
+    passingStyle: 'passing',
+    attackingStyle: 'attackingStyle',
+    tempo: 'tempo',
+    pressing: 'pressing',
+    defensiveLine: 'defensiveLine',
+  };
+  const instructionKey = instructionKeys[key];
+  return firstValue(instructionKey ? tactics.instructions?.[instructionKey] : tactics[key]);
 }
 
 function resultPoints(result) {
@@ -52,6 +60,8 @@ export default function ManagerLabPage() {
   const [passing, setPassing] = useState('All');
   const [attackingStyle, setAttackingStyle] = useState('All');
   const [tempo, setTempo] = useState('All');
+  const [pressing, setPressing] = useState('All');
+  const [defensiveLine, setDefensiveLine] = useState('All');
 
   useEffect(() => {
     let mounted = true;
@@ -98,6 +108,8 @@ export default function ManagerLabPage() {
   const passings = tacticOptions('passingStyle');
   const attackingStyles = tacticOptions('attackingStyle');
   const tempos = tacticOptions('tempo');
+  const pressings = tacticOptions('pressing');
+  const defensiveLines = tacticOptions('defensiveLine');
   const selectedClub = clubs.find((club) => club.sourceClubId === clubId);
   const rows = matches.filter((row) =>
     (competition === 'All' || row.competition === competition) &&
@@ -107,7 +119,9 @@ export default function ManagerLabPage() {
     (mentality === 'All' || tacticValue(row, 'mentality') === mentality) &&
     (passing === 'All' || tacticValue(row, 'passingStyle') === passing) &&
     (attackingStyle === 'All' || tacticValue(row, 'attackingStyle') === attackingStyle) &&
-    (tempo === 'All' || tacticValue(row, 'tempo') === tempo)
+    (tempo === 'All' || tacticValue(row, 'tempo') === tempo) &&
+    (pressing === 'All' || tacticValue(row, 'pressing') === pressing) &&
+    (defensiveLine === 'All' || tacticValue(row, 'defensiveLine') === defensiveLine)
   );
   const wins = rows.filter((row) => row.result === 'W').length;
   const draws = rows.filter((row) => row.result === 'D').length;
@@ -185,6 +199,8 @@ export default function ManagerLabPage() {
             <label>Passing<select value={passing} onChange={(event) => setPassing(event.target.value)}>{passings.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Attacking style<select value={attackingStyle} onChange={(event) => setAttackingStyle(event.target.value)}>{attackingStyles.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Tempo<select value={tempo} onChange={(event) => setTempo(event.target.value)}>{tempos.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Pressing<select value={pressing} onChange={(event) => setPressing(event.target.value)}>{pressings.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Defensive line<select value={defensiveLine} onChange={(event) => setDefensiveLine(event.target.value)}>{defensiveLines.map((item) => <option key={item}>{item}</option>)}</select></label>
           </div>
         </div>
         <div className="manager-lab-kpis">
