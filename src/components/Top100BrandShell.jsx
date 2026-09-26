@@ -21,7 +21,8 @@ const TOURNAMENT_LINKS = [
 ];
 
 const POLL_LINKS = [
-  { key: 'voting-results', label: 'Results', href: 'https://vote.smtop100.blog/' },
+  { key: 'polls', label: 'Open polls', href: 'https://vote.smtop100.blog/' },
+  { key: 'voting-results', label: 'Results', href: 'https://vote.smtop100.blog/results' },
   { key: 'vote', label: 'Vote', href: 'https://vote.smtop100.blog/vote' },
 ];
 
@@ -67,7 +68,7 @@ function normalizeManagerUi(root) {
 
 export default function Top100BrandShell({ children, product = 'Tournaments', current = 'tournaments' }) {
   const resolvedCurrent = current === 'tournaments' ? tournamentCurrentFromPath(window.location.pathname) : current;
-  const isVoting = resolvedCurrent === 'vote' || resolvedCurrent === 'voting-results';
+  const isVoting = ['polls', 'vote', 'voting-results'].includes(resolvedCurrent);
   const isManager = resolvedCurrent === 'manager';
   const isTournament = current === 'tournaments';
   const localLinks = isVoting ? POLL_LINKS : isManager ? [] : TOURNAMENT_LINKS;
