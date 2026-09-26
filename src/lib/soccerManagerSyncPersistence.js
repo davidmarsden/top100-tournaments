@@ -386,6 +386,36 @@ export async function stageSoccerManagerSync(entries, capturedAt = null, options
   };
 }
 
+export async function reviewSoccerManagerSyncRuns(runIds, decision, options = {}) {
+  if (!supabase) throw new Error('Supabase is not connected.');
+  const ids = [...new Set((runIds || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+  if (!ids.length) throw new Error('No Soccer Manager sync runs were selected.');
+
+  let reviewedCount = 0;
+  const completedRunIds = [];
+  for (let index = 0; index < ids.length; index += 1) {
+    const runId = ids[index];
+    options.onProgress?.({
+      index: index + 1,
+      total: ids.length,
+      runId,
+      reviewedCount,
+    });
+    try {
+      const reviewed = await reviewSoccerManagerSyncRun(runId, decision);
+      reviewedCount += reviewed;
+      completedRunIds.push(runId);
+    } catch (error) {
+      const completed = completedRunIds.length
+        ? ` after completing ${completedRunIds.length} earlier run(s): #${completedRunIds[0]}–#${completedRunIds[completedRunIds.length - 1]}`
+        : '';
+      throw new Error(`Sync #${runId} failed: ${error.message}${completed}`);
+    }
+  }
+
+  return { reviewedCount, completedRunIds };
+}
+
 export async function reviewSoccerManagerSyncChange(changeId, decision) {
   if (!supabase) throw new Error('Supabase is not connected.');
   const { data, error } = await supabase.rpc('review_soccer_manager_sync_change', {
