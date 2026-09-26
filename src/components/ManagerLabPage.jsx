@@ -460,10 +460,14 @@ export default function ManagerLabPage() {
       const observed = Object.values(group.divisions);
       const ppgValues = observed.map((item) => item.adjustedPpg).filter((value) => value !== null);
       const gdValues = observed.map((item) => item.adjustedGd).filter((value) => value !== null);
-      const weightedAdjustedPpg = observed.reduce((sum, item) => sum + (item.adjustedPpg ?? 0) * item.played, 0) /
-        (observed.reduce((sum, item) => sum + (item.adjustedPpg === null ? 0 : item.played), 0) || 1);
-      const weightedAdjustedGd = observed.reduce((sum, item) => sum + (item.adjustedGd ?? 0) * item.played, 0) /
-        (observed.reduce((sum, item) => sum + (item.adjustedGd === null ? 0 : item.played), 0) || 1);
+      const adjustedPpgWeight = observed.reduce((sum, item) => sum + (item.adjustedPpg === null ? 0 : item.played), 0);
+      const adjustedGdWeight = observed.reduce((sum, item) => sum + (item.adjustedGd === null ? 0 : item.played), 0);
+      const weightedAdjustedPpg = adjustedPpgWeight
+        ? observed.reduce((sum, item) => sum + (item.adjustedPpg ?? 0) * item.played, 0) / adjustedPpgWeight
+        : null;
+      const weightedAdjustedGd = adjustedGdWeight
+        ? observed.reduce((sum, item) => sum + (item.adjustedGd ?? 0) * item.played, 0) / adjustedGdWeight
+        : null;
       return {
         ...group,
         clubCount: group.clubs.size,
@@ -520,16 +524,16 @@ export default function ManagerLabPage() {
         values.set(value, entry);
       });
       const variants = [...values.values()].map((entry) => {
-        let expectedPoints = 0, expectedGd = 0, eligible = 0;
+        let expectedPoints = 0, expectedGd = 0, actualPoints = 0, actualGd = 0, eligible = 0;
         entry.matches.forEach((match) => {
           const base = baselineByDivision.get(match.competition)?.get(xiBucket(match.xiRatingDifference));
           if (!base?.played) return;
           expectedPoints += base.points / base.played;
           expectedGd += base.gd / base.played;
+          actualPoints += resultPoints(match.result);
+          actualGd += (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0);
           eligible += 1;
         });
-        const actualPoints = entry.matches.reduce((sum, match) => sum + resultPoints(match.result), 0);
-        const actualGd = entry.matches.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0);
         return {
           ...entry,
           played: entry.matches.length,
@@ -832,7 +836,7 @@ export default function ManagerLabPage() {
             })}
             <td>{group.played}</td><td>{group.clubCount}</td><td>{group.positiveDivisions}/{group.observedDivisions}</td>
             <td>{group.positiveGdDivisions}/{group.observedDivisions}</td>
-            <td>{group.weightedAdjustedPpg >= 0 ? '+' : ''}{group.weightedAdjustedPpg.toFixed(2)} PPG<br /><small>{group.weightedAdjustedGd >= 0 ? '+' : ''}{group.weightedAdjustedGd.toFixed(2)} GD</small></td>
+            <td>{group.weightedAdjustedPpg === null ? '—' : <>{group.weightedAdjustedPpg >= 0 ? '+' : ''}{group.weightedAdjustedPpg.toFixed(2)} PPG<br /><small>{group.weightedAdjustedGd === null ? '—' : `${group.weightedAdjustedGd >= 0 ? '+' : ''}${group.weightedAdjustedGd.toFixed(2)} GD`}</small></>}</td>
           </tr>)}
         </tbody></table></div>
       </section>}
