@@ -7,6 +7,7 @@ const nonZeroId=v=>{const id=text(v);return id&&id!=='0'&&/^\d+$/.test(id)?id:nu
 const fixtureId=row=>nonZeroId(row?.FixtureId??row?.fixtureID??row?.fixtureId);
 const completed=row=>String(row?.Played??row?.played??'')==='1'&&String(row?.Bye??row?.bye??'0')!=='1'&&fixtureId(row);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const chooseResumeBundle=()=>new Promise(resolve=>{const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.style.display='none';input.onchange=async()=>{try{const file=input.files?.[0];if(!file){resolve(null);return;}const data=JSON.parse(await file.text());if(data?.kind!=='worldSeasonMatchBackfill'||!Array.isArray(data.reports))throw new Error('That is not a Top 100 game-world backfill bundle.');resolve(data);}catch(err){alert('Could not read resume bundle: '+String(err&&err.message||err));resolve(null);}finally{input.remove();}};document.body.appendChild(input);input.click();});
 const parseJson=async response=>{const length=Number(response.headers.get('content-length')||0);if(length>MAX_REPORT_BYTES)throw new Error('Report exceeds '+MAX_REPORT_BYTES+' bytes');let raw='';if(response.body?.getReader){const reader=response.body.getReader(),decoder=new TextDecoder();let size=0;while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>MAX_REPORT_BYTES){await reader.cancel();throw new Error('Report exceeds '+MAX_REPORT_BYTES+' bytes');}raw+=decoder.decode(value,{stream:true});}raw+=decoder.decode();}else{const buffer=await response.arrayBuffer();if(buffer.byteLength>MAX_REPORT_BYTES)throw new Error('Report exceeds '+MAX_REPORT_BYTES+' bytes');raw=new TextDecoder().decode(buffer);}try{return JSON.parse(raw);}catch{throw new Error('Soccer Manager returned non-JSON for '+response.url);}};
 const fetchReport=async(id,onAttempt)=>{const u=new URL('/matchreport-ajax-mobile.php',location.origin);u.searchParams.set('fixtureid',id);u.searchParams.set('action','mr');let lastError;for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);try{onAttempt?.(attempt);const response=await fetch(u.href,{credentials:'include',cache:'no-store',signal:controller.signal});if(!response.ok)throw new Error('HTTP '+response.status+' '+response.statusText);return await parseJson(response);}catch(err){lastError=err?.name==='AbortError'?new Error('Timed out after '+REQUEST_TIMEOUT_MS/1000+'s'):err;if(attempt<MAX_ATTEMPTS)await sleep(500*Math.pow(2,attempt-1));}finally{clearTimeout(timer);}}throw lastError;};
 const reportWrapper=raw=>({fixtureId:text(raw?.fixtureID??raw?.FixtureId),date:text(raw?.TurnDate??raw?.FullTurnDate),competition:text(raw?.TournName??raw?.TournamentName),home:{clubId:text(raw?.HomeClubID),name:text(raw?.HomeTeamName),score:Number.isFinite(Number(raw?.HomeTeamScore))?Number(raw.HomeTeamScore):null},away:{clubId:text(raw?.AwayClubID),name:text(raw?.AwayTeamName),score:Number.isFinite(Number(raw?.AwayTeamScore))?Number(raw.AwayTeamScore):null},raw});
@@ -19,12 +20,23 @@ const elapsed=start=>{const s=Math.max(0,Math.floor((Date.now()-start)/1000)),m=
  if(typeof window.API_getClubSchedule!=='function')throw new Error('Soccer Manager schedule API is not loaded. Open a Top 100 club → Schedule, let it load, then try again.');
  const schedule=window.API_getClubSchedule();if(!Array.isArray(schedule)||!schedule.length)throw new Error('No loaded club schedule was found.');
  const seedIds=[...new Set(schedule.filter(completed).map(fixtureId))];if(!seedIds.length)throw new Error('The loaded schedule contains no completed fixtures.');
- const queue=[...seedIds],queued=new Set(queue),fetched=new Set(),failures=[],chunks=[];let current=[],setupId=nonZeroId(new URL(location.href).searchParams.get('sid'))||nonZeroId(window.g_setupid??window.g_setupId??window.g_gameworldid),clubs=new Map();
+ let resume=null;if(confirm('Resume from an existing Top 100 world-backfill bundle?\n\nOK: choose the previous JSON bundle and skip its captured fixtures.\nCancel: start a fresh crawl.'))resume=await chooseResumeBundle();
+ const queue=[],queued=new Set(),fetched=new Set(),failures=[],chunks=[];let current=[],setupId=nonZeroId(new URL(location.href).searchParams.get('sid'))||nonZeroId(window.g_setupid??window.g_setupId??window.g_gameworldid),clubs=new Map();
+ const enqueue=id=>{id=nonZeroId(id);if(id&&!queued.has(id)&&!fetched.has(id)){queued.add(id);queue.push(id);}};
+ seedIds.forEach(enqueue);
+ let resumedReports=0,resumedFailures=0;
+ if(resume){
+   const resumeSetup=nonZeroId(resume.setupId);if(setupId&&resumeSetup&&resumeSetup!==setupId)throw new Error('Resume bundle belongs to another game world');setupId=setupId||resumeSetup;
+   for(const report of resume.reports){const id=nonZeroId(report?.fixtureId??report?.raw?.fixtureID??report?.raw?.FixtureId);if(id){fetched.add(id);queued.add(id);resumedReports++;}for(const side of [report?.home,report?.away])if(side?.clubId)clubs.set(String(side.clubId),side.name||String(side.clubId));for(const discovered of findFixtures(report?.raw??report))enqueue(discovered);}
+   for(const failure of (resume.failures||[])){const id=nonZeroId(failure?.fixtureId);if(id){fetched.delete(id);queued.delete(id);enqueue(id);resumedFailures++;}}
+   progress.update('<b>Resume loaded:</b> '+resumedReports+' captured fixtures skipped · '+resumedFailures+' previous failures queued for retry<br><b>Queue:</b> '+queue.length+' remaining');
+ }
  const runId=new Date().toISOString().replace(/[:.]/g,'-');
  const flush=()=>{if(!current.length)return;chunks.push(current);current=[];};
- while(queue.length&&fetched.size<MAX_REPORTS&&!progress.stopped()){
-   const id=queue.shift();if(fetched.has(id))continue;
-   const render=attempt=>progress.update('<b>Reports:</b> '+(fetched.size-failures.length)+' captured · '+failures.length+' failed<br><b>Fixtures discovered:</b> '+queued.size+'<br><b>Clubs discovered:</b> '+clubs.size+'<br><b>Queue:</b> '+queue.length+' remaining<br><b>Elapsed:</b> '+elapsed(startedAt)+'<br><b>Current fixture:</b> '+id+(attempt?' · attempt '+attempt+'/'+MAX_ATTEMPTS:''));
+ let attemptedThisRun=0;
+ while(queue.length&&attemptedThisRun<MAX_REPORTS&&!progress.stopped()){
+   const id=queue.shift();if(fetched.has(id))continue;attemptedThisRun++;
+   const render=attempt=>progress.update('<b>Reports:</b> '+(attemptedThisRun-failures.length)+' captured this run · '+failures.length+' failed<br><b>Fixtures discovered:</b> '+queued.size+'<br><b>Clubs discovered:</b> '+clubs.size+'<br><b>Queue:</b> '+queue.length+' remaining<br><b>Elapsed:</b> '+elapsed(startedAt)+'<br><b>Current fixture:</b> '+id+(attempt?' · attempt '+attempt+'/'+MAX_ATTEMPTS:''));
    render();
    try{
      const raw=await fetchReport(id,render);const reportSetup=nonZeroId(raw?.SetupID??raw?.setupId??raw?.GameWorldID??raw?.gameWorldId);
@@ -33,17 +45,17 @@ const elapsed=start=>{const s=Math.max(0,Math.floor((Date.now()-start)/1000)),m=
      const wrapped=reportWrapper(raw);if(!wrapped.fixtureId)wrapped.fixtureId=id;
      for(const side of [wrapped.home,wrapped.away])if(side.clubId)clubs.set(side.clubId,side.name||side.clubId);
      current.push(wrapped);fetched.add(id);
-     for(const discovered of findFixtures(raw)){if(!queued.has(discovered)&&!fetched.has(discovered)){queued.add(discovered);queue.push(discovered);}}
+     for(const discovered of findFixtures(raw))enqueue(discovered);
      if(current.length>=CHUNK_SIZE)flush();
-     progress.update('<b>Reports:</b> '+(fetched.size-failures.length)+' captured · '+failures.length+' failed<br><b>Fixtures discovered:</b> '+queued.size+'<br><b>Clubs discovered:</b> '+clubs.size+'<br><b>Queue:</b> '+queue.length+' remaining<br><b>Elapsed:</b> '+elapsed(startedAt)+'<br><b>Latest:</b> '+[wrapped.home.name,wrapped.home.score+'–'+wrapped.away.score,wrapped.away.name].filter(Boolean).join(' '));
+     progress.update('<b>Reports:</b> '+(attemptedThisRun-failures.length)+' captured this run · '+failures.length+' failed<br><b>Fixtures discovered:</b> '+queued.size+'<br><b>Clubs discovered:</b> '+clubs.size+'<br><b>Queue:</b> '+queue.length+' remaining<br><b>Elapsed:</b> '+elapsed(startedAt)+'<br><b>Latest:</b> '+[wrapped.home.name,wrapped.home.score+'–'+wrapped.away.score,wrapped.away.name].filter(Boolean).join(' '));
    }catch(err){fetched.add(id);failures.push({fixtureId:id,error:String(err&&err.message||err)});}
    if(queue.length)await sleep(DELAY_MS);
  }
  flush();
  if(!setupId)throw new Error('Could not establish the Soccer Manager setup id.');
- const manifest={kind:'worldSeasonMatchBackfillManifest',version:1,runId,capturedAt:new Date().toISOString(),setupId,summary:{source:'schedule seed + completed-fixture graph',seedFixtures:seedIds.length,uniqueFixturesSeen:queued.size,reportsAttempted:fetched.size,reportsCaptured:fetched.size-failures.length,failures:failures.length,clubsSeen:clubs.size,queueRemaining:queue.length,safetyCap:MAX_REPORTS,chunks:chunks.length,stoppedByUser:progress.stopped(),elapsedMs:Date.now()-startedAt},clubs:[...clubs].map(([clubId,name])=>({clubId,name})),failures};
- progress.update('<b>'+(progress.stopped()?'Stopped':'Finished')+'</b><br>'+manifest.summary.reportsCaptured+' reports captured · '+failures.length+' failed<br>'+clubs.size+' clubs discovered<br>Elapsed: '+elapsed(startedAt));
- const ok=confirm((progress.stopped()?'Game-world crawl stopped':'Game-world crawl complete')+': '+manifest.summary.reportsCaptured+' reports across '+clubs.size+' clubs.'+(queue.length?' Safety cap reached with '+queue.length+' fixture(s) still queued.':'')+'\n\nTap OK to download one import bundle. This explicit tap avoids browsers blocking automatic multi-downloads.');
+ const manifest={kind:'worldSeasonMatchBackfillManifest',version:1,runId,capturedAt:new Date().toISOString(),setupId,summary:{source:'schedule seed + completed-fixture graph',seedFixtures:seedIds.length,resumedFromBundle:Boolean(resume),resumedReports,resumedFailures,uniqueFixturesSeen:queued.size,reportsAttempted:attemptedThisRun,reportsCaptured:attemptedThisRun-failures.length,failures:failures.length,clubsSeen:clubs.size,queueRemaining:queue.length,safetyCap:MAX_REPORTS,chunks:chunks.length,stoppedByUser:progress.stopped(),elapsedMs:Date.now()-startedAt},clubs:[...clubs].map(([clubId,name])=>({clubId,name})),failures};
+ progress.update('<b>'+(progress.stopped()?'Stopped':'Finished')+'</b><br>'+manifest.summary.reportsCaptured+' new reports captured · '+failures.length+' failed'+(resume?' · '+resumedReports+' previous reports skipped':'')<br>'+clubs.size+' clubs discovered<br>Elapsed: '+elapsed(startedAt));
+ const ok=confirm((progress.stopped()?'Game-world crawl stopped':'Game-world crawl complete')+': '+manifest.summary.reportsCaptured+' new reports across '+clubs.size+' clubs.'+(queue.length?' Safety cap reached with '+queue.length+' fixture(s) still queued.':'')+'\n\nTap OK to download one import bundle. This explicit tap avoids browsers blocking automatic multi-downloads.');
  if(ok)saveBundle(chunks,manifest);
  else window.__top100WorldBackfillResult={chunks,manifest};
  alert(ok?'Backfill bundle downloaded. Import it in Soccer Manager Sync.':'Download cancelled. The captured result remains in this page as window.__top100WorldBackfillResult until you navigate away.');
