@@ -124,6 +124,11 @@ const FORMATION_4231B_SLOT_FAMILIES = [
 ];
 
 function impossible4231BRoleEntries(match) {
+  // Only complete XI encodings prove that an array index is a formation slot.
+  // Sparse keyed timelines are audited separately until their key semantics are
+  // independently corroborated by complete-XI observations.
+  const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
+  if (!['complete-xi-timeline', 'direct-xi'].includes(encoding.kind)) return [];
   return playerRoleEntries(match).filter(({ slot, code }) => {
     const family = FORMATION_4231B_SLOT_FAMILIES[slot];
     return family && !ROLE_FAMILIES[family]?.has(code);
@@ -928,7 +933,56 @@ export default function ManagerLabPage() {
       });
     });
 
+    // Cross-check every raw key/code against complete-XI evidence at the same
+    // formation position. This lets us distinguish a globally decoded role
+    // from a sparse-only value without pretending sparse keys are proven slots.
+    const positionCodeEvidence = new Map();
+    worldFormulaMatches.forEach((match) => {
+      const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
+      if (!['complete-xi-timeline', 'direct-xi', 'sparse-keyed-timeline'].includes(encoding.kind)) return;
+      const formation = normalizedTacticValue(match, 'formation') || 'Unknown';
+      encoding.openingEntries.forEach(([key, role]) => {
+        if (role === null || role === undefined || role === '' || String(role) === '0' || typeof role === 'object') return;
+        const id = `${formation}:${key}:${String(role)}`;
+        const row = positionCodeEvidence.get(id) || {
+          formation, key: String(key), code: String(role),
+          completeMatches: 0, sparseMatches: 0, clubs: new Set(), divisions: new Set(),
+        };
+        if (encoding.kind === 'sparse-keyed-timeline') row.sparseMatches += 1;
+        else row.completeMatches += 1;
+        if (match.sourceClubId) row.clubs.add(match.sourceClubId);
+        if (match.competition) row.divisions.add(match.competition);
+        positionCodeEvidence.set(id, row);
+      });
+    });
+    const positionCodeProfiles = [...positionCodeEvidence.values()].map((row) => ({
+      formation: row.formation,
+      key: row.key,
+      apparentSlot: Number(row.key) + 1,
+      code: row.code,
+      role: playerRoleLabel(row.code),
+      completeMatches: row.completeMatches,
+      sparseMatches: row.sparseMatches,
+      clubCount: row.clubs.size,
+      divisionCount: row.divisions.size,
+      evidence: row.completeMatches > 0
+        ? (row.sparseMatches > 0 ? 'complete + sparse' : 'complete XI')
+        : 'sparse only',
+    })).sort((a, b) =>
+      a.formation.localeCompare(b.formation) ||
+      Number(a.key) - Number(b.key) ||
+      b.completeMatches - a.completeMatches ||
+      b.sparseMatches - a.sparseMatches ||
+      Number(a.code) - Number(b.code)
+    );
+
+    const sparseOnlyProfiles = positionCodeProfiles
+      .filter((row) => row.sparseMatches > 0 && row.completeMatches === 0)
+      .sort((a, b) => b.sparseMatches - a.sparseMatches || b.clubCount - a.clubCount);
+
     return {
+      positionCodeProfiles,
+      sparseOnlyProfiles,
       assignmentCensus: [...assignmentCounts.entries()]
         .map(([assigned, matches]) => ({ assigned, matches, share: worldFormulaMatches.length ? matches / worldFormulaMatches.length : 0 }))
         .sort((a, b) => a.assigned - b.assigned),
@@ -971,6 +1025,8 @@ export default function ManagerLabPage() {
     );
     const groups = new Map();
     matches.forEach((match) => {
+      const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
+      if (!['complete-xi-timeline', 'direct-xi'].includes(encoding.kind)) return;
       playerRoleEntries(match).forEach(({ slot, code }) => {
         const key = `${slot}:${code}`;
         const group = groups.get(key) || { slot, code, matches: 0, clubs: new Set(), divisions: new Set() };
@@ -1243,6 +1299,18 @@ export default function ManagerLabPage() {
             {playerRoleEncodingAudit.sparseKeyProfiles.map((row) => <tr key={`${row.key}:${row.code}`}><td><strong>{row.key}</strong></td><td>{row.role}</td><td><code>{row.code}</code></td><td>{row.matches}</td><td>{row.clubCount}</td><td>{row.formations.join(', ') || '—'}</td></tr>)}
           </tbody></table></div>
         </details>
+        <details open>
+          <summary><strong>Position × raw-code decoder</strong> · complete XI corroboration for sparse values</summary>
+          <p className="muted">For each formation and raw key, this compares sparse observations with complete-XI observations carrying the same code at the same index. “Complete + sparse” is strong evidence that the sparse key behaves like that formation position. “Sparse only” is unresolved: the familiar role label is shown as a hypothesis, not treated as a decoded formation-slot assignment.</p>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation</th><th>Raw key</th><th>Apparent slot</th><th>Raw code</th><th>Candidate role</th><th>Complete XI</th><th>Sparse</th><th>Clubs</th><th>Evidence</th></tr></thead><tbody>
+            {playerRoleEncodingAudit.positionCodeProfiles.map((row) => <tr key={`${row.formation}:${row.key}:${row.code}`}><td><strong>{row.formation}</strong></td><td><code>{row.key}</code></td><td>{row.apparentSlot}</td><td><code>{row.code}</code></td><td>{row.role}</td><td>{row.completeMatches}</td><td>{row.sparseMatches}</td><td>{row.clubCount}</td><td>{row.evidence}</td></tr>)}
+          </tbody></table></div>
+          <h4>Unresolved sparse-only combinations</h4>
+          <p className="muted">These combinations occur in sparse records but have no complete-XI observation at the same formation/index/code in the current corpus. They are leads for decoding, not integrity failures.</p>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation</th><th>Raw key</th><th>Raw code</th><th>Candidate role</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
+            {playerRoleEncodingAudit.sparseOnlyProfiles.map((row) => <tr key={`unresolved:${row.formation}:${row.key}:${row.code}`}><td><strong>{row.formation}</strong></td><td><code>{row.key}</code></td><td><code>{row.code}</code></td><td>{row.role}</td><td>{row.sparseMatches}</td><td>{row.clubCount}</td><td>{row.divisionCount}</td></tr>)}
+          </tbody></table></div>
+        </details>
         <details>
           <summary><strong>Club-by-club role encoding</strong> · {playerRoleEncodingAudit.clubs.length} clubs</summary>
           <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Encoding shapes</th><th>Opening non-zero values</th><th>Sample opening raw state</th></tr></thead><tbody>
@@ -1253,12 +1321,12 @@ export default function ManagerLabPage() {
 
       {worldFormulaMatches.length > 0 && replicatedFamily && <section className="card">
         <h2>Player roles · replicated 4-2-3-1 B</h2>
-        <p className="muted">Soccer Manager PlayerRole codes decoded from the current role menus and the archived Hamburger reference lineup. The raw code remains visible for auditability while the role name lets us compare the same jobs across clubs and divisions.</p>
+        <p className="muted">Complete-XI PlayerRole codes decoded from the current role menus and the archived Hamburger reference lineup. Sparse keyed timelines are excluded from this slot table and handled by the position × raw-code audit above, because their keys are not yet proven to be formation slots.</p>
         {replicatedFamilyRoleCodes.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation slot</th><th>Player role</th><th>Raw code</th><th>MP</th><th>Clubs</th><th>Divisions</th></tr></thead><tbody>
           {replicatedFamilyRoleCodes.map((role) => <tr key={`${role.slot}:${role.code}`}><td><strong>Slot {role.slot + 1}</strong></td><td>{playerRoleLabel(role.code)}</td><td><code>{role.code}</code></td><td>{role.matches}</td><td>{role.clubCount}</td><td>{role.divisionCount}</td></tr>)}
         </tbody></table></div> : <p className="muted">No PlayerRole values were archived for this family.</p>}
         <h3>Role-data integrity</h3>
-        <p className="muted">Flags role codes that cannot belong to their apparent 4-2-3-1 B formation slot. These rows are diagnostic only and are not evidence about which player roles perform better.</p>
+        <p className="muted">Flags role codes that cannot belong to their 4-2-3-1 B formation slot, but only where the archive contains a complete XI vector. Sparse keyed timelines are no longer treated as integrity failures.</p>
         {replicatedFamilyRoleIntegrity.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Division</th><th>Fixture</th><th>Impossible assignment</th><th>Complete raw vector</th></tr></thead><tbody>
           {replicatedFamilyRoleIntegrity.map((row, index) => <tr key={`${row.fixtureId || 'fixture'}:${row.sourceClubId || 'club'}:${index}`}><td><strong>{row.club}</strong><br /><small>{row.sourceClubId || '—'}</small></td><td>{row.division}</td><td>{row.fixtureId || '—'}</td><td>{row.issues}</td><td><code>{row.fingerprint || '—'}</code></td></tr>)}
         </tbody></table></div> : <p className="muted">No impossible 4-2-3-1 B role/slot combinations found in this cohort.</p>}
