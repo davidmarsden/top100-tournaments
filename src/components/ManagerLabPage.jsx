@@ -115,6 +115,46 @@ function adjustedMetrics(sample, baseline) {
   };
 }
 
+function buildManagerStrengthBaseline(matches) {
+  const managers = new Map();
+  matches.forEach((match) => {
+    const clubId = match.sourceClubId;
+    const bucket = xiBucket(match.xiRatingDifference);
+    if (!clubId || bucket === null) return;
+    const key = `${clubId}|${bucket}`;
+    const entry = managers.get(key) || { played: 0, points: 0, gd: 0 };
+    entry.played += 1;
+    entry.points += resultPoints(match.result);
+    entry.gd += (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0);
+    managers.set(key, entry);
+  });
+  return managers;
+}
+
+function managerAdjustedMetrics(sample, baseline) {
+  const eligible = sample.filter((match) => match.sourceClubId && xiBucket(match.xiRatingDifference) !== null);
+  if (!eligible.length) return { managerAdjustedPpg: null, managerAdjustedGd: null, managerBaselineMatches: 0 };
+  let expectedPoints = 0, expectedGd = 0, baselineMatches = 0;
+  const usedMatches = [];
+  eligible.forEach((match) => {
+    const base = baseline.get(`${match.sourceClubId}|${xiBucket(match.xiRatingDifference)}`);
+    if (!base?.played) return;
+    expectedPoints += base.points / base.played;
+    expectedGd += base.gd / base.played;
+    baselineMatches += base.played;
+    usedMatches.push(match);
+  });
+  const used = usedMatches.length;
+  if (!used) return { managerAdjustedPpg: null, managerAdjustedGd: null, managerBaselineMatches: 0 };
+  const actualPoints = usedMatches.reduce((sum, match) => sum + resultPoints(match.result), 0);
+  const actualGd = usedMatches.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0);
+  return {
+    managerAdjustedPpg: (actualPoints - expectedPoints) / used,
+    managerAdjustedGd: (actualGd - expectedGd) / used,
+    managerBaselineMatches: baselineMatches,
+  };
+}
+
 function resultPoints(result) {
   return result === 'W' ? 3 : result === 'D' ? 1 : 0;
 }
@@ -321,6 +361,7 @@ export default function ManagerLabPage() {
   }, [rows]);
 
   const worldStrengthBaseline = useMemo(() => buildStrengthBaseline(worldFormulaMatches), [worldFormulaMatches]);
+  const worldManagerBaseline = useMemo(() => buildManagerStrengthBaseline(worldFormulaMatches), [worldFormulaMatches]);
 
   const worldFormulaGroups = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
@@ -353,8 +394,9 @@ export default function ManagerLabPage() {
       evidence: group.played >= 12 && group.clubs.size >= 3 ? 'Broad' :
         group.played >= 6 && group.clubs.size >= 2 ? 'Developing' : 'Exploratory',
       ...adjustedMetrics(group.matches, worldStrengthBaseline),
+      ...managerAdjustedMetrics(group.matches, worldManagerBaseline),
     })).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || b.ppg - a.ppg);
-  }, [worldFormulaMatches, worldFormulaStrength, worldStrengthBaseline]);
+  }, [worldFormulaMatches, worldFormulaStrength, worldStrengthBaseline, worldManagerBaseline]);
 
   const worldFamilyGroups = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
@@ -380,9 +422,10 @@ export default function ManagerLabPage() {
         gd: gd / group.matches.length,
         xiDifference: avg(group.matches, 'xiRatingDifference'),
         ...adjusted,
+        ...managerAdjustedMetrics(group.matches, worldManagerBaseline),
       };
     }).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || (b.adjustedPpg ?? -99) - (a.adjustedPpg ?? -99));
-  }, [worldFormulaMatches, worldFormulaStrength, worldStrengthBaseline]);
+  }, [worldFormulaMatches, worldFormulaStrength, worldStrengthBaseline, worldManagerBaseline]);
 
   const instructionEffects = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
@@ -545,13 +588,14 @@ export default function ManagerLabPage() {
             <label>Opponent XI<select value={worldFormulaStrength} onChange={(event) => setWorldFormulaStrength(event.target.value)}>{strengthBands.map((item) => <option key={item}>{item}</option>)}</select></label>
           </div>
           <p className="muted">{worldFormulaGroups.reduce((sum, group) => sum + group.played, 0)} team-match observations in this strength band. Evidence requires both repetition and use by multiple clubs; it is not a claim that a tactic causes the result.</p>
-          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>Clubs</th><th>Evidence</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>Adj PPG</th><th>H/A</th></tr></thead><tbody>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>Clubs</th><th>Evidence</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>Adj PPG</th><th>Mgr Adj</th><th>H/A</th></tr></thead><tbody>
             {worldFormulaGroups.slice(0, 20).map((group) => <tr key={group.key}>
               <td><strong>{formulaText(group.sample)}</strong></td>
               <td>{group.played}</td><td>{group.clubCount}</td><td>{group.evidence}</td>
               <td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td>
               <td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td>
               <td>{group.adjustedPpg === null ? '—' : `${group.adjustedPpg >= 0 ? '+' : ''}${group.adjustedPpg.toFixed(2)}`}</td>
+              <td>{group.managerAdjustedPpg === null ? '—' : `${group.managerAdjustedPpg >= 0 ? '+' : ''}${group.managerAdjustedPpg.toFixed(2)}`}</td>
               <td>{group.home}/{group.away}</td>
             </tr>)}
           </tbody></table></div>
@@ -560,13 +604,14 @@ export default function ManagerLabPage() {
 
       {worldFormulaMatches.length > 0 && <section className="card">
         <h2>Formula families · whole world</h2>
-        <p className="muted">Core tactical identities collapse the exact formulas to formation, mentality, passing, attacking style and tempo. Adj PPG/GD compare each result with the archived Division 1 baseline for roughly the same XI-rating gap; positive values mean the family beat that strength-matched baseline.</p>
-        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Family</th><th>MP</th><th>Clubs</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>Adj PPG</th><th>Adj GD</th></tr></thead><tbody>
+        <p className="muted">Core tactical identities collapse the exact formulas to formation, mentality, passing, attacking style and tempo. Adj PPG/GD compare with the Division 1 baseline at roughly the same XI-rating gap. Mgr Adj compares with that same club's own results at the same strength gap, helping separate a manager/team effect from a tactical one. Positive values beat the relevant baseline.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Family</th><th>MP</th><th>Clubs</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>Adj PPG</th><th>Mgr Adj</th><th>Adj GD</th></tr></thead><tbody>
           {worldFamilyGroups.slice(0, 20).map((group) => <tr key={group.key}>
             <td><strong>{FAMILY_KEYS.map((key) => displayTacticValue(key, tacticValue(group.sample, key))).join(' · ')}</strong></td>
             <td>{group.played}</td><td>{group.clubCount}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td>
             <td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td>
             <td>{group.adjustedPpg === null ? '—' : `${group.adjustedPpg >= 0 ? '+' : ''}${group.adjustedPpg.toFixed(2)}`}</td>
+            <td>{group.managerAdjustedPpg === null ? '—' : `${group.managerAdjustedPpg >= 0 ? '+' : ''}${group.managerAdjustedPpg.toFixed(2)}`}</td>
             <td>{group.adjustedGd === null ? '—' : `${group.adjustedGd >= 0 ? '+' : ''}${group.adjustedGd.toFixed(2)}`}</td>
           </tr>)}
         </tbody></table></div>
