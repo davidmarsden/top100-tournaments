@@ -458,18 +458,91 @@ export default function ManagerLabPage() {
 
     return [...byFamily.values()].map((group) => {
       const observed = Object.values(group.divisions);
+      const ppgValues = observed.map((item) => item.adjustedPpg).filter((value) => value !== null);
+      const gdValues = observed.map((item) => item.adjustedGd).filter((value) => value !== null);
+      const weightedAdjustedPpg = observed.reduce((sum, item) => sum + (item.adjustedPpg ?? 0) * item.played, 0) /
+        (observed.reduce((sum, item) => sum + (item.adjustedPpg === null ? 0 : item.played), 0) || 1);
+      const weightedAdjustedGd = observed.reduce((sum, item) => sum + (item.adjustedGd ?? 0) * item.played, 0) /
+        (observed.reduce((sum, item) => sum + (item.adjustedGd === null ? 0 : item.played), 0) || 1);
       return {
         ...group,
         clubCount: group.clubs.size,
         observedDivisions: observed.length,
-        positiveDivisions: observed.filter((item) => item.adjustedPpg !== null && item.adjustedPpg > 0).length,
+        positiveDivisions: ppgValues.filter((value) => value > 0).length,
+        positiveGdDivisions: gdValues.filter((value) => value > 0).length,
+        weightedAdjustedPpg,
+        weightedAdjustedGd,
+        ppgRange: ppgValues.length ? Math.max(...ppgValues) - Math.min(...ppgValues) : null,
       };
     }).sort((a, b) =>
+      b.positiveDivisions - a.positiveDivisions ||
       b.observedDivisions - a.observedDivisions ||
+      b.positiveGdDivisions - a.positiveGdDivisions ||
       b.clubCount - a.clubCount ||
       b.played - a.played
     );
   }, [worldFormulaMatches, worldFormulaStrength]);
+
+  const replicatedFamily = useMemo(() =>
+    crossDivisionFamilies.find((group) =>
+      FAMILY_KEYS.every((key) => normalizedTacticValue(group.sample, key) === ({
+        formation: '4-2-3-1 B',
+        mentality: 'Attacking',
+        passingStyle: 'Mixed',
+        attackingStyle: 'Down Both Flanks',
+        tempo: 'Fast',
+      })[key])
+    ) || null
+  , [crossDivisionFamilies]);
+
+  const replicatedFamilyVariants = useMemo(() => {
+    if (!replicatedFamily) return [];
+    const matches = worldFormulaMatches.filter((match) =>
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength) &&
+      tacticSignature(match, FAMILY_KEYS) === replicatedFamily.key
+    );
+    const baselineByDivision = new Map(
+      ['Division 1','Division 2','Division 3','Division 4','Division 5'].map((division) => [
+        division,
+        buildStrengthBaseline(worldFormulaMatches.filter((match) => match.competition === division)),
+      ])
+    );
+    const variantKeys = TACTIC_KEYS.filter((key) => !FAMILY_KEYS.includes(key));
+    return variantKeys.map((key) => {
+      const values = new Map();
+      matches.forEach((match) => {
+        const value = normalizedTacticValue(match, key);
+        if (value === null) return;
+        const entry = values.get(value) || { value, matches: [], clubs: new Set(), divisions: new Set() };
+        entry.matches.push(match);
+        if (match.sourceClubId) entry.clubs.add(match.sourceClubId);
+        if (match.competition) entry.divisions.add(match.competition);
+        values.set(value, entry);
+      });
+      const variants = [...values.values()].map((entry) => {
+        let expectedPoints = 0, expectedGd = 0, eligible = 0;
+        entry.matches.forEach((match) => {
+          const base = baselineByDivision.get(match.competition)?.get(xiBucket(match.xiRatingDifference));
+          if (!base?.played) return;
+          expectedPoints += base.points / base.played;
+          expectedGd += base.gd / base.played;
+          eligible += 1;
+        });
+        const actualPoints = entry.matches.reduce((sum, match) => sum + resultPoints(match.result), 0);
+        const actualGd = entry.matches.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0);
+        return {
+          ...entry,
+          played: entry.matches.length,
+          clubCount: entry.clubs.size,
+          divisionCount: entry.divisions.size,
+          ppg: actualPoints / entry.matches.length,
+          adjustedPpg: eligible ? (actualPoints - expectedPoints) / eligible : null,
+          adjustedGd: eligible ? (actualGd - expectedGd) / eligible : null,
+        };
+      }).sort((a,b) => b.played - a.played || (b.adjustedPpg ?? -99) - (a.adjustedPpg ?? -99));
+      return { key, label: CURRENT_FORMULA_FIELDS.find(([, field]) => field === key)?.[0] || key, variants };
+    }).filter((row) => row.variants.length);
+  }, [worldFormulaMatches, worldFormulaStrength, replicatedFamily]);
 
   function downloadFormulaLabJson() {
     const cleanFamily = (group) => ({
@@ -525,7 +598,24 @@ export default function ManagerLabPage() {
         clubs: group.clubCount,
         observedDivisions: group.observedDivisions,
         positiveDivisions: group.positiveDivisions,
+        positiveGdDivisions: group.positiveGdDivisions,
+        weightedAdjustedPpg: group.weightedAdjustedPpg,
+        weightedAdjustedGd: group.weightedAdjustedGd,
+        ppgRange: group.ppgRange,
         divisions: group.divisions,
+      })),
+      replicatedFamilyVariants: replicatedFamilyVariants.map((row) => ({
+        instruction: row.label,
+        key: row.key,
+        variants: row.variants.map((variant) => ({
+          value: displayTacticValue(row.key, variant.value),
+          matchesPlayed: variant.played,
+          clubs: variant.clubCount,
+          divisions: variant.divisionCount,
+          ppg: variant.ppg,
+          adjustedPpg: variant.adjustedPpg,
+          adjustedGd: variant.adjustedGd,
+        })),
       })),
       instructionEffects: instructionEffects.map((effect) => ({
         instruction: effect.label,
@@ -733,7 +823,7 @@ export default function ManagerLabPage() {
       {worldFormulaMatches.length > 0 && <section className="card">
         <h2>Cross-division replication · {worldFormulaStrength}</h2>
         <p className="muted">The same core tactical family compared independently in Divisions 1–5. Each division cell shows matches played and strength-adjusted PPG. “Positive” counts only divisions where that family beat the XI-strength baseline; missing divisions are shown as — rather than treated as failures.</p>
-        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Family</th><th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th>MP</th><th>Clubs</th><th>Positive</th></tr></thead><tbody>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Family</th><th>D1</th><th>D2</th><th>D3</th><th>D4</th><th>D5</th><th>MP</th><th>Clubs</th><th>Positive PPG</th><th>Positive GD</th><th>Weighted Adj</th></tr></thead><tbody>
           {crossDivisionFamilies.slice(0, 30).map((group) => <tr key={group.key}>
             <td><strong>{FAMILY_KEYS.map((key) => displayTacticValue(key, tacticValue(group.sample, key))).join(' · ')}</strong></td>
             {['Division 1','Division 2','Division 3','Division 4','Division 5'].map((division) => {
@@ -741,8 +831,24 @@ export default function ManagerLabPage() {
               return <td key={division}>{cell ? <>{cell.played} MP<br /><small>{cell.adjustedPpg === null ? '—' : `${cell.adjustedPpg >= 0 ? '+' : ''}${cell.adjustedPpg.toFixed(2)} Adj`}</small></> : '—'}</td>;
             })}
             <td>{group.played}</td><td>{group.clubCount}</td><td>{group.positiveDivisions}/{group.observedDivisions}</td>
+            <td>{group.positiveGdDivisions}/{group.observedDivisions}</td>
+            <td>{group.weightedAdjustedPpg >= 0 ? '+' : ''}{group.weightedAdjustedPpg.toFixed(2)} PPG<br /><small>{group.weightedAdjustedGd >= 0 ? '+' : ''}{group.weightedAdjustedGd.toFixed(2)} GD</small></td>
           </tr>)}
         </tbody></table></div>
+      </section>}
+
+      {worldFormulaMatches.length > 0 && replicatedFamily && <section className="card">
+        <h2>Replicated underdog family · instruction drill-down</h2>
+        <p className="muted">The five-field family 4-2-3-1 B · Attacking · Mixed · Down Both Flanks · Fast is held constant here. The table shows how the remaining archived opening instructions vary inside that family. Adj PPG/GD use each match's own division and rounded XI-strength baseline, so this is a drill-down into the replicated signal rather than a raw-results ranking.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Instruction</th><th>Value</th><th>MP</th><th>Clubs</th><th>Divisions</th><th>PPG</th><th>Adj PPG</th><th>Adj GD</th></tr></thead><tbody>
+          {replicatedFamilyVariants.flatMap((row) => row.variants.map((variant, index) => <tr key={`${row.key}:${variant.value}`}>
+            <td>{index === 0 ? <strong>{row.label}</strong> : ''}</td><td>{displayTacticValue(row.key, variant.value)}</td>
+            <td>{variant.played}</td><td>{variant.clubCount}</td><td>{variant.divisionCount}</td><td>{variant.ppg.toFixed(2)}</td>
+            <td>{variant.adjustedPpg === null ? '—' : `${variant.adjustedPpg >= 0 ? '+' : ''}${variant.adjustedPpg.toFixed(2)}`}</td>
+            <td>{variant.adjustedGd === null ? '—' : `${variant.adjustedGd >= 0 ? '+' : ''}${variant.adjustedGd.toFixed(2)}`}</td>
+          </tr>))}
+        </tbody></table></div>
+        <p className="muted">Treat small variants cautiously. A setting appearing across several clubs and divisions is stronger replication evidence than a spectacular result from one club. These are observational associations, not causal estimates.</p>
       </section>}
 
       {worldFormulaMatches.length > 0 && <section className="card">
