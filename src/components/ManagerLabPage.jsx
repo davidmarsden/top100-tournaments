@@ -187,6 +187,7 @@ export default function ManagerLabPage() {
   const [worldFormulaMatches, setWorldFormulaMatches] = useState([]);
   const [worldFormulaStatus, setWorldFormulaStatus] = useState('');
   const [worldFormulaStrength, setWorldFormulaStrength] = useState('Stronger opponent XI');
+  const [worldFormulaDivision, setWorldFormulaDivision] = useState('All Top 100 divisions');
 
   useEffect(() => {
     let mounted = true;
@@ -350,11 +351,15 @@ export default function ManagerLabPage() {
     })).sort((a,b) => b.played - a.played || b.ppg - a.ppg);
   }, [rows]);
 
-  const worldStrengthBaseline = useMemo(() => buildStrengthBaseline(worldFormulaMatches), [worldFormulaMatches]);
+  const worldDivisionMatches = useMemo(() => worldFormulaMatches.filter((match) =>
+    worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision
+  ), [worldFormulaMatches, worldFormulaDivision]);
+  const worldStrengthBaseline = useMemo(() => buildStrengthBaseline(worldDivisionMatches), [worldDivisionMatches]);
 
   const worldFormulaGroups = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
-      worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength
+      (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength)
     );
     const map = new Map();
     filtered.forEach((match) => {
@@ -383,13 +388,14 @@ export default function ManagerLabPage() {
       evidence: group.played >= 12 && group.clubs.size >= 3 ? 'Broad' :
         group.played >= 6 && group.clubs.size >= 2 ? 'Developing' : 'Exploratory',
       ...adjustedMetrics(group.matches, worldStrengthBaseline),
-      ...managerAdjustedMetrics(group.matches, worldFormulaMatches, TACTIC_KEYS),
+      ...managerAdjustedMetrics(group.matches, worldDivisionMatches, TACTIC_KEYS),
     })).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || b.ppg - a.ppg);
-  }, [worldFormulaMatches, worldFormulaStrength, worldStrengthBaseline]);
+  }, [worldFormulaMatches, worldDivisionMatches, worldFormulaDivision, worldFormulaStrength, worldStrengthBaseline]);
 
   const worldFamilyGroups = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
-      worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength
+      (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength)
     );
     const map = new Map();
     filtered.forEach((match) => {
@@ -411,14 +417,15 @@ export default function ManagerLabPage() {
         gd: gd / group.matches.length,
         xiDifference: avg(group.matches, 'xiRatingDifference'),
         ...adjusted,
-        ...managerAdjustedMetrics(group.matches, worldFormulaMatches, FAMILY_KEYS),
+        ...managerAdjustedMetrics(group.matches, worldDivisionMatches, FAMILY_KEYS),
       };
     }).sort((a,b) => b.played - a.played || b.clubCount - a.clubCount || (b.adjustedPpg ?? -99) - (a.adjustedPpg ?? -99));
-  }, [worldFormulaMatches, worldFormulaStrength, worldStrengthBaseline]);
+  }, [worldFormulaMatches, worldDivisionMatches, worldFormulaDivision, worldFormulaStrength, worldStrengthBaseline]);
 
   const instructionEffects = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
-      worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength
+      (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength)
     );
     const fields = CURRENT_FORMULA_FIELDS.filter(([, key]) => !FAMILY_KEYS.includes(key));
     const effects = [];
@@ -462,7 +469,7 @@ export default function ManagerLabPage() {
       });
     });
     return effects.sort((a,b) => b.matches - a.matches || b.strata - a.strata || b.deltaPpg - a.deltaPpg).slice(0, 20);
-  }, [worldFormulaMatches, worldFormulaStrength]);
+  }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
 
   async function loadWorldFormulaLab() {
     setWorldFormulaStatus('Loading league formulas across the archived world…');
@@ -565,7 +572,7 @@ export default function ManagerLabPage() {
         <div className="manager-lab-toolbar">
           <div>
             <h2>Formula Lab · whole world</h2>
-            <p className="muted">Division 1 evidence across every archived club, viewed from both sides of each match. This is the cross-manager test: recurring formulas become more interesting when they survive different squads and opponents.</p>
+            <p className="muted">League evidence across all five Top 100 divisions, viewed from both sides of each match. Use the division filter to test whether a formula survives different competitive levels, squads and opponents.</p>
           </div>
           <div className="button-row">
             {!worldFormulaMatches.length && <button className="button secondary" type="button" onClick={loadWorldFormulaLab}>Load world evidence</button>}
@@ -574,6 +581,7 @@ export default function ManagerLabPage() {
         {worldFormulaStatus && <p className="status">{worldFormulaStatus}</p>}
         {worldFormulaMatches.length > 0 && <>
           <div className="manager-lab-filters">
+            <label>Division<select value={worldFormulaDivision} onChange={(event) => setWorldFormulaDivision(event.target.value)}><option>All Top 100 divisions</option><option>Division 1</option><option>Division 2</option><option>Division 3</option><option>Division 4</option><option>Division 5</option></select></label>
             <label>Opponent XI<select value={worldFormulaStrength} onChange={(event) => setWorldFormulaStrength(event.target.value)}>{strengthBands.map((item) => <option key={item}>{item}</option>)}</select></label>
           </div>
           <p className="muted">{worldFormulaGroups.reduce((sum, group) => sum + group.played, 0)} team-match observations in this strength band. Evidence requires both repetition and use by multiple clubs; it is not a claim that a tactic causes the result.</p>
@@ -593,7 +601,7 @@ export default function ManagerLabPage() {
 
       {worldFormulaMatches.length > 0 && <section className="card">
         <h2>Formula families · whole world</h2>
-        <p className="muted">Core tactical identities collapse the exact formulas to formation, mentality, passing, attacking style and tempo. Adj PPG/GD compare with the Division 1 baseline at roughly the same XI-rating gap. Mgr Adj is leave-one-formula-out: it compares with that same club's other tactical formulas at the same rounded XI-strength gap. A comparison is shown only where at least three alternative matches exist, helping separate a manager/team effect from a tactical one. Positive values beat the relevant baseline.</p>
+        <p className="muted">Core tactical identities collapse the exact formulas to formation, mentality, passing, attacking style and tempo. Adj PPG/GD compare with the selected league cohort's baseline at roughly the same XI-rating gap. Mgr Adj is leave-one-formula-out: it compares with that same club's other tactical formulas at the same rounded XI-strength gap. A comparison is shown only where at least three alternative matches exist, helping separate a manager/team effect from a tactical one. Positive values beat the relevant baseline.</p>
         <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Family</th><th>MP</th><th>Clubs</th><th>PPG</th><th>GD/game</th><th>Δ XI</th><th>Adj PPG</th><th>Mgr Adj</th><th>Adj GD</th></tr></thead><tbody>
           {worldFamilyGroups.slice(0, 20).map((group) => <tr key={group.key}>
             <td><strong>{FAMILY_KEYS.map((key) => displayTacticValue(key, tacticValue(group.sample, key))).join(' · ')}</strong></td>
