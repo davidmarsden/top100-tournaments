@@ -235,8 +235,10 @@ th { color: #44546f; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .voting-question legend { padding: 0; font-size: 1.15rem; font-weight: 850; line-height: 1.35; }
 .voting-required { margin-left: .45rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: #5d6b80; }
 .voting-options { display: grid; gap: .7rem; margin-top: .9rem; }
-.voting-option { display: flex; align-items: center; gap: .85rem; margin: 0; padding: .9rem 1rem; border: 1px solid #ccd7e6; border-radius: 12px; background: #fff; cursor: pointer; font-weight: 750; line-height: 1.35; }
-.voting-option:hover { border-color: #799bc9; background: #f7faff; }
+.voting-option { display: flex; align-items: center; gap: .85rem; margin: 0; padding: .9rem 1rem; border: 1px solid #ccd7e6; border-radius: 12px; background: #fff; font-weight: 750; line-height: 1.35; }
+.voting-option:has(input:not(:disabled)) { cursor: pointer; }
+.voting-option:has(input:not(:disabled)):hover { border-color: #799bc9; background: #f7faff; }
+.voting-option:has(input:disabled) { cursor: default; opacity: .68; background: #f5f7fa; }
 .voting-option:has(input:checked) { border: 2px solid #0b63e6; background: #eef5ff; padding: calc(.9rem - 1px) calc(1rem - 1px); }
 .voting-option input[type="radio"] { width: 1.25rem; height: 1.25rem; margin: 0; flex: 0 0 auto; accent-color: #0b63e6; }
 .voting-option:focus-within { outline: 3px solid rgba(11, 99, 230, .25); outline-offset: 2px; }
