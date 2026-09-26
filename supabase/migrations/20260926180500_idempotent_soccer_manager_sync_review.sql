@@ -1,3 +1,10 @@
+-- Allow idempotent duplicate approvals to remain distinguishable from genuine approvals.
+alter table public.soccer_manager_sync_changes
+  drop constraint if exists soccer_manager_sync_changes_status_check;
+alter table public.soccer_manager_sync_changes
+  add constraint soccer_manager_sync_changes_status_check
+  check (status = any (array['pending'::text, 'approved'::text, 'rejected'::text, 'duplicate'::text]));
+
 -- Serialize Soccer Manager review transitions across runs and first-time canonical creation.
 
 create or replace function public.review_soccer_manager_sync_change(
@@ -17,6 +24,7 @@ declare
   current_version integer;
   canonical_found boolean;
   remaining_pending integer;
+  final_decision text := target_decision;
 begin
   if user_id is null or not public.is_admin() then
     raise exception 'Global admin access required';
@@ -73,7 +81,7 @@ begin
     -- Duplicate transport batches are safe when an earlier approval already
     -- produced exactly the value this staged change wants.
     if canonical_found and current_data is not distinct from change_row.after_data then
-      null;
+      final_decision := 'duplicate';
     else
       if change_row.before_data is null then
         if canonical_found then
@@ -117,7 +125,7 @@ begin
   end if;
 
   update public.soccer_manager_sync_changes
-    set status = target_decision,
+    set status = final_decision,
         reviewed_by = user_id,
         reviewed_at = now()
   where id = change_row.id
@@ -212,6 +220,19 @@ begin
     ) then
       raise exception 'Stale Soccer Manager sync run: canonical source changed after this run was staged; review the newer state before bulk approval';
     end if;
+
+    -- Preserve idempotent duplicates as reviewed-but-not-approved history so
+    -- immutable archive adapters do not manufacture a new source version.
+    update public.soccer_manager_sync_changes change
+      set status = 'duplicate',
+          reviewed_by = user_id,
+          reviewed_at = now()
+    from public.soccer_manager_canonical_entities canonical
+    where change.run_id = target_run_id
+      and change.status = 'pending'
+      and canonical.entity_type = change.entity_type
+      and canonical.entity_key = change.entity_key
+      and canonical.data is not distinct from change.after_data;
 
     insert into public.soccer_manager_canonical_entities (
       entity_type,
