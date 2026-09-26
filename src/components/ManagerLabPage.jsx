@@ -55,6 +55,25 @@ function normalizedTacticValue(match, key) {
   return value === null || value === undefined || value === '' ? null : String(value);
 }
 
+function displayTacticValue(key, value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const text = String(value);
+  if (['counterAttack', 'tightMarking', 'menBehindBall', 'sweeperKeeper'].includes(key)) {
+    if (text === '1' || text === 'true') return 'On';
+    if (text === '0' || text === 'false') return 'Off';
+  }
+  const labels = {
+    width: { '1': 'Narrow', '2': 'Normal', '3': 'Wide' },
+    creativity: { '1': 'Cautious', '2': 'Disciplined', '3': 'Expressive' },
+  };
+  return labels[key]?.[text] || text;
+}
+
+function tacticSignature(match) {
+  const keys = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','counterAttack','tightMarking','menBehindBall','sweeperKeeper'];
+  return keys.map((key) => normalizedTacticValue(match, key) ?? '—').join('|');
+}
+
 function resultPoints(result) {
   return result === 'W' ? 3 : result === 'D' ? 1 : 0;
 }
@@ -80,6 +99,7 @@ export default function ManagerLabPage() {
   const [tightMarking, setTightMarking] = useState('All');
   const [menBehindBall, setMenBehindBall] = useState('All');
   const [sweeperKeeper, setSweeperKeeper] = useState('All');
+  const [compareClubIds, setCompareClubIds] = useState(['48506455', '48506561']);
 
   useEffect(() => {
     let mounted = true;
@@ -218,6 +238,27 @@ export default function ManagerLabPage() {
     }));
   }, [rows]);
 
+  const formulaGroups = useMemo(() => {
+    const map = new Map();
+    rows.forEach((match) => {
+      const key = tacticSignature(match);
+      const group = map.get(key) || { key, sample: match, played: 0, points: 0, gf: 0, ga: 0, xi: [] };
+      group.played += 1;
+      group.points += resultPoints(match.result);
+      group.gf += Number(match.goalsFor) || 0;
+      group.ga += Number(match.goalsAgainst) || 0;
+      const xi = numericValue(match.xiRatingDifference);
+      if (xi !== null) group.xi.push(xi);
+      map.set(key, group);
+    });
+    return [...map.values()].map((group) => ({
+      ...group,
+      ppg: group.points / group.played,
+      gd: (group.gf - group.ga) / group.played,
+      xiDifference: group.xi.length ? group.xi.reduce((a,b) => a+b, 0) / group.xi.length : null,
+    })).sort((a,b) => b.played - a.played || b.ppg - a.ppg);
+  }, [rows]);
+
   const tacticProfile = useMemo(() => {
     const keys = [
       ['Formation', 'formation'], ['Mentality', 'mentality'], ['Passing', 'passingStyle'],
@@ -232,7 +273,7 @@ export default function ManagerLabPage() {
         const value = tacticValue(match, key);
         if (value !== null && value !== undefined && value !== '') counts.set(String(value), (counts.get(String(value)) || 0) + 1);
       });
-      return { label, values: [...counts.entries()].sort((a, b) => b[1] - a[1]) };
+      return { label, key, values: [...counts.entries()].sort((a, b) => b[1] - a[1]) };
     }).filter((item) => item.values.length);
   }, [rows]);
 
@@ -292,10 +333,31 @@ export default function ManagerLabPage() {
       </section>
 
       <section className="card">
+        <h2>Winning formulas</h2>
+        <p className="muted">Exact opening tactical packages in the current view. Treat this as evidence, not a magic-tactic ranking: MP shows repeatability, while PPG, GD/game and XI gap show the results and opponent-strength context.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formula</th><th>MP</th><th>PPG</th><th>GD/game</th><th>Δ XI</th></tr></thead><tbody>
+          {formulaGroups.slice(0, 12).map((group) => {
+            const m = group.sample;
+            const formula = [
+              displayTacticValue('formation', tacticValue(m,'formation')),
+              displayTacticValue('mentality', tacticValue(m,'mentality')),
+              displayTacticValue('passingStyle', tacticValue(m,'passingStyle')),
+              displayTacticValue('attackingStyle', tacticValue(m,'attackingStyle')),
+              displayTacticValue('tempo', tacticValue(m,'tempo')),
+              displayTacticValue('pressing', tacticValue(m,'pressing')),
+              `CA ${displayTacticValue('counterAttack', tacticValue(m,'counterAttack'))}`,
+              `TM ${displayTacticValue('tightMarking', tacticValue(m,'tightMarking'))}`,
+            ].join(' · ');
+            return <tr key={group.key}><td><strong>{formula}</strong></td><td>{group.played}</td><td>{group.ppg.toFixed(2)}</td><td>{group.gd >= 0 ? '+' : ''}{group.gd.toFixed(2)}</td><td>{group.xiDifference === null ? '—' : `${group.xiDifference >= 0 ? '+' : ''}${group.xiDifference.toFixed(1)}`}</td></tr>;
+          })}
+        </tbody></table></div>
+      </section>
+
+      <section className="card">
         <h2>Opening tactical profile</h2>
         <p className="muted">The complete opening instruction package for the matches in the current view. Counts make it easy to spot a manager's defaults and the alternatives they actually used.</p>
         <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Instruction</th><th>Observed values</th></tr></thead><tbody>
-          {tacticProfile.map((item) => <tr key={item.label}><td><strong>{item.label}</strong></td><td>{item.values.map(([value, count]) => `${value} (${count})`).join(' · ')}</td></tr>)}
+          {tacticProfile.map((item) => <tr key={item.label}><td><strong>{item.label}</strong></td><td>{item.values.map(([value, count]) => `${displayTacticValue(item.key, value)} (${count})`).join(' · ')}</td></tr>)}
         </tbody></table></div>
       </section>
 
