@@ -293,10 +293,10 @@ function inferSyncContext(entries) {
   };
 }
 
-export function extractSoccerManagerEntities(entries) {
+export function extractSoccerManagerEntities(entries, options = {}) {
   const output = [];
   const seen = new Map();
-  const inferred = inferSyncContext(entries);
+  const inferred = options.inferredContext || inferSyncContext(entries);
 
   for (const entry of entries || []) {
     if (!entry?.payload?.kind) continue;
@@ -327,22 +327,62 @@ export function normalizedPayloadForPersistence(entries) {
   }));
 }
 
-export async function stageSoccerManagerSync(entries, capturedAt = null) {
+export async function stageSoccerManagerSync(entries, capturedAt = null, options = {}) {
   if (!supabase) throw new Error('Supabase is not connected.');
-  const normalizedPayload = normalizedPayloadForPersistence(entries);
-  const entities = extractSoccerManagerEntities(entries);
-  if (!normalizedPayload.length) throw new Error('There is no normalized Soccer Manager data to stage.');
+  if (!Array.isArray(entries) || !entries.length) throw new Error('There is no normalized Soccer Manager data to stage.');
 
-  const { data, error } = await supabase.rpc('stage_soccer_manager_sync', {
-    target_payload: normalizedPayload,
-    target_entities: entities,
-    target_captured_at: capturedAt || new Date().toISOString(),
-  });
-  if (error) throw error;
+  const batchSize = Math.max(1, Number(options.batchSize) || 100);
+  const timestamp = capturedAt || new Date().toISOString();
+  const runIds = [];
+  let sourceCount = 0;
+  let entityCount = 0;
+
+  // Preserve the original whole-import semantics before partitioning transport.
+  // Context inference must see every source, and entity deduplication remains
+  // whole-import last-wins even when duplicate fixtures straddle batch boundaries.
+  const inferredContext = inferSyncContext(entries);
+  const dedupedEntities = extractSoccerManagerEntities(entries, { inferredContext });
+  const entityBatchCount = Math.max(1, Math.ceil(dedupedEntities.length / batchSize));
+  const sourceBatchCount = Math.max(1, Math.ceil(entries.length / batchSize));
+  const batches = Math.max(sourceBatchCount, entityBatchCount);
+
+  // Large world backfills can be tens or hundreds of MB when serialized. Sending the
+  // whole collection through one PostgREST RPC can fail at the browser/proxy layer.
+  // Sources and the already-deduplicated entity stream are sliced independently so
+  // each canonical entity is staged exactly once across the review runs.
+  for (let batchIndex = 0; batchIndex < batches; batchIndex += 1) {
+    const sourceBatch = entries.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+    const normalizedPayload = normalizedPayloadForPersistence(sourceBatch);
+    const entities = dedupedEntities.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+    if (!normalizedPayload.length && !entities.length) continue;
+
+    options.onProgress?.({
+      batch: batchIndex + 1,
+      batches,
+      stagedSources: sourceCount,
+      totalSources: entries.length,
+    });
+
+    const { data, error } = await supabase.rpc('stage_soccer_manager_sync', {
+      target_payload: normalizedPayload,
+      target_entities: entities,
+      target_captured_at: timestamp,
+    });
+    if (error) {
+      const completed = runIds.length ? ` after staging ${runIds.length} earlier batch(es) successfully` : '';
+      throw new Error(`${error.message}${completed}`);
+    }
+    runIds.push(data);
+    sourceCount += normalizedPayload.length;
+    entityCount += entities.length;
+  }
+
+  if (!runIds.length) throw new Error('There is no normalized Soccer Manager data to stage.');
   return {
-    runId: data,
-    sourceCount: normalizedPayload.length,
-    entityCount: entities.length,
+    runId: runIds[runIds.length - 1],
+    runIds,
+    sourceCount,
+    entityCount,
   };
 }
 
