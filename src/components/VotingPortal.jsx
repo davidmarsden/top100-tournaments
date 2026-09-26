@@ -190,10 +190,13 @@ export default function VotingPortal() {
   }
 
   async function saveEdit(vote) {
-    const { error } = await supabase.from('voting_events').update({
-      title: editTitle.trim(),
-      description: editDescription.trim(),
-    }).eq('id', vote.id);
+    const title = editTitle.trim();
+    if (!title) return setMessage('Poll title cannot be blank.');
+    const { error } = await supabase.rpc('update_voting_event_text', {
+      target_event_id: vote.id,
+      new_title: title,
+      new_description: editDescription.trim(),
+    });
     if (error) return setMessage(error.message);
     setEditingEventId(null);
     setMessage('Poll text updated.');
