@@ -221,3 +221,23 @@ th { color: #44546f; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .manager-lab-matrix td { vertical-align:top; min-width:150px; }
 .manager-lab-matrix td strong,.manager-lab-matrix td small { display:block; }
 .manager-lab-matrix td small { margin-top:4px; color:#5f6f8e; line-height:1.45; font-weight:700; }
+
+
+/* Community Poll ballot */
+.voting-card { border: 2px solid #cbd8eb; box-shadow: 0 16px 42px rgba(28, 55, 94, .09); }
+.voting-card--open { border-top: 6px solid #0b63e6; }
+.voting-card > h2 { font-size: clamp(1.65rem, 3vw, 2.15rem); line-height: 1.12; margin-bottom: 1rem; }
+.voting-card__proposal { max-width: 78ch; font-size: 1.08rem; line-height: 1.62; }
+.voting-card__proposal p { margin: 0; }
+.voting-card__meta { display: flex; flex-wrap: wrap; gap: .55rem 1.5rem; margin: 1.2rem 0 .65rem; color: #53647d; }
+.voting-card__rules { display: inline-block; margin: 0 0 1.25rem; padding: .6rem .8rem; border-radius: 10px; background: #f1f5fb; color: #43536b; font-size: .92rem; }
+.voting-question { border: 0; padding: 1.2rem 0 0; margin: 1rem 0 1.35rem; border-top: 1px solid #dce4ef; }
+.voting-question legend { padding: 0; font-size: 1.15rem; font-weight: 850; line-height: 1.35; }
+.voting-required { margin-left: .45rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: #5d6b80; }
+.voting-options { display: grid; gap: .7rem; margin-top: .9rem; }
+.voting-option { display: flex; align-items: center; gap: .85rem; margin: 0; padding: .9rem 1rem; border: 1px solid #ccd7e6; border-radius: 12px; background: #fff; cursor: pointer; font-weight: 750; line-height: 1.35; }
+.voting-option:hover { border-color: #799bc9; background: #f7faff; }
+.voting-option:has(input:checked) { border: 2px solid #0b63e6; background: #eef5ff; padding: calc(.9rem - 1px) calc(1rem - 1px); }
+.voting-option input[type="radio"] { width: 1.25rem; height: 1.25rem; margin: 0; flex: 0 0 auto; accent-color: #0b63e6; }
+.voting-option:focus-within { outline: 3px solid rgba(11, 99, 230, .25); outline-offset: 2px; }
+@media (max-width: 640px) { .voting-card__proposal { font-size: 1rem; } .voting-option { padding: .85rem; } }
