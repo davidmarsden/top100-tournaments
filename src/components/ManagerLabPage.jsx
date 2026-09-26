@@ -553,10 +553,14 @@ export default function ManagerLabPage() {
       (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
       (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength)
     );
+    // Formula Lab analyses also depend on matches outside the visible sample:
+    // strength baselines use the full selected-division cohort, while cross-division
+    // replication and its drill-down use the complete five-division league corpus.
+    // Export that full source cohort so every derived result in this payload is reproducible.
+    const sourceObservations = worldFormulaMatches;
     const cleanObservation = (match) => ({
       fixtureId: match.fixtureId ?? null,
-      date: match.date ?? null,
-      division: match.competition ?? null,
+       division: match.competition ?? null,
       clubId: match.sourceClubId ?? null,
       opponent: match.opponent ?? null,
       venue: match.venue ?? null,
@@ -567,10 +571,6 @@ export default function ManagerLabPage() {
       opponentXiRating: numericValue(match.opponentXiRating),
       xiRatingDifference: numericValue(match.xiRatingDifference),
       xiStrengthBand: strengthBand(match),
-      possession: numericValue(match.possession),
-      shots: numericValue(match.shots),
-      shotsOnTarget: numericValue(match.shotsOnTarget),
-      corners: numericValue(match.corners),
       tactics: CURRENT_FORMULA_FIELDS.reduce((values, [, key]) => ({
         ...values,
         [key]: displayTacticValue(key, tacticValue(match, key)),
@@ -620,7 +620,9 @@ export default function ManagerLabPage() {
         opponentXi: worldFormulaStrength,
       },
       observationCount: filteredObservations.length,
+      sourceObservationCount: sourceObservations.length,
       observations: filteredObservations.map(cleanObservation),
+      sourceObservations: sourceObservations.map(cleanObservation),
       formulas: worldFormulaGroups.map(cleanFormula),
       families: worldFamilyGroups.map(cleanFamily),
       crossDivisionFamilies: crossDivisionFamilies.map((group) => ({
