@@ -58,12 +58,18 @@ begin
 
   for row_data in
     with candidate_keys as (
-      select distinct change.entity_key
+      select change.entity_key
       from public.soccer_manager_sync_changes change
       where change.entity_type = 'match_snapshot'
         and change.status = 'approved'
         and change.after_data->'source'->>'setupId' = setup_id
         and change.entity_key > after_entity_key
+      group by change.entity_key
+      having count(*) > (
+        select count(*)
+        from public.soccer_manager_match_snapshots snapshot
+        where snapshot.source_entity_key = change.entity_key
+      )
       order by change.entity_key
       limit batch_limit
     )
@@ -296,6 +302,12 @@ begin
         and change.status = 'approved'
         and change.after_data->'source'->>'setupId' = setup_id
         and change.entity_key > last_entity_key
+      group by change.entity_key
+      having count(*) > (
+        select count(*)
+        from public.soccer_manager_match_snapshots snapshot
+        where snapshot.source_entity_key = change.entity_key
+      )
     ) into has_more;
   end if;
 
