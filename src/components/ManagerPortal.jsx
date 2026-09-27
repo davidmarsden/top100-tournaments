@@ -213,23 +213,33 @@ export default function ManagerPortal({ registrationMode = false, session = null
       );
       if (accountError) throw new Error(accountError.message);
       if (!accountRow) {
-        if (isCurrent()) setLoadStage('Checking manager claim');
-        const { data: claimRow, error: claimError } = await withPortalTimeout(
-          supabase.from('manager_portal_claims').select('*, game_worlds(name)').eq('auth_user_id', session.user.id).maybeSingle(),
-          'Manager claim lookup',
-        );
-        if (claimError) throw new Error(claimError.message);
+        // New/unlinked users do not belong in the normal portal loader. Move
+        // them into onboarding immediately; claim history is optional and must
+        // never be able to block the setup form.
         if (!isCurrent()) return;
         loadedAccountAuthUserId.current = null;
         setAccount(null);
-        setClaim(claimRow || null);
+        setClaim(null);
         setAdminAssignments([]);
-        setMessage(claimRow?.status === 'pending' ? 'Your manager profile claim is awaiting approval.' : claimRow?.status === 'rejected' ? claimRow.review_notes || 'Your claim was not approved. You may correct it and submit again.' : 'Sign-in complete. One last step: choose your Top 100 game world and club so we can link this account to your manager record.');
-        setLoadStage(claimRow ? 'Manager claim loaded' : 'Ready to link manager account');
-        // This is a successful terminal branch, not an incomplete portal load.
-        // Clear loading here rather than relying only on finally: a later auth
-        // event may advance the generation before finally runs.
+        setLoadStage('Ready to link manager account');
+        setMessage('Sign-in complete. Choose your Top 100 game world and club so we can link this account to your manager record.');
         setLoading(false);
+
+        // Enrich the already-visible onboarding screen with an existing claim.
+        // This deliberately runs outside the loading state.
+        supabase.from('manager_portal_claims')
+          .select('*, game_worlds(name)')
+          .eq('auth_user_id', session.user.id)
+          .maybeSingle()
+          .then(({ data: claimRow, error: claimError }) => {
+            if (!isCurrent() || claimError || !claimRow) return;
+            setClaim(claimRow);
+            setMessage(claimRow.status === 'pending'
+              ? 'Your manager profile claim is awaiting approval.'
+              : claimRow.status === 'rejected'
+                ? claimRow.review_notes || 'Your claim was not approved. You may correct it and submit again.'
+                : 'Your manager profile claim is ready to continue.');
+          });
         return;
       }
 
