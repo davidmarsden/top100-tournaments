@@ -44,10 +44,10 @@ begin
     select p.*,
       xi.our_xi, xi.opp_xi,
       case when xi.our_xi is not null and xi.opp_xi is not null then round(xi.our_xi-xi.opp_xi,2) end xi_diff,
-      squad.player_count, squad.age_count, squad.rating_count, squad.avg_age, squad.avg_rating, squad.young_count, squad.veteran_count,
+      squad.player_count, squad.age_count, squad.rating_count, squad.avg_age, squad.avg_rating, squad.young_count, squad.development_count, squad.peak_count, squad.veteran_count, squad.late_career_count,
       opp_squad.player_count opp_player_count, opp_squad.age_count opp_age_count, opp_squad.rating_count opp_rating_count, opp_squad.avg_age opp_avg_age,
-      opp_squad.avg_rating opp_avg_rating, opp_squad.young_count opp_young_count,
-      opp_squad.veteran_count opp_veteran_count
+      opp_squad.avg_rating opp_avg_rating, opp_squad.young_count opp_young_count, opp_squad.development_count opp_development_count,
+      opp_squad.peak_count opp_peak_count, opp_squad.veteran_count opp_veteran_count, opp_squad.late_career_count opp_late_career_count
     from perspectives p
     left join lateral (
       select
@@ -66,7 +66,10 @@ begin
         round(avg(nullif(player->>'age','')::numeric) filter (where nullif(player->>'age','')::numeric between 15 and 50),2) avg_age,
         round(avg(nullif(player->>'overallRating','')::numeric),2) avg_rating,
         count(*) filter (where nullif(player->>'age','')::numeric between 15 and 21)::integer young_count,
-        count(*) filter (where nullif(player->>'age','')::numeric between 30 and 50)::integer veteran_count
+        count(*) filter (where nullif(player->>'age','')::numeric between 22 and 25)::integer development_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 26 and 30)::integer peak_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 31 and 34)::integer veteran_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 35 and 50)::integer late_career_count
       from jsonb_array_elements(coalesce(p.source_data->'players','[]'::jsonb)) e(player)
       where player->>'teamSide'=p.side
     ) squad on true
@@ -77,7 +80,10 @@ begin
         round(avg(nullif(player->>'age','')::numeric) filter (where nullif(player->>'age','')::numeric between 15 and 50),2) avg_age,
         round(avg(nullif(player->>'overallRating','')::numeric),2) avg_rating,
         count(*) filter (where nullif(player->>'age','')::numeric between 15 and 21)::integer young_count,
-        count(*) filter (where nullif(player->>'age','')::numeric between 30 and 50)::integer veteran_count
+        count(*) filter (where nullif(player->>'age','')::numeric between 22 and 25)::integer development_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 26 and 30)::integer peak_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 31 and 34)::integer veteran_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 35 and 50)::integer late_career_count
       from jsonb_array_elements(coalesce(p.source_data->'players','[]'::jsonb)) e(player)
       where player->>'teamSide'=case when p.side='h' then 'a' else 'h' end
     ) opp_squad on true
@@ -96,11 +102,13 @@ begin
       player_count as "reportedPlayerCount", age_count as "reportedAgeCount",
       rating_count as "reportedRatingCount", avg_age as "reportedAvgAge",
       avg_rating as "reportedAvgRating", young_count as "reportedYoungCount",
-      veteran_count as "reportedVeteranCount",
+      development_count as "reportedDevelopmentCount", peak_count as "reportedPeakCount",
+      veteran_count as "reportedVeteranCount", late_career_count as "reportedLateCareerCount",
       opp_player_count as "opponentReportedPlayerCount", opp_age_count as "opponentReportedAgeCount",
       opp_rating_count as "opponentReportedRatingCount", opp_avg_age as "opponentReportedAvgAge",
       opp_avg_rating as "opponentReportedAvgRating", opp_young_count as "opponentReportedYoungCount",
-      opp_veteran_count as "opponentReportedVeteranCount",
+      opp_development_count as "opponentReportedDevelopmentCount", opp_peak_count as "opponentReportedPeakCount",
+      opp_veteran_count as "opponentReportedVeteranCount", opp_late_career_count as "opponentReportedLateCareerCount",
       tactics
     from enriched
   )
