@@ -178,7 +178,13 @@ export default function ManagerPortal({ registrationMode = false, session = null
     setLoading(false);
   }
 
-  async function loadPortal(generation = ++portalLoadGeneration.current) {
+  async function loadPortal(requestedGeneration) {
+    // React click handlers pass a SyntheticEvent as argument 1. Only an explicit
+    // numeric generation from the session effect is reusable; all other callers
+    // start a fresh generation.
+    const generation = typeof requestedGeneration === 'number'
+      ? requestedGeneration
+      : ++portalLoadGeneration.current;
     // Only the newest portal load may update the UI. Auth state can emit more
     // than once during magic-link/session refresh; stale overlapping loads were
     // able to create a request/render storm on affected browsers.
