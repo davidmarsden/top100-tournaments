@@ -143,6 +143,7 @@ export default function SoccerManagerSyncPage() {
   const [status, setStatus] = useState('Drop Soccer Manager JSON responses here, or send them directly from Soccer Manager with the browser collector. Nothing is written to the database.');
   const [collectorStatus, setCollectorStatus] = useState('');
   const [diagnostics, setDiagnostics] = useState([]);
+  const [playerDiagnostics, setPlayerDiagnostics] = useState([]);
   const [diagnosticsCapturedAt, setDiagnosticsCapturedAt] = useState(null);
   const [matchEngineSources, setMatchEngineSources] = useState([]);
   const [matchReplay, setMatchReplay] = useState(null);
@@ -282,6 +283,35 @@ export default function SoccerManagerSyncPage() {
         }
       }
       setDiagnostics(diagnosticRows);
+      const playerRows = message.payloads.slice(-20).map((item, index) => {
+        const sourceUrl = typeof item?.url === 'string' ? item.url : null;
+        let playerRelated = false;
+        try { playerRelated = /player|club-ajax-mobile\.php/i.test(new URL(sourceUrl).pathname); } catch {}
+        if (!playerRelated) return null;
+        const raw = item?.data;
+        const topLevelKeys = raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.keys(raw).slice(0, 100) : [];
+        const arrays = [];
+        const visit = (value, path = '$', depth = 0) => {
+          if (depth > 4 || arrays.length >= 30 || !value || typeof value !== 'object') return;
+          if (Array.isArray(value)) {
+            const objects = value.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+            const keys = [...new Set(objects.slice(0, 20).flatMap((row) => Object.keys(row)))].slice(0, 100);
+            arrays.push({ path, rows: value.length, objectRows: objects.length, keys });
+            return;
+          }
+          for (const [key, child] of Object.entries(value).slice(0, 100)) visit(child, path + '.' + key, depth + 1);
+        };
+        visit(raw);
+        return {
+          index: index + 1,
+          url: sourceUrl,
+          topLevelType: Array.isArray(raw) ? 'array' : raw === null ? 'null' : typeof raw,
+          topLevelKeys,
+          arrays,
+          raw,
+        };
+      }).filter(Boolean);
+      setPlayerDiagnostics(playerRows);
       setMatchEngineSources(engineRows);
       setMatchReplay(replayRow);
       let replayContextRow = null;
@@ -440,6 +470,7 @@ export default function SoccerManagerSyncPage() {
     const next = [...normalizedEntries, ...normalizedRawEntries];
     const allErrors = [...readErrors, ...errors];
     setDiagnosticsCapturedAt(null);
+    setPlayerDiagnostics([]);
     setMatchEngineSources([]);
     setMatchReplay(null);
     setReplayPageContext(null);
@@ -483,6 +514,20 @@ export default function SoccerManagerSyncPage() {
     anchor.click();
     URL.revokeObjectURL(url);
   }
+  function downloadPlayerDiagnostics() {
+    if (!playerDiagnostics.length) return;
+    const blob = new Blob([JSON.stringify({
+      capturedAt: diagnosticsCapturedAt,
+      responses: playerDiagnostics,
+    }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `top100-sm-player-data-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function downloadDiagnostics() {
     const blob = new Blob([JSON.stringify({
       capturedAt: diagnosticsCapturedAt,
@@ -564,9 +609,27 @@ export default function SoccerManagerSyncPage() {
         <p className="muted">Supported now: competition snapshot, club squad, player changes, transfer market, club finance responses and Hamburger SV season-match backfills. Raw files stay in your browser.</p>
       </div>
       <p className="status">{status}</p>
-      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setMatchEngineSources([]); setMatchReplay(null); setReplayPageContext(null); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
+      {!!payloads.length && <div className="button-row"><button type="button" onClick={stageForReview} disabled={stageBusy}>{stageBusy ? 'Staging…' : 'Stage for review'}</button><button type="button" className="secondary" onClick={downloadNormalized}>Download normalized snapshot</button><button type="button" className="secondary" onClick={() => { setPayloads([]); setDiagnostics([]); setPlayerDiagnostics([]); setMatchEngineSources([]); setMatchReplay(null); setReplayPageContext(null); setDiagnosticsCapturedAt(null); setStageStatus(''); setFileInputKey((value) => value + 1); setStatus('Cleared.'); }}>Clear</button></div>}
       {stageStatus && <p className="status">{stageStatus}</p>}
     </section>
+
+    {!!playerDiagnostics.length && <section className="card module-card">
+      <div className="card-header"><p className="eyebrow">Player Intelligence</p><h2>Inspect player data</h2></div>
+      <p className="muted">Player-related Soccer Manager responses captured from the current page. This inspector is diagnostic-only: it shows response shapes and lets you export the captured response bodies so we can identify the exact player fields SM exposes before promoting new endpoint contracts into Sync.</p>
+      <div className="overview-metrics">
+        <article><span>Player responses</span><strong>{playerDiagnostics.length}</strong></article>
+        <article><span>Arrays found</span><strong>{playerDiagnostics.reduce((sum, row) => sum + row.arrays.length, 0)}</strong></article>
+      </div>
+      <div className="button-row"><button type="button" className="secondary" onClick={downloadPlayerDiagnostics}>Download player data</button></div>
+      <div className="table-wrap"><table><thead><tr><th>#</th><th>Endpoint</th><th>Shape</th><th>Arrays / fields</th></tr></thead><tbody>
+        {playerDiagnostics.map((row) => <tr key={row.url || row.index}>
+          <td>{row.index}</td>
+          <td><code>{row.url || '—'}</code></td>
+          <td>{row.topLevelType}{row.topLevelKeys.length ? <><br /><span>{row.topLevelKeys.join(', ')}</span></> : null}</td>
+          <td>{row.arrays.length ? row.arrays.map((array) => <div key={array.path}><code>{array.path}</code> · {array.rows} rows{array.keys.length ? <><br /><span>{array.keys.join(', ')}</span></> : null}</div>) : 'No arrays detected'}</td>
+        </tr>)}
+      </tbody></table></div>
+    </section>}
 
     {!!diagnostics.length && <section className="card module-card">
       <div className="card-header"><p className="eyebrow">Diagnostic capture</p><h2>Recent Soccer Manager requests</h2></div>
