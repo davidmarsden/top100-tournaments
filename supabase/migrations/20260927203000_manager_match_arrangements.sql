@@ -116,6 +116,8 @@ as $$
 declare
   v_user uuid := auth.uid();
   v_arr public.manager_match_arrangements;
+  v_home_entry_id bigint;
+  v_away_entry_id bigint;
 begin
   if v_user is null then raise exception 'Authentication required'; end if;
   if p_status not in ('sent','received','chased','arranged','problem') then raise exception 'Invalid arrangement status'; end if;
@@ -131,11 +133,22 @@ begin
   ) then raise exception 'You do not manage this tournament entry'; end if;
 
   -- Lock the fixture so it cannot become terminal between validation and write.
-  perform 1 from public.matches
-   where id=p_match_id
-     and coalesce(lower(status),'scheduled') not in ('played','forfeit','voided','cancelled')
-   for update;
+  select home_entry_id, away_entry_id into v_home_entry_id, v_away_entry_id
+  from public.matches
+  where id=p_match_id
+    and coalesce(lower(status),'scheduled') not in ('played','forfeit','voided','cancelled')
+  for update;
   if not found then raise exception 'This fixture is no longer active'; end if;
+
+  if p_status in ('sent') and p_tournament_entry_id <> v_home_entry_id then
+    raise exception 'Only the home manager can record a sent request';
+  end if;
+  if p_status in ('received','chased') and p_tournament_entry_id <> v_away_entry_id then
+    raise exception 'Only the away manager can record a received request or chase';
+  end if;
+  if p_status not in ('sent','received','chased','problem') then
+    raise exception 'This action is not available to managers';
+  end if;
 
   insert into public.manager_match_arrangements(match_id,auth_user_id,tournament_entry_id,status,reported_at,updated_at)
   values(p_match_id,v_user,p_tournament_entry_id,p_status,now(),now())
