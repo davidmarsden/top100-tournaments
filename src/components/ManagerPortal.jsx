@@ -55,6 +55,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
   const [magicLinkResendIn, setMagicLinkResendIn] = useState(0);
   const magicLinkCooldownUntil = useRef(0);
   const magicLinkRequestId = useRef(0);
+  const portalLoadGeneration = useRef(0);
   const [account, setAccount] = useState(null), [claim, setClaim] = useState(null), [claimForm, setClaimForm] = useState({ gameWorldId: '', managerName: '', clubName: '' });
   const [gameWorlds, setGameWorlds] = useState([]), [worldClubs, setWorldClubs] = useState([]);
   const [entries, setEntries] = useState([]), [matches, setMatches] = useState([]), [groupEntries, setGroupEntries] = useState([]), [selectedEntryId, setSelectedEntryId] = useState('');
@@ -70,9 +71,11 @@ export default function ManagerPortal({ registrationMode = false, session = null
       return;
     }
     if (session?.user) {
+      const generation = ++portalLoadGeneration.current;
       loadIdentityDirectory();
-      loadPortal();
+      loadPortal(generation);
     } else {
+      ++portalLoadGeneration.current;
       setLoading(false);
       setAccount(null);
       setClaim(null);
@@ -175,7 +178,17 @@ export default function ManagerPortal({ registrationMode = false, session = null
     setLoading(false);
   }
 
-  async function loadPortal() {
+  async function loadPortal(requestedGeneration) {
+    // React click handlers pass a SyntheticEvent as argument 1. Only an explicit
+    // numeric generation from the session effect is reusable; all other callers
+    // start a fresh generation.
+    const generation = typeof requestedGeneration === 'number'
+      ? requestedGeneration
+      : ++portalLoadGeneration.current;
+    // Only the newest portal load may update the UI. Auth state can emit more
+    // than once during magic-link/session refresh; stale overlapping loads were
+    // able to create a request/render storm on affected browsers.
+    const isCurrent = () => generation === portalLoadGeneration.current;
     setLoading(true);
     setLoadError('');
     setMessage('Loading your Manager Portal...');
@@ -191,6 +204,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
           'Manager claim lookup',
         );
         if (claimError) throw new Error(claimError.message);
+        if (!isCurrent()) return;
         setAccount(null);
         setClaim(claimRow || null);
         setAdminAssignments([]);
@@ -213,6 +227,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
         if (registrationResult.error) throw new Error('Could not load open tournament registrations: ' + registrationResult.error.message);
         if (registrationsResult.error) throw new Error('Could not load your registration records: ' + registrationsResult.error.message);
 
+        if (!isCurrent()) return;
         setAccount(accountRow);
         setClaim(null);
         setEntries([]);
@@ -247,6 +262,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
         peerEntries = peerResult.data || [];
       }
 
+      if (!isCurrent()) return;
       setAccount(accountRow);
       setClaim(null);
       setEntries(orderedEntries);
@@ -258,10 +274,11 @@ export default function ManagerPortal({ registrationMode = false, session = null
       setRegistrations([]);
       setMessage('Portal loaded.');
     } catch (error) {
+      if (!isCurrent()) return;
       setLoadError(error?.message || 'We could not finish loading your Manager Portal.');
       setMessage('');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }
 
