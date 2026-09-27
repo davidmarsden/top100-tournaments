@@ -13,11 +13,20 @@ create table if not exists public.manager_match_arrangements (
 );
 alter table public.manager_match_arrangements enable row level security;
 drop policy if exists "Managers read own arrangement reports" on public.manager_match_arrangements;
-create policy "Managers read own arrangement reports" on public.manager_match_arrangements for select to authenticated using (auth.uid() = auth_user_id);
+create policy "Managers read own arrangement reports" on public.manager_match_arrangements for select to authenticated
+using (
+  auth.uid() = auth_user_id
+  or exists (
+    select 1 from public.matches m
+    where m.id = match_id and public.can_assist_tournament(m.tournament_id)
+  )
+);
 drop policy if exists "Managers insert own arrangement reports" on public.manager_match_arrangements;
 create policy "Managers insert own arrangement reports" on public.manager_match_arrangements for insert to authenticated with check (auth.uid() = auth_user_id);
 drop policy if exists "Managers update own arrangement reports" on public.manager_match_arrangements;
 create policy "Managers update own arrangement reports" on public.manager_match_arrangements for update to authenticated using (auth.uid() = auth_user_id) with check (auth.uid() = auth_user_id);
+-- Current state is mutated only by the validated RPCs below.
+revoke insert, update, delete on public.manager_match_arrangements from authenticated;
 
 insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
 values ('match-evidence','match-evidence',false,8388608,array['image/jpeg','image/png','image/webp','image/gif'])
@@ -41,7 +50,14 @@ create table if not exists public.manager_match_arrangement_events (
 );
 alter table public.manager_match_arrangement_events enable row level security;
 drop policy if exists "Managers read own arrangement history" on public.manager_match_arrangement_events;
-create policy "Managers read own arrangement history" on public.manager_match_arrangement_events for select to authenticated using (auth.uid() = auth_user_id);
+create policy "Managers and tournament staff read arrangement history" on public.manager_match_arrangement_events for select to authenticated
+using (
+  auth.uid() = auth_user_id
+  or exists (
+    select 1 from public.matches m
+    where m.id = match_id and public.can_assist_tournament(m.tournament_id)
+  )
+);
 -- Events are append-only through the SECURITY DEFINER RPC below. Clients cannot forge
 -- an event against another manager's arrangement.
 revoke insert, update, delete on public.manager_match_arrangement_events from authenticated;
@@ -64,10 +80,22 @@ begin
   if v_user is null then raise exception 'Authentication required'; end if;
   if p_status not in ('sent','received','chased','arranged','problem') then raise exception 'Invalid arrangement status'; end if;
   if not exists (
-    select 1 from public.matches m
+    select 1
+    from public.matches m
+    join public.tournament_entries e on e.id=p_tournament_entry_id
+    join public.manager_portal_accounts a
+      on a.manager_id=e.manager_id and a.auth_user_id=v_user and a.active=true
     where m.id=p_match_id
-      and (m.home_entry_id=p_tournament_entry_id or m.away_entry_id=p_tournament_entry_id)
-  ) then raise exception 'Entry does not belong to this match'; end if;
+      and e.tournament_id=m.tournament_id
+      and (m.home_entry_id=e.id or m.away_entry_id=e.id)
+  ) then raise exception 'You do not manage this tournament entry'; end if;
+
+  -- Lock the fixture so it cannot become terminal between validation and write.
+  perform 1 from public.matches
+   where id=p_match_id
+     and coalesce(lower(status),'scheduled') not in ('played','forfeit','voided','cancelled')
+   for update;
+  if not found then raise exception 'This fixture is no longer active'; end if;
 
   insert into public.manager_match_arrangements(match_id,auth_user_id,tournament_entry_id,status,reported_at,updated_at)
   values(p_match_id,v_user,p_tournament_entry_id,p_status,now(),now())
@@ -113,3 +141,23 @@ end;
 $$;
 revoke all on function public.attach_manager_match_evidence(bigint,text,text) from public;
 grant execute on function public.attach_manager_match_evidence(bigint,text,text) to authenticated;
+
+create or replace function public.get_manager_match_evidence_path(p_arrangement_id bigint)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_path text;
+begin
+  select a.evidence_path into v_path
+  from public.manager_match_arrangements a
+  join public.matches m on m.id=a.match_id
+  where a.id=p_arrangement_id
+    and (a.auth_user_id=auth.uid() or public.can_assist_tournament(m.tournament_id));
+  if not found then raise exception 'Evidence not found or access denied'; end if;
+  return v_path;
+end;
+$$;
+revoke all on function public.get_manager_match_evidence_path(bigint) from public;
+grant execute on function public.get_manager_match_evidence_path(bigint) to authenticated;
