@@ -41,7 +41,7 @@ with check (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and storage.filename(name) like 'evidence.%'
+      and storage.filename(name) in ('evidence.jpg','evidence.jpeg','evidence.png','evidence.webp','evidence.gif')
       and array_length(storage.foldername(name),1)=2
   )
 );
@@ -69,7 +69,7 @@ using (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and storage.filename(name) like 'evidence.%'
+      and storage.filename(name) in ('evidence.jpg','evidence.jpeg','evidence.png','evidence.webp','evidence.gif')
       and array_length(storage.foldername(name),1)=2
   )
 )
@@ -80,7 +80,7 @@ with check (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and storage.filename(name) like 'evidence.%'
+      and storage.filename(name) in ('evidence.jpg','evidence.jpeg','evidence.png','evidence.webp','evidence.gif')
       and array_length(storage.foldername(name),1)=2
   )
 );
