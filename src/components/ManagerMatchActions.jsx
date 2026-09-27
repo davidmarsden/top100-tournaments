@@ -63,8 +63,8 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
     if(file.size>8*1024*1024){setMessage('Evidence images must be 8 MB or smaller.');return;}
     setUploading(match.id); setMessage('');
     const ext=(file.name.split('.').pop()||'jpg').replace(/[^a-z0-9]/gi,'').toLowerCase();
-    const path=`${session.user.id}/${match.id}/${Date.now()}.${ext}`;
-    const uploaded=await supabase.storage.from('match-evidence').upload(path,file,{contentType:file.type,upsert:false});
+    const path=`${session.user.id}/${match.id}/evidence.${ext}`;
+    const uploaded=await supabase.storage.from('match-evidence').upload(path,file,{contentType:file.type,upsert:true});
     if(uploaded.error){setMessage(uploaded.error.message);setUploading('');return;}
     const previousPath=current.evidence_path;
     const {data,error}=await supabase.rpc('attach_manager_match_evidence',{
@@ -76,6 +76,8 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
       await supabase.storage.from('match-evidence').remove([path]);
       setMessage(error.message);
     } else {
+      // A stable per-match object key bounds storage to one evidence object.
+      // If the extension changed, the old now-unreferenced object may be removed.
       if(previousPath && previousPath!==path) {
         const removed=await supabase.storage.from('match-evidence').remove([previousPath]);
         if(removed.error)setMessage('New evidence saved, but the previous file could not be removed: '+removed.error.message);
