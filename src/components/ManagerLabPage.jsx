@@ -220,40 +220,6 @@ const HAMBURG_RUN_IN_S28 = [
   { date: '2026-11-05', opponent: 'Barcelona', venue: 'A' },
 ];
 const MAGIC_FAMILY = '4-2-3-1 B|Attacking|Mixed|Down Both Flanks|Fast';
-const RUN_IN_SECONDARY_FIELDS = CURRENT_FORMULA_FIELDS
-  .filter(([, key]) => !FAMILY_KEYS.includes(key));
-const RUN_IN_SECONDARY_MIN_MATCHES = 3;
-const RUN_IN_SECONDARY_MIN_CLUBS = 2;
-const RUN_IN_SECONDARY_MIN_SHARE = 0.6;
-
-function secondaryInstructionProfile(matches) {
-  return RUN_IN_SECONDARY_FIELDS.map(([label, key]) => {
-    const values = new Map();
-    matches.forEach((match) => {
-      const value = normalizedTacticValue(match, key);
-      if (value === null || value === undefined || value === '' || value === '—') return;
-      const entry = values.get(value) || { value, matches: 0, clubs: new Set(), divisions: new Set() };
-      entry.matches += 1;
-      if (match.sourceClubId) entry.clubs.add(String(match.sourceClubId));
-      if (match.competition) entry.divisions.add(match.competition);
-      values.set(value, entry);
-    });
-    const ranked = [...values.values()]
-      .map((row) => ({ ...row, clubCount: row.clubs.size, divisionCount: row.divisions.size }))
-      .sort((a, b) => b.matches - a.matches || b.clubCount - a.clubCount || String(a.value).localeCompare(String(b.value)));
-    const observed = ranked.reduce((sum, row) => sum + row.matches, 0);
-    const leader = ranked[0] || null;
-    const share = leader && observed ? leader.matches / observed : null;
-    const recommended = Boolean(
-      leader &&
-      leader.matches >= RUN_IN_SECONDARY_MIN_MATCHES &&
-      leader.clubCount >= RUN_IN_SECONDARY_MIN_CLUBS &&
-      share >= RUN_IN_SECONDARY_MIN_SHARE
-    );
-    return { label, key, observed, leader, share, recommended, variants: ranked };
-  });
-}
-
 function familyLabel(match) {
   return FAMILY_KEYS.map((key) => displayTacticValue(key, tacticValue(match, key))).join(' · ');
 }
@@ -343,6 +309,41 @@ const CURRENT_FORMULA_FIELDS = [
   ['Use PM','usePlaymaker'], ['Use TM','useTargetMan'],
   ['CA','counterAttack'], ['TM','tightMarking'], ['MBB','menBehindBall'], ['SK','sweeperKeeper'],
 ];
+
+const RUN_IN_SECONDARY_FIELDS = CURRENT_FORMULA_FIELDS
+  .filter(([, key]) => !FAMILY_KEYS.includes(key));
+const RUN_IN_SECONDARY_MIN_MATCHES = 3;
+const RUN_IN_SECONDARY_MIN_CLUBS = 2;
+const RUN_IN_SECONDARY_MIN_SHARE = 0.6;
+
+function secondaryInstructionProfile(matches) {
+  return RUN_IN_SECONDARY_FIELDS.map(([label, key]) => {
+    const values = new Map();
+    matches.forEach((match) => {
+      const value = normalizedTacticValue(match, key);
+      if (value === null || value === undefined || value === '' || value === '—') return;
+      const entry = values.get(value) || { value, matches: 0, clubs: new Set(), divisions: new Set() };
+      entry.matches += 1;
+      if (match.sourceClubId) entry.clubs.add(String(match.sourceClubId));
+      if (match.competition) entry.divisions.add(match.competition);
+      values.set(value, entry);
+    });
+    const ranked = [...values.values()]
+      .map((row) => ({ ...row, clubCount: row.clubs.size, divisionCount: row.divisions.size }))
+      .sort((a, b) => b.matches - a.matches || b.clubCount - a.clubCount || String(a.value).localeCompare(String(b.value)));
+    const observed = ranked.reduce((sum, row) => sum + row.matches, 0);
+    const leader = ranked[0] || null;
+    const share = leader && observed ? leader.matches / observed : null;
+    const recommended = Boolean(
+      leader &&
+      leader.matches >= RUN_IN_SECONDARY_MIN_MATCHES &&
+      leader.clubCount >= RUN_IN_SECONDARY_MIN_CLUBS &&
+      share >= RUN_IN_SECONDARY_MIN_SHARE
+    );
+    return { label, key, observed, leader, share, recommended, variants: ranked };
+  });
+}
+
 
 function formulaText(match) {
   return CURRENT_FORMULA_FIELDS
