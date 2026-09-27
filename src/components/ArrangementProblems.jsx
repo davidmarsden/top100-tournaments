@@ -16,10 +16,19 @@ export default function ArrangementProblems({ selectedTournament }) {
   },[selectedTournament?.id,refreshKey]);
   async function openEvidence(row){
     setError('');
-    const {data:pathData,error:pathError}=await supabase.rpc('get_manager_match_evidence_path',{p_arrangement_id:row.id});
-    if(pathError||!pathData){setError(pathError?.message||'No evidence attached.');return;}
-    const {data,error}=await supabase.storage.from('match-evidence').createSignedUrl(pathData,300);
-    if(error){setError(error.message);return;} window.open(data.signedUrl,'_blank','noopener,noreferrer');
+    const evidenceWindow=window.open('about:blank','_blank');
+    if(!evidenceWindow){setError('Your browser blocked the evidence window. Allow pop-ups for this site and try again.');return;}
+    try {
+      evidenceWindow.opener=null;
+      const {data:pathData,error:pathError}=await supabase.rpc('get_manager_match_evidence_path',{p_arrangement_id:row.id});
+      if(pathError||!pathData) throw new Error(pathError?.message||'No evidence attached.');
+      const {data,error}=await supabase.storage.from('match-evidence').createSignedUrl(pathData,300);
+      if(error||!data?.signedUrl) throw new Error(error?.message||'Could not create evidence link.');
+      evidenceWindow.location.replace(data.signedUrl);
+    } catch(error) {
+      evidenceWindow.close();
+      setError(error.message);
+    }
   }
   return <section className="arrangement-problems">
     <div className="card-header row"><div><p className="eyebrow">Arrangement problems</p><h3>Manager escalations</h3></div><button type="button" className="secondary" onClick={()=>setRefreshKey(k=>k+1)}>Refresh escalations</button></div>
