@@ -27,12 +27,19 @@ export default function VotingEntry() {
       setCheckingReturn(false);
     };
 
+    let handoffInProgress = false;
+
     const handleMessage = async (event) => {
       if (event.origin !== MANAGER_ORIGIN || event.data?.type !== 'top100-manager-session') return;
       const bridgeSession = event.data.session;
       if (bridgeSession?.access_token && bridgeSession?.refresh_token) {
+        if (handoffInProgress) return;
+        handoffInProgress = true;
         const { error } = await supabase.auth.setSession(bridgeSession);
         if (error) console.warn('Could not complete Manager Portal sign-in handoff.', error);
+        // setSession persists asynchronously across auth-js/browser storage.
+        // A fresh navigation could previously render signed-out until reload.
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
       }
       finish();
     };

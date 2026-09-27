@@ -56,12 +56,23 @@ export default function ManagerPortal({ registrationMode = false, session = null
   const magicLinkCooldownUntil = useRef(0);
   const magicLinkRequestId = useRef(0);
   const portalLoadGeneration = useRef(0);
+  const returnNavigationStarted = useRef(false);
+  const loadedAccountAuthUserId = useRef(null);
   const [account, setAccount] = useState(null), [claim, setClaim] = useState(null), [claimForm, setClaimForm] = useState({ gameWorldId: '', managerName: '', clubName: '' });
   const [gameWorlds, setGameWorlds] = useState([]), [worldClubs, setWorldClubs] = useState([]);
   const [entries, setEntries] = useState([]), [matches, setMatches] = useState([]), [groupEntries, setGroupEntries] = useState([]), [selectedEntryId, setSelectedEntryId] = useState('');
   const [adminAssignments, setAdminAssignments] = useState([]);
   const [openTournaments, setOpenTournaments] = useState([]);
   const [registrations, setRegistrations] = useState([]);
+
+  useEffect(() => {
+    // A returnTo URL means this visit exists only to authenticate another Top
+    // 100 app. Once Manager Portal has a valid approved account, continue
+    // automatically instead of stranding the manager on My Matches.
+    if (!returnTo || !session?.user || !account || loadedAccountAuthUserId.current !== session.user.id || loading || loadError || returnNavigationStarted.current) return;
+    returnNavigationStarted.current = true;
+    window.location.replace(returnTo);
+  }, [returnTo, session?.user?.id, account?.id, loading, loadError]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -77,6 +88,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
     } else {
       ++portalLoadGeneration.current;
       setLoading(false);
+      loadedAccountAuthUserId.current = null;
       setAccount(null);
       setClaim(null);
       setEntries([]);
@@ -205,6 +217,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
         );
         if (claimError) throw new Error(claimError.message);
         if (!isCurrent()) return;
+        loadedAccountAuthUserId.current = null;
         setAccount(null);
         setClaim(claimRow || null);
         setAdminAssignments([]);
@@ -263,6 +276,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
       }
 
       if (!isCurrent()) return;
+      loadedAccountAuthUserId.current = session.user.id;
       setAccount(accountRow);
       setClaim(null);
       setEntries(orderedEntries);
