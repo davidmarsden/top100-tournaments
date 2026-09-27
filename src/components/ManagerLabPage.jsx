@@ -1324,9 +1324,29 @@ export default function ManagerLabPage() {
           const comparableA = aMatches.filter((match) => commonBuckets.has(xiBucket(match.xiRatingDifference)));
           const comparableB = bMatches.filter((match) => commonBuckets.has(xiBucket(match.xiRatingDifference)));
           if (!commonBuckets.size || comparableA.length < 2 || comparableB.length < 2) continue;
-          const baseline = buildStrengthBaseline([...comparableA, ...comparableB]);
-          const aAdjusted = adjustedMetrics(comparableA, baseline);
-          const bAdjusted = adjustedMetrics(comparableB, baseline);
+          // Estimate the role contrast inside each shared XI bucket first,
+          // then aggregate those within-bucket B-vs-A differences. Building a
+          // baseline from the pooled A/B cohorts would partially absorb the
+          // role effect whenever the role mix differs by strength bucket.
+          let weightedPpgDelta = 0;
+          let weightedGdDelta = 0;
+          let comparisonWeight = 0;
+          commonBuckets.forEach((bucket) => {
+            const bucketA = comparableA.filter((match) => xiBucket(match.xiRatingDifference) === bucket);
+            const bucketB = comparableB.filter((match) => xiBucket(match.xiRatingDifference) === bucket);
+            if (!bucketA.length || !bucketB.length) return;
+            const ppgA = bucketA.reduce((sum, match) => sum + resultPoints(match.result), 0) / bucketA.length;
+            const ppgB = bucketB.reduce((sum, match) => sum + resultPoints(match.result), 0) / bucketB.length;
+            const gdA = bucketA.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0) / bucketA.length;
+            const gdB = bucketB.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0) / bucketB.length;
+            // Harmonic-style overlap weight gives most influence to buckets
+            // where both roles have evidence, without letting a one-sided
+            // bucket dominate merely because one role was used much more.
+            const weight = (2 * bucketA.length * bucketB.length) / (bucketA.length + bucketB.length);
+            weightedPpgDelta += (ppgB - ppgA) * weight;
+            weightedGdDelta += (gdB - gdA) * weight;
+            comparisonWeight += weight;
+          });
           const aMetrics = metric(a.rows);
           const bMetrics = metric(b.rows);
           roleSwitchExperiments.push({
@@ -1346,10 +1366,8 @@ export default function ManagerLabPage() {
             gdB: bMetrics.gd,
             deltaPpgBvsA: bMetrics.ppg - aMetrics.ppg,
             deltaGdBvsA: bMetrics.gd - aMetrics.gd,
-            adjustedDeltaPpgBvsA: aAdjusted.adjustedPpg === null || bAdjusted.adjustedPpg === null
-              ? null : bAdjusted.adjustedPpg - aAdjusted.adjustedPpg,
-            adjustedDeltaGdBvsA: aAdjusted.adjustedGd === null || bAdjusted.adjustedGd === null
-              ? null : bAdjusted.adjustedGd - aAdjusted.adjustedGd,
+            adjustedDeltaPpgBvsA: comparisonWeight ? weightedPpgDelta / comparisonWeight : null,
+            adjustedDeltaGdBvsA: comparisonWeight ? weightedGdDelta / comparisonWeight : null,
             commonXiBuckets: commonBuckets.size,
             comparableMatchesA: comparableA.length,
             comparableMatchesB: comparableB.length,
