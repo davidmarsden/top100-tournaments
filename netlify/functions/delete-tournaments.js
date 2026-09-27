@@ -87,25 +87,8 @@ export async function handler(event) {
     const matchRows = await selectAll((from,to)=>db.from('matches').select('id').in('tournament_id',ids).range(from,to));
     const matchIds = matchRows.map((row) => row.id);
 
-    // Storage objects are not removed by relational cascades. Delete all bounded
-    // evidence objects for arrangements belonging to matches being torn down.
-    if (matchIds.length) {
-      const arrangements = await selectAll((from,to)=>db
-        .from('manager_match_arrangements')
-        .select('auth_user_id,match_id')
-        .in('match_id',matchIds)
-        .range(from,to));
-      const evidenceKeys = [];
-      for (const row of arrangements || []) {
-        for (const slot of ['a','b']) for (const ext of ['jpg','png','webp','gif']) {
-          evidenceKeys.push(`${row.auth_user_id}/${row.match_id}/evidence-${slot}.${ext}`);
-        }
-      }
-      for (let offset = 0; offset < evidenceKeys.length; offset += 1000) {
-        const { error: evidenceError } = await db.storage.from('match-evidence').remove(evidenceKeys.slice(offset, offset + 1000));
-        if (evidenceError) throw evidenceError;
-      }
-    }
+    // Arrangement cascades enqueue bounded evidence keys; the scheduled cleanup
+    // worker removes Storage objects only after relational deletion succeeds.
 
     await deleteByTournament(db, 'match_comments', ids);
     await deleteByTournament(db, 'achievements', ids);
