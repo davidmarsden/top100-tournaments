@@ -185,54 +185,7 @@ function ensurePublicFixtureNav() {
   }
 }
 
-function managerFixtureRows(shell) {
-  const panels = [...shell.querySelectorAll('.portal-panel')];
-  const fixturePanel = panels.find((panel) => /your fixtures/i.test(panel.querySelector('h2')?.textContent || ''));
-  if (!fixturePanel) return [];
-  return [...fixturePanel.querySelectorAll('.portal-fixture')].map((fixture) => {
-    const primary = fixture.querySelector('strong')?.textContent?.trim() || '';
-    const date = fixture.querySelector('time')?.textContent?.trim() || 'Date TBC';
-    const detail = fixture.querySelector('span')?.textContent?.trim() || '';
-    const isHome = /^Home\b/i.test(primary);
-    const opponent = primary.replace(/^(Home|Away)\s+vs\s+/i, '').trim() || 'opponent';
-    return { primary, date, detail, isHome, opponent };
-  });
-}
-
-function ensureManagerNextAction() {
-  const shell = document.querySelector('.manager-portal-shell');
-  if (!shell) return;
-  const rows = managerFixtureRows(shell);
-  const existing = shell.querySelector('[data-fixture-first="manager-next"]');
-  if (!rows.length) { existing?.remove(); return; }
-
-  const signature = rows.map((row) => `${row.primary}|${row.date}|${row.detail}`).join('||');
-  if (existing?.dataset.fixtureSignature === signature) return;
-  existing?.remove();
-
-  const cards = rows.map((row, index) => {
-    const action = row.isHome ? 'YOU SEND' : 'THEY SEND';
-    const icon = row.isHome ? '🏠' : '📨';
-    const instruction = row.isHome
-      ? `Send the Soccer Manager friendly request to <strong>${escapeHtml(row.opponent)}</strong>.`
-      : `Expect a friendly request from <strong>${escapeHtml(row.opponent)}</strong>. If it has not arrived, chase them — do not wait for the deadline.`;
-    return `<article class="my-match-action ${row.isHome ? 'you-send' : 'they-send'}${index === 0 ? ' is-next' : ''}">
-      <div class="my-match-action__badge">${icon} ${action}</div>
-      <div class="my-match-action__main"><strong>${escapeHtml(row.opponent)}</strong><span>${escapeHtml(row.detail)}</span><time>${escapeHtml(row.date)}</time></div>
-      <p>${instruction}</p>
-    </article>`;
-  }).join('');
-
-  const card = document.createElement('section');
-  card.className = 'card fixture-first-manager-card my-matches-action-centre';
-  card.dataset.fixtureFirst = 'manager-next'; card.dataset.fixtureSignature = signature;
-  card.innerHTML = `<div class="my-matches-action-centre__intro"><p class="eyebrow">👤 My Matches</p><h2>What do I need to do?</h2><p>One simple list: <strong>YOU SEND</strong> means you must offer the friendly; <strong>THEY SEND</strong> means you are expecting the request.</p></div><div class="my-match-action-list">${cards}</div><div class="fixture-first-actions"><a class="button secondary" href="https://tournaments.smtop100.blog/#schedule">📅 Full schedule</a></div>`;
-
-  const metrics = shell.querySelector('.portal-metrics');
-  if (metrics?.parentNode) metrics.parentNode.insertBefore(card, metrics.nextSibling); else shell.prepend(card);
-}
-
-function applyFixtureFirstNavigation() { ensurePublicFixtureNav(); ensureManagerNextAction(); }
+function applyFixtureFirstNavigation() { ensurePublicFixtureNav(); }
 let queued = false;
 function queueApply() { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; applyFixtureFirstNavigation(); }); }
 queueApply();
