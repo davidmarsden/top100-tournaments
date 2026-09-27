@@ -90,7 +90,13 @@ button.danger:disabled, .danger:disabled { opacity: 0.5; cursor: not-allowed; }
   .bracket-mobile-hint { display: block; }
   .visual-bracket-scroll { scroll-snap-type: x mandatory; scroll-padding-left: 0; overscroll-behavior-x: contain; padding-right: 12px; }
   .visual-bracket { display: flex; gap: 12px; min-width: 0; width: max-content; align-items: stretch; }
-  .bracket-round-column, .bracket-champion-column { flex: 0 0 calc(100vw - 76px); width: calc(100vw - 76px); max-width: 390px; scroll-snap-align: start; scroll-snap-stop: always; }
+  .bracket-round-column, .bracket-champion-column { flex: 0 0 calc(50vw - 22px); width: calc(50vw - 22px); max-width: 230px; scroll-snap-align: start; scroll-snap-stop: always; }
+  .bracket-round-title { padding: .65rem .35rem; font-size: .86rem; }
+  .bracket-team { grid-template-columns: minmax(0, 1fr) auto; gap: 4px; padding: .62rem .55rem; }
+  .bracket-team b { display: none; }
+  .bracket-seed-pill { margin-right: 4px; }
+  .bracket-tie small { padding: .48rem .55rem; }
+
   .bracket-round-title { position: sticky; top: 0; z-index: 2; }
   .bracket-round-column.live-round .bracket-round-title { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
   .bracket-tie-stack { justify-content: space-around; gap: 22px; min-height: 420px; }
@@ -115,3 +121,16 @@ button.danger:disabled, .danger:disabled { opacity: 0.5; cursor: not-allowed; }
 .active-tournament-context span { font-size: 0.75rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
 .active-tournament-context strong { font-size: 1.05rem; }
 .active-tournament-context small { color: #64748b; }
+
+@media (max-width: 420px) and (orientation: portrait) {
+  .visual-bracket { gap: 10px; }
+  .bracket-round-column, .bracket-champion-column { flex-basis: calc(50vw - 20px); width: calc(50vw - 20px); }
+  .bracket-team strong { font-size: .84rem; }
+  .bracket-team span { min-width: 20px; font-size: .9rem; }
+  .bracket-tie small { font-size: .68rem; line-height: 1.25; }
+  .bracket-round-title { font-size: .8rem; }
+}
+
+@media (max-width: 820px) and (orientation: landscape) {
+  .bracket-round-column, .bracket-champion-column { flex-basis: min(38vw, 300px); width: min(38vw, 300px); max-width: 300px; }
+}
