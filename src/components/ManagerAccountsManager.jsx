@@ -42,6 +42,7 @@ function NameComparison({ claimed, canonical }) {
 
 export default function ManagerAccountsManager() {
   const [claims, setClaims] = useState([]);
+  const [accounts, setAccounts] = useState([]);
   const [status, setStatus] = useState('Loading manager claims...');
   const [loading, setLoading] = useState(false);
   const [managerOverrides, setManagerOverrides] = useState({});
@@ -55,9 +56,15 @@ export default function ManagerAccountsManager() {
 
   async function loadClaims() {
     setLoading(true);
-    const { data, error } = await supabase.from('manager_portal_claims')
+    const [claimsResult, accountsResult] = await Promise.all([
+      supabase.from('manager_portal_claims')
       .select('id, email, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, reviewed_at, reviewed_by_label, created_at, managers:suggested_manager_id(id, name, display_name)')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false }),
+      supabase.from('manager_portal_accounts')
+        .select('id, auth_user_id, manager_id, email, active, created_at, updated_at, managers(id, name, display_name), game_worlds(id, name, slug)')
+        .order('created_at', { ascending: false }),
+    ]);
+    const { data, error } = claimsResult;
 
     if (error) {
       setStatus('Could not load manager claims: ' + error.message);
@@ -67,7 +74,8 @@ export default function ManagerAccountsManager() {
 
     const nextClaims = data || [];
     setClaims(nextClaims);
-    setStatus(`${nextClaims.length} manager claims loaded.`);
+    setAccounts(accountsResult.error ? [] : (accountsResult.data || []));
+    setStatus(accountsResult.error ? `${nextClaims.length} manager claims loaded; account register failed: ${accountsResult.error.message}` : `${accountsResult.data?.length || 0} linked manager accounts · ${nextClaims.length} claims.`);
     await loadSuggestions(nextClaims.filter((claim) => claim.status === 'pending'));
     setLoading(false);
   }
@@ -153,7 +161,33 @@ export default function ManagerAccountsManager() {
   const pending = useMemo(() => claims.filter((claim) => claim.status === 'pending' && matchesSearch(claim)), [claims, search, suggestions]);
   const reviewed = useMemo(() => claims.filter((claim) => claim.status !== 'pending' && matchesSearch(claim)), [claims, search, suggestions]);
 
+  const matchingAccounts = useMemo(() => {
+    const query = normalise(search);
+    if (!query) return accounts;
+    return accounts.filter((row) => normalise(`${row.managers?.display_name || row.managers?.name || ''} ${row.email} ${row.game_worlds?.name || ''}`).includes(query));
+  }, [accounts, search]);
+
   return <div className="registration-manager">
+    <section className="entrant-panel">
+      <div className="card-header row">
+        <div>
+          <p className="eyebrow">Account register</p>
+          <h3>Linked Manager Portal accounts</h3>
+          <p className="muted">These are the managers who have completed the account process and are linked to a canonical Top 100 manager record.</p>
+        </div>
+        <strong>{accounts.filter((row) => row.active).length} active</strong>
+      </div>
+      {!matchingAccounts.length ? <p className="muted">{search ? 'No linked accounts match this search.' : 'No linked manager accounts yet.'}</p> : <div className="entrant-list">
+        {matchingAccounts.map((row) => <article className="entrant-row" key={row.id}>
+          <div>
+            <strong>{row.managers?.display_name || row.managers?.name || `Manager #${row.manager_id}`}</strong>
+            <span>{row.email} · {row.game_worlds?.name || 'Game world not recorded'}</span>
+            <span className="claim-audit">{row.active ? 'Active account' : 'Inactive account'} · linked {formatReviewedAt(row.created_at)}{row.updated_at && row.updated_at !== row.created_at ? ` · updated ${formatReviewedAt(row.updated_at)}` : ''}</span>
+          </div>
+        </article>)}
+      </div>}
+    </section>
+
     <section className="entrant-panel">
       <div className="card-header row">
         <div>
