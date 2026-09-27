@@ -1207,13 +1207,18 @@ export default function ManagerLabPage() {
             hamburgGd: hamburgSample.length ? hamburgGd/hamburgSample.length : null,
             confidence: evidenceConfidence(row.matches, row.clubs.size),
           };
-        }).sort((a,b) => b.evidencePpg-a.evidencePpg || b.matches-a.matches || b.gdPerGame-a.gdPerGame).slice(0,5);
+        }).sort((a,b) => b.evidencePpg-a.evidencePpg || b.matches-a.matches || b.gdPerGame-a.gdPerGame);
       };
-      const counters = buildCounters(currentKey);
-      const dominantCounters = dominant && dominant.key !== currentKey ? buildCounters(dominant.key) : [];
+      // Keep the full ranked collection for recommendation qualification.
+      // The five-row cap is presentation only: otherwise several attractive
+      // tiny samples can hide a replicated candidate ranked just below them.
+      const currentCounterEvidence = buildCounters(currentKey);
+      const dominantCounterEvidence = dominant && dominant.key !== currentKey ? buildCounters(dominant.key) : [];
+      const counters = currentCounterEvidence.slice(0,5);
+      const dominantCounters = dominantCounterEvidence.slice(0,5);
       const qualified = (rows) => rows.filter((counter) => counter.matches >= 3 && counter.clubCount >= 2);
-      const currentQualified = qualified(counters);
-      const dominantQualified = qualified(dominantCounters);
+      const currentQualified = qualified(currentCounterEvidence);
+      const dominantQualified = qualified(dominantCounterEvidence);
       const volatile = Boolean(dominant && dominant.key !== currentKey && stability5.pct !== null && stability5.pct < 0.6);
       const previous = sortedRecent(hamburgRows.filter((match) => match.opponent === fixture.opponent && match.date && String(match.date) < fixture.date))[0] || null;
       const latestXi = latest ? numericValue(latest.ourXiRating) : null;
