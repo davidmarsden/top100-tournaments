@@ -50,6 +50,7 @@ function buildStandings(entries, matches) {
 export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '', authStage = '', returnTo = '' }) {
   const [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [loadStage, setLoadStage] = useState('Waiting for sign-in');
   const [magicLinkStatus, setMagicLinkStatus] = useState('idle');
   const [magicLinkSentTo, setMagicLinkSentTo] = useState('');
   const [magicLinkResendIn, setMagicLinkResendIn] = useState(0);
@@ -203,6 +204,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
     const isCurrent = () => generation === portalLoadGeneration.current;
     setLoading(true);
     setLoadError('');
+    setLoadStage('Checking manager account');
     setMessage('Loading your Manager Portal...');
     try {
       const { data: accountRow, error: accountError } = await withPortalTimeout(
@@ -211,6 +213,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
       );
       if (accountError) throw new Error(accountError.message);
       if (!accountRow) {
+        if (isCurrent()) setLoadStage('Checking manager claim');
         const { data: claimRow, error: claimError } = await withPortalTimeout(
           supabase.from('manager_portal_claims').select('*, game_worlds(name)').eq('auth_user_id', session.user.id).maybeSingle(),
           'Manager claim lookup',
@@ -226,6 +229,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
       }
 
       if (registrationMode) {
+        if (isCurrent()) setLoadStage('Loading tournament registrations');
         const [registrationResult, registrationsResult] = await withPortalTimeout(Promise.all([
           supabase.from('tournaments')
             .select('id, name, public_slug, registration_status, season_number, game_worlds(id, name, slug), competition_types(id, name, slug)')
@@ -254,6 +258,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
         return;
       }
 
+      if (isCurrent()) setLoadStage('Loading tournament entries');
       const [entryResult, accessResult] = await withPortalTimeout(Promise.all([
         supabase.from('tournament_entries').select('id, tournament_id, manager_id, group_code, seed, pot, teams(id, name), tournaments!inner(id, name, status, season_number, public_slug, is_public, game_world_id, game_worlds(id, name, slug))').eq('manager_id', accountRow.manager_id),
         supabase.from('tournament_organisers').select('tournament_id, role, tournaments(id, name)').eq('auth_user_id', session.user.id).eq('active', true),
@@ -265,6 +270,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
       const tournamentIds = [...new Set(orderedEntries.map((entry) => entry.tournament_id))];
       let matchRows = [], peerEntries = [];
       if (tournamentIds.length) {
+        if (isCurrent()) setLoadStage('Loading fixtures and group table');
         const [matchResult, peerResult] = await withPortalTimeout(Promise.all([
           supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))').in('tournament_id', tournamentIds),
           supabase.from('tournament_entries').select('id, tournament_id, group_code, teams(name)').in('tournament_id', tournamentIds),
@@ -286,6 +292,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
       setAdminAssignments(accessResult.error ? [] : (accessResult.data || []));
       setOpenTournaments([]);
       setRegistrations([]);
+      setLoadStage('Portal loaded');
       setMessage('Portal loaded.');
     } catch (error) {
       if (!isCurrent()) return;
@@ -326,7 +333,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Manager Portal unavailable.</strong><span>Supabase is not connected.</span></section></main>;
   if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Manager Portal</h1><p>Your fixtures, results, group table and tournament progress in one place.</p></section><section className="card manager-login-card"><h2>Sign in securely</h2><p className="muted">Enter your email address. We’ll send a one-time sign-in link.</p>{magicLinkStatus === 'sent' ? <div className="magic-link-confirmation" role="status" aria-live="polite"><h3>✓ Sign-in link sent</h3><p>We’ve sent a secure sign-in link to <strong>{magicLinkSentTo}</strong>.</p><p className="muted">It can take a few minutes to arrive. Check your inbox and spam folder. You can leave this page open while you wait.</p><div className="button-row"><button type="button" onClick={sendMagicLink} disabled={magicLinkResendIn > 0}>{magicLinkResendIn > 0 ? `Send another link in ${magicLinkResendIn}s` : 'Send another link'}</button><button type="button" className="secondary" onClick={resetMagicLink}>Use a different email</button></div></div> : <form onSubmit={sendMagicLink}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={magicLinkStatus === 'sending'} /></label><button type="submit" disabled={magicLinkStatus === 'sending'}>{magicLinkStatus === 'sending' ? 'Sending…' : magicLinkStatus === 'error' ? 'Try again' : 'Email me a sign-in link'}</button>{magicLinkStatus === 'sending' && <p className="status" role="status" aria-live="polite">Sending your secure sign-in link…</p>}{magicLinkStatus === 'error' && message && <p className="status" role="alert">{message}</p>}{magicLinkStatus === 'idle' && message && <p className="status" role="alert">{message}</p>}</form>}</section></main>;
-  if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading Manager Portal...</h1><p className="muted">This should only take a few seconds.</p></section></main>;
+  if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading Manager Portal...</h1><p><strong>{loadStage}</strong></p><p className="muted">Signed in ✓ · {session?.user?.email || 'Manager account'}</p><p className="muted">If this step cannot finish within 8 seconds, the portal will stop and show which request failed instead of leaving this screen indefinitely.</p></section></main>;
   if (loadError) return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal</p><h1>We couldn’t finish loading your portal</h1><p>Your sign-in is still valid. The data request may have timed out or been interrupted.</p></div></section><section className="card manager-login-card"><p className="status">{loadError}</p><div className="button-row"><button type="button" onClick={loadPortal}>Try again</button><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section></main>;
   if (!account) return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal</p><h1>{claim?.status === 'pending' ? 'Claim awaiting approval' : 'Claim your profile'}</h1><p>Signed in securely as {session.user.email}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section><section className="card manager-login-card">{claim?.status === 'pending' ? <><h2>We’ve got your claim</h2><p><strong>{claim.claimed_manager_name}</strong> · {claim.claimed_club_name} · {claim.game_worlds?.name || 'Game world'}</p><button type="button" onClick={loadPortal}>Check approval</button></> : <form onSubmit={submitClaim}><h2>Match your Soccer Manager identity</h2><label>Game world<select value={claimForm.gameWorldId} onChange={(event) => setClaimForm({ gameWorldId: event.target.value, managerName: '', clubName: '' })} required><option value="">Choose game world</option>{gameWorlds.map((world) => <option key={world.id} value={world.id}>{world.name}</option>)}</select></label><label>Current club<select value={claimForm.clubName} onChange={(event) => { const club = worldClubs.find((item) => item.club_name === event.target.value); setClaimForm((current) => ({ ...current, clubName: event.target.value, managerName: club?.current_manager_name || '' })); }} required disabled={!claimForm.gameWorldId}><option value="">Choose your club</option>{worldClubs.map((club) => <option key={club.id} value={club.club_name}>{club.club_name}</option>)}</select></label><label>SM manager name<input value={claimForm.managerName} onChange={(event) => setClaimForm((current) => ({ ...current, managerName: event.target.value }))} required /></label>{selectedClaimClub?.current_manager_name && <p className="muted">Directory manager: <strong>{selectedClaimClub.current_manager_name}</strong></p>}<button type="submit">Submit manager claim</button></form>}</section>{message && <section className="card"><p className="status">{message}</p></section>}</main>;
 
