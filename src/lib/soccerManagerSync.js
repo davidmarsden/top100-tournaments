@@ -488,8 +488,12 @@ export function normalizeClubSquad(input, context = {}) {
       careerRedCards: firstNumber(record.arc),
       goalkeeper: firstBoolean(record.gk),
       youth: firstBoolean(record.youth),
-      transferListed: firstBoolean(record.transferlisted, record.transfer_list, record.tl)
-        ?? /title=["']Transfer Listed["']/i.test(String(record.infodis || '')),
+      transferListed: firstBoolean(
+        record.transferlisted,
+        record.transfer_list,
+        record.tl,
+        /title=["']Transfer Listed["']/i.test(String(record.infodis || '')),
+      ),
       loaned: firstBoolean(record.loaned),
       recentClubId: firstNonZeroId(record.rcdid),
       recentClubName: firstText(record.rcdn),
