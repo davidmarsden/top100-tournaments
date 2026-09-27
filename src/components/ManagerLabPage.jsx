@@ -1159,7 +1159,105 @@ export default function ManagerLabPage() {
       analyzableObservations.forEach((r)=>r.assignments.filter((a)=>a.validated===wantValidated).forEach((a)=>{const id=`${r.formation}:${a.key}:${a.code}`;const x=m.get(id)||{formation:r.formation,key:a.key,code:a.code,role:a.role,rows:[],clubs:new Set(),complete:0,sparse:0};x.rows.push(r);if(r.match.sourceClubId)x.clubs.add(r.match.sourceClubId);if(a.complete)x.complete++;else x.sparse++;m.set(id,x);}));
       return [...m.values()].map((x)=>({formation:x.formation,key:x.key,code:x.code,role:x.role,clubCount:x.clubs.size,complete:x.complete,sparse:x.sparse,...metric(x.rows)})).sort((a,b)=>b.matches-a.matches);
     };
-    return { assignments: build(true), anomalies: build(false), severity, clubs };
+    // Club-level natural experiments are more informative than pooling clubs
+    // with permanently different serialisation patterns. Compare only clubs
+    // that have both clean and anomalous observations, and report the raw
+    // within-club delta alongside XI-strength-adjusted deltas.
+    const switchers = clubs
+      .filter((club) => club.clean.length >= 2 && club.anomalous.length >= 2)
+      .map((club) => {
+        const cleanMetrics = metric(club.clean);
+        const anomalyMetrics = metric(club.anomalous);
+        const cleanMatches = club.clean.map((row) => row.match);
+        const anomalyMatches = club.anomalous.map((row) => row.match);
+        const clubBaseline = buildStrengthBaseline([...cleanMatches, ...anomalyMatches]);
+        const cleanAdjusted = adjustedMetrics(cleanMatches, clubBaseline);
+        const anomalyAdjusted = adjustedMetrics(anomalyMatches, clubBaseline);
+        return {
+          sourceClubId: club.sourceClubId,
+          club: club.club,
+          cleanMetrics,
+          anomalyMetrics,
+          deltaPpg: anomalyMetrics.ppg - cleanMetrics.ppg,
+          deltaGd: anomalyMetrics.gd - cleanMetrics.gd,
+          adjustedDeltaPpg: anomalyAdjusted.adjustedPpg === null || cleanAdjusted.adjustedPpg === null
+            ? null : anomalyAdjusted.adjustedPpg - cleanAdjusted.adjustedPpg,
+          adjustedDeltaGd: anomalyAdjusted.adjustedGd === null || cleanAdjusted.adjustedGd === null
+            ? null : anomalyAdjusted.adjustedGd - cleanAdjusted.adjustedGd,
+        };
+      })
+      .sort((a,b) => (a.adjustedDeltaPpg ?? a.deltaPpg) - (b.adjustedDeltaPpg ?? b.deltaPpg));
+
+    // Persistence separates a stable club-specific encoding from a genuine
+    // within-season change. A combination seen in nearly every analyzable
+    // match for one club is a serialisation convention candidate, even when
+    // it has no complete-XI corroboration elsewhere.
+    const persistenceMap = new Map();
+    analyzableObservations.forEach((row) => {
+      const clubId = String(row.match.sourceClubId || row.match.club || 'unknown');
+      row.assignments.forEach((assignment) => {
+        const id = `${clubId}:${row.formation}:${assignment.key}:${assignment.code}`;
+        const entry = persistenceMap.get(id) || {
+          sourceClubId: row.match.sourceClubId ?? null,
+          club: row.match.club || clubId,
+          formation: row.formation,
+          key: assignment.key,
+          code: assignment.code,
+          role: assignment.role,
+          validated: assignment.validated,
+          matches: 0,
+          fixtures: new Set(),
+        };
+        entry.matches += 1;
+        if (row.match.fixtureId) entry.fixtures.add(String(row.match.fixtureId));
+        persistenceMap.set(id, entry);
+      });
+    });
+    const clubTotals = new Map();
+    analyzableObservations.forEach((row) => {
+      const id = String(row.match.sourceClubId || row.match.club || 'unknown');
+      clubTotals.set(id, (clubTotals.get(id) || 0) + 1);
+    });
+    const persistence = [...persistenceMap.values()].map((entry) => {
+      const clubId = String(entry.sourceClubId || entry.club || 'unknown');
+      const clubMatches = clubTotals.get(clubId) || 0;
+      const share = clubMatches ? entry.matches / clubMatches : 0;
+      return {
+        ...entry,
+        fixtures: [...entry.fixtures],
+        clubMatches,
+        share,
+        classification: share >= 0.8 && entry.matches >= 4
+          ? 'stable club encoding'
+          : share <= 0.2
+            ? 'occasional/change candidate'
+            : 'variable',
+      };
+    }).sort((a,b) => Number(a.validated) - Number(b.validated) || b.share - a.share || b.matches - a.matches);
+
+    // Keep unresolved role encodings out of role-dependent conclusions. Do
+    // not discard these clubs from ordinary Formula Lab analyses: the anomaly
+    // is currently isolated to PlayerRole serialisation, while the other
+    // tactical fields remain independently readable.
+    const roleQuarantine = clubs
+      .map((club) => {
+        const total = club.clean.length + club.anomalous.length;
+        const anomalyShare = total ? club.anomalous.length / total : 0;
+        return {
+          sourceClubId: club.sourceClubId,
+          club: club.club,
+          matches: total,
+          anomalousMatches: club.anomalous.length,
+          anomalyShare,
+          roleAnalysisEligible: anomalyShare < 0.8,
+          reason: anomalyShare >= 0.8
+            ? 'stable unresolved PlayerRole encoding'
+            : 'mixed/mostly corroborated PlayerRole encoding',
+        };
+      })
+      .sort((a,b) => b.anomalyShare - a.anomalyShare || b.matches - a.matches);
+
+    return { assignments: build(true), anomalies: build(false), severity, clubs, switchers, persistence, roleQuarantine };
   }, [worldFormulaMatches, playerRoleEncodingAudit]);
 
   const selectedClubRoleCodes = useMemo(() => {
@@ -1385,7 +1483,25 @@ export default function ManagerLabPage() {
             {validatedRoleAnalysis.clubs.map((r)=><tr key={r.sourceClubId||r.club}><td><strong>{r.club}</strong></td><td>{r.anomalyMetrics.matches}</td><td>{r.anomalyMetrics.ppg===null?'—':r.anomalyMetrics.ppg.toFixed(2)}</td><td>{r.anomalyMetrics.gd===null?'—':r.anomalyMetrics.gd.toFixed(2)}</td><td>{r.cleanMetrics.matches}</td><td>{r.cleanMetrics.ppg===null?'—':r.cleanMetrics.ppg.toFixed(2)}</td><td>{r.cleanMetrics.gd===null?'—':r.cleanMetrics.gd.toFixed(2)}</td></tr>)}
           </tbody></table></div>
         </details>
-        <details><summary><strong>Quarantined sparse-only combinations</strong> · {validatedRoleAnalysis.anomalies.length}</summary>
+        <details open><summary><strong>Within-club natural experiments</strong> · {validatedRoleAnalysis.switchers.length} clubs switch between clean and unresolved role encodings</summary>
+          <p className="muted">Only clubs with at least two matches on each side are shown. Δ compares anomalous/unresolved PlayerRole matches with that same club's clean matches. Adjusted Δ additionally accounts for rounded XI-strength within that club. This is still observational: tactical changes can coincide with role-encoding changes.</p>
+          {validatedRoleAnalysis.switchers.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Clean MP</th><th>Clean PPG</th><th>Unresolved MP</th><th>Unresolved PPG</th><th>Δ PPG</th><th>XI-adj Δ</th><th>Δ GD</th></tr></thead><tbody>
+            {validatedRoleAnalysis.switchers.map((r)=><tr key={`switch:${r.sourceClubId||r.club}`}><td><strong>{r.club}</strong></td><td>{r.cleanMetrics.matches}</td><td>{r.cleanMetrics.ppg?.toFixed(2) ?? '—'}</td><td>{r.anomalyMetrics.matches}</td><td>{r.anomalyMetrics.ppg?.toFixed(2) ?? '—'}</td><td>{r.deltaPpg>=0?'+':''}{r.deltaPpg.toFixed(2)}</td><td>{r.adjustedDeltaPpg===null?'—':`${r.adjustedDeltaPpg>=0?'+':''}${r.adjustedDeltaPpg.toFixed(2)}`}</td><td>{r.deltaGd>=0?'+':''}{r.deltaGd.toFixed(2)}</td></tr>)}
+          </tbody></table></div> : <p className="muted">No club currently has enough clean and unresolved matches for a within-club comparison.</p>}
+        </details>
+        <details><summary><strong>Role-encoding quarantine</strong> · keep stable unresolved clubs out of role conclusions</summary>
+          <p className="muted">Clubs with unresolved PlayerRole encodings in at least 80% of analyzable matches are quarantined from role-dependent interpretation. They remain in ordinary tactical/formula analysis because we have not found evidence that formation, mentality or the other archived instructions are corrupted. Sevilla therefore stays in Formula Lab, but its PlayerRole values do not get treated as decoded roles.</p>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Unresolved MP</th><th>Share</th><th>Role analysis</th><th>Reason</th></tr></thead><tbody>
+            {validatedRoleAnalysis.roleQuarantine.filter((r)=>!r.roleAnalysisEligible).map((r)=><tr key={`quarantine:${r.sourceClubId||r.club}`}><td><strong>{r.club}</strong></td><td>{r.matches}</td><td>{r.anomalousMatches}</td><td>{(r.anomalyShare*100).toFixed(0)}%</td><td>Quarantined</td><td>{r.reason}</td></tr>)}
+          </tbody></table></div>
+        </details>
+        <details><summary><strong>Club persistence of raw role encodings</strong> · {validatedRoleAnalysis.persistence.length} combinations</summary>
+          <p className="muted">Persistence is calculated within each club. ≥80% across at least four matches is treated as a stable club encoding candidate; ≤20% is an occasional/change candidate. This classification describes the archive pattern — it does not claim the sparse code has been semantically decoded.</p>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Formation</th><th>Key</th><th>Code</th><th>Candidate role</th><th>MP</th><th>Share</th><th>Status</th></tr></thead><tbody>
+            {validatedRoleAnalysis.persistence.slice(0,150).map((r)=><tr key={`persist:${r.sourceClubId||r.club}:${r.formation}:${r.key}:${r.code}`}><td><strong>{r.club}</strong></td><td>{r.formation}</td><td><code>{r.key}</code></td><td><code>{r.code}</code></td><td>{r.role}</td><td>{r.matches}/{r.clubMatches}</td><td>{(r.share*100).toFixed(0)}%</td><td>{r.classification}</td></tr>)}
+          </tbody></table></div>
+        </details>
+                <details><summary><strong>Quarantined sparse-only combinations</strong> · {validatedRoleAnalysis.anomalies.length}</summary>
           <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Formation</th><th>Key</th><th>Code</th><th>Candidate role</th><th>MP</th><th>Clubs</th><th>PPG</th><th>GD/game</th></tr></thead><tbody>
             {validatedRoleAnalysis.anomalies.map((r)=><tr key={`${r.formation}:${r.key}:${r.code}`}><td>{r.formation}</td><td><code>{r.key}</code></td><td><code>{r.code}</code></td><td>{r.role}</td><td>{r.matches}</td><td>{r.clubCount}</td><td>{r.ppg===null?'—':r.ppg.toFixed(2)}</td><td>{r.gd===null?'—':r.gd.toFixed(2)}</td></tr>)}
           </tbody></table></div>
