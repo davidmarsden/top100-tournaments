@@ -92,8 +92,8 @@ export async function handler(event) {
           evidenceKeys.push(`${row.auth_user_id}/${row.match_id}/evidence-${slot}.${ext}`);
         }
       }
-      if (evidenceKeys.length) {
-        const { error: evidenceError } = await db.storage.from('match-evidence').remove(evidenceKeys);
+      for (let offset = 0; offset < evidenceKeys.length; offset += 1000) {
+        const { error: evidenceError } = await db.storage.from('match-evidence').remove(evidenceKeys.slice(offset, offset + 1000));
         if (evidenceError) throw evidenceError;
       }
     }
