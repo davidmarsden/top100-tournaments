@@ -1,3 +1,5 @@
+export const config = { schedule: '*/15 * * * *' };
+
 import { createClient } from '@supabase/supabase-js';
 
 function env(name) {
