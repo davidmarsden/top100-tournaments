@@ -107,16 +107,19 @@ if ('serviceWorker' in navigator) {
 
     if (isManagerHost) {
       try {
+        // Only clients already controlled by a legacy worker need the
+        // retirement worker. A clean/current Manager Portal must not create a
+        // new registration: the retirement worker unregisters itself and
+        // navigates clients, so unconditional registration would reload-loop.
+        if (!navigator.serviceWorker.controller) return;
+
         const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((registration) => registration.unregister()));
-        if ('caches' in window) {
-          const keys = await caches.keys();
-          await Promise.all(
-            keys
-              .filter((key) => key.startsWith('top100-tournaments-shell-'))
-              .map((key) => caches.delete(key)),
-          );
-        }
+        const existing = registrations.find((registration) =>
+          registration.scope === `${window.location.origin}/`
+        );
+        if (!existing) return;
+
+        await existing.update();
       } catch (_) {}
       return;
     }

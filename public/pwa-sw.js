@@ -1,84 +1,113 @@
-const CACHE = 'top100-tournaments-shell-v2';
-const CONTROL_FILES = new Set([
-  '/tournaments.webmanifest',
-  '/my-matches.webmanifest',
-  '/voting.webmanifest',
-  '/top100-app-icon.svg',
-]);
-const SHELL = ['/', ...CONTROL_FILES];
+// Top 100 PWA service worker.
+//
+// manager.smtop100.blog must never be controlled by a cached application shell.
+// Older versions of this worker did cache the shared shell, so manager clients
+// that still have one installed need an explicit retirement path.
+const IS_MANAGER_HOST = self.location.hostname === 'manager.smtop100.blog';
 
-async function precacheShell() {
-  const cache = await caches.open(CACHE);
-  const response = await fetch('/', { cache: 'no-store' });
-  if (!response.ok) throw new Error('Could not fetch Top 100 app shell.');
+if (IS_MANAGER_HOST) {
+  self.addEventListener('install', event => {
+    event.waitUntil(self.skipWaiting());
+  });
 
-  await cache.put('/', response.clone());
-  const html = await response.text();
-  const assets = [...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map(match => match[1]);
-  await cache.addAll([...new Set([...SHELL.filter(path => path !== '/'), ...assets])]);
-}
+  self.addEventListener('activate', event => {
+    event.waitUntil((async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter(key => key.startsWith('top100-tournaments-shell-'))
+          .map(key => caches.delete(key)),
+      );
 
-async function networkFirstAndRefresh(request) {
-  const cache = await caches.open(CACHE);
-  try {
-    const response = await fetch(request, { cache: 'no-store' });
-    if (response.ok) await cache.put(request, response.clone());
-    return response;
-  } catch (error) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    throw error;
+      await self.registration.unregister();
+
+      // Existing tabs may still be controlled by the retiring worker until
+      // navigation. Force each one back through the network immediately.
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      await Promise.all(clients.map(client => client.navigate(client.url)));
+    })());
+  });
+
+  // Intentionally no fetch handler on the Manager Portal host.
+} else {
+  const CACHE = 'top100-tournaments-shell-v3';
+  const CONTROL_FILES = new Set([
+    '/tournaments.webmanifest',
+    '/my-matches.webmanifest',
+    '/voting.webmanifest',
+    '/top100-app-icon.svg',
+  ]);
+  const SHELL = ['/', ...CONTROL_FILES];
+
+  async function precacheShell() {
+    const cache = await caches.open(CACHE);
+    const response = await fetch('/', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Could not fetch Top 100 app shell.');
+
+    await cache.put('/', response.clone());
+    const html = await response.text();
+    const assets = [...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map(match => match[1]);
+    await cache.addAll([...new Set([...SHELL.filter(path => path !== '/'), ...assets])]);
   }
-}
 
-self.addEventListener('install', event => {
-  event.waitUntil(precacheShell());
-  self.skipWaiting();
-});
+  async function networkFirstAndRefresh(request) {
+    const cache = await caches.open(CACHE);
+    try {
+      const response = await fetch(request, { cache: 'no-store' });
+      if (response.ok) await cache.put(request, response.clone());
+      return response;
+    } catch (error) {
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      throw error;
+    }
+  }
 
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys
-        .filter(key => key.startsWith('top100-tournaments-shell-') && key !== CACHE)
-        .map(key => caches.delete(key)),
-    )),
-  );
-  self.clients.claim();
-});
+  self.addEventListener('install', event => {
+    event.waitUntil(precacheShell());
+    self.skipWaiting();
+  });
 
-self.addEventListener('fetch', event => {
-  const request = event.request;
-  if (request.method !== 'GET') return;
-
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/')) return;
-
-  // Authenticated manager pages are deliberately network-only. Serving an old
-  // cached shell here can strand users on stale auth/loading code after deploys.
-  if (self.location.hostname === 'manager.smtop100.blog') return;
-
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request, { cache: 'no-store' }).catch(() => caches.match('/')),
+  self.addEventListener('activate', event => {
+    event.waitUntil(
+      caches.keys().then(keys => Promise.all(
+        keys
+          .filter(key => key.startsWith('top100-tournaments-shell-') && key !== CACHE)
+          .map(key => caches.delete(key)),
+      )),
     );
-    return;
-  }
+    self.clients.claim();
+  });
 
-  if (CONTROL_FILES.has(url.pathname)) {
-    event.respondWith(networkFirstAndRefresh(request));
-    return;
-  }
+  self.addEventListener('fetch', event => {
+    const request = event.request;
+    if (request.method !== 'GET') return;
 
-  if (url.pathname.startsWith('/assets/')) {
-    event.respondWith(
-      caches.match(request).then(cached => cached || fetch(request).then(response => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put(request, copy));
-        }
-        return response;
-      })),
-    );
-  }
-});
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/')) return;
+
+    if (request.mode === 'navigate') {
+      event.respondWith(
+        fetch(request, { cache: 'no-store' }).catch(() => caches.match('/')),
+      );
+      return;
+    }
+
+    if (CONTROL_FILES.has(url.pathname)) {
+      event.respondWith(networkFirstAndRefresh(request));
+      return;
+    }
+
+    if (url.pathname.startsWith('/assets/')) {
+      event.respondWith(
+        caches.match(request).then(cached => cached || fetch(request).then(response => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE).then(cache => cache.put(request, copy));
+          }
+          return response;
+        })),
+      );
+    }
+  });
+}
