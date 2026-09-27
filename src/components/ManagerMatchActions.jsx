@@ -24,6 +24,7 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
   const [uploading,setUploading]=useState('');
+  const ALLOWED_EVIDENCE_TYPES = new Set(['image/jpeg','image/png','image/webp','image/gif']);
 
   useEffect(()=>{
     if (!session?.user?.id || !fixtures.length) { setReports({}); return; }
@@ -41,15 +42,19 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
   async function record(match,status) {
     setBusy(match.id+status); setMessage('');
     const now=new Date().toISOString();
-    const payload={match_id:match.id,auth_user_id:session.user.id,tournament_entry_id:selectedEntry.id,status,reported_at:now,updated_at:now};
+    const existing=reports[match.id];
+    const payload={match_id:match.id,auth_user_id:session.user.id,tournament_entry_id:selectedEntry.id,status,reported_at:existing?.reported_at||now,updated_at:now};
     const {data,error}=await supabase.from('manager_match_arrangements').upsert(payload,{onConflict:'match_id,auth_user_id'}).select().single();
-    if(error)setMessage(error.message); else setReports(current=>({...current,[match.id]:data}));
+    if(error){setMessage(error.message);setBusy('');return;}
+    const eventResult=await supabase.from('manager_match_arrangement_events').insert({arrangement_id:data.id,match_id:match.id,auth_user_id:session.user.id,tournament_entry_id:selectedEntry.id,action:status,created_at:now});
+    if(eventResult.error)setMessage('Action saved, but its history entry could not be recorded: '+eventResult.error.message);
+    setReports(current=>({...current,[match.id]:data}));
     setBusy('');
   }
 
   async function uploadEvidence(match,file) {
     if(!file)return;
-    if(!/^image\//.test(file.type)){setMessage('Evidence must be an image.');return;}
+    if(!ALLOWED_EVIDENCE_TYPES.has(file.type)){setMessage('Evidence must be a JPEG, PNG, WebP or GIF image.');return;}
     if(file.size>8*1024*1024){setMessage('Evidence images must be 8 MB or smaller.');return;}
     setUploading(match.id); setMessage('');
     const ext=(file.name.split('.').pop()||'jpg').replace(/[^a-z0-9]/gi,'').toLowerCase();
@@ -57,10 +62,26 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
     const uploaded=await supabase.storage.from('match-evidence').upload(path,file,{contentType:file.type,upsert:false});
     if(uploaded.error){setMessage(uploaded.error.message);setUploading('');return;}
     const current=reports[match.id];
+    if(!current?.status){
+      await supabase.storage.from('match-evidence').remove([path]);
+      setMessage('Record what happened first, then attach evidence to that action.');
+      setUploading('');
+      return;
+    }
     const now=new Date().toISOString();
-    const payload={match_id:match.id,auth_user_id:session.user.id,tournament_entry_id:selectedEntry.id,status:current?.status||(match.home_entry_id===selectedEntry.id?'sent':'received'),reported_at:current?.reported_at||now,evidence_path:path,evidence_name:file.name,updated_at:now};
+    const payload={...current,evidence_path:path,evidence_name:file.name,updated_at:now};
+    delete payload.id; delete payload.created_at;
     const {data,error}=await supabase.from('manager_match_arrangements').upsert(payload,{onConflict:'match_id,auth_user_id'}).select().single();
-    if(error)setMessage(error.message); else setReports(old=>({...old,[match.id]:data}));
+    if(error){
+      await supabase.storage.from('match-evidence').remove([path]);
+      setMessage(error.message);
+    } else {
+      if(current.evidence_path && current.evidence_path!==path) {
+        const removed=await supabase.storage.from('match-evidence').remove([current.evidence_path]);
+        if(removed.error)setMessage('New evidence saved, but the previous file could not be removed: '+removed.error.message);
+      }
+      setReports(old=>({...old,[match.id]:data}));
+    }
     setUploading('');
   }
 
@@ -79,7 +100,7 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
         <div className="match-action-controls">
           {home?<button type="button" onClick={()=>record(match,'sent')} disabled={!!busy}>✓ Request sent</button>:<><button type="button" onClick={()=>record(match,'received')} disabled={!!busy}>✓ Request received</button><button type="button" className="secondary" onClick={()=>record(match,'chased')} disabled={!!busy}>✉️ I chased them</button></>}
           {!done&&<button type="button" className="secondary danger-soft" onClick={()=>record(match,'problem')} disabled={!!busy}>⚠️ Problem arranging match</button>}
-          <label className="button secondary evidence-button">📎 {uploading===match.id?'Uploading…':report?.evidence_path?'Replace evidence':'Add evidence'}<input type="file" accept="image/*" disabled={uploading===match.id} onChange={e=>uploadEvidence(match,e.target.files?.[0])}/></label>
+          <label className="button secondary evidence-button">📎 {uploading===match.id?'Uploading…':report?.evidence_path?'Replace evidence':'Add evidence'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={uploading===match.id} onChange={e=>uploadEvidence(match,e.target.files?.[0])}/></label>
           {report?.evidence_name&&<small>📷 {report.evidence_name}</small>}
         </div>
       </article>
