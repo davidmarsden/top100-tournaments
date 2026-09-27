@@ -107,16 +107,15 @@ if ('serviceWorker' in navigator) {
 
     if (isManagerHost) {
       try {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((registration) => registration.unregister()));
-        if ('caches' in window) {
-          const keys = await caches.keys();
-          await Promise.all(
-            keys
-              .filter((key) => key.startsWith('top100-tournaments-shell-'))
-              .map((key) => caches.delete(key)),
-          );
-        }
+        // Register the current worker once so browsers still controlled by an
+        // older cached-shell worker receive the manager-host retirement worker.
+        // That worker deletes legacy shell caches, unregisters itself and
+        // navigates controlled tabs back through the network.
+        const registration = await navigator.serviceWorker.register('/pwa-sw.js', {
+          scope: '/',
+          updateViaCache: 'none',
+        });
+        await registration.update();
       } catch (_) {}
       return;
     }
