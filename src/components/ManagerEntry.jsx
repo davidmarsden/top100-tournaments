@@ -102,16 +102,22 @@ export default function ManagerEntry({ registrationMode = false }) {
       setAuthStage('Ready to sign in.');
       setAuthLoading(false);
 
+      let initialAuthEventSeen = false;
       const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
         if (!active) return;
         setSession(nextSession);
         setAuthError('');
         setAuthLoading(false);
+
+        // Only consult the old tournaments-host session after auth-js has told
+        // us this origin has no session. Never let legacy migration overwrite
+        // a valid/current Manager Portal or magic-link session.
+        if (!initialAuthEventSeen) {
+          initialAuthEventSeen = true;
+          if (!nextSession) window.setTimeout(tryLegacySessionMigration, 0);
+        }
       });
       subscription = listener.subscription;
-
-      // Legacy migration is best-effort and must never gate the UI.
-      window.setTimeout(tryLegacySessionMigration, 0);
     }
 
     initialiseAuth();
