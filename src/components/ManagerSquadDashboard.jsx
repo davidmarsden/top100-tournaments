@@ -170,7 +170,10 @@ export default function ManagerSquadDashboard() {
 
   const intelligence = useMemo(() => {
     const withCareer = seniorPlayers.filter((player) =>
-      hasNumber(player.careerAppearances) && Number(player.careerAppearances) > 0
+      hasNumber(player.careerAppearances) &&
+      Number(player.careerAppearances) > 0 &&
+      hasNumber(player.careerAveragePerformance) &&
+      Number(player.careerAveragePerformance) > 0
     );
     const formVsCareer = withCareer
       .map((player) => ({ player, delta: performanceDelta(player) }))
@@ -184,6 +187,7 @@ export default function ManagerSquadDashboard() {
       withCareer: withCareer.length,
       outperforming: formVsCareer.filter(({ delta }) => delta > 0).slice(0, 6),
       underperforming: [...formVsCareer].reverse().filter(({ delta }) => delta < 0).slice(0, 6),
+      ratingMoverCount: ratingMovers.length,
       ratingMovers: ratingMovers.slice(0, 10),
       listed,
     };
@@ -242,7 +246,7 @@ export default function ManagerSquadDashboard() {
       <div className="squad-standing-grid">
         <span><strong>{intelligence.withCareer}</strong> career baselines</span>
         <span><strong>{intelligence.outperforming.length}</strong> strongest positive deltas</span>
-        <span><strong>{intelligence.ratingMovers.length}</strong> recent rating movers</span>
+        <span><strong>{intelligence.ratingMoverCount}</strong> recent rating movers</span>
         <span><strong>{intelligence.listed.length}</strong> transfer listed</span>
       </div>
       <div className="portal-grid">
