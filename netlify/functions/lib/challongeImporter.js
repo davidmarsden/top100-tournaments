@@ -82,6 +82,16 @@ function roundName(round) {
   return 'Final';
 }
 
+async function selectAll(builder, pageSize=1000) {
+  const rows=[];
+  for(let from=0;;from+=pageSize){
+    const {data,error}=await builder(from,from+pageSize-1);
+    if(error) throw error;
+    rows.push(...(data||[]));
+    if((data||[]).length<pageSize) return rows;
+  }
+}
+
 async function findOrCreate(db, table, match, insertRow) {
   const existing = await db.from(table).select('id').match(match).maybeSingle();
   if (existing.error) throw existing.error;
@@ -233,12 +243,10 @@ async function importTournament(body) {
 
   // Re-import replaces matches; remove private evidence first because Storage
   // objects are not covered by database cascades.
-  const { data: oldMatches, error: oldMatchesError } = await db.from('matches').select('id').eq('tournament_id', tournamentId);
-  if (oldMatchesError) throw oldMatchesError;
-  const oldMatchIds = (oldMatches || []).map((row) => row.id);
+  const oldMatches = await selectAll((from,to)=>db.from('matches').select('id').eq('tournament_id',tournamentId).range(from,to));
+  const oldMatchIds = oldMatches.map((row) => row.id);
   if (oldMatchIds.length) {
-    const { data: arrangements, error: arrangementsError } = await db.from('manager_match_arrangements').select('auth_user_id,match_id').in('match_id', oldMatchIds);
-    if (arrangementsError && !String(arrangementsError.message || '').includes('does not exist')) throw arrangementsError;
+    const arrangements = await selectAll((from,to)=>db.from('manager_match_arrangements').select('auth_user_id,match_id').in('match_id',oldMatchIds).range(from,to));
     const evidenceKeys = [];
     for (const row of arrangements || []) {
       for (const slot of ['a','b']) for (const ext of ['jpg','png','webp','gif']) {
