@@ -555,7 +555,7 @@ begin
     end if;
 
     insert into public.soccer_manager_players (
-      game_world_id, source_player_id, name, age, rating, position, position_id, nationality, value,
+      game_world_id, source_player_id, name, age, rating, position, position_id, main_position, main_position_id, nationality, value,
       last_seen_at, updated_at
     ) values (
       v_world_id, v_source_player_id,
@@ -577,6 +577,8 @@ begin
           rating=coalesce(public.soccer_manager_players.rating, excluded.rating),
           position=coalesce(public.soccer_manager_players.position, excluded.position),
           position_id=coalesce(public.soccer_manager_players.position_id, excluded.position_id),
+          main_position=coalesce(public.soccer_manager_players.main_position, excluded.main_position),
+          main_position_id=coalesce(public.soccer_manager_players.main_position_id, excluded.main_position_id),
           nationality=coalesce(public.soccer_manager_players.nationality, excluded.nationality),
           value=coalesce(public.soccer_manager_players.value, excluded.value),
           last_seen_at=greatest(public.soccer_manager_players.last_seen_at, excluded.last_seen_at),
