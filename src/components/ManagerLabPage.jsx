@@ -1160,7 +1160,9 @@ export default function ManagerLabPage() {
       });
       const counters = [...counterMap.values()].map((row) => ({...row, ppg: row.points/row.matches, gdPerGame: row.gd/row.matches}))
         .sort((a,b) => b.matches-a.matches || b.ppg-a.ppg || b.gdPerGame-a.gdPerGame).slice(0,3);
-      const previous = hamburgRows.find((match) => match.opponent === fixture.opponent) || null;
+      const previous = hamburgRows
+        .filter((match) => match.opponent === fixture.opponent && match.date && String(match.date) < fixture.date)
+        .sort((a,b) => String(b.date).localeCompare(String(a.date)) || Number(b.fixtureId || 0) - Number(a.fixtureId || 0))[0] || null;
       return {
         ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey,
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
