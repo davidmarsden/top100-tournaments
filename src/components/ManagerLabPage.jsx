@@ -1191,7 +1191,7 @@ export default function ManagerLabPage() {
       return { label: 'Very low', warning: 'Tiny sample — descriptive only.' };
     };
     const strengthSimilarityWeight = (gap, projectedGap) => {
-      if (gap === null || projectedGap === null) return 0.35;
+      if (gap === null || projectedGap === null) return 0;
       const distance = Math.abs(gap - projectedGap);
       if (distance <= 1) return 1;
       if (distance <= 2) return 0.8;
@@ -2119,9 +2119,9 @@ export default function ManagerLabPage() {
               <p className="muted"><strong>Hamburg-strength evidence:</strong> {row.primary.comparablePpg===null?'—':`${row.primary.comparablePpg.toFixed(2)} weighted PPG · ${row.primary.comparableGdPerGame>=0?'+':''}${row.primary.comparableGdPerGame.toFixed(2)} weighted GD/game`} · {row.primary.closeGapMatches} matches within ±2 XI points of Hamburg's projected gap.</p>
               <p className="muted">Hamburg direct: {row.primary.hamburgMatches ? `${row.primary.hamburgMatches} MP · ${row.primary.hamburgPpg.toFixed(2)} PPG · ${row.primary.hamburgGd>=0?'+':''}${row.primary.hamburgGd.toFixed(2)} GD` : 'no archived match using this counter against the same opponent family'}.</p>
               {row.primary.confidence.warning && <p><strong>Sample warning:</strong> {row.primary.confidence.warning}</p>}
-              {row.avoid && <p><strong>Avoid / warning from Hamburg evidence:</strong> {familyLabel(row.avoid.sample)} · {row.avoid.matches} HSV matches against stronger XIs · {row.avoid.ppg.toFixed(2)} PPG · {row.avoid.gdPerGame>=0?'+':''}{row.avoid.gdPerGame.toFixed(2)} GD/game. This is a repeated HSV underperformance signal, not proof that the tactic caused the results.</p>}
               {row.alternative && <p><strong>Alternative:</strong> {familyLabel(row.alternative.sample)} · {row.alternative.matches} world MP · {row.alternative.ppg.toFixed(2)} PPG · {row.alternative.confidence.label} confidence.</p>}
             </> : <p className="muted">{row.counters.length ? 'Paired observations exist, but none yet meet the minimum recommendation threshold of 3 matches across at least 2 clubs. They remain descriptive evidence below.' : 'No paired world evidence yet for the opponent\'s latest family. No recommendation is manufactured from missing data.'}</p>}
+            {row.avoid && <p><strong>Avoid / warning from Hamburg evidence:</strong> {familyLabel(row.avoid.sample)} · {row.avoid.matches} HSV matches against stronger XIs · {row.avoid.ppg.toFixed(2)} PPG · {row.avoid.gdPerGame>=0?'+':''}{row.avoid.gdPerGame.toFixed(2)} GD/game. This is a repeated HSV underperformance signal, not proof that the tactic caused the results.</p>}
             {row.volatile && row.dominant && <>
               <h3>Established-setup contingency</h3>
               <p className="muted">The latest setup is not yet stable ({row.stability5.same}/{row.stability5.matches} of the last 5). Their longer-run family is <strong>{familyLabel(row.dominant.sample)}</strong> ({row.dominant.matches} archived D1 matches), so the dossier keeps a second scenario ready.</p>
