@@ -706,6 +706,14 @@ export default function ManagerLabPage() {
       opponentXiRating: numericValue(match.opponentXiRating),
       xiRatingDifference: numericValue(match.xiRatingDifference),
       xiStrengthBand: strengthBand(match),
+      reportedPlayerCount: numericValue(match.reportedPlayerCount),
+      reportedAgeCount: numericValue(match.reportedAgeCount),
+      reportedRatingCount: numericValue(match.reportedRatingCount),
+      reportedAvgAge: numericValue(match.reportedAvgAge),
+      reportedAvgRating: numericValue(match.reportedAvgRating),
+      reportedYoungCount: numericValue(match.reportedYoungCount),
+      reportedVeteranCount: numericValue(match.reportedVeteranCount),
+      opponentReportedAvgAge: numericValue(match.opponentReportedAvgAge),
       tactics: CURRENT_FORMULA_FIELDS.reduce((values, [, key]) => ({
         ...values,
         [key]: displayTacticValue(key, tacticValue(match, key)),
@@ -805,6 +813,17 @@ export default function ManagerLabPage() {
           fingerprints: selectedClubRoleFingerprints,
         },
       },
+      componentEvidence: componentEvidence.map((effect) => ({
+        instruction: effect.label,
+        key: effect.key,
+        value: displayTacticValue(effect.key, effect.value),
+        matchedStrata: effect.strata,
+        matchesPlayed: effect.matches,
+        clubs: effect.clubCount,
+        deltaPpg: effect.deltaPpg,
+        deltaGd: effect.deltaGd,
+      })),
+      playerComposition,
       instructionEffects: instructionEffects.map((effect) => ({
         instruction: effect.label,
         key: effect.key,
@@ -829,6 +848,105 @@ export default function ManagerLabPage() {
     link.remove();
     URL.revokeObjectURL(url);
   }
+
+  const componentEvidence = useMemo(() => {
+    const filtered = worldFormulaMatches.filter((match) =>
+      (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength)
+    );
+    const effects = [];
+    CURRENT_FORMULA_FIELDS.forEach(([label, key]) => {
+      const controls = TACTIC_KEYS.filter((candidate) => candidate !== key);
+      const strata = new Map();
+      filtered.forEach((match) => {
+        const value = normalizedTacticValue(match, key);
+        const bucket = xiBucket(match.xiRatingDifference);
+        const club = match.sourceClubId;
+        // Unknown controls are not evidence that two tactical states match.
+        // Require all 18 controls to be observed before calling this a
+        // one-instruction-at-a-time comparison.
+        if (value === null || bucket === null || !club ||
+            controls.some((candidate) => normalizedTacticValue(match, candidate) === null)) return;
+        // This is intentionally strict: same club, division, venue, rounded XI
+        // gap and every other opening tactical instruction. Only the nominated
+        // instruction is allowed to differ.
+        const stratumKey = [club, match.competition || '—', match.venue || '—', bucket, tacticSignature(match, controls)].join('|');
+        const stratum = strata.get(stratumKey) || new Map();
+        const sample = stratum.get(value) || [];
+        sample.push(match);
+        stratum.set(value, sample);
+        strata.set(stratumKey, stratum);
+      });
+      const totals = new Map();
+      strata.forEach((values) => {
+        const variants = [...values.entries()];
+        if (variants.length < 2) return;
+        variants.forEach(([value, sample]) => {
+          const alternatives = variants.filter(([other]) => other !== value).flatMap(([, rows]) => rows);
+          if (!alternatives.length) return;
+          const ppg = sample.reduce((sum, match) => sum + resultPoints(match.result), 0) / sample.length;
+          const altPpg = alternatives.reduce((sum, match) => sum + resultPoints(match.result), 0) / alternatives.length;
+          const gd = sample.reduce((sum, match) => sum + (Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0), 0) / sample.length;
+          const altGd = alternatives.reduce((sum, match) => sum + (Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0), 0) / alternatives.length;
+          const entry = totals.get(value) || { key, label, value, strata: 0, matches: 0, weightedDeltaPpg: 0, weightedDeltaGd: 0, clubs: new Set() };
+          entry.strata += 1;
+          entry.matches += sample.length;
+          entry.weightedDeltaPpg += (ppg - altPpg) * sample.length;
+          entry.weightedDeltaGd += (gd - altGd) * sample.length;
+          sample.forEach((match) => match.sourceClubId && entry.clubs.add(match.sourceClubId));
+          totals.set(value, entry);
+        });
+      });
+      totals.forEach((entry) => effects.push({
+        ...entry,
+        deltaPpg: entry.weightedDeltaPpg / entry.matches,
+        deltaGd: entry.weightedDeltaGd / entry.matches,
+        clubCount: entry.clubs.size,
+      }));
+    });
+    return effects.sort((a,b) => b.strata - a.strata || b.matches - a.matches || Math.abs(b.deltaPpg) - Math.abs(a.deltaPpg));
+  }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
+
+  const playerComposition = useMemo(() => {
+    const filtered = worldFormulaMatches.filter((match) =>
+      (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength)
+    );
+    const byClub = new Map();
+    filtered.forEach((match) => {
+      const count = numericValue(match.reportedPlayerCount);
+      const ageCount = numericValue(match.reportedAgeCount);
+      const ratingCount = numericValue(match.reportedRatingCount);
+      const age = numericValue(match.reportedAvgAge);
+      if (!match.sourceClubId || !count || !ageCount || age === null) return;
+      const row = byClub.get(match.sourceClubId) || {
+        sourceClubId: match.sourceClubId, club: match.club || match.sourceClubId,
+        matches: 0, playerObservations: 0, ageObservations: 0, ageWeighted: 0, ratingWeighted: 0,
+        ratingObservations: 0, young: 0, veterans: 0, xi: [],
+      };
+      row.matches += 1;
+      row.playerObservations += count;
+      row.ageObservations += ageCount;
+      row.ageWeighted += age * ageCount;
+      const rating = numericValue(match.reportedAvgRating);
+      if (rating !== null && ratingCount) { row.ratingWeighted += rating * ratingCount; row.ratingObservations += ratingCount; }
+      row.young += numericValue(match.reportedYoungCount) || 0;
+      row.veterans += numericValue(match.reportedVeteranCount) || 0;
+      const xi = numericValue(match.ourXiRating);
+      if (xi !== null) row.xi.push(xi);
+      byClub.set(match.sourceClubId, row);
+    });
+    return [...byClub.values()].map((row) => ({
+      sourceClubId: row.sourceClubId,
+      club: row.club,
+      matches: row.matches,
+      avgAge: row.ageObservations ? row.ageWeighted / row.ageObservations : null,
+      avgReportedRating: row.ratingObservations ? row.ratingWeighted / row.ratingObservations : null,
+      youngShare: row.ageObservations ? row.young / row.ageObservations : null,
+      veteranShare: row.ageObservations ? row.veterans / row.ageObservations : null,
+      avgXiRating: row.xi.length ? row.xi.reduce((a,b)=>a+b,0)/row.xi.length : null,
+    })).sort((a,b) => (a.avgAge ?? 99) - (b.avgAge ?? 99));
+  }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
 
   const instructionEffects = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
@@ -1803,6 +1921,22 @@ export default function ManagerLabPage() {
             <td>{group.adjustedGd === null ? '—' : `${group.adjustedGd >= 0 ? '+' : ''}${group.adjustedGd.toFixed(2)}`}</td>
           </tr>)}
         </tbody></table></div>
+      </section>}
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>Tactical component stress test</h2>
+        <p className="muted">This is the strictest component test in Formula Lab: same club, division, venue, rounded XI-strength gap and identical values for the other 18 opening instructions. Only one instruction is allowed to change. It includes the five core family fields, so it can test whether the 4-2-3-1 B · Attacking · Mixed · Down Both Flanks · Fast signal survives one-component-at-a-time comparisons. Empty or tiny samples are evidence that S28 does not yet isolate that component — not evidence of no effect.</p>
+        {componentEvidence.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Instruction</th><th>Value</th><th>Matched strata</th><th>MP</th><th>Clubs</th><th>Δ PPG</th><th>Δ GD</th></tr></thead><tbody>
+          {componentEvidence.map((effect) => <tr key={`component:${effect.key}:${effect.value}`}><td><strong>{effect.label}</strong></td><td>{displayTacticValue(effect.key, effect.value)}</td><td>{effect.strata}</td><td>{effect.matches}</td><td>{effect.clubCount}</td><td>{effect.deltaPpg>=0?'+':''}{effect.deltaPpg.toFixed(2)}</td><td>{effect.deltaGd>=0?'+':''}{effect.deltaGd.toFixed(2)}</td></tr>)}
+        </tbody></table></div> : <p className="muted">No one-instruction switches survive these controls in the current cohort. That means the archive cannot yet attribute the package's advantage to a single instruction.</p>}
+      </section>}
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>Player composition context</h2>
+        <p className="muted">Age and overall rating come from the players archived in each match report. This is a match-day reported-player profile, not a starting-XI age, market-value or potential model. The archive does not currently contain preferred-role suitability, so Manager Lab does not pretend to measure it. XI strength remains the cleaner control for current playing strength; age helps expose very different squad-building profiles behind similar tactical results.</p>
+        {playerComposition.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Avg age</th><th>≤21</th><th>30+</th><th>Reported rating</th><th>XI rating</th></tr></thead><tbody>
+          {playerComposition.map((row) => <tr key={`player-context:${row.sourceClubId}`}><td><strong>{row.club}</strong></td><td>{row.matches}</td><td>{row.avgAge===null?'—':row.avgAge.toFixed(1)}</td><td>{row.youngShare===null?'—':`${(row.youngShare*100).toFixed(0)}%`}</td><td>{row.veteranShare===null?'—':`${(row.veteranShare*100).toFixed(0)}%`}</td><td>{row.avgReportedRating===null?'—':row.avgReportedRating.toFixed(1)}</td><td>{row.avgXiRating===null?'—':row.avgXiRating.toFixed(1)}</td></tr>)}
+        </tbody></table></div> : <p className="muted">Player age/rating context is not available yet. Apply the accompanying database migration, then reload Formula Lab.</p>}
       </section>}
 
       {worldFormulaMatches.length > 0 && <section className="card">
