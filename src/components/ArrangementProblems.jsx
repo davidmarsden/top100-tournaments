@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 export default function ArrangementProblems({ selectedTournament }) {
   const [rows,setRows]=useState([]);
   const [error,setError]=useState('');
+  const [refreshKey,setRefreshKey]=useState(0);
   useEffect(()=>{ let live=true;
     async function load(){
       if(!selectedTournament?.id){setRows([]);return;}
@@ -12,7 +13,7 @@ export default function ArrangementProblems({ selectedTournament }) {
         .eq('status','problem').eq('matches.tournament_id',selectedTournament.id).order('updated_at',{ascending:false});
       if(!live)return; if(error){setError(error.message);setRows([]);}else{setError('');setRows(data||[]);}
     } load(); return()=>{live=false};
-  },[selectedTournament?.id]);
+  },[selectedTournament?.id,refreshKey]);
   async function openEvidence(row){
     setError('');
     const {data:pathData,error:pathError}=await supabase.rpc('get_manager_match_evidence_path',{p_arrangement_id:row.id});
@@ -21,7 +22,7 @@ export default function ArrangementProblems({ selectedTournament }) {
     if(error){setError(error.message);return;} window.open(data.signedUrl,'_blank','noopener,noreferrer');
   }
   return <section className="arrangement-problems">
-    <div className="card-header"><p className="eyebrow">Arrangement problems</p><h3>Manager escalations</h3></div>
+    <div className="card-header row"><div><p className="eyebrow">Arrangement problems</p><h3>Manager escalations</h3></div><button type="button" className="secondary" onClick={()=>setRefreshKey(k=>k+1)}>Refresh escalations</button></div>
     {error&&<p className="warning-card">{error}</p>}
     {!rows.length?<p className="muted">No arrangement problems have been reported for this tournament.</p>:
       <div className="fixture-list">{rows.map(row=>{const match=row.matches; const home=match?.home_entry?.team?.name||'Home'; const away=match?.away_entry?.team?.name||'Away'; return <article className="portal-fixture" key={row.id}>
