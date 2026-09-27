@@ -2038,7 +2038,7 @@ export default function ManagerLabPage() {
       {worldFormulaMatches.length > 0 && <section className="card">
         <p className="eyebrow">Hamburger SV · Division 1 survival</p>
         <h2>Run-in Lab · opponent dossiers</h2>
-        <p className="muted">Each remaining fixture now has a live scouting dossier. Stability measures the opponent's latest five-field tactical family over their last 5/10 archived D1 matches. Counter evidence is paired league evidence from all five Top 100 divisions. Ranking shrinks tiny samples toward 1.50 PPG so one freak result cannot become a “magic counter”; Hamburg's own direct evidence is kept separate.</p>
+        <p className="muted">Each remaining fixture now has a live scouting dossier. Stability measures the opponent's latest five-field tactical family over their last 5/10 archived D1 matches. Counter evidence is paired league evidence from all five Top 100 divisions. Ranking shrinks tiny samples toward 1.50 PPG so one freak result cannot become a “magic counter”; Hamburg's own direct evidence is kept separate. Once a five-field counter qualifies, the Lab also profiles every captured secondary instruction inside that supporting sample and prescribes only replicated values (≥60% share, ≥3 observations, ≥2 clubs).</p>
         <div className="run-in-dossiers">
           {runInLab.map((row, rowIndex) => <details className="card" key={`run-in:${row.date}:${row.opponent}`} open={rowIndex === 0}>
             <summary><strong>{row.date} · {row.venue} · {row.opponent}</strong>{row.primary ? <span> · plan: {familyLabel(row.primary.sample)} · {row.primary.confidence.label} confidence</span> : row.volatile && row.dominantPrimary ? <span> · contingency: {familyLabel(row.dominantPrimary.sample)} for established setup · {row.dominantPrimary.confidence.label} confidence</span> : null}</summary>
@@ -2052,7 +2052,16 @@ export default function ManagerLabPage() {
             <h3>{row.opponent} plan</h3>
             {row.primary ? <>
               <p><strong>Primary:</strong> {familyLabel(row.primary.sample)} <strong>· {row.primary.confidence.label} confidence</strong></p>
-              <p className="muted"><strong>Evidence-backed fields:</strong> {familyLabel(row.primary.sample)}. Secondary instructions are deliberately not prescribed because this counter evidence is grouped only on formation, mentality, passing, attacking style and tempo.</p>
+              <p className="muted"><strong>Evidence-backed core:</strong> {familyLabel(row.primary.sample)}. Secondary instructions below are profiled only within the matches supporting this exact counter family; a value is prescribed only when it has ≥60% share, ≥3 observations and ≥2 clubs.</p>
+              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Secondary instruction</th><th>Evidence leader</th><th>Share</th><th>Replication</th><th>Call</th></tr></thead><tbody>
+                {row.primary.secondaryInstructions.map((instruction) => <tr key={`primary-secondary:${instruction.key}`}>
+                  <td><strong>{instruction.label}</strong></td>
+                  <td>{instruction.leader ? displayTacticValue(instruction.key, instruction.leader.value) : '—'}</td>
+                  <td>{instruction.share === null ? '—' : `${instruction.leader.matches}/${instruction.observed} (${(instruction.share*100).toFixed(0)}%)`}</td>
+                  <td>{instruction.leader ? `${instruction.leader.clubCount} clubs · ${instruction.leader.divisionCount} divisions` : '—'}</td>
+                  <td>{instruction.recommended ? <strong>{displayTacticValue(instruction.key, instruction.leader.value)}</strong> : <span className="muted">Mixed / uncertain</span>}</td>
+                </tr>)}
+              </tbody></table></div>
               <p className="muted">Whole world: {row.primary.matches} MP · {row.primary.clubCount} clubs · {row.primary.divisionCount} divisions · {row.primary.ppg.toFixed(2)} PPG · {row.primary.wins} wins · {row.primary.gdPerGame>=0?'+':''}{row.primary.gdPerGame.toFixed(2)} GD/game{row.primary.avgXiGap===null?'':` · avg Δ XI ${row.primary.avgXiGap>=0?'+':''}${row.primary.avgXiGap.toFixed(1)}`}.</p>
               <p className="muted">Hamburg direct: {row.primary.hamburgMatches ? `${row.primary.hamburgMatches} MP · ${row.primary.hamburgPpg.toFixed(2)} PPG · ${row.primary.hamburgGd>=0?'+':''}${row.primary.hamburgGd.toFixed(2)} GD` : 'no archived match using this counter against the same opponent family'}.</p>
               {row.primary.confidence.warning && <p><strong>Sample warning:</strong> {row.primary.confidence.warning}</p>}
@@ -2064,6 +2073,11 @@ export default function ManagerLabPage() {
               {row.dominantPrimary ? <>
                 <p><strong>If the established setup returns:</strong> {familyLabel(row.dominantPrimary.sample)} <strong>· {row.dominantPrimary.confidence.label} confidence</strong></p>
                 <p className="muted">Scenario evidence: {row.dominantPrimary.matches} world MP · {row.dominantPrimary.clubCount} clubs · {row.dominantPrimary.ppg.toFixed(2)} PPG · {row.dominantPrimary.gdPerGame>=0?'+':''}{row.dominantPrimary.gdPerGame.toFixed(2)} GD/game.</p>
+                <details><summary><strong>Secondary instructions for this contingency</strong></summary>
+                  <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Instruction</th><th>Leader</th><th>Share</th><th>Call</th></tr></thead><tbody>
+                    {row.dominantPrimary.secondaryInstructions.map((instruction) => <tr key={`dominant-secondary:${instruction.key}`}><td><strong>{instruction.label}</strong></td><td>{instruction.leader ? displayTacticValue(instruction.key, instruction.leader.value) : '—'}</td><td>{instruction.share === null ? '—' : `${instruction.leader.matches}/${instruction.observed} (${(instruction.share*100).toFixed(0)}%)`}</td><td>{instruction.recommended ? <strong>{displayTacticValue(instruction.key, instruction.leader.value)}</strong> : 'Mixed / uncertain'}</td></tr>)}
+                  </tbody></table></div>
+                </details>
                 {row.dominantAlternative && <p className="muted"><strong>Scenario alternative:</strong> {familyLabel(row.dominantAlternative.sample)} · {row.dominantAlternative.matches} MP · {row.dominantAlternative.ppg.toFixed(2)} PPG.</p>}
               </> : <p className="muted">No plan for the longer-run family yet clears the same 3-match / 2-club evidence threshold.</p>}
             </>}
