@@ -61,23 +61,23 @@ begin
     ) xi on true
     left join lateral (
       select count(*)::integer player_count,
-        count(nullif(player->>'age',''))::integer age_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 15 and 50)::integer age_count,
         count(nullif(player->>'overallRating',''))::integer rating_count,
-        round(avg(nullif(player->>'age','')::numeric),2) avg_age,
+        round(avg(nullif(player->>'age','')::numeric) filter (where nullif(player->>'age','')::numeric between 15 and 50),2) avg_age,
         round(avg(nullif(player->>'overallRating','')::numeric),2) avg_rating,
-        count(*) filter (where nullif(player->>'age','')::numeric <= 21)::integer young_count,
-        count(*) filter (where nullif(player->>'age','')::numeric >= 30)::integer veteran_count
+        count(*) filter (where nullif(player->>'age','')::numeric between 15 and 21)::integer young_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 30 and 50)::integer veteran_count
       from jsonb_array_elements(coalesce(p.source_data->'players','[]'::jsonb)) e(player)
       where player->>'teamSide'=p.side
     ) squad on true
     left join lateral (
       select count(*)::integer player_count,
-        count(nullif(player->>'age',''))::integer age_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 15 and 50)::integer age_count,
         count(nullif(player->>'overallRating',''))::integer rating_count,
-        round(avg(nullif(player->>'age','')::numeric),2) avg_age,
+        round(avg(nullif(player->>'age','')::numeric) filter (where nullif(player->>'age','')::numeric between 15 and 50),2) avg_age,
         round(avg(nullif(player->>'overallRating','')::numeric),2) avg_rating,
-        count(*) filter (where nullif(player->>'age','')::numeric <= 21)::integer young_count,
-        count(*) filter (where nullif(player->>'age','')::numeric >= 30)::integer veteran_count
+        count(*) filter (where nullif(player->>'age','')::numeric between 15 and 21)::integer young_count,
+        count(*) filter (where nullif(player->>'age','')::numeric between 30 and 50)::integer veteran_count
       from jsonb_array_elements(coalesce(p.source_data->'players','[]'::jsonb)) e(player)
       where player->>'teamSide'=case when p.side='h' then 'a' else 'h' end
     ) opp_squad on true
