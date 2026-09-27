@@ -93,7 +93,7 @@ button.danger:disabled, .danger:disabled { opacity: 0.5; cursor: not-allowed; }
   .bracket-mobile-hint { display: block; }
   .visual-bracket-scroll { scroll-snap-type: x mandatory; scroll-padding-left: 0; overscroll-behavior-x: contain; padding-right: 12px; }
   .visual-bracket { display: flex; gap: 12px; min-width: 0; width: max-content; align-items: stretch; }
-  .bracket-round-column, .bracket-champion-column { flex: 0 0 calc(50vw - 22px); width: calc(50vw - 22px); max-width: 230px; scroll-snap-align: start; scroll-snap-stop: always; }
+  .bracket-round-column, .bracket-champion-column { flex: 0 0 calc(50vw - 30px); width: calc(50vw - 30px); max-width: 220px; scroll-snap-align: start; scroll-snap-stop: always; }
   .bracket-round-title { padding: .65rem .35rem; font-size: .86rem; }
   .bracket-team { grid-template-columns: minmax(0, 1fr) auto; gap: 4px; padding: .62rem .55rem; }
   .bracket-team b { display: none; }
@@ -127,8 +127,11 @@ button.danger:disabled, .danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 420px) and (orientation: portrait) {
   .visual-bracket { gap: 10px; }
-  .bracket-round-column, .bracket-champion-column { flex-basis: calc(50vw - 20px); width: calc(50vw - 20px); }
-  .bracket-team strong { font-size: .84rem; }
+  .bracket-round-column, .bracket-champion-column { flex-basis: calc(50vw - 29px); width: calc(50vw - 29px); }
+  .bracket-team strong { font-size: .8rem; }
+  .bracket-team { padding-left: .42rem; padding-right: .42rem; }
+  .bracket-seed-pill { font-size: .7rem; padding: .18rem .32rem; }
+  .bracket-round-title { padding-left: .2rem; padding-right: .2rem; }
   .bracket-team span { min-width: 20px; font-size: .9rem; }
   .bracket-tie small { font-size: .68rem; line-height: 1.25; }
   .bracket-round-title { font-size: .8rem; }
