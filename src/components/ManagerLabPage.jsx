@@ -1214,7 +1214,11 @@ export default function ManagerLabPage() {
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
         projectedXiGap: hamburgXi !== null && latestXi !== null ? hamburgXi-latestXi : null,
-        counters, primary: counters[0] || null, alternative: counters[1] || null,
+        counters,
+        // A recommendation needs replication. One- and two-match observations
+        // remain visible in the shortlist, but are descriptive rather than plans.
+        primary: counters.find((counter) => counter.matches >= 3 && counter.clubCount >= 2) || null,
+        alternative: counters.filter((counter) => counter.matches >= 3 && counter.clubCount >= 2)[1] || null,
       };
     });
   }, [worldFormulaMatches]);
@@ -1996,12 +2000,12 @@ export default function ManagerLabPage() {
             <h3>{row.opponent} plan</h3>
             {row.primary ? <>
               <p><strong>Primary:</strong> {familyLabel(row.primary.sample)} <strong>· {row.primary.confidence.label} confidence</strong></p>
-              <p className="muted">{formulaText(row.primary.sample)}</p>
+              <p className="muted"><strong>Evidence-backed fields:</strong> {familyLabel(row.primary.sample)}. Secondary instructions are deliberately not prescribed because this counter evidence is grouped only on formation, mentality, passing, attacking style and tempo.</p>
               <p className="muted">Whole world: {row.primary.matches} MP · {row.primary.clubCount} clubs · {row.primary.divisionCount} divisions · {row.primary.ppg.toFixed(2)} PPG · {row.primary.wins} wins · {row.primary.gdPerGame>=0?'+':''}{row.primary.gdPerGame.toFixed(2)} GD/game{row.primary.avgXiGap===null?'':` · avg Δ XI ${row.primary.avgXiGap>=0?'+':''}${row.primary.avgXiGap.toFixed(1)}`}.</p>
               <p className="muted">Hamburg direct: {row.primary.hamburgMatches ? `${row.primary.hamburgMatches} MP · ${row.primary.hamburgPpg.toFixed(2)} PPG · ${row.primary.hamburgGd>=0?'+':''}${row.primary.hamburgGd.toFixed(2)} GD` : 'no archived match using this counter against the same opponent family'}.</p>
               {row.primary.confidence.warning && <p><strong>Sample warning:</strong> {row.primary.confidence.warning}</p>}
               {row.alternative && <p><strong>Alternative:</strong> {familyLabel(row.alternative.sample)} · {row.alternative.matches} world MP · {row.alternative.ppg.toFixed(2)} PPG · {row.alternative.confidence.label} confidence.</p>}
-            </> : <p className="muted">No paired world evidence yet for the opponent's latest family. No recommendation is manufactured from missing data.</p>}
+            </> : <p className="muted">{row.counters.length ? 'Paired observations exist, but none yet meet the minimum recommendation threshold of 3 matches across at least 2 clubs. They remain descriptive evidence below.' : 'No paired world evidence yet for the opponent\'s latest family. No recommendation is manufactured from missing data.'}</p>}
             {row.counters.length > 0 && <>
               <h3>Empirical counter shortlist</h3>
               <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Counter family</th><th>World</th><th>Replication</th><th>Hamburg direct</th><th>Confidence</th></tr></thead><tbody>
