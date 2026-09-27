@@ -256,10 +256,13 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
     <div className="card-header">
       <p className="eyebrow">v0.3 · persistent source layer</p>
       <h2>Sync review</h2>
-      <p>Staged Soccer Manager data stays private here until you approve it into the canonical source layer. Approval still does not update the public Top 100 archive yet.</p>
+      <p>Staged Soccer Manager data stays private here until you approve it into the canonical source layer. Approval updates the canonical source only; after approving, use the archive adapter below to apply the approved data to the relevant Top 100 archive.</p>
     </div>
 
     {status && <p className="status">{status}</p>}
+    {status && status.includes(' approved.') && <p className="status">
+      Approval complete. Next step: use <strong>Apply players &amp; transfers</strong> below for squad/player data (or the matching archive button for other data). Player Lab reads the applied player archive, not the canonical review layer.
+    </p>}
 
     <div className="sm-sync-review-layout">
       <aside className="sm-sync-run-list">
