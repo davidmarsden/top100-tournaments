@@ -40,15 +40,15 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
   }),[fixtures,selectedEntry,reports]);
 
   async function record(match,status) {
+    if(uploading){ setMessage('Wait for the evidence upload to finish before changing the fixture status.'); return; }
     setBusy(match.id+status); setMessage('');
-    const now=new Date().toISOString();
-    const existing=reports[match.id];
-    const payload={match_id:match.id,auth_user_id:session.user.id,tournament_entry_id:selectedEntry.id,status,reported_at:existing?.reported_at||now,updated_at:now};
-    const {data,error}=await supabase.from('manager_match_arrangements').upsert(payload,{onConflict:'match_id,auth_user_id'}).select().single();
+    const {data,error}=await supabase.rpc('record_manager_match_arrangement_action',{
+      p_match_id: match.id,
+      p_tournament_entry_id: selectedEntry.id,
+      p_status: status,
+    });
     if(error){setMessage(error.message);setBusy('');return;}
-    const eventResult=await supabase.from('manager_match_arrangement_events').insert({arrangement_id:data.id,match_id:match.id,auth_user_id:session.user.id,tournament_entry_id:selectedEntry.id,action:status,created_at:now});
-    if(eventResult.error)setMessage('Action saved, but its history entry could not be recorded: '+eventResult.error.message);
-    setReports(current=>({...current,[match.id]:data}));
+    setReports(current=>({...current,[match.id]:Array.isArray(data)?data[0]:data}));
     setBusy('');
   }
 
@@ -68,19 +68,21 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
       setUploading('');
       return;
     }
-    const now=new Date().toISOString();
-    const payload={...current,evidence_path:path,evidence_name:file.name,updated_at:now};
-    delete payload.id; delete payload.created_at;
-    const {data,error}=await supabase.from('manager_match_arrangements').upsert(payload,{onConflict:'match_id,auth_user_id'}).select().single();
+    const previousPath=current.evidence_path;
+    const {data,error}=await supabase.rpc('attach_manager_match_evidence',{
+      p_match_id: match.id,
+      p_evidence_path: path,
+      p_evidence_name: file.name,
+    });
     if(error){
       await supabase.storage.from('match-evidence').remove([path]);
       setMessage(error.message);
     } else {
-      if(current.evidence_path && current.evidence_path!==path) {
-        const removed=await supabase.storage.from('match-evidence').remove([current.evidence_path]);
+      if(previousPath && previousPath!==path) {
+        const removed=await supabase.storage.from('match-evidence').remove([previousPath]);
         if(removed.error)setMessage('New evidence saved, but the previous file could not be removed: '+removed.error.message);
       }
-      setReports(old=>({...old,[match.id]:data}));
+      setReports(old=>({...old,[match.id]:Array.isArray(data)?data[0]:data}));
     }
     setUploading('');
   }
@@ -98,8 +100,8 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
         <div className="match-action-fixture"><strong>{opponent}</strong><span>{match.round} · {match.bracket||match.stage}</span><time>{dateLabel(match.fixture_date)}</time></div>
         <div className="match-action-advice">{done?<><strong>Nothing else to do.</strong><span>{home?'Friendly request recorded as sent.':'Friendly request recorded as received.'}</span></>:report?.status==='chased'?<><strong>Chase recorded.</strong><span>Waiting for {opponent}. Add evidence or flag a problem if needed.</span></>:report?.status==='problem'?<><strong>Needs organiser help.</strong><span>Your problem report is recorded. Add evidence below if you have it.</span></>:<span>{home?`Send the Soccer Manager friendly request to ${opponent}.`:`Expect a friendly request from ${opponent}. If it has not arrived, chase them — do not wait for the deadline.`}</span>}</div>
         <div className="match-action-controls">
-          {home?<button type="button" onClick={()=>record(match,'sent')} disabled={!!busy}>✓ Request sent</button>:<><button type="button" onClick={()=>record(match,'received')} disabled={!!busy}>✓ Request received</button><button type="button" className="secondary" onClick={()=>record(match,'chased')} disabled={!!busy}>✉️ I chased them</button></>}
-          {!done&&<button type="button" className="secondary danger-soft" onClick={()=>record(match,'problem')} disabled={!!busy}>⚠️ Problem arranging match</button>}
+          {home?<button type="button" onClick={()=>record(match,'sent')} disabled={!!busy||!!uploading}>✓ Request sent</button>:<><button type="button" onClick={()=>record(match,'received')} disabled={!!busy||!!uploading}>✓ Request received</button><button type="button" className="secondary" onClick={()=>record(match,'chased')} disabled={!!busy||!!uploading}>✉️ I chased them</button></>}
+          {report?.status!=='problem'&&<button type="button" className="secondary danger-soft" onClick={()=>record(match,'problem')} disabled={!!busy||!!uploading}>⚠️ Problem arranging match</button>}
           <label className="button secondary evidence-button">📎 {uploading===match.id?'Uploading…':report?.evidence_path?'Replace evidence':'Add evidence'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={uploading===match.id} onChange={e=>uploadEvidence(match,e.target.files?.[0])}/></label>
           {report?.evidence_name&&<small>📷 {report.evidence_name}</small>}
         </div>
