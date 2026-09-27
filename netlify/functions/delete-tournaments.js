@@ -30,6 +30,16 @@ function userClient(token) {
   });
 }
 
+async function selectAll(builder, pageSize=1000) {
+  const rows=[];
+  for(let from=0;;from+=pageSize){
+    const {data,error}=await builder(from,from+pageSize-1);
+    if(error) throw error;
+    rows.push(...(data||[]));
+    if((data||[]).length<pageSize) return rows;
+  }
+}
+
 async function deleteByTournament(db, table, ids) {
   const { error } = await db.from(table).delete().in('tournament_id', ids);
   if (error && !String(error.message || '').includes('does not exist')) throw error;
@@ -74,18 +84,17 @@ export async function handler(event) {
     if (!ids.length) return json(400, { ok: false, error: 'No tournament IDs supplied' });
 
     const db = adminClient();
-    const { data: matchRows, error: matchError } = await db.from('matches').select('id').in('tournament_id', ids);
-    if (matchError) throw matchError;
-    const matchIds = (matchRows || []).map((row) => row.id);
+    const matchRows = await selectAll((from,to)=>db.from('matches').select('id').in('tournament_id',ids).range(from,to));
+    const matchIds = matchRows.map((row) => row.id);
 
     // Storage objects are not removed by relational cascades. Delete all bounded
     // evidence objects for arrangements belonging to matches being torn down.
     if (matchIds.length) {
-      const { data: arrangements, error: arrangementError } = await db
+      const arrangements = await selectAll((from,to)=>db
         .from('manager_match_arrangements')
         .select('auth_user_id,match_id')
-        .in('match_id', matchIds);
-      if (arrangementError && !String(arrangementError.message || '').includes('does not exist')) throw arrangementError;
+        .in('match_id',matchIds)
+        .range(from,to));
       const evidenceKeys = [];
       for (const row of arrangements || []) {
         for (const slot of ['a','b']) for (const ext of ['jpg','png','webp','gif']) {
