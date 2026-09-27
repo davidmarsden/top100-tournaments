@@ -23,7 +23,9 @@ function withAuthTimeout(promise, label = 'Sign-in check', ms = AUTH_CHECK_TIMEO
 export default function ManagerEntry({ registrationMode = false }) {
   const returnTo = (() => { const value = new URLSearchParams(window.location.search).get('returnTo'); try { const url = new URL(value || ''); return url.hostname.endsWith('.smtop100.blog') ? url.toString() : ''; } catch { return ''; } })();
   const [session, setSession] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  // Never block the sign-in form on session recovery. A browser with no usable
+  // session must be able to type an email immediately; auth recovery runs behind it.
+  const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authStage, setAuthStage] = useState('Starting Manager Portal…');
 
@@ -94,6 +96,7 @@ export default function ManagerEntry({ registrationMode = false }) {
 
     async function initialiseAuth() {
       try {
+        setAuthLoading(true);
         setAuthStage('Checking this browser for your Top 100 sign-in…');
         // ManagerEntry is the single auth owner for My Matches. Child
         // components consume this session instead of racing getSession() and
@@ -139,7 +142,13 @@ export default function ManagerEntry({ registrationMode = false }) {
             // Remove this project's persisted auth token directly, then reload.
             const projectRef = new URL(supabase.supabaseUrl).hostname.split('.')[0];
             window.localStorage.removeItem(`sb-${projectRef}-auth-token`);
-            window.location.reload();
+            // Do not reload here: that can repeatedly remove the email form on
+            // browsers whose auth recovery is the problem. Stay signed out and
+            // let the user start a fresh magic-link sign-in instead.
+            setSession(null);
+            setAuthStage('Previous browser sign-in could not be restored.');
+            setAuthError('');
+            setAuthLoading(false);
             return;
           }
         } catch { /* fall through to the visible recovery screen */ }
