@@ -25,6 +25,7 @@ export default function ManagerEntry({ registrationMode = false }) {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [authStage, setAuthStage] = useState('Starting Manager Portal…');
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) {
@@ -93,10 +94,18 @@ export default function ManagerEntry({ registrationMode = false }) {
 
     async function initialiseAuth() {
       try {
+        setAuthStage('Checking this browser for your Top 100 sign-in…');
         // ManagerEntry is the single auth owner for My Matches. Child
         // components consume this session instead of racing getSession() and
         // onAuthStateChange() calls against Supabase's browser Web Lock.
-        const { data, error } = await withAuthTimeout(supabase.auth.getSession());
+        // Let auth-js complete magic-link/session initialization once, but do not
+        // try to re-apply tokens captured from localStorage. Re-applying them can
+        // both reacquire a wedged Web Lock and overwrite a fresh magic-link session.
+        setAuthStage('Checking your Top 100 sign-in…');
+        const { data, error } = await withAuthTimeout(
+          supabase.auth.getSession(),
+          'Sign-in check',
+        );
         if (!active) return;
         if (error) throw error;
 
@@ -112,6 +121,7 @@ export default function ManagerEntry({ registrationMode = false }) {
           setAuthError('');
         });
         subscription = listener.subscription;
+        setAuthStage(initialSession ? 'Sign-in restored. Loading your manager account…' : 'No sign-in found.');
         setAuthLoading(false);
         try { window.sessionStorage.removeItem(AUTH_RECOVERY_KEY); } catch { /* storage unavailable */ }
 
@@ -133,6 +143,7 @@ export default function ManagerEntry({ registrationMode = false }) {
             return;
           }
         } catch { /* fall through to the visible recovery screen */ }
+        setAuthStage('Manager Portal sign-in check failed.');
         setAuthError(error?.message || 'We could not check your sign-in. Please try again.');
         setAuthLoading(false);
       }
@@ -155,6 +166,7 @@ export default function ManagerEntry({ registrationMode = false }) {
         session={session}
         authLoading={authLoading}
         authError={authError}
+        authStage={authStage}
       />
       {!registrationMode && (
         <ManagerReminderPreferences session={session} authLoading={authLoading} />
