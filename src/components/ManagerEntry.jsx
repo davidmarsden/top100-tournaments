@@ -25,6 +25,7 @@ export default function ManagerEntry({ registrationMode = false }) {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [authStage, setAuthStage] = useState('Starting Manager Portal…');
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) {
@@ -93,10 +94,31 @@ export default function ManagerEntry({ registrationMode = false }) {
 
     async function initialiseAuth() {
       try {
+        setAuthStage('Checking this browser for your Top 100 sign-in…');
         // ManagerEntry is the single auth owner for My Matches. Child
         // components consume this session instead of racing getSession() and
         // onAuthStateChange() calls against Supabase's browser Web Lock.
-        const { data, error } = await withAuthTimeout(supabase.auth.getSession());
+        // Read the persisted session directly first. This avoids entering auth-js's
+        // Web Lock during startup, which can wedge on some desktop browsers.
+        const projectRef = new URL(supabase.supabaseUrl).hostname.split('.')[0];
+        const storageKey = `sb-${projectRef}-auth-token`;
+        let persisted = null;
+        try {
+          const raw = window.localStorage.getItem(storageKey);
+          persisted = raw ? JSON.parse(raw) : null;
+        } catch { /* storage unavailable or malformed: fall back to auth-js */ }
+
+        let data, error;
+        if (persisted?.access_token && persisted?.refresh_token) {
+          setAuthStage('Restoring your Top 100 sign-in…');
+          ({ data, error } = await withAuthTimeout(supabase.auth.setSession({
+            access_token: persisted.access_token,
+            refresh_token: persisted.refresh_token,
+          }), 'Sign-in restore'));
+        } else {
+          setAuthStage('Checking for an existing Top 100 sign-in…');
+          ({ data, error } = await withAuthTimeout(supabase.auth.getSession()));
+        }
         if (!active) return;
         if (error) throw error;
 
@@ -112,6 +134,7 @@ export default function ManagerEntry({ registrationMode = false }) {
           setAuthError('');
         });
         subscription = listener.subscription;
+        setAuthStage(initialSession ? 'Sign-in restored. Loading your manager account…' : 'No sign-in found.');
         setAuthLoading(false);
         try { window.sessionStorage.removeItem(AUTH_RECOVERY_KEY); } catch { /* storage unavailable */ }
 
@@ -133,6 +156,7 @@ export default function ManagerEntry({ registrationMode = false }) {
             return;
           }
         } catch { /* fall through to the visible recovery screen */ }
+        setAuthStage('Manager Portal sign-in check failed.');
         setAuthError(error?.message || 'We could not check your sign-in. Please try again.');
         setAuthLoading(false);
       }
@@ -155,6 +179,7 @@ export default function ManagerEntry({ registrationMode = false }) {
         session={session}
         authLoading={authLoading}
         authError={authError}
+        authStage={authStage}
       />
       {!registrationMode && (
         <ManagerReminderPreferences session={session} authLoading={authLoading} />
