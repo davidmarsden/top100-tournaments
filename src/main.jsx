@@ -107,15 +107,19 @@ if ('serviceWorker' in navigator) {
 
     if (isManagerHost) {
       try {
-        // Register the current worker once so browsers still controlled by an
-        // older cached-shell worker receive the manager-host retirement worker.
-        // That worker deletes legacy shell caches, unregisters itself and
-        // navigates controlled tabs back through the network.
-        const registration = await navigator.serviceWorker.register('/pwa-sw.js', {
-          scope: '/',
-          updateViaCache: 'none',
-        });
-        await registration.update();
+        // Only clients already controlled by a legacy worker need the
+        // retirement worker. A clean/current Manager Portal must not create a
+        // new registration: the retirement worker unregisters itself and
+        // navigates clients, so unconditional registration would reload-loop.
+        if (!navigator.serviceWorker.controller) return;
+
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        const existing = registrations.find((registration) =>
+          registration.scope === `${window.location.origin}/`
+        );
+        if (!existing) return;
+
+        await existing.update();
       } catch (_) {}
       return;
     }
