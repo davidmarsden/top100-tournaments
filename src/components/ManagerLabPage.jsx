@@ -1349,6 +1349,73 @@ export default function ManagerLabPage() {
           });
           const aMetrics = metric(a.rows);
           const bMetrics = metric(b.rows);
+          // Separate a genuinely isolated role change from a coordinated role
+          // package or a broader tactical rewrite. The strictest comparison
+          // holds XI bucket, every non-role tactical instruction and every
+          // other validated PlayerRole assignment constant.
+          const rowContext = (row) => ({
+            xi: xiBucket(row.match.xiRatingDifference),
+            tactics: tacticSignature(row.match),
+            otherRoles: row.assignments
+              .filter((assignment) => assignment.validated && assignment.key !== entry.key)
+              .map((assignment) => `${assignment.key}:${assignment.code}`)
+              .sort()
+              .join('|'),
+          });
+          const contextGroups = (rows, keyFor) => {
+            const groups = new Map();
+            rows.forEach((row) => {
+              const context = rowContext(row);
+              if (context.xi === null) return;
+              const key = keyFor(context);
+              const group = groups.get(key) || [];
+              group.push(row.match);
+              groups.set(key, group);
+            });
+            return groups;
+          };
+          const overlap = (rowsA, rowsB, keyFor) => {
+            const groupsA = contextGroups(rowsA, keyFor);
+            const groupsB = contextGroups(rowsB, keyFor);
+            const keys = [...groupsA.keys()].filter((key) => groupsB.has(key));
+            return {
+              strata: keys.length,
+              matchesA: keys.flatMap((key) => groupsA.get(key)),
+              matchesB: keys.flatMap((key) => groupsB.get(key)),
+              groupsA,
+              groupsB,
+              keys,
+            };
+          };
+          const matchedDelta = (overlapResult) => {
+            let ppgDelta = 0, gdDelta = 0, weightTotal = 0;
+            overlapResult.keys.forEach((key) => {
+              const rowsA = overlapResult.groupsA.get(key) || [];
+              const rowsB = overlapResult.groupsB.get(key) || [];
+              if (!rowsA.length || !rowsB.length) return;
+              const ppgA = rowsA.reduce((sum, match) => sum + resultPoints(match.result), 0) / rowsA.length;
+              const ppgB = rowsB.reduce((sum, match) => sum + resultPoints(match.result), 0) / rowsB.length;
+              const gdA = rowsA.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0) / rowsA.length;
+              const gdB = rowsB.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0) / rowsB.length;
+              const weight = (2 * rowsA.length * rowsB.length) / (rowsA.length + rowsB.length);
+              ppgDelta += (ppgB - ppgA) * weight;
+              gdDelta += (gdB - gdA) * weight;
+              weightTotal += weight;
+            });
+            return {
+              ppg: weightTotal ? ppgDelta / weightTotal : null,
+              gd: weightTotal ? gdDelta / weightTotal : null,
+            };
+          };
+          const isolated = overlap(a.rows, b.rows, (context) => `${context.xi}|${context.tactics}|${context.otherRoles}`);
+          const sameTactics = overlap(a.rows, b.rows, (context) => `${context.xi}|${context.tactics}`);
+          const isolatedDelta = matchedDelta(isolated);
+          const tacticMatchedDelta = matchedDelta(sameTactics);
+          const isolationClass = isolated.matchesA.length >= 2 && isolated.matchesB.length >= 2
+            ? 'isolated role change'
+            : sameTactics.matchesA.length >= 2 && sameTactics.matchesB.length >= 2
+              ? 'coordinated role package'
+              : 'broader tactical change';
           roleSwitchExperiments.push({
             sourceClubId: entry.sourceClubId,
             club: entry.club,
@@ -1371,6 +1438,17 @@ export default function ManagerLabPage() {
             commonXiBuckets: commonBuckets.size,
             comparableMatchesA: comparableA.length,
             comparableMatchesB: comparableB.length,
+            isolationClass,
+            isolatedStrata: isolated.strata,
+            isolatedMatchesA: isolated.matchesA.length,
+            isolatedMatchesB: isolated.matchesB.length,
+            isolatedDeltaPpgBvsA: isolatedDelta.ppg,
+            isolatedDeltaGdBvsA: isolatedDelta.gd,
+            tacticMatchedStrata: sameTactics.strata,
+            tacticMatchedMatchesA: sameTactics.matchesA.length,
+            tacticMatchedMatchesB: sameTactics.matchesB.length,
+            tacticMatchedDeltaPpgBvsA: tacticMatchedDelta.ppg,
+            tacticMatchedDeltaGdBvsA: tacticMatchedDelta.gd,
           });
         }
       }
@@ -1613,10 +1691,12 @@ export default function ManagerLabPage() {
           </tbody></table></div> : <p className="muted">No club currently has enough clean and unresolved matches for a within-club comparison.</p>}
         </details>
         <details open><summary><strong>Validated role switches</strong> · {validatedRoleAnalysis.roleSwitchExperiments.length} within-club experiments</summary>
-          <p className="muted">Same club, same formation, same formation slot; both roles must be validated and each side needs at least two matches in shared rounded XI-strength buckets. XI-adj Δ is Role B minus Role A after controlling for those shared strength buckets. This is observational evidence, not proof that the role caused the result.</p>
-          {validatedRoleAnalysis.roleSwitchExperiments.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Formation</th><th>Slot</th><th>Role A</th><th>A MP</th><th>A PPG</th><th>Role B</th><th>B MP</th><th>B PPG</th><th>XI-adj Δ PPG</th><th>XI-adj Δ GD</th><th>Comparable</th></tr></thead><tbody>
-            {validatedRoleAnalysis.roleSwitchExperiments.map((r, index)=><tr key={`role-switch:${r.sourceClubId||r.club}:${r.formation}:${r.slot}:${r.codeA}:${r.codeB}:${index}`}><td><strong>{r.club}</strong></td><td>{r.formation}</td><td>{r.slot}</td><td>{r.roleA} <code>{r.codeA}</code></td><td>{r.matchesA}</td><td>{r.ppgA?.toFixed(2) ?? '—'}</td><td>{r.roleB} <code>{r.codeB}</code></td><td>{r.matchesB}</td><td>{r.ppgB?.toFixed(2) ?? '—'}</td><td>{r.adjustedDeltaPpgBvsA===null?'—':`${r.adjustedDeltaPpgBvsA>=0?'+':''}${r.adjustedDeltaPpgBvsA.toFixed(2)}`}</td><td>{r.adjustedDeltaGdBvsA===null?'—':`${r.adjustedDeltaGdBvsA>=0?'+':''}${r.adjustedDeltaGdBvsA.toFixed(2)}`}</td><td>{r.comparableMatchesA}+{r.comparableMatchesB} · {r.commonXiBuckets} XI buckets</td></tr>)}
-          </tbody></table></div> : <p className="muted">No validated role pair yet has at least two comparable matches on both sides. More archived matches will make this view progressively stronger.</p>}
+          <p className="muted">Same club, same formation and same formation slot. The context column now separates isolated role changes from coordinated role packages and broader tactical changes. “Isolated” means shared XI-strength bucket, identical opening tactical formula and identical validated roles in every other slot. Use the isolated Δ where available; XI-adj Δ remains the broader strength-matched comparison. This is observational evidence, not proof that the role caused the result.</p>
+          {validatedRoleAnalysis.roleSwitchExperiments.length ? <>
+            <p className="muted"><strong>Context census:</strong> {['isolated role change','coordinated role package','broader tactical change'].map((kind) => `${kind}: ${validatedRoleAnalysis.roleSwitchExperiments.filter((row) => row.isolationClass === kind).length}`).join(' · ')}</p>
+            <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Formation</th><th>Slot</th><th>Role A</th><th>Role B</th><th>Context</th><th>Strict MP</th><th>Strict Δ PPG</th><th>Strict Δ GD</th><th>XI-adj Δ PPG</th><th>XI-adj Δ GD</th><th>All MP</th></tr></thead><tbody>
+            {validatedRoleAnalysis.roleSwitchExperiments.map((r, index)=><tr key={`role-switch:${r.sourceClubId||r.club}:${r.formation}:${r.slot}:${r.codeA}:${r.codeB}:${index}`}><td><strong>{r.club}</strong></td><td>{r.formation}</td><td>{r.slot}</td><td>{r.roleA} <code>{r.codeA}</code><br/><small>{r.matchesA} MP · {r.ppgA?.toFixed(2) ?? '—'} PPG</small></td><td>{r.roleB} <code>{r.codeB}</code><br/><small>{r.matchesB} MP · {r.ppgB?.toFixed(2) ?? '—'} PPG</small></td><td><strong>{r.isolationClass}</strong><br/><small>{r.tacticMatchedMatchesA}+{r.tacticMatchedMatchesB} tactic-matched</small></td><td>{r.isolatedMatchesA}+{r.isolatedMatchesB}<br/><small>{r.isolatedStrata} strata</small></td><td>{r.isolatedDeltaPpgBvsA===null?'—':`${r.isolatedDeltaPpgBvsA>=0?'+':''}${r.isolatedDeltaPpgBvsA.toFixed(2)}`}</td><td>{r.isolatedDeltaGdBvsA===null?'—':`${r.isolatedDeltaGdBvsA>=0?'+':''}${r.isolatedDeltaGdBvsA.toFixed(2)}`}</td><td>{r.adjustedDeltaPpgBvsA===null?'—':`${r.adjustedDeltaPpgBvsA>=0?'+':''}${r.adjustedDeltaPpgBvsA.toFixed(2)}`}</td><td>{r.adjustedDeltaGdBvsA===null?'—':`${r.adjustedDeltaGdBvsA>=0?'+':''}${r.adjustedDeltaGdBvsA.toFixed(2)}`}</td><td>{r.comparableMatchesA}+{r.comparableMatchesB}<br/><small>{r.commonXiBuckets} XI buckets</small></td></tr>)}
+          </tbody></table></div></> : <p className="muted">No validated role pair yet has at least two comparable matches on both sides. More archived matches will make this view progressively stronger.</p>}
         </details>
         <details><summary><strong>Role-encoding quarantine</strong> · keep stable unresolved clubs out of role conclusions</summary>
           <p className="muted">Clubs with unresolved PlayerRole encodings in at least 80% of analyzable matches are quarantined from role-dependent interpretation. They remain in ordinary tactical/formula analysis because we have not found evidence that formation, mentality or the other archived instructions are corrupted. Sevilla therefore stays in Formula Lab, but its PlayerRole values do not get treated as decoded roles.</p>
