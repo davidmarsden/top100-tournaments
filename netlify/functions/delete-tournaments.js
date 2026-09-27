@@ -78,6 +78,26 @@ export async function handler(event) {
     if (matchError) throw matchError;
     const matchIds = (matchRows || []).map((row) => row.id);
 
+    // Storage objects are not removed by relational cascades. Delete all bounded
+    // evidence objects for arrangements belonging to matches being torn down.
+    if (matchIds.length) {
+      const { data: arrangements, error: arrangementError } = await db
+        .from('manager_match_arrangements')
+        .select('auth_user_id,match_id')
+        .in('match_id', matchIds);
+      if (arrangementError && !String(arrangementError.message || '').includes('does not exist')) throw arrangementError;
+      const evidenceKeys = [];
+      for (const row of arrangements || []) {
+        for (const slot of ['a','b']) for (const ext of ['jpg','png','webp','gif']) {
+          evidenceKeys.push(`${row.auth_user_id}/${row.match_id}/evidence-${slot}.${ext}`);
+        }
+      }
+      if (evidenceKeys.length) {
+        const { error: evidenceError } = await db.storage.from('match-evidence').remove(evidenceKeys);
+        if (evidenceError) throw evidenceError;
+      }
+    }
+
     await deleteByTournament(db, 'match_comments', ids);
     await deleteByTournament(db, 'achievements', ids);
     await deleteByTournament(db, 'honours', ids);
