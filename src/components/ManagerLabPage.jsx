@@ -1171,41 +1171,50 @@ export default function ManagerLabPage() {
         row.matches += 1; row.points += resultPoints(match.result); row.sample = match; familyCounts.set(key, row);
       });
       const dominant = [...familyCounts.values()].sort((a,b) => b.matches - a.matches || b.points - a.points)[0] || null;
-      const counterMap = new Map();
-      if (currentKey) league.filter((target) => tacticSignature(target, FAMILY_KEYS) === currentKey).forEach((target) => {
-        const counterpart = counterpartFor(target);
-        if (!counterpart) return;
-        const key = tacticSignature(counterpart, FAMILY_KEYS);
-        const entry = counterMap.get(key) || { key, sample: counterpart, matches: 0, points: 0, gd: 0, wins: 0, clubs: new Set(), divisions: new Set(), xiGaps: [] };
-        entry.matches += 1; entry.points += resultPoints(counterpart.result);
-        entry.gd += (Number(counterpart.goalsFor)||0) - (Number(counterpart.goalsAgainst)||0);
-        if (counterpart.result === 'W') entry.wins += 1;
-        if (counterpart.sourceClubId) entry.clubs.add(String(counterpart.sourceClubId));
-        if (counterpart.competition) entry.divisions.add(counterpart.competition);
-        const gap = numericValue(counterpart.xiRatingDifference);
-        if (gap !== null) entry.xiGaps.push(gap);
-        counterMap.set(key, entry);
-      });
-      const counters = [...counterMap.values()].map((row) => {
-        const ppg = row.points / row.matches;
-        const gdPerGame = row.gd / row.matches;
-        const evidencePpg = (row.points + 6) / (row.matches + 4);
-        const hamburgSample = hamburgRows.filter((match) => {
-          if (tacticSignature(match, FAMILY_KEYS) !== row.key) return false;
-          const opponentSide = counterpartFor(match);
-          return opponentSide && tacticSignature(opponentSide, FAMILY_KEYS) === currentKey;
+      const buildCounters = (targetKey) => {
+        if (!targetKey) return [];
+        const counterMap = new Map();
+        league.filter((target) => tacticSignature(target, FAMILY_KEYS) === targetKey).forEach((target) => {
+          const counterpart = counterpartFor(target);
+          if (!counterpart) return;
+          const key = tacticSignature(counterpart, FAMILY_KEYS);
+          const entry = counterMap.get(key) || { key, sample: counterpart, matches: 0, points: 0, gd: 0, wins: 0, clubs: new Set(), divisions: new Set(), xiGaps: [] };
+          entry.matches += 1; entry.points += resultPoints(counterpart.result);
+          entry.gd += (Number(counterpart.goalsFor)||0) - (Number(counterpart.goalsAgainst)||0);
+          if (counterpart.result === 'W') entry.wins += 1;
+          if (counterpart.sourceClubId) entry.clubs.add(String(counterpart.sourceClubId));
+          if (counterpart.competition) entry.divisions.add(counterpart.competition);
+          const gap = numericValue(counterpart.xiRatingDifference);
+          if (gap !== null) entry.xiGaps.push(gap);
+          counterMap.set(key, entry);
         });
-        const hamburgPoints = hamburgSample.reduce((sum, match) => sum + resultPoints(match.result), 0);
-        const hamburgGd = hamburgSample.reduce((sum, match) => sum + (Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0), 0);
-        return {
-          ...row, clubCount: row.clubs.size, divisionCount: row.divisions.size, ppg, gdPerGame, evidencePpg,
-          avgXiGap: row.xiGaps.length ? row.xiGaps.reduce((sum,value)=>sum+value,0)/row.xiGaps.length : null,
-          hamburgMatches: hamburgSample.length,
-          hamburgPpg: hamburgSample.length ? hamburgPoints/hamburgSample.length : null,
-          hamburgGd: hamburgSample.length ? hamburgGd/hamburgSample.length : null,
-          confidence: evidenceConfidence(row.matches, row.clubs.size),
-        };
-      }).sort((a,b) => b.evidencePpg-a.evidencePpg || b.matches-a.matches || b.gdPerGame-a.gdPerGame).slice(0,5);
+        return [...counterMap.values()].map((row) => {
+          const ppg = row.points / row.matches;
+          const gdPerGame = row.gd / row.matches;
+          const evidencePpg = (row.points + 6) / (row.matches + 4);
+          const hamburgSample = hamburgRows.filter((match) => {
+            if (tacticSignature(match, FAMILY_KEYS) !== row.key) return false;
+            const opponentSide = counterpartFor(match);
+            return opponentSide && tacticSignature(opponentSide, FAMILY_KEYS) === targetKey;
+          });
+          const hamburgPoints = hamburgSample.reduce((sum, match) => sum + resultPoints(match.result), 0);
+          const hamburgGd = hamburgSample.reduce((sum, match) => sum + (Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0), 0);
+          return {
+            ...row, clubCount: row.clubs.size, divisionCount: row.divisions.size, ppg, gdPerGame, evidencePpg,
+            avgXiGap: row.xiGaps.length ? row.xiGaps.reduce((sum,value)=>sum+value,0)/row.xiGaps.length : null,
+            hamburgMatches: hamburgSample.length,
+            hamburgPpg: hamburgSample.length ? hamburgPoints/hamburgSample.length : null,
+            hamburgGd: hamburgSample.length ? hamburgGd/hamburgSample.length : null,
+            confidence: evidenceConfidence(row.matches, row.clubs.size),
+          };
+        }).sort((a,b) => b.evidencePpg-a.evidencePpg || b.matches-a.matches || b.gdPerGame-a.gdPerGame).slice(0,5);
+      };
+      const counters = buildCounters(currentKey);
+      const dominantCounters = dominant && dominant.key !== currentKey ? buildCounters(dominant.key) : [];
+      const qualified = (rows) => rows.filter((counter) => counter.matches >= 3 && counter.clubCount >= 2);
+      const currentQualified = qualified(counters);
+      const dominantQualified = qualified(dominantCounters);
+      const volatile = Boolean(dominant && dominant.key !== currentKey && stability5.pct !== null && stability5.pct < 0.6);
       const previous = sortedRecent(hamburgRows.filter((match) => match.opponent === fixture.opponent && match.date && String(match.date) < fixture.date))[0] || null;
       const latestXi = latest ? numericValue(latest.ourXiRating) : null;
       const hamburgXi = hamburgLatest ? numericValue(hamburgLatest.ourXiRating) : null;
@@ -1214,11 +1223,13 @@ export default function ManagerLabPage() {
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
         projectedXiGap: hamburgXi !== null && latestXi !== null ? hamburgXi-latestXi : null,
-        counters,
+        counters, dominantCounters, volatile,
         // A recommendation needs replication. One- and two-match observations
         // remain visible in the shortlist, but are descriptive rather than plans.
-        primary: counters.find((counter) => counter.matches >= 3 && counter.clubCount >= 2) || null,
-        alternative: counters.filter((counter) => counter.matches >= 3 && counter.clubCount >= 2)[1] || null,
+        primary: currentQualified[0] || null,
+        alternative: currentQualified[1] || null,
+        dominantPrimary: dominantQualified[0] || null,
+        dominantAlternative: dominantQualified[1] || null,
       };
     });
   }, [worldFormulaMatches]);
