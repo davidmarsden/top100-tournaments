@@ -118,37 +118,40 @@ function fieldNames(rows) {
   return [...new Set(rows.flatMap((row) => Object.keys(row || {})))].sort((a, b) => a.localeCompare(b));
 }
 
-const PLAYER_SOURCE_SENSITIVE_KEY = /(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie)/i;
+const PLAYER_SOURCE_SENSITIVE_KEY = /(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|api[-_]?key|key)/i;
 
-function playerSourceFields(record) {
-  if (!record || typeof record !== 'object' || Array.isArray(record)) return {};
+function sanitizePlayerSourceValue(value, depth = 0) {
+  if (depth > 8 || value === undefined) return undefined;
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
+  if (typeof value === 'string') return value.length > 1000 ? value.slice(0, 1000) : value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 256)
+      .map((item) => sanitizePlayerSourceValue(item, depth + 1))
+      .filter((item) => item !== undefined);
+  }
+  if (typeof value !== 'object') return undefined;
+
   const output = {};
   let fields = 0;
-  for (const [key, value] of Object.entries(record)) {
+  for (const [key, child] of Object.entries(value)) {
     if (fields >= 256 || PLAYER_SOURCE_SENSITIVE_KEY.test(key)) continue;
-    if (value === null || typeof value === 'boolean' || typeof value === 'number') {
-      output[key] = value;
-      fields += 1;
-      continue;
-    }
-    if (typeof value === 'string') {
-      output[key] = value.length > 1000 ? value.slice(0, 1000) : value;
-      fields += 1;
-      continue;
-    }
-    // Keep compact arrays/objects such as SM attribute/stat blocks, but reject
-    // large or unserialisable structures. This is source evidence, not a parser contract.
-    try {
-      const encoded = JSON.stringify(value);
-      if (encoded && encoded.length <= 12000) {
-        output[key] = JSON.parse(encoded);
-        fields += 1;
-      }
-    } catch {
-      // Ignore non-JSON source values.
-    }
+    const sanitized = sanitizePlayerSourceValue(child, depth + 1);
+    if (sanitized === undefined) continue;
+    output[key] = sanitized;
+    fields += 1;
   }
   return output;
+}
+
+function playerSourceFields(record) {
+  const sanitized = sanitizePlayerSourceValue(record);
+  if (!sanitized || Array.isArray(sanitized) || typeof sanitized !== 'object') return {};
+  try {
+    const encoded = JSON.stringify(sanitized);
+    return encoded.length <= 12000 ? sanitized : {};
+  } catch {
+    return {};
+  }
 }
 
 function squadPlayerName(record) {
