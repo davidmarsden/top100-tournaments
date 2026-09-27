@@ -68,6 +68,9 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
     const previousFile=previousPath?.split('/').pop()||'';
     const slot=previousFile.startsWith('evidence-a.')?'b':'a';
     const path=`${session.user.id}/${match.id}/evidence-${slot}.${ext}`;
+    // Clear a stale, unreferenced staging object left by an interrupted replacement.
+    // DELETE policy forbids removing the currently referenced evidence.
+    await supabase.storage.from('match-evidence').remove([path]);
     const uploaded=await supabase.storage.from('match-evidence').upload(path,file,{contentType:file.type,upsert:false});
     if(uploaded.error){setMessage(uploaded.error.message);setUploading('');return;}
     const {data,error}=await supabase.rpc('attach_manager_match_evidence',{
