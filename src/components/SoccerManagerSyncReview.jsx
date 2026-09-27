@@ -261,7 +261,7 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
 
     {status && <p className="status">{status}</p>}
     {status && status.includes(' approved.') && <p className="status">
-      Approval complete. Next step: use <strong>Apply players &amp; transfers</strong> below for squad/player data (or the matching archive button for other data). Player Lab reads the applied player archive, not the canonical review layer.
+      Approval complete. Squad/player data can now be applied with <strong>Apply players &amp; transfers</strong> below. Core world/standing/manager/season data, tactics and match snapshots have their own archive buttons; other approved entity types remain canonical-only until an archive adapter exists. Player Lab reads the applied player archive, not the canonical review layer.
     </p>}
 
     <div className="sm-sync-review-layout">
