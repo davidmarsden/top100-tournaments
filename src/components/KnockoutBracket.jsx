@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 const ROUND_LABELS = {
@@ -144,11 +144,14 @@ function buildTies(matches) {
 
 export default function KnockoutBracket({ matches = [], title = 'Knockout bracket', showChampion = true }) {
   const [seedByEntryId, setSeedByEntryId] = useState(new Map());
+  const scrollRef = useRef(null);
+  const [activeRound, setActiveRound] = useState(null);
   const entryIds = useMemo(() => [...new Set(matches.flatMap((match) => [match.home_entry_id, match.away_entry_id]).filter(Boolean))], [matches]);
   const rounds = useMemo(() => buildTies(matches.filter((match) => match.stage === 'knockout')), [matches]);
   const finalRound = rounds.find((round) => round.round === 'Final') || null;
   const finalTie = finalRound?.ties?.find((tie) => tie.winnerName) || null;
   const championVisible = showChampion && Boolean(finalRound);
+  const liveRound = useMemo(() => rounds.find((round) => round.ties.some((tie) => !tie.allPlayed))?.round || rounds.at(-1)?.round || null, [rounds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,6 +167,34 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
     loadSeeds();
     return () => { cancelled = true; };
   }, [entryIds.join(',')]);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || !liveRound) return undefined;
+    const target = scroller.querySelector(`[data-bracket-round="${liveRound}"]`);
+    if (!target) return undefined;
+    const frame = requestAnimationFrame(() => {
+      scroller.scrollLeft = target.offsetLeft;
+      setActiveRound(liveRound);
+    });
+    const syncActiveRound = () => {
+      const columns = [...scroller.querySelectorAll('[data-bracket-round]')];
+      if (!columns.length) return;
+      const left = scroller.scrollLeft;
+      const nearest = columns.reduce((best, column) => Math.abs(column.offsetLeft - left) < Math.abs(best.offsetLeft - left) ? column : best, columns[0]);
+      setActiveRound(nearest.dataset.bracketRound);
+    };
+    scroller.addEventListener('scroll', syncActiveRound, { passive: true });
+    return () => { cancelAnimationFrame(frame); scroller.removeEventListener('scroll', syncActiveRound); };
+  }, [liveRound, rounds.length]);
+
+  function goToRound(round) {
+    const scroller = scrollRef.current;
+    const target = scroller?.querySelector(`[data-bracket-round="${round}"]`);
+    if (!target) return;
+    scroller.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
+    setActiveRound(round);
+  }
 
   if (!rounds.length) return <p className="muted">No knockout bracket yet.</p>;
 
@@ -181,10 +212,12 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
         </div>
       </div>
 
-      <div className="visual-bracket-scroll">
+      <div className="bracket-round-nav" aria-label="Bracket rounds">{rounds.map((round) => <button type="button" className={activeRound === round.round ? 'active' : ''} aria-current={activeRound === round.round ? 'step' : undefined} onClick={() => goToRound(round.round)} key={`nav-${round.round}`}>{roundLabel(round.round)}</button>)}</div>
+      <p className="bracket-mobile-hint">Swipe to move through the bracket →</p>
+      <div className="visual-bracket-scroll" ref={scrollRef}>
         <div className="visual-bracket" style={{ gridTemplateColumns: `repeat(${rounds.length + (championVisible ? 1 : 0)}, minmax(210px, 1fr))` }}>
           {rounds.map((round) => (
-            <div className="bracket-round-column" key={round.round}>
+            <div className={`bracket-round-column${round.round === liveRound ? ' live-round' : ''}`} data-bracket-round={round.round} key={round.round}>
               <div className="bracket-round-title">{roundLabel(round.round)}</div>
               <div className="bracket-tie-stack">
                 {round.ties.map((tie) => <BracketTie tie={tie} seedByEntryId={seedByEntryId} key={`${round.round}-${tie.key}`} />)}
