@@ -1126,18 +1126,44 @@ export default function ManagerLabPage() {
 
   const runInLab = useMemo(() => {
     if (!worldFormulaMatches.length) return [];
-    const d1 = worldFormulaMatches.filter((match) => match.competition === 'Division 1');
+    const league = worldFormulaMatches.filter((match) => /^Division [1-5]$/.test(match.competition || ''));
+    const d1 = league.filter((match) => match.competition === 'Division 1');
+    const fixtureKey = (match) => `${match.competition || 'unknown'}:${match.fixtureId ?? ''}`;
     const byFixture = new Map();
-    d1.forEach((match) => {
-      const id = String(match.fixtureId ?? '');
-      if (!id) return;
-      const pair = byFixture.get(id) || [];
+    league.forEach((match) => {
+      if (!match.fixtureId) return;
+      const key = fixtureKey(match);
+      const pair = byFixture.get(key) || [];
       pair.push(match);
-      byFixture.set(id, pair);
+      byFixture.set(key, pair);
     });
+    const counterpartFor = (match) =>
+      (byFixture.get(fixtureKey(match)) || []).find((row) => String(row.sourceClubId) !== String(match.sourceClubId)) || null;
+    const sortedRecent = (rows) => [...rows].sort((a,b) =>
+      String(b.date || '').localeCompare(String(a.date || '')) ||
+      Number(b.fixtureId || 0) - Number(a.fixtureId || 0)
+    );
+    const stability = (rows, currentKey, count) => {
+      const sample = sortedRecent(rows).slice(0, count);
+      if (!sample.length || !currentKey) return { matches: sample.length, same: 0, pct: null };
+      const same = sample.filter((match) => tacticSignature(match, FAMILY_KEYS) === currentKey).length;
+      return { matches: sample.length, same, pct: same / sample.length };
+    };
+    const evidenceConfidence = (matches, clubs) => {
+      if (matches >= 12 && clubs >= 5) return { label: 'High', warning: null };
+      if (matches >= 6 && clubs >= 3) return { label: 'Medium', warning: 'Useful signal, but still a modest sample.' };
+      if (matches >= 3) return { label: 'Low', warning: 'Small sample — treat this as a candidate, not a discovered counter.' };
+      return { label: 'Very low', warning: 'Tiny sample — descriptive only.' };
+    };
     const hamburgRows = d1.filter((match) => String(match.sourceClubId) === '48506708');
+    const hamburgLatest = sortedRecent(hamburgRows)[0] || null;
+
     return HAMBURG_RUN_IN_S28.map((fixture) => {
       const opponentRows = d1.filter((match) => match.club === fixture.opponent || match.sourceClubName === fixture.opponent);
+      const latest = sortedRecent(opponentRows)[0] || null;
+      const currentKey = latest ? tacticSignature(latest, FAMILY_KEYS) : null;
+      const stability5 = stability(opponentRows, currentKey, 5);
+      const stability10 = stability(opponentRows, currentKey, 10);
       const familyCounts = new Map();
       opponentRows.forEach((match) => {
         const key = tacticSignature(match, FAMILY_KEYS);
@@ -1145,29 +1171,50 @@ export default function ManagerLabPage() {
         row.matches += 1; row.points += resultPoints(match.result); row.sample = match; familyCounts.set(key, row);
       });
       const dominant = [...familyCounts.values()].sort((a,b) => b.matches - a.matches || b.points - a.points)[0] || null;
-      const latest = [...opponentRows].sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')) || Number(b.fixtureId || 0) - Number(a.fixtureId || 0))[0] || null;
-      const currentKey = latest ? tacticSignature(latest, FAMILY_KEYS) : null;
       const counterMap = new Map();
-      if (currentKey) d1.filter((match) => tacticSignature(match, FAMILY_KEYS) === currentKey).forEach((target) => {
-        const counterpart = (byFixture.get(String(target.fixtureId)) || []).find((row) => String(row.sourceClubId) !== String(target.sourceClubId));
+      if (currentKey) league.filter((target) => tacticSignature(target, FAMILY_KEYS) === currentKey).forEach((target) => {
+        const counterpart = counterpartFor(target);
         if (!counterpart) return;
         const key = tacticSignature(counterpart, FAMILY_KEYS);
-        const entry = counterMap.get(key) || { key, sample: counterpart, matches: 0, points: 0, gd: 0, wins: 0 };
+        const entry = counterMap.get(key) || { key, sample: counterpart, matches: 0, points: 0, gd: 0, wins: 0, clubs: new Set(), divisions: new Set(), xiGaps: [] };
         entry.matches += 1; entry.points += resultPoints(counterpart.result);
         entry.gd += (Number(counterpart.goalsFor)||0) - (Number(counterpart.goalsAgainst)||0);
         if (counterpart.result === 'W') entry.wins += 1;
+        if (counterpart.sourceClubId) entry.clubs.add(String(counterpart.sourceClubId));
+        if (counterpart.competition) entry.divisions.add(counterpart.competition);
+        const gap = numericValue(counterpart.xiRatingDifference);
+        if (gap !== null) entry.xiGaps.push(gap);
         counterMap.set(key, entry);
       });
-      const counters = [...counterMap.values()].map((row) => ({...row, ppg: row.points/row.matches, gdPerGame: row.gd/row.matches}))
-        .sort((a,b) => b.matches-a.matches || b.ppg-a.ppg || b.gdPerGame-a.gdPerGame).slice(0,3);
-      const previous = hamburgRows
-        .filter((match) => match.opponent === fixture.opponent && match.date && String(match.date) < fixture.date)
-        .sort((a,b) => String(b.date).localeCompare(String(a.date)) || Number(b.fixtureId || 0) - Number(a.fixtureId || 0))[0] || null;
+      const counters = [...counterMap.values()].map((row) => {
+        const ppg = row.points / row.matches;
+        const gdPerGame = row.gd / row.matches;
+        const evidencePpg = (row.points + 6) / (row.matches + 4);
+        const hamburgSample = hamburgRows.filter((match) => {
+          if (tacticSignature(match, FAMILY_KEYS) !== row.key) return false;
+          const opponentSide = counterpartFor(match);
+          return opponentSide && tacticSignature(opponentSide, FAMILY_KEYS) === currentKey;
+        });
+        const hamburgPoints = hamburgSample.reduce((sum, match) => sum + resultPoints(match.result), 0);
+        const hamburgGd = hamburgSample.reduce((sum, match) => sum + (Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0), 0);
+        return {
+          ...row, clubCount: row.clubs.size, divisionCount: row.divisions.size, ppg, gdPerGame, evidencePpg,
+          avgXiGap: row.xiGaps.length ? row.xiGaps.reduce((sum,value)=>sum+value,0)/row.xiGaps.length : null,
+          hamburgMatches: hamburgSample.length,
+          hamburgPpg: hamburgSample.length ? hamburgPoints/hamburgSample.length : null,
+          hamburgGd: hamburgSample.length ? hamburgGd/hamburgSample.length : null,
+          confidence: evidenceConfidence(row.matches, row.clubs.size),
+        };
+      }).sort((a,b) => b.evidencePpg-a.evidencePpg || b.matches-a.matches || b.gdPerGame-a.gdPerGame).slice(0,5);
+      const previous = sortedRecent(hamburgRows.filter((match) => match.opponent === fixture.opponent && match.date && String(match.date) < fixture.date))[0] || null;
+      const latestXi = latest ? numericValue(latest.ourXiRating) : null;
+      const hamburgXi = hamburgLatest ? numericValue(hamburgLatest.ourXiRating) : null;
       return {
-        ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey,
+        ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey, stability5, stability10,
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
-        previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null,
-        latestXi: latest ? numericValue(latest.ourXiRating) : null, counters,
+        previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
+        projectedXiGap: hamburgXi !== null && latestXi !== null ? hamburgXi-latestXi : null,
+        counters, primary: counters[0] || null, alternative: counters[1] || null,
       };
     });
   }, [worldFormulaMatches]);
@@ -1934,19 +1981,42 @@ export default function ManagerLabPage() {
 
       {worldFormulaMatches.length > 0 && <section className="card">
         <p className="eyebrow">Hamburger SV · Division 1 survival</p>
-        <h2>Run-in Lab</h2>
-        <p className="muted">The final 12 league opponents, using archived S28 opening tactics. Latest family is the most recent captured five-field setup; Magic MP counts exact 4-2-3-1 B · Attacking · Mixed · Down Both Flanks · Fast appearances. Counter evidence pairs both sides of D1 fixtures against that latest family: useful evidence, not a guaranteed counter.</p>
-        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Date</th><th>Fixture</th><th>Latest family</th><th>Magic MP</th><th>Latest XI / age</th><th>Previous HSV meeting</th><th>Observed counter evidence</th></tr></thead><tbody>
-          {runInLab.map((row) => <tr key={`run-in:${row.date}:${row.opponent}`}>
-            <td><strong>{row.date}</strong></td><td><strong>{row.venue} · {row.opponent}</strong><br /><small>{row.observedMatches} archived D1 observations</small></td>
-            <td>{row.latest ? <><strong>{familyLabel(row.latest)}</strong>{row.dominant && row.dominant.key !== row.currentKey && <small>Dominant: {familyLabel(row.dominant.sample)} ({row.dominant.matches} MP)</small>}</> : '—'}</td>
-            <td>{row.magicMatches ? <strong>{row.magicMatches}</strong> : '0'}</td>
-            <td>{row.latestXi === null ? '—' : row.latestXi.toFixed(1)}<br /><small>{row.latestAge === null ? 'age —' : `${row.latestAge.toFixed(1)} yrs`}</small></td>
-            <td>{row.previous ? <><strong className={`lab-result ${row.previous.result}`}>{row.previous.goalsFor}–{row.previous.goalsAgainst}</strong><br /><small>{familyLabel(row.previous)}</small></> : '—'}</td>
-            <td>{row.counters.length ? row.counters.map((counter, index) => <div key={counter.key}>{index + 1}. <strong>{familyLabel(counter.sample)}</strong><br /><small>{counter.matches} MP · {counter.ppg.toFixed(2)} PPG · {counter.wins} wins · {counter.gdPerGame >= 0 ? '+' : ''}{counter.gdPerGame.toFixed(2)} GD/g</small></div>) : <span className="muted">No paired D1 evidence</span>}</td>
-          </tr>)}
-        </tbody></table></div>
-        <p className="muted">The run-in list is the S28 schedule captured on 27 September 2026. Re-run the Soccer Manager archive sync as the season progresses so opponent evidence stays current.</p>
+        <h2>Run-in Lab · opponent dossiers</h2>
+        <p className="muted">Each remaining fixture now has a live scouting dossier. Stability measures the opponent's latest five-field tactical family over their last 5/10 archived D1 matches. Counter evidence is paired league evidence from all five Top 100 divisions. Ranking shrinks tiny samples toward 1.50 PPG so one freak result cannot become a “magic counter”; Hamburg's own direct evidence is kept separate.</p>
+        <div className="run-in-dossiers">
+          {runInLab.map((row, rowIndex) => <details className="card" key={`run-in:${row.date}:${row.opponent}`} open={rowIndex === 0}>
+            <summary><strong>{row.date} · {row.venue} · {row.opponent}</strong>{row.primary && <span> · plan: {familyLabel(row.primary.sample)} · {row.primary.confidence.label} confidence</span>}</summary>
+            <div className="table-wrap"><table className="manager-lab-table"><tbody>
+              <tr><th>Latest opponent setup</th><td>{row.latest ? <><strong>{familyLabel(row.latest)}</strong><br /><small>{formulaText(row.latest)}</small></> : 'No archived setup'}</td></tr>
+              <tr><th>Tactical stability</th><td>Last 5: <strong>{row.stability5.pct === null ? '—' : `${row.stability5.same}/${row.stability5.matches} (${(row.stability5.pct*100).toFixed(0)}%)`}</strong> · Last 10: <strong>{row.stability10.pct === null ? '—' : `${row.stability10.same}/${row.stability10.matches} (${(row.stability10.pct*100).toFixed(0)}%)`}</strong>{row.dominant && row.dominant.key !== row.currentKey && <><br /><small>Longer-run dominant: {familyLabel(row.dominant.sample)} · {row.dominant.matches} MP</small></>}</td></tr>
+              <tr><th>XI / age profile</th><td>Opponent latest XI <strong>{row.latestXi === null ? '—' : row.latestXi.toFixed(1)}</strong> · avg age <strong>{row.latestAge === null ? '—' : row.latestAge.toFixed(1)}</strong><br /><small>Hamburg latest XI {row.hamburgXi === null ? '—' : row.hamburgXi.toFixed(1)} · projected Δ XI {row.projectedXiGap === null ? '—' : `${row.projectedXiGap>=0?'+':''}${row.projectedXiGap.toFixed(1)}`} (HSV minus opponent). Age is context, not a strength penalty.</small></td></tr>
+              <tr><th>Previous HSV meeting</th><td>{row.previous ? <><strong className={`lab-result ${row.previous.result}`}>{row.previous.goalsFor}–{row.previous.goalsAgainst}</strong> · {row.previous.venue}<br /><small>HSV: {familyLabel(row.previous)}</small></> : 'No earlier S28 Hamburg meeting archived'}</td></tr>
+              <tr><th>Magic-family usage</th><td>{row.magicMatches} of {row.observedMatches} archived opponent D1 matches</td></tr>
+            </tbody></table></div>
+            <h3>{row.opponent} plan</h3>
+            {row.primary ? <>
+              <p><strong>Primary:</strong> {familyLabel(row.primary.sample)} <strong>· {row.primary.confidence.label} confidence</strong></p>
+              <p className="muted">{formulaText(row.primary.sample)}</p>
+              <p className="muted">Whole world: {row.primary.matches} MP · {row.primary.clubCount} clubs · {row.primary.divisionCount} divisions · {row.primary.ppg.toFixed(2)} PPG · {row.primary.wins} wins · {row.primary.gdPerGame>=0?'+':''}{row.primary.gdPerGame.toFixed(2)} GD/game{row.primary.avgXiGap===null?'':` · avg Δ XI ${row.primary.avgXiGap>=0?'+':''}${row.primary.avgXiGap.toFixed(1)}`}.</p>
+              <p className="muted">Hamburg direct: {row.primary.hamburgMatches ? `${row.primary.hamburgMatches} MP · ${row.primary.hamburgPpg.toFixed(2)} PPG · ${row.primary.hamburgGd>=0?'+':''}${row.primary.hamburgGd.toFixed(2)} GD` : 'no archived match using this counter against the same opponent family'}.</p>
+              {row.primary.confidence.warning && <p><strong>Sample warning:</strong> {row.primary.confidence.warning}</p>}
+              {row.alternative && <p><strong>Alternative:</strong> {familyLabel(row.alternative.sample)} · {row.alternative.matches} world MP · {row.alternative.ppg.toFixed(2)} PPG · {row.alternative.confidence.label} confidence.</p>}
+            </> : <p className="muted">No paired world evidence yet for the opponent's latest family. No recommendation is manufactured from missing data.</p>}
+            {row.counters.length > 0 && <>
+              <h3>Empirical counter shortlist</h3>
+              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Counter family</th><th>World</th><th>Replication</th><th>Hamburg direct</th><th>Confidence</th></tr></thead><tbody>
+                {row.counters.map((counter) => <tr key={counter.key}>
+                  <td><strong>{familyLabel(counter.sample)}</strong></td>
+                  <td>{counter.matches} MP · {counter.ppg.toFixed(2)} PPG<br /><small>{counter.wins} W · {counter.gdPerGame>=0?'+':''}{counter.gdPerGame.toFixed(2)} GD/g</small></td>
+                  <td>{counter.clubCount} clubs · {counter.divisionCount} divisions<br /><small>{counter.avgXiGap===null?'XI gap —':`avg Δ XI ${counter.avgXiGap>=0?'+':''}${counter.avgXiGap.toFixed(1)}`}</small></td>
+                  <td>{counter.hamburgMatches ? <>{counter.hamburgMatches} MP · {counter.hamburgPpg.toFixed(2)} PPG<br /><small>{counter.hamburgGd>=0?'+':''}{counter.hamburgGd.toFixed(2)} total GD</small></> : '—'}</td>
+                  <td><strong>{counter.confidence.label}</strong>{counter.confidence.warning && <><br /><small>{counter.confidence.warning}</small></>}</td>
+                </tr>)}
+              </tbody></table></div>
+            </>}
+          </details>)}
+        </div>
+        <p className="muted">These are evidence-ranked scouting suggestions, not causal claims. Every archive sync recalculates the dossiers, so a late tactical switch changes the plan automatically.</p>
       </section>}
 
       {worldFormulaMatches.length > 0 && <section className="card">
