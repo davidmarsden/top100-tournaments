@@ -824,6 +824,7 @@ export default function ManagerLabPage() {
         deltaGd: effect.deltaGd,
       })),
       playerComposition,
+      tacticalSquadContext,
       instructionEffects: instructionEffects.map((effect) => ({
         instruction: effect.label,
         key: effect.key,
@@ -947,6 +948,54 @@ export default function ManagerLabPage() {
       avgXiRating: row.xi.length ? row.xi.reduce((a,b)=>a+b,0)/row.xi.length : null,
     })).sort((a,b) => (a.avgAge ?? 99) - (b.avgAge ?? 99));
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
+
+  const tacticalSquadContext = useMemo(() => {
+    const magicTargets = {
+      formation: '4-2-3-1 B',
+      mentality: 'Attacking',
+      passingStyle: 'Mixed',
+      attackingStyle: 'Down Both Flanks',
+      tempo: 'Fast',
+    };
+    const isolatedMagicComponents = FAMILY_KEYS.map((key) => {
+      const target = magicTargets[key];
+      const evidence = componentEvidence.find((row) => row.key === key && String(row.value) === target);
+      return {
+        key,
+        label: CURRENT_FORMULA_FIELDS.find(([, field]) => field === key)?.[0] || key,
+        target,
+        isolated: Boolean(evidence),
+        matchedStrata: evidence?.strata ?? 0,
+        matches: evidence?.matches ?? 0,
+        clubs: evidence?.clubCount ?? 0,
+        deltaPpg: evidence?.deltaPpg ?? null,
+        deltaGd: evidence?.deltaGd ?? null,
+      };
+    });
+    const findClub = (needle) => playerComposition.find((row) =>
+      String(row.club || '').toLowerCase().includes(needle)
+    ) || null;
+    const espanyol = findClub('espanyol');
+    const hamburger = findClub('hamburger');
+    const ageGap = espanyol?.avgAge != null && hamburger?.avgAge != null
+      ? hamburger.avgAge - espanyol.avgAge
+      : null;
+    const ratingGap = espanyol?.avgReportedRating != null && hamburger?.avgReportedRating != null
+      ? hamburger.avgReportedRating - espanyol.avgReportedRating
+      : null;
+    const xiGap = espanyol?.avgXiRating != null && hamburger?.avgXiRating != null
+      ? hamburger.avgXiRating - espanyol.avgXiRating
+      : null;
+    return {
+      magicFamily: '4-2-3-1 B · Attacking · Mixed · Down Both Flanks · Fast',
+      isolatedMagicComponents,
+      espanyol,
+      hamburger,
+      ageGap,
+      ratingGap,
+      xiGap,
+    };
+  }, [componentEvidence, playerComposition]);
 
   const instructionEffects = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
@@ -1921,6 +1970,23 @@ export default function ManagerLabPage() {
             <td>{group.adjustedGd === null ? '—' : `${group.adjustedGd >= 0 ? '+' : ''}${group.adjustedGd.toFixed(2)}`}</td>
           </tr>)}
         </tbody></table></div>
+      </section>}
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>Tactical isolation + squad profile</h2>
+        <p className="muted">Two different questions, kept side by side: which pieces of the replicated underdog package can S28 actually isolate, and how different are the player populations producing those results? “Isolated” here means the strict one-instruction test below found a same-club, same-venue, same-XI-bucket comparison with every other observed opening instruction held constant.</p>
+        <h3>Magic-family components</h3>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Component</th><th>Target</th><th>Status</th><th>Matched strata</th><th>MP</th><th>Clubs</th><th>Δ PPG</th><th>Δ GD</th></tr></thead><tbody>
+          {tacticalSquadContext.isolatedMagicComponents.map((row) => <tr key={`magic-isolation:${row.key}`}><td><strong>{row.label}</strong></td><td>{row.target}</td><td>{row.isolated ? 'Isolated evidence' : 'Not isolated yet'}</td><td>{row.matchedStrata}</td><td>{row.matches}</td><td>{row.clubs}</td><td>{row.deltaPpg===null?'—':`${row.deltaPpg>=0?'+':''}${row.deltaPpg.toFixed(2)}`}</td><td>{row.deltaGd===null?'—':`${row.deltaGd>=0?'+':''}${row.deltaGd.toFixed(2)}`}</td></tr>)}
+        </tbody></table></div>
+        <h3>Espanyol ↔ Hamburger SV age contrast</h3>
+        {tacticalSquadContext.espanyol && tacticalSquadContext.hamburger ? <>
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Avg age</th><th>≤21</th><th>30+</th><th>Reported rating</th><th>XI rating</th></tr></thead><tbody>
+            {[tacticalSquadContext.espanyol, tacticalSquadContext.hamburger].map((row) => <tr key={`contrast:${row.sourceClubId}`}><td><strong>{row.club}</strong></td><td>{row.matches}</td><td>{row.avgAge?.toFixed(1) ?? '—'}</td><td>{row.youngShare===null?'—':`${(row.youngShare*100).toFixed(0)}%`}</td><td>{row.veteranShare===null?'—':`${(row.veteranShare*100).toFixed(0)}%`}</td><td>{row.avgReportedRating?.toFixed(1) ?? '—'}</td><td>{row.avgXiRating?.toFixed(1) ?? '—'}</td></tr>)}
+          </tbody></table></div>
+          <p className="muted"><strong>Age gap:</strong> {tacticalSquadContext.ageGap===null?'—':`${tacticalSquadContext.ageGap>=0?'+':''}${tacticalSquadContext.ageGap.toFixed(1)} years (Hamburger minus Espanyol)`} · <strong>reported-rating gap:</strong> {tacticalSquadContext.ratingGap===null?'—':`${tacticalSquadContext.ratingGap>=0?'+':''}${tacticalSquadContext.ratingGap.toFixed(1)}`} · <strong>XI-rating gap:</strong> {tacticalSquadContext.xiGap===null?'—':`${tacticalSquadContext.xiGap>=0?'+':''}${tacticalSquadContext.xiGap.toFixed(1)}`}.</p>
+        </> : <p className="muted">Both Espanyol and Hamburger SV need player-composition observations in the current Formula Lab cohort before the direct contrast can be calculated.</p>}
+        <p className="muted">Age is context, not a match-strength adjustment: XI rating remains the current-strength control. This panel deliberately does not infer potential, market value or preferred-role suitability from age.</p>
       </section>}
 
       {worldFormulaMatches.length > 0 && <section className="card">
