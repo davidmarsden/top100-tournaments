@@ -707,6 +707,8 @@ export default function ManagerLabPage() {
       xiRatingDifference: numericValue(match.xiRatingDifference),
       xiStrengthBand: strengthBand(match),
       reportedPlayerCount: numericValue(match.reportedPlayerCount),
+      reportedAgeCount: numericValue(match.reportedAgeCount),
+      reportedRatingCount: numericValue(match.reportedRatingCount),
       reportedAvgAge: numericValue(match.reportedAvgAge),
       reportedAvgRating: numericValue(match.reportedAvgRating),
       reportedYoungCount: numericValue(match.reportedYoungCount),
@@ -860,7 +862,11 @@ export default function ManagerLabPage() {
         const value = normalizedTacticValue(match, key);
         const bucket = xiBucket(match.xiRatingDifference);
         const club = match.sourceClubId;
-        if (value === null || bucket === null || !club) return;
+        // Unknown controls are not evidence that two tactical states match.
+        // Require all 18 controls to be observed before calling this a
+        // one-instruction-at-a-time comparison.
+        if (value === null || bucket === null || !club ||
+            controls.some((candidate) => normalizedTacticValue(match, candidate) === null)) return;
         // This is intentionally strict: same club, division, venue, rounded XI
         // gap and every other opening tactical instruction. Only the nominated
         // instruction is allowed to differ.
@@ -909,18 +915,21 @@ export default function ManagerLabPage() {
     const byClub = new Map();
     filtered.forEach((match) => {
       const count = numericValue(match.reportedPlayerCount);
+      const ageCount = numericValue(match.reportedAgeCount);
+      const ratingCount = numericValue(match.reportedRatingCount);
       const age = numericValue(match.reportedAvgAge);
-      if (!match.sourceClubId || !count || age === null) return;
+      if (!match.sourceClubId || !count || !ageCount || age === null) return;
       const row = byClub.get(match.sourceClubId) || {
         sourceClubId: match.sourceClubId, club: match.club || match.sourceClubId,
-        matches: 0, playerObservations: 0, ageWeighted: 0, ratingWeighted: 0,
+        matches: 0, playerObservations: 0, ageObservations: 0, ageWeighted: 0, ratingWeighted: 0,
         ratingObservations: 0, young: 0, veterans: 0, xi: [],
       };
       row.matches += 1;
       row.playerObservations += count;
-      row.ageWeighted += age * count;
+      row.ageObservations += ageCount;
+      row.ageWeighted += age * ageCount;
       const rating = numericValue(match.reportedAvgRating);
-      if (rating !== null) { row.ratingWeighted += rating * count; row.ratingObservations += count; }
+      if (rating !== null && ratingCount) { row.ratingWeighted += rating * ratingCount; row.ratingObservations += ratingCount; }
       row.young += numericValue(match.reportedYoungCount) || 0;
       row.veterans += numericValue(match.reportedVeteranCount) || 0;
       const xi = numericValue(match.ourXiRating);
@@ -931,10 +940,10 @@ export default function ManagerLabPage() {
       sourceClubId: row.sourceClubId,
       club: row.club,
       matches: row.matches,
-      avgAge: row.playerObservations ? row.ageWeighted / row.playerObservations : null,
+      avgAge: row.ageObservations ? row.ageWeighted / row.ageObservations : null,
       avgReportedRating: row.ratingObservations ? row.ratingWeighted / row.ratingObservations : null,
-      youngShare: row.playerObservations ? row.young / row.playerObservations : null,
-      veteranShare: row.playerObservations ? row.veterans / row.playerObservations : null,
+      youngShare: row.ageObservations ? row.young / row.ageObservations : null,
+      veteranShare: row.ageObservations ? row.veterans / row.ageObservations : null,
       avgXiRating: row.xi.length ? row.xi.reduce((a,b)=>a+b,0)/row.xi.length : null,
     })).sort((a,b) => (a.avgAge ?? 99) - (b.avgAge ?? 99));
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
