@@ -720,29 +720,6 @@ export default function SoccerManagerSyncPage() {
     </div>)}
   </main>;
 }
-, depth = 0) => {
-          if (depth > 4 || arrays.length >= 30 || !value || typeof value !== 'object') return;
-          if (Array.isArray(value)) {
-            const objects = value.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
-            const keys = [...new Set(objects.slice(0, 20).flatMap((row) => Object.keys(row)))].slice(0, 100);
-            arrays.push({ path, rows: value.length, objectRows: objects.length, keys });
-            return;
-          }
-          for (const [key, child] of Object.entries(value).slice(0, 100)) visit(child, path + '.' + key, depth + 1);
-        };
-        visit(raw);
-        return {
-          index: index + 1,
-          url: sourceUrl,
-          topLevelType: Array.isArray(raw) ? 'array' : raw === null ? 'null' : typeof raw,
-          topLevelKeys,
-          arrays,
-          raw,
-        };
-      }).filter(Boolean);
-      setPlayerDiagnostics(playerRows);
-      setMatchEngineSources(engineRows);
-      setMatchReplay(replayRow);
       let replayContextRow = null;
       if (message.replayPageContext && typeof message.replayPageContext === 'object') {
         const row = message.replayPageContext;
