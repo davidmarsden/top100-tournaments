@@ -457,7 +457,7 @@ export default function SoccerManagerSyncPage() {
               readErrors.push(`${file.name}: squad payload ${index + 1} is incomplete.`);
               continue;
             }
-            entries.push({ name: `${file.name} · squad ${index + 1}`, raw: payload.data, url: payload.url });
+            entries.push({ name: `${file.name} · squad ${index + 1}`, raw: payload.data, sourceUrl: payload.url });
           }
           readErrors.push(...(raw.failures || []).map((failure) => `${file.name}: ${failure.name || failure.clubId || 'club'} was not captured: ${failure.error || 'unknown error'}`));
         } else if (isHamburgSeasonBackfill(raw)) {
