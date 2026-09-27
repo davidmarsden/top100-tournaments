@@ -1353,15 +1353,27 @@ export default function ManagerLabPage() {
           // package or a broader tactical rewrite. The strictest comparison
           // holds XI bucket, every non-role tactical instruction and every
           // other validated PlayerRole assignment constant.
-          const rowContext = (row) => ({
-            xi: xiBucket(row.match.xiRatingDifference),
-            tactics: tacticSignature(row.match),
-            otherRoles: row.assignments
-              .filter((assignment) => assignment.validated && assignment.key !== entry.key)
-              .map((assignment) => `${assignment.key}:${assignment.code}`)
-              .sort()
-              .join('|'),
-          });
+          const rowContext = (row) => {
+            const encoding = playerRoleEncoding(row.match?.tactics?.playerRoles);
+            const tacticValues = TACTIC_KEYS.map((key) => normalizedTacticValue(row.match, key));
+            const completeTactics = tacticValues.every((value) => value !== null);
+            const completeRoles = ['complete-xi-timeline', 'direct-xi'].includes(encoding.kind) &&
+              encoding.openingEntries.length >= 11 &&
+              row.assignments.every((assignment) => assignment.validated);
+            return {
+              xi: xiBucket(row.match.xiRatingDifference),
+              tactics: completeTactics ? tacticValues.join('|') : null,
+              otherRoles: completeRoles
+                ? row.assignments
+                    .filter((assignment) => assignment.key !== entry.key)
+                    .map((assignment) => `${assignment.key}:${assignment.code}`)
+                    .sort()
+                    .join('|')
+                : null,
+              completeTactics,
+              completeRoles,
+            };
+          };
           const contextGroups = (rows, keyFor) => {
             const groups = new Map();
             rows.forEach((row) => {
@@ -1407,8 +1419,18 @@ export default function ManagerLabPage() {
               gd: weightTotal ? gdDelta / weightTotal : null,
             };
           };
-          const isolated = overlap(a.rows, b.rows, (context) => `${context.xi}|${context.tactics}|${context.otherRoles}`);
-          const sameTactics = overlap(a.rows, b.rows, (context) => `${context.xi}|${context.tactics}`);
+          const isolatedRowsA = a.rows.filter((row) => {
+            const context = rowContext(row);
+            return context.completeTactics && context.completeRoles;
+          });
+          const isolatedRowsB = b.rows.filter((row) => {
+            const context = rowContext(row);
+            return context.completeTactics && context.completeRoles;
+          });
+          const tacticRowsA = a.rows.filter((row) => rowContext(row).completeTactics);
+          const tacticRowsB = b.rows.filter((row) => rowContext(row).completeTactics);
+          const isolated = overlap(isolatedRowsA, isolatedRowsB, (context) => `${context.xi}|${context.tactics}|${context.otherRoles}`);
+          const sameTactics = overlap(tacticRowsA, tacticRowsB, (context) => `${context.xi}|${context.tactics}`);
           const isolatedDelta = matchedDelta(isolated);
           const tacticMatchedDelta = matchedDelta(sameTactics);
           const isolationClass = isolated.matchesA.length >= 2 && isolated.matchesB.length >= 2
