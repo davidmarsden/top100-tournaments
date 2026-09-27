@@ -131,14 +131,15 @@ function squadEntities(entry) {
     .map((player) => nonZeroSourceId(player?.playerDataId) || nonZeroSourceId(player?.playerId))
     .filter(Boolean);
 
-  const rows = [
+  const authoritativeRoster = payload?.sourceContext?.action === 'clubinitdata2';
+  const rows = authoritativeRoster ? [
     entity('squad_scope', scope, scope, {
       setupId,
       clubId,
       rosterPlayerIds,
       playerCount: rosterPlayerIds.length,
     }),
-  ];
+  ] : [];
 
   for (const player of players) {
     const playerKey = nonZeroSourceId(player?.playerDataId) || nonZeroSourceId(player?.playerId);
