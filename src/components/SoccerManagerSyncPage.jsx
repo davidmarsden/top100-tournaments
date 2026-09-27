@@ -451,7 +451,16 @@ export default function SoccerManagerSyncPage() {
     for (const file of Array.from(files || [])) {
       try {
         const raw = JSON.parse(await file.text());
-        if (isHamburgSeasonBackfill(raw)) {
+        if (raw?.kind === 'worldSquadBackfill' && Array.isArray(raw.payloads)) {
+          for (const [index, payload] of raw.payloads.entries()) {
+            if (!payload?.url || payload.data === undefined) {
+              readErrors.push(`${file.name}: squad payload ${index + 1} is incomplete.`);
+              continue;
+            }
+            entries.push({ name: `${file.name} · squad ${index + 1}`, raw: payload.data, url: payload.url });
+          }
+          readErrors.push(...(raw.failures || []).map((failure) => `${file.name}: ${failure.name || failure.clubId || 'club'} was not captured: ${failure.error || 'unknown error'}`));
+        } else if (isHamburgSeasonBackfill(raw)) {
           const pageSetupId = new URLSearchParams(window.location.search).get('sid');
           const normalized = normalizeHamburgSeasonBackfill(raw, { setupId: pageSetupId });
           entries.push(...normalized.entries.map((entry) => ({ ...entry, alreadyNormalized: true })));
