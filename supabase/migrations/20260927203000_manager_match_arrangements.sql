@@ -41,6 +41,8 @@ with check (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
+      and (storage.foldername(name))[3] like 'evidence.%'
+      and array_length(storage.foldername(name),1)=3
   )
 );
 drop policy if exists "Managers read own match evidence" on storage.objects;
@@ -67,6 +69,8 @@ using (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
+      and (storage.foldername(name))[3] like 'evidence.%'
+      and array_length(storage.foldername(name),1)=3
   )
 )
 with check (
@@ -76,6 +80,8 @@ with check (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
+      and (storage.foldername(name))[3] like 'evidence.%'
+      and array_length(storage.foldername(name),1)=3
   )
 );
 
@@ -103,7 +109,15 @@ using (
 revoke insert, update, delete on public.manager_match_arrangement_events from authenticated;
 
 drop policy if exists "Managers delete own match evidence" on storage.objects;
-create policy "Managers delete own match evidence" on storage.objects for delete to authenticated using (bucket_id='match-evidence' and (storage.foldername(name))[1]=auth.uid()::text);
+create policy "Managers delete superseded match evidence" on storage.objects for delete to authenticated
+using (
+  bucket_id='match-evidence'
+  and (storage.foldername(name))[1]=auth.uid()::text
+  and not exists (
+    select 1 from public.manager_match_arrangements a
+    where a.auth_user_id=auth.uid() and a.evidence_path=name
+  )
+);
 
 create or replace function public.record_manager_match_arrangement_action(
   p_match_id bigint,
