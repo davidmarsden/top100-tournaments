@@ -41,7 +41,7 @@ with check (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and storage.filename(name) in ('evidence.jpg','evidence.jpeg','evidence.png','evidence.webp','evidence.gif')
+      and storage.filename(name) in ('evidence-a.jpg','evidence-a.png','evidence-a.webp','evidence-a.gif','evidence-b.jpg','evidence-b.png','evidence-b.webp','evidence-b.gif')
       and array_length(storage.foldername(name),1)=2
   )
 );
@@ -69,7 +69,7 @@ using (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and storage.filename(name) in ('evidence.jpg','evidence.jpeg','evidence.png','evidence.webp','evidence.gif')
+      and storage.filename(name) in ('evidence-a.jpg','evidence-a.png','evidence-a.webp','evidence-a.gif','evidence-b.jpg','evidence-b.png','evidence-b.webp','evidence-b.gif')
       and array_length(storage.foldername(name),1)=2
   )
 )
@@ -80,7 +80,7 @@ with check (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and storage.filename(name) in ('evidence.jpg','evidence.jpeg','evidence.png','evidence.webp','evidence.gif')
+      and storage.filename(name) in ('evidence-a.jpg','evidence-a.png','evidence-a.webp','evidence-a.gif','evidence-b.jpg','evidence-b.png','evidence-b.webp','evidence-b.gif')
       and array_length(storage.foldername(name),1)=2
   )
 );
@@ -194,8 +194,14 @@ declare
   v_arr public.manager_match_arrangements;
 begin
   if v_user is null then raise exception 'Authentication required'; end if;
-  if p_evidence_path is null or split_part(p_evidence_path,'/',1) <> v_user::text
-     or split_part(p_evidence_path,'/',2) <> p_match_id::text then
+  if p_evidence_path is null
+     or split_part(p_evidence_path,'/',1) <> v_user::text
+     or split_part(p_evidence_path,'/',2) <> p_match_id::text
+     or split_part(p_evidence_path,'/',3) not in (
+       'evidence-a.jpg','evidence-a.png','evidence-a.webp','evidence-a.gif',
+       'evidence-b.jpg','evidence-b.png','evidence-b.webp','evidence-b.gif'
+     )
+     or split_part(p_evidence_path,'/',4) <> '' then
     raise exception 'Invalid evidence path';
   end if;
   update public.manager_match_arrangements
