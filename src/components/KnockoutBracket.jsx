@@ -16,6 +16,10 @@ function completed(match) {
   return match.status === 'played' || match.status === 'forfeit';
 }
 
+function resolved(match) {
+  return completed(match) || match.status === 'voided';
+}
+
 function teamName(match, side) {
   const entry = side === 'home' ? match.home_entry : match.away_entry;
   const fallback = side === 'home' ? match.home_placeholder : match.away_placeholder;
@@ -151,7 +155,7 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
   const finalRound = rounds.find((round) => round.round === 'Final') || null;
   const finalTie = finalRound?.ties?.find((tie) => tie.winnerName) || null;
   const championVisible = showChampion && Boolean(finalRound);
-  const liveRound = useMemo(() => rounds.find((round) => round.ties.some((tie) => !tie.allPlayed))?.round || rounds.at(-1)?.round || null, [rounds]);
+  const liveRound = useMemo(() => rounds.find((round) => round.ties.some((tie) => tie.ordered.some((match) => !resolved(match))))?.round || rounds.at(-1)?.round || null, [rounds]);
 
   useEffect(() => {
     let cancelled = false;
