@@ -41,8 +41,8 @@ with check (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and (storage.foldername(name))[3] like 'evidence.%'
-      and array_length(storage.foldername(name),1)=3
+      and storage.filename(name) like 'evidence.%'
+      and array_length(storage.foldername(name),1)=2
   )
 );
 drop policy if exists "Managers read own match evidence" on storage.objects;
@@ -69,8 +69,8 @@ using (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and (storage.foldername(name))[3] like 'evidence.%'
-      and array_length(storage.foldername(name),1)=3
+      and storage.filename(name) like 'evidence.%'
+      and array_length(storage.foldername(name),1)=2
   )
 )
 with check (
@@ -80,8 +80,8 @@ with check (
     select 1 from public.manager_match_arrangements a
     where a.auth_user_id=auth.uid()
       and a.match_id::text=(storage.foldername(name))[2]
-      and (storage.foldername(name))[3] like 'evidence.%'
-      and array_length(storage.foldername(name),1)=3
+      and storage.filename(name) like 'evidence.%'
+      and array_length(storage.foldername(name),1)=2
   )
 );
 
