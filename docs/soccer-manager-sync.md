@@ -418,3 +418,14 @@ Each match-report request now has a 15-second hard timeout using `AbortControlle
 A game-world crawl can now continue from a previously downloaded `worldSeasonMatchBackfill` bundle. Choose **Backfill game world**, confirm that you want to resume, and select the earlier JSON bundle. The helper validates the setup id, reconstructs the discovered fixture graph from the saved raw reports, marks already captured fixture ids as fetched, and queues only unseen fixtures. Any failures recorded in the earlier bundle are deliberately removed from the fetched set and queued for retry.
 
 The continuation download contains **only newly captured reports**, so importing it does not restage the earlier 1,594-match payload. The 1,600-report safety ceiling applies to new attempts in each run rather than to the cumulative prior bundle. Resume metadata records the prior captured/failure counts and the remaining queue. This makes repeated continuation runs safe while retaining the existing stable `setupId + fixtureId` archive deduplication as a final guard.
+
+
+## SM Player Intelligence capture
+
+The collector now watches same-origin Soccer Manager player AJAX/statistics/profile/rating/history requests in addition to the existing club squad, transfer and player-change surfaces. It re-fetches only requests the signed-in Soccer Manager page has already made; it does not guess undocumented endpoints.
+
+For normalized club-squad/player-stat rows, Sync keeps the established normalized fields and also preserves a bounded `sourceFields` object for each player. This is deliberately schema-on-read evidence: up to 256 source fields are retained, strings are capped at 1,000 characters, compact nested JSON values are capped at 12,000 serialized characters, and credential-like keys are excluded. That lets later Player Lab work discover attributes, performance fields and rating-history clues without losing fields simply because the current normalizer does not understand them yet.
+
+Approved `squad_player` canonical versions already feed `soccer_manager_player_snapshots.source_data`, so these captured source fields become versioned private evidence without requiring a parallel raw-player table. Existing `playerChanges` capture remains the preferred retrospective rating-change source whenever Soccer Manager exposes those events.
+
+This first slice is intentionally capture-first. Unknown player endpoints are accepted only when their response has the existing qualifying player-row shape; a one-row/empty response is still trusted only for the known `clubinitdata2` squad endpoint. As we observe concrete player profile/history endpoints in diagnostics, they can be promoted to explicit trusted normalizers rather than guessed.

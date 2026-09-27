@@ -118,6 +118,42 @@ function fieldNames(rows) {
   return [...new Set(rows.flatMap((row) => Object.keys(row || {})))].sort((a, b) => a.localeCompare(b));
 }
 
+const PLAYER_SOURCE_SENSITIVE_KEY = /(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie|api[-_]?key|key)/i;
+
+function sanitizePlayerSourceValue(value, depth = 0) {
+  if (depth > 8 || value === undefined) return undefined;
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
+  if (typeof value === 'string') return value.length > 1000 ? value.slice(0, 1000) : value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 256)
+      .map((item) => sanitizePlayerSourceValue(item, depth + 1))
+      .filter((item) => item !== undefined);
+  }
+  if (typeof value !== 'object') return undefined;
+
+  const output = {};
+  let fields = 0;
+  for (const [key, child] of Object.entries(value)) {
+    if (fields >= 256 || PLAYER_SOURCE_SENSITIVE_KEY.test(key)) continue;
+    const sanitized = sanitizePlayerSourceValue(child, depth + 1);
+    if (sanitized === undefined) continue;
+    output[key] = sanitized;
+    fields += 1;
+  }
+  return output;
+}
+
+function playerSourceFields(record) {
+  const sanitized = sanitizePlayerSourceValue(record);
+  if (!sanitized || Array.isArray(sanitized) || typeof sanitized !== 'object') return {};
+  try {
+    const encoded = JSON.stringify(sanitized);
+    return encoded.length <= 12000 ? sanitized : {};
+  } catch {
+    return {};
+  }
+}
+
 function squadPlayerName(record) {
   const firstName = firstText(record?.playername, record?.name);
   const surname = firstText(record?.playersurname, record?.surname);
@@ -413,6 +449,7 @@ export function normalizeClubSquad(input, context = {}) {
     sourceContext: {
       action: sourceContext.action,
       latestId: sourceContext.latestId,
+      sourcePath: (() => { try { return new URL(context.sourceUrl).pathname; } catch { return null; } })(),
     },
     schema: {
       playerKeys: fieldNames(rows),
@@ -445,6 +482,9 @@ export function normalizeClubSquad(input, context = {}) {
       transferListed: firstBoolean(record.transferlisted, record.transfer_list, record.tl),
       photo: firstText(record.photofilename, record.PhotoFilename),
       ratingChangedAt: firstText(record.ratchgdate),
+      // Preserve the bounded, non-sensitive source row alongside normalized
+      // aliases so Player Lab can discover fields we do not understand yet.
+      sourceFields: playerSourceFields(record),
     };
     }),
   };
