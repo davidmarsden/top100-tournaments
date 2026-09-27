@@ -56,12 +56,22 @@ export default function ManagerPortal({ registrationMode = false, session = null
   const magicLinkCooldownUntil = useRef(0);
   const magicLinkRequestId = useRef(0);
   const portalLoadGeneration = useRef(0);
+  const returnNavigationStarted = useRef(false);
   const [account, setAccount] = useState(null), [claim, setClaim] = useState(null), [claimForm, setClaimForm] = useState({ gameWorldId: '', managerName: '', clubName: '' });
   const [gameWorlds, setGameWorlds] = useState([]), [worldClubs, setWorldClubs] = useState([]);
   const [entries, setEntries] = useState([]), [matches, setMatches] = useState([]), [groupEntries, setGroupEntries] = useState([]), [selectedEntryId, setSelectedEntryId] = useState('');
   const [adminAssignments, setAdminAssignments] = useState([]);
   const [openTournaments, setOpenTournaments] = useState([]);
   const [registrations, setRegistrations] = useState([]);
+
+  useEffect(() => {
+    // A returnTo URL means this visit exists only to authenticate another Top
+    // 100 app. Once Manager Portal has a valid approved account, continue
+    // automatically instead of stranding the manager on My Matches.
+    if (!returnTo || !session?.user || !account || loading || loadError || returnNavigationStarted.current) return;
+    returnNavigationStarted.current = true;
+    window.location.replace(returnTo);
+  }, [returnTo, session?.user?.id, account?.id, loading, loadError]);
 
   useEffect(() => {
     if (authLoading) return;
