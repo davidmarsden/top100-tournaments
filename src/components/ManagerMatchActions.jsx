@@ -54,6 +54,11 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
 
   async function uploadEvidence(match,file) {
     if(!file)return;
+    const current=reports[match.id];
+    if(!current?.status){
+      setMessage('Record what happened first, then attach evidence to that action.');
+      return;
+    }
     if(!ALLOWED_EVIDENCE_TYPES.has(file.type)){setMessage('Evidence must be a JPEG, PNG, WebP or GIF image.');return;}
     if(file.size>8*1024*1024){setMessage('Evidence images must be 8 MB or smaller.');return;}
     setUploading(match.id); setMessage('');
@@ -61,13 +66,6 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
     const path=`${session.user.id}/${match.id}/${Date.now()}.${ext}`;
     const uploaded=await supabase.storage.from('match-evidence').upload(path,file,{contentType:file.type,upsert:false});
     if(uploaded.error){setMessage(uploaded.error.message);setUploading('');return;}
-    const current=reports[match.id];
-    if(!current?.status){
-      await supabase.storage.from('match-evidence').remove([path]);
-      setMessage('Record what happened first, then attach evidence to that action.');
-      setUploading('');
-      return;
-    }
     const previousPath=current.evidence_path;
     const {data,error}=await supabase.rpc('attach_manager_match_evidence',{
       p_match_id: match.id,
@@ -102,7 +100,7 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
         <div className="match-action-controls">
           {home?<button type="button" onClick={()=>record(match,'sent')} disabled={!!busy||!!uploading}>✓ Request sent</button>:<><button type="button" onClick={()=>record(match,'received')} disabled={!!busy||!!uploading}>✓ Request received</button><button type="button" className="secondary" onClick={()=>record(match,'chased')} disabled={!!busy||!!uploading}>✉️ I chased them</button></>}
           {report?.status!=='problem'&&<button type="button" className="secondary danger-soft" onClick={()=>record(match,'problem')} disabled={!!busy||!!uploading}>⚠️ Problem arranging match</button>}
-          <label className="button secondary evidence-button">📎 {uploading===match.id?'Uploading…':report?.evidence_path?'Replace evidence':'Add evidence'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={uploading===match.id} onChange={e=>uploadEvidence(match,e.target.files?.[0])}/></label>
+          <label className="button secondary evidence-button">📎 {uploading===match.id?'Uploading…':report?.evidence_path?'Replace evidence':'Add evidence'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={uploading===match.id} onChange={async e=>{const input=e.currentTarget; const file=input.files?.[0]; try{await uploadEvidence(match,file);}finally{input.value='';}}}/></label>
           {report?.evidence_name&&<small>📷 {report.evidence_name}</small>}
         </div>
       </article>
