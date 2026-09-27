@@ -1,5 +1,76 @@
+import { useEffect, useState } from 'react';
+import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import VotingPortal from './VotingPortal.jsx';
 
+const MANAGER_ORIGIN = 'https://manager.smtop100.blog';
+const BRIDGE_TIMEOUT_MS = 5000;
+
 export default function VotingEntry() {
+  const [checkingReturn, setCheckingReturn] = useState(true);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig || !supabase || window.location.hostname !== 'vote.smtop100.blog') {
+      setCheckingReturn(false);
+      return undefined;
+    }
+
+    let active = true;
+    let frame = null;
+    let timer = null;
+
+    const finish = () => {
+      if (!active) return;
+      if (timer) window.clearTimeout(timer);
+      window.removeEventListener('message', handleMessage);
+      if (frame?.parentNode) frame.parentNode.removeChild(frame);
+      frame = null;
+      setCheckingReturn(false);
+    };
+
+    const handleMessage = async (event) => {
+      if (event.origin !== MANAGER_ORIGIN || event.data?.type !== 'top100-manager-session') return;
+      const bridgeSession = event.data.session;
+      if (bridgeSession?.access_token && bridgeSession?.refresh_token) {
+        const { error } = await supabase.auth.setSession(bridgeSession);
+        if (error) console.warn('Could not complete Manager Portal sign-in handoff.', error);
+      }
+      finish();
+    };
+
+    async function initialise() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!active || data.session) return finish();
+
+        // This bridge is now only a return handoff from the canonical Manager
+        // Portal. Voting never initiates its own magic-link sign-in.
+        window.addEventListener('message', handleMessage);
+        frame = document.createElement('iframe');
+        frame.src = `${MANAGER_ORIGIN}/auth/session-bridge`;
+        frame.title = 'Completing Top 100 sign-in';
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.display = 'none';
+        frame.addEventListener('error', finish, { once: true });
+        document.body.appendChild(frame);
+        timer = window.setTimeout(finish, BRIDGE_TIMEOUT_MS);
+      } catch (error) {
+        console.warn('Could not complete Manager Portal sign-in handoff.', error);
+        finish();
+      }
+    }
+
+    initialise();
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+      window.removeEventListener('message', handleMessage);
+      if (frame?.parentNode) frame.parentNode.removeChild(frame);
+    };
+  }, []);
+
+  if (checkingReturn) {
+    return <main className="manager-portal-shell"><section className="card"><h2>Checking Top 100 sign-in…</h2><p className="muted">This should only take a few seconds.</p></section></main>;
+  }
+
   return <VotingPortal />;
 }
