@@ -225,6 +225,11 @@ export default function ManagerPortal({ registrationMode = false, session = null
         setClaim(claimRow || null);
         setAdminAssignments([]);
         setMessage(claimRow?.status === 'pending' ? 'Your manager profile claim is awaiting approval.' : claimRow?.status === 'rejected' ? claimRow.review_notes || 'Your claim was not approved. You may correct it and submit again.' : 'Sign-in complete. One last step: choose your Top 100 game world and club so we can link this account to your manager record.');
+        setLoadStage(claimRow ? 'Manager claim loaded' : 'Ready to link manager account');
+        // This is a successful terminal branch, not an incomplete portal load.
+        // Clear loading here rather than relying only on finally: a later auth
+        // event may advance the generation before finally runs.
+        setLoading(false);
         return;
       }
 
