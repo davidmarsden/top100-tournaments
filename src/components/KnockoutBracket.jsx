@@ -245,6 +245,11 @@ export default function KnockoutBracket({ matches = [], title = 'Knockout bracke
   );
 }
 
+function legScoreForSide(leg, entryId) {
+  const isHome = sideId(leg, 'home') === entryId;
+  return regulationScore(leg, isHome ? 'home' : 'away');
+}
+
 function BracketTie({ tie, seedByEntryId }) {
   const firstWon = tie.winnerId && tie.winnerId === tie.firstId;
   const secondWon = tie.winnerId && tie.winnerId === tie.secondId;
@@ -252,22 +257,27 @@ function BracketTie({ tie, seedByEntryId }) {
   const firstSeed = seedByEntryId.get(tie.firstId);
   const secondSeed = seedByEntryId.get(tie.secondId);
   const decidingLeg = [...tie.ordered].reverse().find(hasFet);
+  const showLegScores = tie.ordered.length > 1;
+  const firstLegScores = showLegScores ? tie.ordered.map((leg) => legScoreForSide(leg, tie.firstId)) : [];
+  const secondLegScores = showLegScores ? tie.ordered.map((leg) => legScoreForSide(leg, tie.secondId)) : [];
 
   return (
     <article className={tie.allPlayed ? 'bracket-tie played' : 'bracket-tie'}>
       <div className={firstWon ? 'bracket-team winner' : secondWon ? 'bracket-team loser' : 'bracket-team'}>
         <strong className="bracket-team-name">{firstSeed ? <span className="bracket-seed-pill">{firstSeed}</span> : null}{tie.firstName}</strong>
-        <span>{hasAggregate ? tie.firstAgg : scoreText(tie.ordered[0])?.split(' - ')[0]}</span>
+        <span className="bracket-score">{showLegScores ? firstLegScores.map((score, index) => <i key={index}>{score}</i>) : (hasAggregate ? tie.firstAgg : scoreText(tie.ordered[0])?.split(' - ')[0])}</span>
         {firstWon && <b>✓</b>}
       </div>
       <div className={secondWon ? 'bracket-team winner' : firstWon ? 'bracket-team loser' : 'bracket-team'}>
         <strong className="bracket-team-name">{secondSeed ? <span className="bracket-seed-pill">{secondSeed}</span> : null}{tie.secondName}</strong>
-        <span>{hasAggregate ? tie.secondAgg : scoreText(tie.ordered[0])?.split(' - ')[1] || ''}</span>
+        <span className="bracket-score">{showLegScores ? secondLegScores.map((score, index) => <i key={index}>{score}</i>) : (hasAggregate ? tie.secondAgg : scoreText(tie.ordered[0])?.split(' - ')[1] || '')}</span>
         {secondWon && <b>✓</b>}
       </div>
       <small>{hasAggregate
         ? `Aggregate after normal time ${tie.firstAgg}-${tie.secondAgg}${tie.firstAgg === tie.secondAgg ? ` · away goals ${tie.firstAway}-${tie.secondAway}` : ''}${tie.decision ? ` · ${tie.decision}` : ''}`
-        : `${tie.ordered[0]?.round || 'Round'} · ${scoreText(tie.ordered[0])}${decidingLeg ? ` · normal time ${regulationScore(decidingLeg, 'home')}-${regulationScore(decidingLeg, 'away')} · FET ${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0}` : ''}`}</small>
+        : decidingLeg
+          ? <><span>${tie.ordered[0]?.round || 'Round'} · ${regulationScore(decidingLeg, 'home')}-${regulationScore(decidingLeg, 'away')} · normal time ${regulationScore(decidingLeg, 'home')}-${regulationScore(decidingLeg, 'away')}</span><span className="bracket-fet">FET ${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0}</span></>
+          : `${tie.ordered[0]?.round || 'Round'} · ${scoreText(tie.ordered[0])}`}</small>
     </article>
   );
 }
