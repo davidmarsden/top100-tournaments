@@ -1120,7 +1120,7 @@ export default function ManagerLabPage() {
   }, [worldFormulaMatches, replicatedFamilyRoleIntegrity]);
 
   const validatedRoleAnalysis = useMemo(() => {
-    if (!worldFormulaMatches.length || !playerRoleEncodingAudit?.positionCodeProfiles?.length) return { assignments: [], anomalies: [], severity: [], clubs: [], switchers: [], persistence: [], roleQuarantine: [] };
+    if (!worldFormulaMatches.length || !playerRoleEncodingAudit?.positionCodeProfiles?.length) return { assignments: [], anomalies: [], severity: [], clubs: [], switchers: [], persistence: [], roleQuarantine: [], roleSwitchExperiments: [] };
     const corroborated = new Set(playerRoleEncodingAudit.positionCodeProfiles.filter((r) => r.completeMatches > 0).map((r) => `${r.formation}:${r.key}:${r.code}`));
     const observations = worldFormulaMatches.map((match) => {
       const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
@@ -1281,7 +1281,106 @@ export default function ManagerLabPage() {
       })
       .sort((a,b) => b.anomalyShare - a.anomalyShare || b.matches - a.matches);
 
-    return { assignments: build(true), anomalies: build(false), severity, clubs, switchers, persistence, roleQuarantine };
+    // Compare genuine, validated role switches within the same club, formation and
+    // formation slot. A switch is eligible only when both role codes are decoded
+    // by complete-XI evidence (directly or by sparse corroboration). This avoids
+    // feeding quarantined serialisation artefacts back into football conclusions.
+    const validatedSwitchMap = new Map();
+    roleObservations.forEach((row) => {
+      row.assignments.filter((assignment) => assignment.validated).forEach((assignment) => {
+        const clubId = String(row.match.sourceClubId || row.match.club || 'unknown');
+        const id = `${clubId}:${row.formation}:${assignment.key}`;
+        const entry = validatedSwitchMap.get(id) || {
+          sourceClubId: row.match.sourceClubId ?? null,
+          club: row.match.club || clubId,
+          formation: row.formation,
+          key: assignment.key,
+          roles: new Map(),
+        };
+        const role = entry.roles.get(assignment.code) || {
+          code: assignment.code,
+          role: assignment.role,
+          rows: [],
+        };
+        role.rows.push(row);
+        entry.roles.set(assignment.code, role);
+        validatedSwitchMap.set(id, entry);
+      });
+    });
+
+    const roleSwitchExperiments = [];
+    validatedSwitchMap.forEach((entry) => {
+      const variants = [...entry.roles.values()].filter((variant) => variant.rows.length >= 2);
+      if (variants.length < 2) return;
+      for (let i = 0; i < variants.length - 1; i += 1) {
+        for (let j = i + 1; j < variants.length; j += 1) {
+          const a = variants[i];
+          const b = variants[j];
+          const aMatches = a.rows.map((row) => row.match);
+          const bMatches = b.rows.map((row) => row.match);
+          const aBuckets = new Set(aMatches.map((match) => xiBucket(match.xiRatingDifference)).filter((bucket) => bucket !== null));
+          const bBuckets = new Set(bMatches.map((match) => xiBucket(match.xiRatingDifference)).filter((bucket) => bucket !== null));
+          const commonBuckets = new Set([...aBuckets].filter((bucket) => bBuckets.has(bucket)));
+          const comparableA = aMatches.filter((match) => commonBuckets.has(xiBucket(match.xiRatingDifference)));
+          const comparableB = bMatches.filter((match) => commonBuckets.has(xiBucket(match.xiRatingDifference)));
+          if (!commonBuckets.size || comparableA.length < 2 || comparableB.length < 2) continue;
+          // Estimate the role contrast inside each shared XI bucket first,
+          // then aggregate those within-bucket B-vs-A differences. Building a
+          // baseline from the pooled A/B cohorts would partially absorb the
+          // role effect whenever the role mix differs by strength bucket.
+          let weightedPpgDelta = 0;
+          let weightedGdDelta = 0;
+          let comparisonWeight = 0;
+          commonBuckets.forEach((bucket) => {
+            const bucketA = comparableA.filter((match) => xiBucket(match.xiRatingDifference) === bucket);
+            const bucketB = comparableB.filter((match) => xiBucket(match.xiRatingDifference) === bucket);
+            if (!bucketA.length || !bucketB.length) return;
+            const ppgA = bucketA.reduce((sum, match) => sum + resultPoints(match.result), 0) / bucketA.length;
+            const ppgB = bucketB.reduce((sum, match) => sum + resultPoints(match.result), 0) / bucketB.length;
+            const gdA = bucketA.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0) / bucketA.length;
+            const gdB = bucketB.reduce((sum, match) => sum + (Number(match.goalsFor) || 0) - (Number(match.goalsAgainst) || 0), 0) / bucketB.length;
+            // Harmonic-style overlap weight gives most influence to buckets
+            // where both roles have evidence, without letting a one-sided
+            // bucket dominate merely because one role was used much more.
+            const weight = (2 * bucketA.length * bucketB.length) / (bucketA.length + bucketB.length);
+            weightedPpgDelta += (ppgB - ppgA) * weight;
+            weightedGdDelta += (gdB - gdA) * weight;
+            comparisonWeight += weight;
+          });
+          const aMetrics = metric(a.rows);
+          const bMetrics = metric(b.rows);
+          roleSwitchExperiments.push({
+            sourceClubId: entry.sourceClubId,
+            club: entry.club,
+            formation: entry.formation,
+            slot: Number(entry.key) + 1,
+            roleA: a.role,
+            codeA: a.code,
+            matchesA: a.rows.length,
+            ppgA: aMetrics.ppg,
+            gdA: aMetrics.gd,
+            roleB: b.role,
+            codeB: b.code,
+            matchesB: b.rows.length,
+            ppgB: bMetrics.ppg,
+            gdB: bMetrics.gd,
+            deltaPpgBvsA: bMetrics.ppg - aMetrics.ppg,
+            deltaGdBvsA: bMetrics.gd - aMetrics.gd,
+            adjustedDeltaPpgBvsA: comparisonWeight ? weightedPpgDelta / comparisonWeight : null,
+            adjustedDeltaGdBvsA: comparisonWeight ? weightedGdDelta / comparisonWeight : null,
+            commonXiBuckets: commonBuckets.size,
+            comparableMatchesA: comparableA.length,
+            comparableMatchesB: comparableB.length,
+          });
+        }
+      }
+    });
+    roleSwitchExperiments.sort((a, b) =>
+      (b.comparableMatchesA + b.comparableMatchesB) - (a.comparableMatchesA + a.comparableMatchesB) ||
+      Math.abs(b.adjustedDeltaPpgBvsA ?? 0) - Math.abs(a.adjustedDeltaPpgBvsA ?? 0)
+    );
+
+    return { assignments: build(true), anomalies: build(false), severity, clubs, switchers, persistence, roleQuarantine, roleSwitchExperiments };
   }, [worldFormulaMatches, playerRoleEncodingAudit]);
 
   const selectedClubRoleCodes = useMemo(() => {
@@ -1512,6 +1611,12 @@ export default function ManagerLabPage() {
           {validatedRoleAnalysis.switchers.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Clean MP</th><th>Clean PPG</th><th>Unresolved MP</th><th>Unresolved PPG</th><th>Δ PPG</th><th>XI-adj Δ</th><th>Δ GD</th></tr></thead><tbody>
             {validatedRoleAnalysis.switchers.map((r)=><tr key={`switch:${r.sourceClubId||r.club}`}><td><strong>{r.club}</strong></td><td>{r.cleanMetrics.matches}</td><td>{r.cleanMetrics.ppg?.toFixed(2) ?? '—'}</td><td>{r.anomalyMetrics.matches}</td><td>{r.anomalyMetrics.ppg?.toFixed(2) ?? '—'}</td><td>{r.deltaPpg>=0?'+':''}{r.deltaPpg.toFixed(2)}</td><td>{r.adjustedDeltaPpg===null?'—':`${r.adjustedDeltaPpg>=0?'+':''}${r.adjustedDeltaPpg.toFixed(2)}`}</td><td>{r.deltaGd>=0?'+':''}{r.deltaGd.toFixed(2)}</td></tr>)}
           </tbody></table></div> : <p className="muted">No club currently has enough clean and unresolved matches for a within-club comparison.</p>}
+        </details>
+        <details open><summary><strong>Validated role switches</strong> · {validatedRoleAnalysis.roleSwitchExperiments.length} within-club experiments</summary>
+          <p className="muted">Same club, same formation, same formation slot; both roles must be validated and each side needs at least two matches in shared rounded XI-strength buckets. XI-adj Δ is Role B minus Role A after controlling for those shared strength buckets. This is observational evidence, not proof that the role caused the result.</p>
+          {validatedRoleAnalysis.roleSwitchExperiments.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>Formation</th><th>Slot</th><th>Role A</th><th>A MP</th><th>A PPG</th><th>Role B</th><th>B MP</th><th>B PPG</th><th>XI-adj Δ PPG</th><th>XI-adj Δ GD</th><th>Comparable</th></tr></thead><tbody>
+            {validatedRoleAnalysis.roleSwitchExperiments.map((r, index)=><tr key={`role-switch:${r.sourceClubId||r.club}:${r.formation}:${r.slot}:${r.codeA}:${r.codeB}:${index}`}><td><strong>{r.club}</strong></td><td>{r.formation}</td><td>{r.slot}</td><td>{r.roleA} <code>{r.codeA}</code></td><td>{r.matchesA}</td><td>{r.ppgA?.toFixed(2) ?? '—'}</td><td>{r.roleB} <code>{r.codeB}</code></td><td>{r.matchesB}</td><td>{r.ppgB?.toFixed(2) ?? '—'}</td><td>{r.adjustedDeltaPpgBvsA===null?'—':`${r.adjustedDeltaPpgBvsA>=0?'+':''}${r.adjustedDeltaPpgBvsA.toFixed(2)}`}</td><td>{r.adjustedDeltaGdBvsA===null?'—':`${r.adjustedDeltaGdBvsA>=0?'+':''}${r.adjustedDeltaGdBvsA.toFixed(2)}`}</td><td>{r.comparableMatchesA}+{r.comparableMatchesB} · {r.commonXiBuckets} XI buckets</td></tr>)}
+          </tbody></table></div> : <p className="muted">No validated role pair yet has at least two comparable matches on both sides. More archived matches will make this view progressively stronger.</p>}
         </details>
         <details><summary><strong>Role-encoding quarantine</strong> · keep stable unresolved clubs out of role conclusions</summary>
           <p className="muted">Clubs with unresolved PlayerRole encodings in at least 80% of analyzable matches are quarantined from role-dependent interpretation. They remain in ordinary tactical/formula analysis because we have not found evidence that formation, mentality or the other archived instructions are corrupted. Sevilla therefore stays in Formula Lab, but its PlayerRole values do not get treated as decoded roles.</p>
