@@ -1120,7 +1120,7 @@ export default function ManagerLabPage() {
   }, [worldFormulaMatches, replicatedFamilyRoleIntegrity]);
 
   const validatedRoleAnalysis = useMemo(() => {
-    if (!worldFormulaMatches.length || !playerRoleEncodingAudit?.positionCodeProfiles?.length) return { assignments: [], anomalies: [], severity: [], clubs: [] };
+    if (!worldFormulaMatches.length || !playerRoleEncodingAudit?.positionCodeProfiles?.length) return { assignments: [], anomalies: [], severity: [], clubs: [], switchers: [], persistence: [], roleQuarantine: [] };
     const corroborated = new Set(playerRoleEncodingAudit.positionCodeProfiles.filter((r) => r.completeMatches > 0).map((r) => `${r.formation}:${r.key}:${r.code}`));
     const observations = worldFormulaMatches.map((match) => {
       const encoding = playerRoleEncoding(match?.tactics?.playerRoles);
@@ -1148,15 +1148,31 @@ export default function ManagerLabPage() {
       const pts = rows.map((r) => resultPoints(r.match.result));
       return { matches: rows.length, ppg: pts.reduce((a,b)=>a+b,0)/rows.length, gd: rows.reduce((s,r)=>s+(Number(r.match.goalsFor)-Number(r.match.goalsAgainst)),0)/rows.length, winRate: pts.filter((p)=>p===3).length/rows.length };
     };
+    const allClubMap = new Map();
+    analyzableObservations.forEach((r) => {
+      const id = String(r.match.sourceClubId || r.match.club || 'unknown');
+      const x = allClubMap.get(id) || { sourceClubId: r.match.sourceClubId, club: r.match.club || id, clean: [], anomalous: [] };
+      (r.anomalous ? x.anomalous : x.clean).push(r);
+      allClubMap.set(id, x);
+    });
+    const allClubs = [...allClubMap.values()].filter((x) => x.anomalous.length);
+    const quarantinedClubIds = new Set(allClubs.filter((club) => {
+      const total = club.clean.length + club.anomalous.length;
+      return total > 0 && club.anomalous.length / total >= 0.8;
+    }).map((club) => String(club.sourceClubId || club.club || 'unknown')));
+    const roleObservations = analyzableObservations.filter((row) =>
+      !quarantinedClubIds.has(String(row.match.sourceClubId || row.match.club || 'unknown'))
+    );
+
     const sev = new Map();
-    analyzableObservations.forEach((r) => { const k=r.anomalous>=4?'4+':String(r.anomalous); if(!sev.has(k)) sev.set(k,[]); sev.get(k).push(r); });
+    roleObservations.forEach((r) => { const k=r.anomalous>=4?'4+':String(r.anomalous); if(!sev.has(k)) sev.set(k,[]); sev.get(k).push(r); });
     const severity=[...sev].map(([anomalies,rows])=>({anomalies,...metric(rows)})).sort((a,b)=>(a.anomalies==='4+'?99:+a.anomalies)-(b.anomalies==='4+'?99:+b.anomalies));
     const cm=new Map();
-    analyzableObservations.forEach((r)=>{const id=String(r.match.sourceClubId||r.match.club||'unknown');const x=cm.get(id)||{sourceClubId:r.match.sourceClubId,club:r.match.club||id,clean:[],anomalous:[]};(r.anomalous?x.anomalous:x.clean).push(r);cm.set(id,x);});
+    roleObservations.forEach((r)=>{const id=String(r.match.sourceClubId||r.match.club||'unknown');const x=cm.get(id)||{sourceClubId:r.match.sourceClubId,club:r.match.club||id,clean:[],anomalous:[]};(r.anomalous?x.anomalous:x.clean).push(r);cm.set(id,x);});
     const clubs=[...cm.values()].filter((x)=>x.anomalous.length).map((x)=>({...x,cleanMetrics:metric(x.clean),anomalyMetrics:metric(x.anomalous)})).sort((a,b)=>b.anomalous.length-a.anomalous.length);
     const build=(wantValidated)=>{
       const m=new Map();
-      analyzableObservations.forEach((r)=>r.assignments.filter((a)=>a.validated===wantValidated).forEach((a)=>{const id=`${r.formation}:${a.key}:${a.code}`;const x=m.get(id)||{formation:r.formation,key:a.key,code:a.code,role:a.role,rows:[],clubs:new Set(),complete:0,sparse:0};x.rows.push(r);if(r.match.sourceClubId)x.clubs.add(r.match.sourceClubId);if(a.complete)x.complete++;else x.sparse++;m.set(id,x);}));
+      roleObservations.forEach((r)=>r.assignments.filter((a)=>a.validated===wantValidated).forEach((a)=>{const id=`${r.formation}:${a.key}:${a.code}`;const x=m.get(id)||{formation:r.formation,key:a.key,code:a.code,role:a.role,rows:[],clubs:new Set(),complete:0,sparse:0};x.rows.push(r);if(r.match.sourceClubId)x.clubs.add(r.match.sourceClubId);if(a.complete)x.complete++;else x.sparse++;m.set(id,x);}));
       return [...m.values()].map((x)=>({formation:x.formation,key:x.key,code:x.code,role:x.role,clubCount:x.clubs.size,complete:x.complete,sparse:x.sparse,...metric(x.rows)})).sort((a,b)=>b.matches-a.matches);
     };
     // Club-level natural experiments are more informative than pooling clubs
@@ -1170,9 +1186,14 @@ export default function ManagerLabPage() {
         const anomalyMetrics = metric(club.anomalous);
         const cleanMatches = club.clean.map((row) => row.match);
         const anomalyMatches = club.anomalous.map((row) => row.match);
-        const clubBaseline = buildStrengthBaseline([...cleanMatches, ...anomalyMatches]);
-        const cleanAdjusted = adjustedMetrics(cleanMatches, clubBaseline);
-        const anomalyAdjusted = adjustedMetrics(anomalyMatches, clubBaseline);
+        const cleanBuckets = new Set(cleanMatches.map((match) => xiBucket(match.xiRatingDifference)).filter((bucket) => bucket !== null));
+        const anomalyBuckets = new Set(anomalyMatches.map((match) => xiBucket(match.xiRatingDifference)).filter((bucket) => bucket !== null));
+        const commonBuckets = new Set([...cleanBuckets].filter((bucket) => anomalyBuckets.has(bucket)));
+        const comparableClean = cleanMatches.filter((match) => commonBuckets.has(xiBucket(match.xiRatingDifference)));
+        const comparableAnomaly = anomalyMatches.filter((match) => commonBuckets.has(xiBucket(match.xiRatingDifference)));
+        const clubBaseline = buildStrengthBaseline([...comparableClean, ...comparableAnomaly]);
+        const cleanAdjusted = commonBuckets.size ? adjustedMetrics(comparableClean, clubBaseline) : { adjustedPpg: null, adjustedGd: null };
+        const anomalyAdjusted = commonBuckets.size ? adjustedMetrics(comparableAnomaly, clubBaseline) : { adjustedPpg: null, adjustedGd: null };
         return {
           sourceClubId: club.sourceClubId,
           club: club.club,
@@ -1184,6 +1205,9 @@ export default function ManagerLabPage() {
             ? null : anomalyAdjusted.adjustedPpg - cleanAdjusted.adjustedPpg,
           adjustedDeltaGd: anomalyAdjusted.adjustedGd === null || cleanAdjusted.adjustedGd === null
             ? null : anomalyAdjusted.adjustedGd - cleanAdjusted.adjustedGd,
+          commonXiBuckets: commonBuckets.size,
+          comparableCleanMatches: comparableClean.length,
+          comparableAnomalyMatches: comparableAnomaly.length,
         };
       })
       .sort((a,b) => (a.adjustedDeltaPpg ?? a.deltaPpg) - (b.adjustedDeltaPpg ?? b.deltaPpg));
@@ -1239,7 +1263,7 @@ export default function ManagerLabPage() {
     // not discard these clubs from ordinary Formula Lab analyses: the anomaly
     // is currently isolated to PlayerRole serialisation, while the other
     // tactical fields remain independently readable.
-    const roleQuarantine = clubs
+    const roleQuarantine = allClubs
       .map((club) => {
         const total = club.clean.length + club.anomalous.length;
         const anomalyShare = total ? club.anomalous.length / total : 0;
