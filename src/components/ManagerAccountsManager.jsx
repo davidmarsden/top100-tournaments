@@ -64,18 +64,22 @@ export default function ManagerAccountsManager() {
         .select('id, auth_user_id, manager_id, email, active, created_at, updated_at, managers(id, name, display_name), game_worlds(id, name, slug)')
         .order('created_at', { ascending: false }),
     ]);
-    const { data, error } = claimsResult;
+    const nextAccounts = accountsResult.error ? null : (accountsResult.data || []);
+    if (nextAccounts) setAccounts(nextAccounts);
 
-    if (error) {
-      setStatus('Could not load manager claims: ' + error.message);
+    if (claimsResult.error) {
+      setStatus(accountsResult.error
+        ? `Could not load manager claims: ${claimsResult.error.message}; account register also failed: ${accountsResult.error.message}`
+        : `${nextAccounts.length} linked manager accounts loaded; claims failed: ${claimsResult.error.message}`);
       setLoading(false);
       return;
     }
 
-    const nextClaims = data || [];
+    const nextClaims = claimsResult.data || [];
     setClaims(nextClaims);
-    setAccounts(accountsResult.error ? [] : (accountsResult.data || []));
-    setStatus(accountsResult.error ? `${nextClaims.length} manager claims loaded; account register failed: ${accountsResult.error.message}` : `${accountsResult.data?.length || 0} linked manager accounts · ${nextClaims.length} claims.`);
+    setStatus(accountsResult.error
+      ? `${nextClaims.length} manager claims loaded; account register failed: ${accountsResult.error.message}`
+      : `${nextAccounts.length} linked manager accounts · ${nextClaims.length} claims.`);
     await loadSuggestions(nextClaims.filter((claim) => claim.status === 'pending'));
     setLoading(false);
   }
