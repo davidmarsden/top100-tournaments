@@ -241,24 +241,8 @@ async function importTournament(body) {
     participantToTeam.set(participant.participantId, participant.teamName);
   }
 
-  // Re-import replaces matches; remove private evidence first because Storage
-  // objects are not covered by database cascades.
-  const oldMatches = await selectAll((from,to)=>db.from('matches').select('id').eq('tournament_id',tournamentId).range(from,to));
-  const oldMatchIds = oldMatches.map((row) => row.id);
-  if (oldMatchIds.length) {
-    const arrangements = await selectAll((from,to)=>db.from('manager_match_arrangements').select('auth_user_id,match_id').in('match_id',oldMatchIds).range(from,to));
-    const evidenceKeys = [];
-    for (const row of arrangements || []) {
-      for (const slot of ['a','b']) for (const ext of ['jpg','png','webp','gif']) {
-        evidenceKeys.push(`${row.auth_user_id}/${row.match_id}/evidence-${slot}.${ext}`);
-      }
-    }
-    for (let offset = 0; offset < evidenceKeys.length; offset += 1000) {
-      const { error } = await db.storage.from('match-evidence').remove(evidenceKeys.slice(offset, offset + 1000));
-      if (error) throw error;
-    }
-  }
-
+  // Arrangement cascades enqueue evidence cleanup; Storage removal is deferred
+  // until the relational match replacement has succeeded.
   const existingMatches = await db.from('matches').delete().eq('tournament_id', tournamentId);
   if (existingMatches.error) throw existingMatches.error;
 
