@@ -208,6 +208,8 @@ as $$
 declare
   v_user uuid := auth.uid();
   v_arr public.manager_match_arrangements;
+  v_home_entry_id bigint;
+  v_away_entry_id bigint;
 begin
   if v_user is null then raise exception 'Authentication required'; end if;
   if p_evidence_path is null
@@ -220,19 +222,24 @@ begin
      or split_part(p_evidence_path,'/',4) <> '' then
     raise exception 'Invalid evidence path';
   end if;
+  select home_entry_id, away_entry_id into v_home_entry_id, v_away_entry_id
+  from public.matches
+  where id=p_match_id
+    and coalesce(lower(status),'scheduled') not in ('played','forfeit','voided','cancelled')
+  for update;
+  if not found then raise exception 'This fixture is no longer active'; end if;
+
   update public.manager_match_arrangements
      set evidence_path=p_evidence_path,evidence_name=p_evidence_name,updated_at=now()
    where match_id=p_match_id
      and auth_user_id=v_user
+     and (tournament_entry_id=v_home_entry_id or tournament_entry_id=v_away_entry_id)
      and exists (
        select 1
        from public.tournament_entries e
        join public.manager_portal_accounts p
          on p.manager_id=e.manager_id and p.auth_user_id=v_user and p.active=true
-       join public.matches m on m.id=manager_match_arrangements.match_id
        where e.id=manager_match_arrangements.tournament_entry_id
-         and (manager_match_arrangements.tournament_entry_id=m.home_entry_id
-              or manager_match_arrangements.tournament_entry_id=m.away_entry_id)
      )
    returning * into v_arr;
   if v_arr.id is null then raise exception 'Record an arrangement action before adding evidence'; end if;
