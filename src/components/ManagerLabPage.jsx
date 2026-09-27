@@ -2000,7 +2000,7 @@ export default function ManagerLabPage() {
         <p className="muted">Each remaining fixture now has a live scouting dossier. Stability measures the opponent's latest five-field tactical family over their last 5/10 archived D1 matches. Counter evidence is paired league evidence from all five Top 100 divisions. Ranking shrinks tiny samples toward 1.50 PPG so one freak result cannot become a “magic counter”; Hamburg's own direct evidence is kept separate.</p>
         <div className="run-in-dossiers">
           {runInLab.map((row, rowIndex) => <details className="card" key={`run-in:${row.date}:${row.opponent}`} open={rowIndex === 0}>
-            <summary><strong>{row.date} · {row.venue} · {row.opponent}</strong>{row.primary && <span> · plan: {familyLabel(row.primary.sample)} · {row.primary.confidence.label} confidence</span>}</summary>
+            <summary><strong>{row.date} · {row.venue} · {row.opponent}</strong>{row.primary ? <span> · plan: {familyLabel(row.primary.sample)} · {row.primary.confidence.label} confidence</span> : row.volatile && row.dominantPrimary ? <span> · contingency: {familyLabel(row.dominantPrimary.sample)} for established setup · {row.dominantPrimary.confidence.label} confidence</span> : null}</summary>
             <div className="table-wrap"><table className="manager-lab-table"><tbody>
               <tr><th>Latest opponent setup</th><td>{row.latest ? <><strong>{familyLabel(row.latest)}</strong><br /><small>{formulaText(row.latest)}</small></> : 'No archived setup'}</td></tr>
               <tr><th>Tactical stability</th><td>Last 5: <strong>{row.stability5.pct === null ? '—' : `${row.stability5.same}/${row.stability5.matches} (${(row.stability5.pct*100).toFixed(0)}%)`}</strong> · Last 10: <strong>{row.stability10.pct === null ? '—' : `${row.stability10.same}/${row.stability10.matches} (${(row.stability10.pct*100).toFixed(0)}%)`}</strong>{row.dominant && row.dominant.key !== row.currentKey && <><br /><small>Longer-run dominant: {familyLabel(row.dominant.sample)} · {row.dominant.matches} MP</small></>}</td></tr>
@@ -2017,8 +2017,17 @@ export default function ManagerLabPage() {
               {row.primary.confidence.warning && <p><strong>Sample warning:</strong> {row.primary.confidence.warning}</p>}
               {row.alternative && <p><strong>Alternative:</strong> {familyLabel(row.alternative.sample)} · {row.alternative.matches} world MP · {row.alternative.ppg.toFixed(2)} PPG · {row.alternative.confidence.label} confidence.</p>}
             </> : <p className="muted">{row.counters.length ? 'Paired observations exist, but none yet meet the minimum recommendation threshold of 3 matches across at least 2 clubs. They remain descriptive evidence below.' : 'No paired world evidence yet for the opponent\'s latest family. No recommendation is manufactured from missing data.'}</p>}
+            {row.volatile && row.dominant && <>
+              <h3>Established-setup contingency</h3>
+              <p className="muted">The latest setup is not yet stable ({row.stability5.same}/{row.stability5.matches} of the last 5). Their longer-run family is <strong>{familyLabel(row.dominant.sample)}</strong> ({row.dominant.matches} archived D1 matches), so the dossier keeps a second scenario ready.</p>
+              {row.dominantPrimary ? <>
+                <p><strong>If the established setup returns:</strong> {familyLabel(row.dominantPrimary.sample)} <strong>· {row.dominantPrimary.confidence.label} confidence</strong></p>
+                <p className="muted">Scenario evidence: {row.dominantPrimary.matches} world MP · {row.dominantPrimary.clubCount} clubs · {row.dominantPrimary.ppg.toFixed(2)} PPG · {row.dominantPrimary.gdPerGame>=0?'+':''}{row.dominantPrimary.gdPerGame.toFixed(2)} GD/game.</p>
+                {row.dominantAlternative && <p className="muted"><strong>Scenario alternative:</strong> {familyLabel(row.dominantAlternative.sample)} · {row.dominantAlternative.matches} MP · {row.dominantAlternative.ppg.toFixed(2)} PPG.</p>}
+              </> : <p className="muted">No plan for the longer-run family yet clears the same 3-match / 2-club evidence threshold.</p>}
+            </>}
             {row.counters.length > 0 && <>
-              <h3>Empirical counter shortlist</h3>
+              <h3>Empirical counter shortlist · latest setup</h3>
               <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Counter family</th><th>World</th><th>Replication</th><th>Hamburg direct</th><th>Confidence</th></tr></thead><tbody>
                 {row.counters.map((counter) => <tr key={counter.key}>
                   <td><strong>{familyLabel(counter.sample)}</strong></td>
