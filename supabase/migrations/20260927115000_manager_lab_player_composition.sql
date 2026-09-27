@@ -44,8 +44,8 @@ begin
     select p.*,
       xi.our_xi, xi.opp_xi,
       case when xi.our_xi is not null and xi.opp_xi is not null then round(xi.our_xi-xi.opp_xi,2) end xi_diff,
-      squad.player_count, squad.avg_age, squad.avg_rating, squad.young_count, squad.veteran_count,
-      opp_squad.player_count opp_player_count, opp_squad.avg_age opp_avg_age,
+      squad.player_count, squad.age_count, squad.rating_count, squad.avg_age, squad.avg_rating, squad.young_count, squad.veteran_count,
+      opp_squad.player_count opp_player_count, opp_squad.age_count opp_age_count, opp_squad.rating_count opp_rating_count, opp_squad.avg_age opp_avg_age,
       opp_squad.avg_rating opp_avg_rating, opp_squad.young_count opp_young_count,
       opp_squad.veteran_count opp_veteran_count
     from perspectives p
@@ -61,6 +61,8 @@ begin
     ) xi on true
     left join lateral (
       select count(*)::integer player_count,
+        count(nullif(player->>'age',''))::integer age_count,
+        count(nullif(player->>'overallRating',''))::integer rating_count,
         round(avg(nullif(player->>'age','')::numeric),2) avg_age,
         round(avg(nullif(player->>'overallRating','')::numeric),2) avg_rating,
         count(*) filter (where nullif(player->>'age','')::numeric <= 21)::integer young_count,
@@ -70,6 +72,8 @@ begin
     ) squad on true
     left join lateral (
       select count(*)::integer player_count,
+        count(nullif(player->>'age',''))::integer age_count,
+        count(nullif(player->>'overallRating',''))::integer rating_count,
         round(avg(nullif(player->>'age','')::numeric),2) avg_age,
         round(avg(nullif(player->>'overallRating','')::numeric),2) avg_rating,
         count(*) filter (where nullif(player->>'age','')::numeric <= 21)::integer young_count,
@@ -89,10 +93,12 @@ begin
       case when goals_for > goals_against then 'W' when goals_for = goals_against then 'D' else 'L' end result,
       goals_for as "goalsFor", goals_against as "goalsAgainst",
       our_xi as "ourXiRating", opp_xi as "opponentXiRating", xi_diff as "xiRatingDifference",
-      player_count as "reportedPlayerCount", avg_age as "reportedAvgAge",
+      player_count as "reportedPlayerCount", age_count as "reportedAgeCount",
+      rating_count as "reportedRatingCount", avg_age as "reportedAvgAge",
       avg_rating as "reportedAvgRating", young_count as "reportedYoungCount",
       veteran_count as "reportedVeteranCount",
-      opp_player_count as "opponentReportedPlayerCount", opp_avg_age as "opponentReportedAvgAge",
+      opp_player_count as "opponentReportedPlayerCount", opp_age_count as "opponentReportedAgeCount",
+      opp_rating_count as "opponentReportedRatingCount", opp_avg_age as "opponentReportedAvgAge",
       opp_avg_rating as "opponentReportedAvgRating", opp_young_count as "opponentReportedYoungCount",
       opp_veteran_count as "opponentReportedVeteranCount",
       tactics
