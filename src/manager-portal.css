@@ -102,3 +102,29 @@
 .match-action-controls small { color:#64748b; font-weight:700; }
 .danger-soft { color:#991b1b !important; border-color:#fecaca !important; background:#fff7f7 !important; }
 @media (max-width:820px) { .match-action-row { grid-template-columns:1fr; } .match-action-controls { grid-column:1; } }
+
+/* Result Centre: keep result type and scores compact instead of stretching
+   the opponent score field across the card on tablet-sized screens. */
+.result-score-form {
+  grid-template-columns: minmax(160px, 220px) 130px 130px minmax(140px, 1fr);
+}
+.result-score-form label { min-width: 0; }
+.result-score-form select,
+.result-score-form input { width: 100%; box-sizing: border-box; }
+.result-score-form button { justify-self: start; }
+
+@media (max-width: 820px) {
+  .result-centre { padding: 18px; }
+  .result-submission-card { padding: 14px; }
+  .result-score-form {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .result-score-form label:first-child { grid-column: 1 / -1; }
+  .result-score-form button { grid-column: 1 / -1; width: auto; }
+}
+@media (max-width: 520px) {
+  .result-score-form { grid-template-columns: 1fr; }
+  .result-score-form label:first-child,
+  .result-score-form button { grid-column: 1; }
+}
