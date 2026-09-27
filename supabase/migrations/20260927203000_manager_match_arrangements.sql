@@ -84,7 +84,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 begin
   if old.evidence_path is not null then
     insert into public.manager_match_evidence_cleanup(auth_user_id,match_id,queued_at)
@@ -93,7 +93,7 @@ begin
   end if;
   return old;
 end;
-$;
+$$;
 revoke all on function public.queue_manager_match_evidence_cleanup() from public, anon, authenticated;
 drop trigger if exists queue_manager_match_evidence_cleanup on public.manager_match_arrangements;
 create trigger queue_manager_match_evidence_cleanup
