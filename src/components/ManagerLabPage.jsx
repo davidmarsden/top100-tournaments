@@ -1190,6 +1190,15 @@ export default function ManagerLabPage() {
       if (matches >= 3) return { label: 'Low', warning: 'Small sample — treat this as a candidate, not a discovered counter.' };
       return { label: 'Very low', warning: 'Tiny sample — descriptive only.' };
     };
+    const strengthSimilarityWeight = (gap, projectedGap) => {
+      if (gap === null || projectedGap === null) return 0;
+      const distance = Math.abs(gap - projectedGap);
+      if (distance <= 1) return 1;
+      if (distance <= 2) return 0.8;
+      if (distance <= 3) return 0.55;
+      if (distance <= 5) return 0.3;
+      return 0.1;
+    };
     const hamburgRows = d1.filter((match) => String(match.sourceClubId) === '48506708');
     const hamburgLatest = sortedRecent(hamburgRows)[0] || null;
 
@@ -1206,6 +1215,9 @@ export default function ManagerLabPage() {
         row.matches += 1; row.points += resultPoints(match.result); row.sample = match; familyCounts.set(key, row);
       });
       const dominant = [...familyCounts.values()].sort((a,b) => b.matches - a.matches || b.points - a.points)[0] || null;
+      const latestXi = latest ? numericValue(latest.ourXiRating) : null;
+      const hamburgXi = hamburgLatest ? numericValue(hamburgLatest.ourXiRating) : null;
+      const projectedXiGap = hamburgXi !== null && latestXi !== null ? hamburgXi-latestXi : null;
       const buildCounters = (targetKey) => {
         if (!targetKey) return [];
         const counterMap = new Map();
@@ -1228,6 +1240,23 @@ export default function ManagerLabPage() {
           const ppg = row.points / row.matches;
           const gdPerGame = row.gd / row.matches;
           const evidencePpg = (row.points + 6) / (row.matches + 4);
+          let comparableWeight = 0, comparablePoints = 0, comparableGd = 0, closeGapMatches = 0;
+          row.samples.forEach((match) => {
+            const gap = numericValue(match.xiRatingDifference);
+            const weight = strengthSimilarityWeight(gap, projectedXiGap);
+            comparableWeight += weight;
+            comparablePoints += resultPoints(match.result) * weight;
+            comparableGd += ((Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0)) * weight;
+            if (gap !== null && projectedXiGap !== null && Math.abs(gap-projectedXiGap) <= 2) closeGapMatches += 1;
+          });
+          const comparablePpg = comparableWeight ? comparablePoints/comparableWeight : null;
+          const comparableGdPerGame = comparableWeight ? comparableGd/comparableWeight : null;
+          // Blend raw/shrunk outcome evidence with the matches that most closely
+          // resemble Hamburg's projected XI disadvantage. Replication remains a
+          // hard qualification gate below.
+          const strengthMatchedScore = comparablePpg === null
+            ? evidencePpg
+            : (0.65 * comparablePpg) + (0.35 * evidencePpg);
           const hamburgSample = hamburgRows.filter((match) => {
             if (tacticSignature(match, FAMILY_KEYS) !== row.key) return false;
             const opponentSide = counterpartFor(match);
@@ -1237,6 +1266,7 @@ export default function ManagerLabPage() {
           const hamburgGd = hamburgSample.reduce((sum, match) => sum + (Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0), 0);
           return {
             ...row, clubCount: row.clubs.size, divisionCount: row.divisions.size, ppg, gdPerGame, evidencePpg,
+            strengthMatchedScore, comparablePpg, comparableGdPerGame, comparableWeight, closeGapMatches,
             avgXiGap: row.xiGaps.length ? row.xiGaps.reduce((sum,value)=>sum+value,0)/row.xiGaps.length : null,
             hamburgMatches: hamburgSample.length,
             hamburgPpg: hamburgSample.length ? hamburgPoints/hamburgSample.length : null,
@@ -1244,7 +1274,7 @@ export default function ManagerLabPage() {
             confidence: evidenceConfidence(row.matches, row.clubs.size),
             secondaryInstructions: secondaryInstructionProfile(row.samples),
           };
-        }).sort((a,b) => b.evidencePpg-a.evidencePpg || b.matches-a.matches || b.gdPerGame-a.gdPerGame);
+        }).sort((a,b) => b.strengthMatchedScore-a.strengthMatchedScore || b.matches-a.matches || b.gdPerGame-a.gdPerGame);
       };
       // Keep the full ranked collection for recommendation qualification.
       // The five-row cap is presentation only: otherwise several attractive
@@ -1258,13 +1288,35 @@ export default function ManagerLabPage() {
       const dominantQualified = qualified(dominantCounterEvidence);
       const volatile = Boolean(dominant && dominant.key !== currentKey && stability5.pct !== null && stability5.pct < 0.6);
       const previous = sortedRecent(hamburgRows.filter((match) => match.opponent === fixture.opponent && match.date && String(match.date) < fixture.date))[0] || null;
-      const latestXi = latest ? numericValue(latest.ourXiRating) : null;
-      const hamburgXi = hamburgLatest ? numericValue(hamburgLatest.ourXiRating) : null;
+      const hamburgStronger = hamburgRows.filter((match) => {
+        const gap = numericValue(match.xiRatingDifference);
+        return gap !== null && gap < -1;
+      });
+      const avoidMap = new Map();
+      hamburgStronger.forEach((match) => {
+        const key = tacticSignature(match, FAMILY_KEYS);
+        const entry = avoidMap.get(key) || { key, sample: match, matches: 0, points: 0, gd: 0 };
+        entry.matches += 1;
+        entry.points += resultPoints(match.result);
+        entry.gd += (Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0);
+        avoidMap.set(key, entry);
+      });
+      const avoid = [...avoidMap.values()]
+        .map((entry) => ({ ...entry, ppg: entry.points/entry.matches, gdPerGame: entry.gd/entry.matches }))
+        .filter((entry) => entry.matches >= 4 && entry.ppg <= 0.75)
+        .sort((a,b) => a.ppg-b.ppg || a.gdPerGame-b.gdPerGame || b.matches-a.matches)[0] || null;
+      const ageBands = latest ? [
+        ['≤21', numericValue(latest.reportedYoungCount)],
+        ['22–25', numericValue(latest.reportedDevelopmentCount)],
+        ['26–30', numericValue(latest.reportedPeakCount)],
+        ['31–34', numericValue(latest.reportedVeteranCount)],
+        ['35+', numericValue(latest.reportedLateCareerCount)],
+      ] : [];
       return {
         ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey, stability5, stability10,
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
-        projectedXiGap: hamburgXi !== null && latestXi !== null ? hamburgXi-latestXi : null,
+        projectedXiGap, ageBands, avoid,
         counters, dominantCounters, volatile,
         // A recommendation needs replication. One- and two-match observations
         // remain visible in the shortlist, but are descriptive rather than plans.
@@ -2039,14 +2091,14 @@ export default function ManagerLabPage() {
       {worldFormulaMatches.length > 0 && <section className="card">
         <p className="eyebrow">Hamburger SV · Division 1 survival</p>
         <h2>Run-in Lab · opponent dossiers</h2>
-        <p className="muted">Each remaining fixture now has a live scouting dossier. Stability measures the opponent's latest five-field tactical family over their last 5/10 archived D1 matches. Counter evidence is paired league evidence from all five Top 100 divisions. Ranking shrinks tiny samples toward 1.50 PPG so one freak result cannot become a “magic counter”; Hamburg's own direct evidence is kept separate. Once a five-field counter qualifies, the Lab also profiles every captured secondary instruction inside that supporting sample and prescribes only replicated values (≥60% share, ≥3 observations, ≥2 clubs).</p>
+        <p className="muted">Each remaining fixture now has a live scouting dossier. Stability measures the opponent's latest five-field tactical family over their last 5/10 archived D1 matches. Counter evidence is paired league evidence from all five Top 100 divisions. Ranking now gives most weight to results achieved at an XI gap close to Hamburg's projected disadvantage, while still shrinking tiny samples toward 1.50 PPG; replication remains mandatory, and Hamburg's own direct evidence is kept separate. Once a five-field counter qualifies, the Lab profiles captured secondary instructions and prescribes only replicated values (≥60% share, ≥3 observations, ≥2 clubs).</p>
         <div className="run-in-dossiers">
           {runInLab.map((row, rowIndex) => <details className="card" key={`run-in:${row.date}:${row.opponent}`} open={rowIndex === 0}>
             <summary><strong>{row.date} · {row.venue} · {row.opponent}</strong>{row.primary ? <span> · plan: {familyLabel(row.primary.sample)} · {row.primary.confidence.label} confidence</span> : row.volatile && row.dominantPrimary ? <span> · contingency: {familyLabel(row.dominantPrimary.sample)} for established setup · {row.dominantPrimary.confidence.label} confidence</span> : null}</summary>
             <div className="table-wrap"><table className="manager-lab-table"><tbody>
               <tr><th>Latest opponent setup</th><td>{row.latest ? <><strong>{familyLabel(row.latest)}</strong><br /><small>{formulaText(row.latest)}</small></> : 'No archived setup'}</td></tr>
               <tr><th>Tactical stability</th><td>Last 5: <strong>{row.stability5.pct === null ? '—' : `${row.stability5.same}/${row.stability5.matches} (${(row.stability5.pct*100).toFixed(0)}%)`}</strong> · Last 10: <strong>{row.stability10.pct === null ? '—' : `${row.stability10.same}/${row.stability10.matches} (${(row.stability10.pct*100).toFixed(0)}%)`}</strong>{row.dominant && row.dominant.key !== row.currentKey && <><br /><small>Longer-run dominant: {familyLabel(row.dominant.sample)} · {row.dominant.matches} MP</small></>}</td></tr>
-              <tr><th>XI / age profile</th><td>Opponent latest XI <strong>{row.latestXi === null ? '—' : row.latestXi.toFixed(1)}</strong> · avg age <strong>{row.latestAge === null ? '—' : row.latestAge.toFixed(1)}</strong><br /><small>Hamburg latest XI {row.hamburgXi === null ? '—' : row.hamburgXi.toFixed(1)} · projected Δ XI {row.projectedXiGap === null ? '—' : `${row.projectedXiGap>=0?'+':''}${row.projectedXiGap.toFixed(1)}`} (HSV minus opponent). Age is context, not a strength penalty.</small></td></tr>
+              <tr><th>XI / age profile</th><td>Opponent latest XI <strong>{row.latestXi === null ? '—' : row.latestXi.toFixed(1)}</strong> · avg age <strong>{row.latestAge === null ? '—' : row.latestAge.toFixed(1)}</strong>{row.ageBands.some(([,value]) => value !== null) && <><br /><small>{row.ageBands.map(([label,value]) => `${label} ${value ?? '—'}`).join(' · ')}</small></>}<br /><small>Hamburg latest XI {row.hamburgXi === null ? '—' : row.hamburgXi.toFixed(1)} · projected Δ XI {row.projectedXiGap === null ? '—' : `${row.projectedXiGap>=0?'+':''}${row.projectedXiGap.toFixed(1)}`} (HSV minus opponent). Age is context, not a strength penalty.</small></td></tr>
               <tr><th>Previous HSV meeting</th><td>{row.previous ? <><strong className={`lab-result ${row.previous.result}`}>{row.previous.goalsFor}–{row.previous.goalsAgainst}</strong> · {row.previous.venue}<br /><small>HSV: {familyLabel(row.previous)}</small></> : 'No earlier S28 Hamburg meeting archived'}</td></tr>
               <tr><th>Magic-family usage</th><td>{row.magicMatches} of {row.observedMatches} archived opponent D1 matches</td></tr>
             </tbody></table></div>
@@ -2064,10 +2116,12 @@ export default function ManagerLabPage() {
                 </tr>)}
               </tbody></table></div>
               <p className="muted">Whole world: {row.primary.matches} MP · {row.primary.clubCount} clubs · {row.primary.divisionCount} divisions · {row.primary.ppg.toFixed(2)} PPG · {row.primary.wins} wins · {row.primary.gdPerGame>=0?'+':''}{row.primary.gdPerGame.toFixed(2)} GD/game{row.primary.avgXiGap===null?'':` · avg Δ XI ${row.primary.avgXiGap>=0?'+':''}${row.primary.avgXiGap.toFixed(1)}`}.</p>
+              <p className="muted"><strong>Hamburg-strength evidence:</strong> {row.primary.comparablePpg===null?'—':`${row.primary.comparablePpg.toFixed(2)} weighted PPG · ${row.primary.comparableGdPerGame>=0?'+':''}${row.primary.comparableGdPerGame.toFixed(2)} weighted GD/game`} · {row.primary.closeGapMatches} matches within ±2 XI points of Hamburg's projected gap.</p>
               <p className="muted">Hamburg direct: {row.primary.hamburgMatches ? `${row.primary.hamburgMatches} MP · ${row.primary.hamburgPpg.toFixed(2)} PPG · ${row.primary.hamburgGd>=0?'+':''}${row.primary.hamburgGd.toFixed(2)} GD` : 'no archived match using this counter against the same opponent family'}.</p>
               {row.primary.confidence.warning && <p><strong>Sample warning:</strong> {row.primary.confidence.warning}</p>}
               {row.alternative && <p><strong>Alternative:</strong> {familyLabel(row.alternative.sample)} · {row.alternative.matches} world MP · {row.alternative.ppg.toFixed(2)} PPG · {row.alternative.confidence.label} confidence.</p>}
             </> : <p className="muted">{row.counters.length ? 'Paired observations exist, but none yet meet the minimum recommendation threshold of 3 matches across at least 2 clubs. They remain descriptive evidence below.' : 'No paired world evidence yet for the opponent\'s latest family. No recommendation is manufactured from missing data.'}</p>}
+            {row.avoid && <p><strong>Avoid / warning from Hamburg evidence:</strong> {familyLabel(row.avoid.sample)} · {row.avoid.matches} HSV matches against stronger XIs · {row.avoid.ppg.toFixed(2)} PPG · {row.avoid.gdPerGame>=0?'+':''}{row.avoid.gdPerGame.toFixed(2)} GD/game. This is a repeated HSV underperformance signal, not proof that the tactic caused the results.</p>}
             {row.volatile && row.dominant && <>
               <h3>Established-setup contingency</h3>
               <p className="muted">The latest setup is not yet stable ({row.stability5.same}/{row.stability5.matches} of the last 5). Their longer-run family is <strong>{familyLabel(row.dominant.sample)}</strong> ({row.dominant.matches} archived D1 matches), so the dossier keeps a second scenario ready.</p>
@@ -2087,7 +2141,7 @@ export default function ManagerLabPage() {
               <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Counter family</th><th>World</th><th>Replication</th><th>Hamburg direct</th><th>Confidence</th></tr></thead><tbody>
                 {row.counters.map((counter) => <tr key={counter.key}>
                   <td><strong>{familyLabel(counter.sample)}</strong></td>
-                  <td>{counter.matches} MP · {counter.ppg.toFixed(2)} PPG<br /><small>{counter.wins} W · {counter.gdPerGame>=0?'+':''}{counter.gdPerGame.toFixed(2)} GD/g</small></td>
+                  <td>{counter.matches} MP · {counter.ppg.toFixed(2)} PPG<br /><small>{counter.wins} W · {counter.gdPerGame>=0?'+':''}{counter.gdPerGame.toFixed(2)} GD/g · strength-match {counter.comparablePpg===null?'—':counter.comparablePpg.toFixed(2)} PPG</small></td>
                   <td>{counter.clubCount} clubs · {counter.divisionCount} divisions<br /><small>{counter.avgXiGap===null?'XI gap —':`avg Δ XI ${counter.avgXiGap>=0?'+':''}${counter.avgXiGap.toFixed(1)}`}</small></td>
                   <td>{counter.hamburgMatches ? <>{counter.hamburgMatches} MP · {counter.hamburgPpg.toFixed(2)} PPG<br /><small>{counter.hamburgGd>=0?'+':''}{counter.hamburgGd.toFixed(2)} total GD</small></> : '—'}</td>
                   <td><strong>{counter.confidence.label}</strong>{counter.confidence.warning && <><br /><small>{counter.confidence.warning}</small></>}</td>
