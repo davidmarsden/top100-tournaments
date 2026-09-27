@@ -86,11 +86,11 @@ security definer
 set search_path = public
 as $$
 begin
-  if old.evidence_path is not null then
-    insert into public.manager_match_evidence_cleanup(auth_user_id,match_id,queued_at)
-    values(old.auth_user_id,old.match_id,now())
-    on conflict(auth_user_id,match_id) do update set queued_at=excluded.queued_at;
-  end if;
+  -- Always enqueue: a bounded staging object may exist even if the browser
+  -- disappeared before evidence_path metadata was attached.
+  insert into public.manager_match_evidence_cleanup(auth_user_id,match_id,queued_at)
+  values(old.auth_user_id,old.match_id,now())
+  on conflict(auth_user_id,match_id) do update set queued_at=excluded.queued_at;
   return old;
 end;
 $$;
