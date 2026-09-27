@@ -253,9 +253,15 @@ export default function ManagerEntry({ registrationMode = false }) {
             .maybeSingle(),
           'Manager link lookup',
         );
-        if (claimResult.error) throw claimResult.error;
         if (!active) return;
-        setIdentity({ state: 'setup', account: null, claim: claimResult.data || null, error: '' });
+        // Claim history is enrichment, not a prerequisite for onboarding.
+        // If this optional lookup fails or times out, keep the setup path open.
+        setIdentity({
+          state: 'setup',
+          account: null,
+          claim: claimResult.error ? null : (claimResult.data || null),
+          error: '',
+        });
       } catch (error) {
         if (active) setIdentity({ state: 'error', account: null, claim: null, error: error?.message || 'Could not check your manager account.' });
       }
@@ -266,7 +272,12 @@ export default function ManagerEntry({ registrationMode = false }) {
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Manager sign-in unavailable.</strong><span>Supabase is not connected.</span></section></main>;
   if (session === undefined) return <main className="manager-portal-shell"><section className="card"><h1>Manager sign-in</h1><p>Checking your sign-in…</p></section></main>;
-  if (!session) return <SignIn returnTo={returnTo} registrationMode={registrationMode} />;
+  if (!session) return (
+    <>
+      <SignIn returnTo={returnTo} registrationMode={registrationMode} />
+      {!registrationMode && <ManagerResourceHub />}
+    </>
+  );
   if (identity.state === 'loading' || identity.state === 'idle') return <main className="manager-portal-shell"><section className="card"><h1>Manager sign-in</h1><p>Signed in ✓ · Checking your manager link…</p></section></main>;
   if (identity.state === 'error') return <main className="manager-portal-shell"><section className="card"><h1>We couldn't check your manager link</h1><p className="status">{identity.error}</p><button type="button" className="secondary" onClick={() => supabase.auth.signOut()}>Sign out</button></section></main>;
   if (identity.state === 'setup') return <Setup session={session} claim={identity.claim} onClaimChanged={(claim) => setIdentity({ state: 'setup', account: null, claim, error: '' })} />;
