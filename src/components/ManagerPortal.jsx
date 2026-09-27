@@ -109,7 +109,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
   const selectedEntry = useMemo(() => entries.find((entry) => String(entry.id) === String(selectedEntryId)) || entries[0] || null, [entries, selectedEntryId]);
   const selectedTournamentMatches = useMemo(() => selectedEntry ? matches.filter((match) => match.tournament_id === selectedEntry.tournament_id) : [], [matches, selectedEntry]);
   const myMatches = useMemo(() => selectedEntry ? selectedTournamentMatches.filter((match) => match.home_entry_id === selectedEntry.id || match.away_entry_id === selectedEntry.id) : [], [selectedTournamentMatches, selectedEntry]);
-  const upcoming = useMemo(() => myMatches.filter((match) => !isPlayed(match)).sort((a, b) => String(a.fixture_date || '9999').localeCompare(String(b.fixture_date || '9999')) || Number(a.match_order || 0) - Number(b.match_order || 0)), [myMatches]);
+  const upcoming = useMemo(() => myMatches.filter((match) => !isPlayed(match) && !['voided','cancelled'].includes(String(match.status || '').toLowerCase())).sort((a, b) => String(a.fixture_date || '9999').localeCompare(String(b.fixture_date || '9999')) || Number(a.match_order || 0) - Number(b.match_order || 0)), [myMatches]);
   const results = useMemo(() => myMatches.filter(isPlayed).sort((a, b) => Number(b.match_order || 0) - Number(a.match_order || 0)), [myMatches]);
   const currentGroupEntries = useMemo(() => selectedEntry ? groupEntries.filter((entry) => entry.tournament_id === selectedEntry.tournament_id && entry.group_code === selectedEntry.group_code) : [], [groupEntries, selectedEntry]);
   const currentGroupIds = useMemo(() => new Set(currentGroupEntries.map((entry) => entry.id)), [currentGroupEntries]);
