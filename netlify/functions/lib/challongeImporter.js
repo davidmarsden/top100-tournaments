@@ -231,6 +231,26 @@ async function importTournament(body) {
     participantToTeam.set(participant.participantId, participant.teamName);
   }
 
+  // Re-import replaces matches; remove private evidence first because Storage
+  // objects are not covered by database cascades.
+  const { data: oldMatches, error: oldMatchesError } = await db.from('matches').select('id').eq('tournament_id', tournamentId);
+  if (oldMatchesError) throw oldMatchesError;
+  const oldMatchIds = (oldMatches || []).map((row) => row.id);
+  if (oldMatchIds.length) {
+    const { data: arrangements, error: arrangementsError } = await db.from('manager_match_arrangements').select('auth_user_id,match_id').in('match_id', oldMatchIds);
+    if (arrangementsError && !String(arrangementsError.message || '').includes('does not exist')) throw arrangementsError;
+    const evidenceKeys = [];
+    for (const row of arrangements || []) {
+      for (const slot of ['a','b']) for (const ext of ['jpg','png','webp','gif']) {
+        evidenceKeys.push(`${row.auth_user_id}/${row.match_id}/evidence-${slot}.${ext}`);
+      }
+    }
+    for (let offset = 0; offset < evidenceKeys.length; offset += 1000) {
+      const { error } = await db.storage.from('match-evidence').remove(evidenceKeys.slice(offset, offset + 1000));
+      if (error) throw error;
+    }
+  }
+
   const existingMatches = await db.from('matches').delete().eq('tournament_id', tournamentId);
   if (existingMatches.error) throw existingMatches.error;
 
