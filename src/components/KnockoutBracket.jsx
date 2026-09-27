@@ -276,7 +276,7 @@ function BracketTie({ tie, seedByEntryId }) {
       <small>{hasAggregate
         ? `Aggregate after normal time ${tie.firstAgg}-${tie.secondAgg}${tie.firstAgg === tie.secondAgg ? ` · away goals ${tie.firstAway}-${tie.secondAway}` : ''}${tie.decision ? ` · ${tie.decision}` : ''}`
         : decidingLeg
-          ? <><span>${tie.ordered[0]?.round || 'Round'} · ${regulationScore(decidingLeg, 'home')}-${regulationScore(decidingLeg, 'away')} · normal time ${regulationScore(decidingLeg, 'home')}-${regulationScore(decidingLeg, 'away')}</span><span className="bracket-fet">FET ${decidingLeg.home_extra_time_score ?? 0}-${decidingLeg.away_extra_time_score ?? 0}</span></>
+          ? <><span>{tie.ordered[0]?.round || 'Round'} · {regulationScore(decidingLeg, 'home')}-{regulationScore(decidingLeg, 'away')} · normal time {regulationScore(decidingLeg, 'home')}-{regulationScore(decidingLeg, 'away')}</span><span className="bracket-fet">FET {decidingLeg.home_extra_time_score ?? 0}-{decidingLeg.away_extra_time_score ?? 0}</span></>
           : `${tie.ordered[0]?.round || 'Round'} · ${scoreText(tie.ordered[0])}`}</small>
     </article>
   );
