@@ -82,6 +82,16 @@ function roundName(round) {
   return 'Final';
 }
 
+async function selectAll(builder, pageSize=1000) {
+  const rows=[];
+  for(let from=0;;from+=pageSize){
+    const {data,error}=await builder(from,from+pageSize-1);
+    if(error) throw error;
+    rows.push(...(data||[]));
+    if((data||[]).length<pageSize) return rows;
+  }
+}
+
 async function findOrCreate(db, table, match, insertRow) {
   const existing = await db.from(table).select('id').match(match).maybeSingle();
   if (existing.error) throw existing.error;
@@ -231,6 +241,8 @@ async function importTournament(body) {
     participantToTeam.set(participant.participantId, participant.teamName);
   }
 
+  // Arrangement cascades enqueue evidence cleanup; Storage removal is deferred
+  // until the relational match replacement has succeeded.
   const existingMatches = await db.from('matches').delete().eq('tournament_id', tournamentId);
   if (existingMatches.error) throw existingMatches.error;
 

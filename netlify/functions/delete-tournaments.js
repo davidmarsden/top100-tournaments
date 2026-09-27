@@ -30,15 +30,27 @@ function userClient(token) {
   });
 }
 
+async function selectAll(builder, pageSize=1000) {
+  const rows=[];
+  for(let from=0;;from+=pageSize){
+    const {data,error}=await builder(from,from+pageSize-1);
+    if(error) throw error;
+    rows.push(...(data||[]));
+    if((data||[]).length<pageSize) return rows;
+  }
+}
+
 async function deleteByTournament(db, table, ids) {
   const { error } = await db.from(table).delete().in('tournament_id', ids);
   if (error && !String(error.message || '').includes('does not exist')) throw error;
 }
 
 async function deleteByMatch(db, table, ids) {
-  if (!ids.length) return;
-  const { error } = await db.from(table).delete().in('match_id', ids);
-  if (error && !String(error.message || '').includes('does not exist')) throw error;
+  const batchSize = 250;
+  for (let offset = 0; offset < ids.length; offset += batchSize) {
+    const { error } = await db.from(table).delete().in('match_id', ids.slice(offset, offset + batchSize));
+    if (error && !String(error.message || '').includes('does not exist')) throw error;
+  }
 }
 
 async function deleteMatchesForTournamentTeardown(db, ids) {
@@ -74,9 +86,11 @@ export async function handler(event) {
     if (!ids.length) return json(400, { ok: false, error: 'No tournament IDs supplied' });
 
     const db = adminClient();
-    const { data: matchRows, error: matchError } = await db.from('matches').select('id').in('tournament_id', ids);
-    if (matchError) throw matchError;
-    const matchIds = (matchRows || []).map((row) => row.id);
+    const matchRows = await selectAll((from,to)=>db.from('matches').select('id').in('tournament_id',ids).range(from,to));
+    const matchIds = matchRows.map((row) => row.id);
+
+    // Arrangement cascades enqueue bounded evidence keys; the scheduled cleanup
+    // worker removes Storage objects only after relational deletion succeeds.
 
     await deleteByTournament(db, 'match_comments', ids);
     await deleteByTournament(db, 'achievements', ids);

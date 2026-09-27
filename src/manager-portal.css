@@ -82,3 +82,23 @@
 @media (max-width: 520px) {
   .squad-metrics, .squad-standing-grid, .squad-depth-grid { grid-template-columns: 1fr; }
 }
+
+
+.match-action-centre { margin-bottom: 20px; border: 2px solid #059669; box-shadow: 0 0 0 5px rgba(5,150,105,.08); }
+.match-action-centre > .muted { margin-top: -4px; }
+.match-action-list { display: grid; gap: 12px; margin-top: 16px; }
+.match-action-row { display: grid; grid-template-columns: 150px minmax(170px,.8fr) minmax(260px,1.4fr); gap: 14px 18px; align-items: center; padding: 16px; border: 1px solid #dbe5f4; border-radius: 18px; background: #fbfdff; }
+.match-action-row.is-done { border-color: #86efac; background: #f0fdf4; }
+.match-action-row.has-problem { border-color: #fca5a5; background: #fff7f7; }
+.match-action-badge { justify-self: start; padding: 9px 12px; border-radius: 999px; background: #e0e7ff; color: #3730a3; font-size: .76rem; font-weight: 900; text-align: center; }
+.is-done .match-action-badge { background: #dcfce7; color: #166534; }
+.has-problem .match-action-badge { background: #fee2e2; color: #991b1b; }
+.match-action-fixture strong,.match-action-fixture span,.match-action-fixture time,.match-action-advice strong,.match-action-advice span { display:block; }
+.match-action-fixture span,.match-action-fixture time,.match-action-advice span { margin-top:3px; color:#64748b; font-size:.86rem; font-weight:700; }
+.match-action-controls { grid-column: 1 / -1; display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding-top:10px; border-top:1px solid #e5e7eb; }
+.match-action-controls button,.match-action-controls .button { margin:0; }
+.evidence-button { cursor:pointer; }
+.evidence-button input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.match-action-controls small { color:#64748b; font-weight:700; }
+.danger-soft { color:#991b1b !important; border-color:#fecaca !important; background:#fff7f7 !important; }
+@media (max-width:820px) { .match-action-row { grid-template-columns:1fr; } .match-action-controls { grid-column:1; } }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import ChallongeImportManager from './ChallongeImportManager.jsx';
+import ArrangementProblems from './ArrangementProblems.jsx';
 import EntrantsManager from './EntrantsManager.jsx';
 import FixturesManager from './FixturesManager.jsx';
 import GroupsApproval from './GroupsApproval.jsx';
@@ -112,7 +113,7 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, isGlobal
   if (activeModule === 'Format' && scopedRole !== 'assistant') return <TournamentFormatManager selectedTournament={selectedTournament} onTournamentUpdated={refreshTournamentData} />;
   if (activeModule === 'Entrants' && scopedRole !== 'assistant') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={buildPreview} />;
   if (activeModule === 'Groups' && scopedRole !== 'assistant' && !knockoutOnly) return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} onDataChanged={refreshTournamentData} />;
-  if (activeModule === 'Fixtures') return <FixturesManager selectedTournament={selectedTournament} preview={preview} stage={fixtureStage} onlyOutstanding onDataChanged={refreshTournamentData} />;
+  if (activeModule === 'Fixtures') return <><ArrangementProblems selectedTournament={selectedTournament} /><FixturesManager selectedTournament={selectedTournament} preview={preview} stage={fixtureStage} onlyOutstanding onDataChanged={refreshTournamentData} /></>;
   if (activeModule === 'Result Approvals' && isGlobalAdmin) return <div className="overview-actions"><p>Manager-submitted scores are reviewed in the dedicated approval queue.</p><div className="button-row"><a className="button" href="/admin/result-submissions">Open result approval queue</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div>;
   if (activeModule === 'Results') return <>{!knockoutOnly && <ResultsTestControls selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />}<FixturesManager selectedTournament={selectedTournament} preview={preview} stage={fixtureStage} onDataChanged={refreshTournamentData} /></>;
   if (activeModule === 'Tables' && !knockoutOnly) return <TablesManager selectedTournament={selectedTournament} />;
