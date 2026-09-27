@@ -712,7 +712,10 @@ export default function ManagerLabPage() {
       reportedAvgAge: numericValue(match.reportedAvgAge),
       reportedAvgRating: numericValue(match.reportedAvgRating),
       reportedYoungCount: numericValue(match.reportedYoungCount),
+      reportedDevelopmentCount: numericValue(match.reportedDevelopmentCount),
+      reportedPeakCount: numericValue(match.reportedPeakCount),
       reportedVeteranCount: numericValue(match.reportedVeteranCount),
+      reportedLateCareerCount: numericValue(match.reportedLateCareerCount),
       opponentReportedAvgAge: numericValue(match.opponentReportedAvgAge),
       tactics: CURRENT_FORMULA_FIELDS.reduce((values, [, key]) => ({
         ...values,
@@ -813,6 +816,7 @@ export default function ManagerLabPage() {
           fingerprints: selectedClubRoleFingerprints,
         },
       },
+      magicFamilyNearNeighbours,
       componentEvidence: componentEvidence.map((effect) => ({
         instruction: effect.label,
         key: effect.key,
@@ -908,6 +912,49 @@ export default function ManagerLabPage() {
     return effects.sort((a,b) => b.strata - a.strata || b.matches - a.matches || Math.abs(b.deltaPpg) - Math.abs(a.deltaPpg));
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
 
+  const magicFamilyNearNeighbours = useMemo(() => {
+    const targets = {
+      formation: '4-2-3-1 B',
+      mentality: 'Attacking',
+      passingStyle: 'Mixed',
+      attackingStyle: 'Down Both Flanks',
+      tempo: 'Fast',
+    };
+    const filtered = worldFormulaMatches.filter((match) =>
+      (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
+      (worldFormulaStrength === 'All' || strengthBand(match) === worldFormulaStrength) &&
+      FAMILY_KEYS.every((key) => normalizedTacticValue(match, key) !== null)
+    );
+    const baseline = buildStrengthBaseline(filtered);
+    const groups = new Map();
+    filtered.forEach((match) => {
+      const changed = FAMILY_KEYS.filter((key) => normalizedTacticValue(match, key) !== targets[key]);
+      const distance = changed.length;
+      const group = groups.get(distance) || { distance, matches: [], clubs: new Set(), changedCounts: new Map() };
+      group.matches.push(match);
+      if (match.sourceClubId) group.clubs.add(match.sourceClubId);
+      changed.forEach((key) => group.changedCounts.set(key, (group.changedCounts.get(key) || 0) + 1));
+      groups.set(distance, group);
+    });
+    return [...groups.values()].map((group) => {
+      const points = group.matches.reduce((sum, match) => sum + resultPoints(match.result), 0);
+      const gd = group.matches.reduce((sum, match) => sum + (Number(match.goalsFor)||0) - (Number(match.goalsAgainst)||0), 0);
+      const adjusted = adjustedMetrics(group.matches, baseline);
+      return {
+        distance: group.distance,
+        matches: group.matches.length,
+        clubs: group.clubs.size,
+        ppg: points / group.matches.length,
+        gd: gd / group.matches.length,
+        adjustedPpg: adjusted.adjustedPpg,
+        adjustedGd: adjusted.adjustedGd,
+        commonChanges: [...group.changedCounts.entries()]
+          .sort((a,b) => b[1] - a[1])
+          .map(([key,count]) => ({ key, label: CURRENT_FORMULA_FIELDS.find(([,field]) => field === key)?.[0] || key, count })),
+      };
+    }).sort((a,b) => a.distance - b.distance);
+  }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
+
   const playerComposition = useMemo(() => {
     const filtered = worldFormulaMatches.filter((match) =>
       (worldFormulaDivision === 'All Top 100 divisions' || match.competition === worldFormulaDivision) &&
@@ -923,7 +970,7 @@ export default function ManagerLabPage() {
       const row = byClub.get(match.sourceClubId) || {
         sourceClubId: match.sourceClubId, club: match.club || match.sourceClubId,
         matches: 0, playerObservations: 0, ageObservations: 0, ageWeighted: 0, ratingWeighted: 0,
-        ratingObservations: 0, young: 0, veterans: 0, xi: [],
+        ratingObservations: 0, young: 0, development: 0, peak: 0, veterans: 0, lateCareer: 0, xi: [],
       };
       row.matches += 1;
       row.playerObservations += count;
@@ -932,7 +979,10 @@ export default function ManagerLabPage() {
       const rating = numericValue(match.reportedAvgRating);
       if (rating !== null && ratingCount) { row.ratingWeighted += rating * ratingCount; row.ratingObservations += ratingCount; }
       row.young += numericValue(match.reportedYoungCount) || 0;
+      row.development += numericValue(match.reportedDevelopmentCount) || 0;
+      row.peak += numericValue(match.reportedPeakCount) || 0;
       row.veterans += numericValue(match.reportedVeteranCount) || 0;
+      row.lateCareer += numericValue(match.reportedLateCareerCount) || 0;
       const xi = numericValue(match.ourXiRating);
       if (xi !== null) row.xi.push(xi);
       byClub.set(match.sourceClubId, row);
@@ -944,7 +994,16 @@ export default function ManagerLabPage() {
       avgAge: row.ageObservations ? row.ageWeighted / row.ageObservations : null,
       avgReportedRating: row.ratingObservations ? row.ratingWeighted / row.ratingObservations : null,
       youngShare: row.ageObservations ? row.young / row.ageObservations : null,
+      developmentShare: row.ageObservations ? row.development / row.ageObservations : null,
+      peakShare: row.ageObservations ? row.peak / row.ageObservations : null,
       veteranShare: row.ageObservations ? row.veterans / row.ageObservations : null,
+      lateCareerShare: row.ageObservations ? row.lateCareer / row.ageObservations : null,
+      lifecycle: row.ageObservations
+        ? (row.young / row.ageObservations >= 0.5 ? 'Youth-led'
+          : row.lateCareer / row.ageObservations >= 0.25 ? 'Late-career heavy'
+          : (row.veterans + row.lateCareer) / row.ageObservations >= 0.5 ? 'Veteran-heavy'
+          : 'Mixed-age')
+        : 'Unknown',
       avgXiRating: row.xi.length ? row.xi.reduce((a,b)=>a+b,0)/row.xi.length : null,
     })).sort((a,b) => (a.avgAge ?? 99) - (b.avgAge ?? 99));
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
@@ -1981,12 +2040,20 @@ export default function ManagerLabPage() {
         </tbody></table></div>
         <h3>Espanyol ↔ Hamburger SV age contrast</h3>
         {tacticalSquadContext.espanyol && tacticalSquadContext.hamburger ? <>
-          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Avg age</th><th>≤21</th><th>30+</th><th>Reported rating</th><th>XI rating</th></tr></thead><tbody>
-            {[tacticalSquadContext.espanyol, tacticalSquadContext.hamburger].map((row) => <tr key={`contrast:${row.sourceClubId}`}><td><strong>{row.club}</strong></td><td>{row.matches}</td><td>{row.avgAge?.toFixed(1) ?? '—'}</td><td>{row.youngShare===null?'—':`${(row.youngShare*100).toFixed(0)}%`}</td><td>{row.veteranShare===null?'—':`${(row.veteranShare*100).toFixed(0)}%`}</td><td>{row.avgReportedRating?.toFixed(1) ?? '—'}</td><td>{row.avgXiRating?.toFixed(1) ?? '—'}</td></tr>)}
+          <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Profile</th><th>Avg age</th><th>≤21</th><th>22–25</th><th>26–30</th><th>31–34</th><th>35+</th><th>Reported rating</th><th>XI rating</th></tr></thead><tbody>
+            {[tacticalSquadContext.espanyol, tacticalSquadContext.hamburger].map((row) => <tr key={`contrast:${row.sourceClubId}`}><td><strong>{row.club}</strong></td><td>{row.matches}</td><td>{row.lifecycle}</td><td>{row.avgAge?.toFixed(1) ?? '—'}</td><td>{row.youngShare===null?'—':`${(row.youngShare*100).toFixed(0)}%`}</td><td>{row.developmentShare===null?'—':`${(row.developmentShare*100).toFixed(0)}%`}</td><td>{row.peakShare===null?'—':`${(row.peakShare*100).toFixed(0)}%`}</td><td>{row.veteranShare===null?'—':`${(row.veteranShare*100).toFixed(0)}%`}</td><td>{row.lateCareerShare===null?'—':`${(row.lateCareerShare*100).toFixed(0)}%`}</td><td>{row.avgReportedRating?.toFixed(1) ?? '—'}</td><td>{row.avgXiRating?.toFixed(1) ?? '—'}</td></tr>)}
           </tbody></table></div>
           <p className="muted"><strong>Age gap:</strong> {tacticalSquadContext.ageGap===null?'—':`${tacticalSquadContext.ageGap>=0?'+':''}${tacticalSquadContext.ageGap.toFixed(1)} years (Hamburger minus Espanyol)`} · <strong>reported-rating gap:</strong> {tacticalSquadContext.ratingGap===null?'—':`${tacticalSquadContext.ratingGap>=0?'+':''}${tacticalSquadContext.ratingGap.toFixed(1)}`} · <strong>XI-rating gap:</strong> {tacticalSquadContext.xiGap===null?'—':`${tacticalSquadContext.xiGap>=0?'+':''}${tacticalSquadContext.xiGap.toFixed(1)}`}.</p>
         </> : <p className="muted">Both Espanyol and Hamburger SV need player-composition observations in the current Formula Lab cohort before the direct contrast can be calculated.</p>}
         <p className="muted">Age is context, not a match-strength adjustment: XI rating remains the current-strength control. This panel deliberately does not infer potential, market value or preferred-role suitability from age.</p>
+      </section>}
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <h2>Magic-family near neighbours</h2>
+        <p className="muted">A deliberately looser companion to the strict isolation test. Distance 0 is the full 4-2-3-1 B · Attacking · Mixed · Down Both Flanks · Fast family; distance 1 changes one of those five core ingredients, distance 2 changes two, and so on. Outcomes are also adjusted against the selected cohort's rounded XI-strength baseline. This shows whether the package signal decays as the recipe changes; it does not make any one ingredient causal.</p>
+        {magicFamilyNearNeighbours.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Core changes</th><th>MP</th><th>Clubs</th><th>PPG</th><th>GD/game</th><th>Adj PPG</th><th>Adj GD</th><th>Most common changed ingredients</th></tr></thead><tbody>
+          {magicFamilyNearNeighbours.map((row) => <tr key={`near-neighbour:${row.distance}`}><td><strong>{row.distance}</strong></td><td>{row.matches}</td><td>{row.clubs}</td><td>{row.ppg.toFixed(2)}</td><td>{row.gd>=0?'+':''}{row.gd.toFixed(2)}</td><td>{row.adjustedPpg===null?'—':`${row.adjustedPpg>=0?'+':''}${row.adjustedPpg.toFixed(2)}`}</td><td>{row.adjustedGd===null?'—':`${row.adjustedGd>=0?'+':''}${row.adjustedGd.toFixed(2)}`}</td><td>{row.distance===0?'Full target package':row.commonChanges.slice(0,3).map((item)=>`${item.label} (${item.count})`).join(' · ')}</td></tr>)}
+        </tbody></table></div> : <p className="muted">No complete five-field observations are available in this cohort.</p>}
       </section>}
 
       {worldFormulaMatches.length > 0 && <section className="card">
@@ -1998,10 +2065,10 @@ export default function ManagerLabPage() {
       </section>}
 
       {worldFormulaMatches.length > 0 && <section className="card">
-        <h2>Player composition context</h2>
-        <p className="muted">Age and overall rating come from the players archived in each match report. This is a match-day reported-player profile, not a starting-XI age, market-value or potential model. The archive does not currently contain preferred-role suitability, so Manager Lab does not pretend to measure it. XI strength remains the cleaner control for current playing strength; age helps expose very different squad-building profiles behind similar tactical results.</p>
-        {playerComposition.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Avg age</th><th>≤21</th><th>30+</th><th>Reported rating</th><th>XI rating</th></tr></thead><tbody>
-          {playerComposition.map((row) => <tr key={`player-context:${row.sourceClubId}`}><td><strong>{row.club}</strong></td><td>{row.matches}</td><td>{row.avgAge===null?'—':row.avgAge.toFixed(1)}</td><td>{row.youngShare===null?'—':`${(row.youngShare*100).toFixed(0)}%`}</td><td>{row.veteranShare===null?'—':`${(row.veteranShare*100).toFixed(0)}%`}</td><td>{row.avgReportedRating===null?'—':row.avgReportedRating.toFixed(1)}</td><td>{row.avgXiRating===null?'—':row.avgXiRating.toFixed(1)}</td></tr>)}
+        <h2>Squad lifecycle</h2>
+        <p className="muted">Age and overall rating come from the players archived in each match report. Implausible archived ages below 15 or above 50 are excluded from age calculations and exposed by the reduced valid-age count rather than allowed to distort a club profile. The bands are descriptive: ≤21, 22–25, 26–30, 31–34 and 35+. They do not assume the match engine applies a universal age penalty. XI rating remains the current-strength control, which matters because elite older players may still be stronger than younger players.</p>
+        {playerComposition.length ? <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Club</th><th>MP</th><th>Profile</th><th>Avg age</th><th>≤21</th><th>22–25</th><th>26–30</th><th>31–34</th><th>35+</th><th>Reported rating</th><th>XI rating</th></tr></thead><tbody>
+          {playerComposition.map((row) => <tr key={`player-context:${row.sourceClubId}`}><td><strong>{row.club}</strong></td><td>{row.matches}</td><td>{row.lifecycle}</td><td>{row.avgAge===null?'—':row.avgAge.toFixed(1)}</td><td>{row.youngShare===null?'—':`${(row.youngShare*100).toFixed(0)}%`}</td><td>{row.developmentShare===null?'—':`${(row.developmentShare*100).toFixed(0)}%`}</td><td>{row.peakShare===null?'—':`${(row.peakShare*100).toFixed(0)}%`}</td><td>{row.veteranShare===null?'—':`${(row.veteranShare*100).toFixed(0)}%`}</td><td>{row.lateCareerShare===null?'—':`${(row.lateCareerShare*100).toFixed(0)}%`}</td><td>{row.avgReportedRating===null?'—':row.avgReportedRating.toFixed(1)}</td><td>{row.avgXiRating===null?'—':row.avgXiRating.toFixed(1)}</td></tr>)}
         </tbody></table></div> : <p className="muted">Player age/rating context is not available yet. Apply the accompanying database migration, then reload Formula Lab.</p>}
       </section>}
 

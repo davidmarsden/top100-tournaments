@@ -1,3 +1,6 @@
+-- Re-apply Formula Lab player composition with implausible archived ages excluded.
+-- One captured Anderlecht match contained a corrupt age value that inflated the club mean.
+
 -- Add archived match-day player composition to Formula Lab observations.
 -- This deliberately reports the players present in the match report, not a
 -- transfer-value or potential model. Preferred-role metadata is not archived.
