@@ -94,68 +94,24 @@ export default function ManagerEntry({ registrationMode = false }) {
       bridgeTimeout = window.setTimeout(cleanupBridge, BRIDGE_TIMEOUT_MS);
     };
 
-    async function initialiseAuth() {
-      try {
-        setAuthLoading(true);
-        setAuthStage('Checking this browser for your Top 100 sign-in…');
-        // ManagerEntry is the single auth owner for My Matches. Child
-        // components consume this session instead of racing getSession() and
-        // onAuthStateChange() calls against Supabase's browser Web Lock.
-        // Let auth-js complete magic-link/session initialization once, but do not
-        // try to re-apply tokens captured from localStorage. Re-applying them can
-        // both reacquire a wedged Web Lock and overwrite a fresh magic-link session.
-        setAuthStage('Checking your Top 100 sign-in…');
-        const { data, error } = await withAuthTimeout(
-          supabase.auth.getSession(),
-          'Sign-in check',
-        );
+    function initialiseAuth() {
+      // Do not call getSession() during first paint. On affected Chrome/Firefox
+      // installs auth-js can block the main page while recovering its browser
+      // lock, which makes even the email field unusable. Render signed-out
+      // immediately and let an actual auth event populate the session.
+      setAuthStage('Ready to sign in.');
+      setAuthLoading(false);
+
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
         if (!active) return;
-        if (error) throw error;
-
-        const initialSession = data.session || null;
-        setSession(initialSession);
-
-        // Subscribe only after Supabase's initial session recovery has
-        // completed. This avoids the auth-js Web Lock deadlock we have seen
-        // when session recovery and listener registration overlap.
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (!active) return;
-          setSession(nextSession);
-          setAuthError('');
-        });
-        subscription = listener.subscription;
-        setAuthStage(initialSession ? 'Sign-in restored. Loading your manager account…' : 'No sign-in found.');
+        setSession(nextSession);
+        setAuthError('');
         setAuthLoading(false);
-        try { window.sessionStorage.removeItem(AUTH_RECOVERY_KEY); } catch { /* storage unavailable */ }
+      });
+      subscription = listener.subscription;
 
-        if (!initialSession) tryLegacySessionMigration();
-      } catch (error) {
-        if (!active) return;
-        // Desktop browsers can occasionally leave Supabase's persisted auth state
-        // locked/stale after a magic-link callback. Recover once with a clean
-        // local session instead of leaving the portal on a loading/crash path.
-        try {
-          if (window.sessionStorage.getItem(AUTH_RECOVERY_KEY) !== '1') {
-            window.sessionStorage.setItem(AUTH_RECOVERY_KEY, '1');
-            // Do not call supabase.auth.signOut() here: a wedged getSession()
-            // can still own the same Web Lock and signOut would wait forever too.
-            // Remove this project's persisted auth token directly, then reload.
-            const projectRef = new URL(supabase.supabaseUrl).hostname.split('.')[0];
-            window.localStorage.removeItem(`sb-${projectRef}-auth-token`);
-            // Do not reload here: that can repeatedly remove the email form on
-            // browsers whose auth recovery is the problem. Stay signed out and
-            // let the user start a fresh magic-link sign-in instead.
-            setSession(null);
-            setAuthStage('Previous browser sign-in could not be restored.');
-            setAuthError('');
-            setAuthLoading(false);
-            return;
-          }
-        } catch { /* fall through to the visible recovery screen */ }
-        setAuthStage('Manager Portal sign-in check failed.');
-        setAuthError(error?.message || 'We could not check your sign-in. Please try again.');
-        setAuthLoading(false);
-      }
+      // Legacy migration is best-effort and must never gate the UI.
+      window.setTimeout(tryLegacySessionMigration, 0);
     }
 
     initialiseAuth();
