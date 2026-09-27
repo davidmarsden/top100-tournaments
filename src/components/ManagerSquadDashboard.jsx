@@ -42,6 +42,24 @@ function sortByRatingThenValue(a, b) {
   return Number(b.rating || 0) - Number(a.rating || 0) || Number(b.value || 0) - Number(a.value || 0);
 }
 
+function performanceDelta(player) {
+  if (!hasNumber(player.averagePerformance) || !hasNumber(player.careerAveragePerformance)) return null;
+  const current = Number(player.averagePerformance);
+  const career = Number(player.careerAveragePerformance);
+  if (!current || !career) return null;
+  return current - career;
+}
+
+function signed(value, digits = 2) {
+  if (!hasNumber(value)) return '—';
+  const n = Number(value);
+  return `${n > 0 ? '+' : ''}${n.toFixed(digits)}`;
+}
+
+function mainPosition(player) {
+  return player.mainPosition || player.position || '—';
+}
+
 export default function ManagerSquadDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -150,6 +168,31 @@ export default function ManagerSquadDashboard() {
     .sort(sortByRatingThenValue)
     .slice(0, 12), [youthPlayers]);
 
+  const intelligence = useMemo(() => {
+    const withCareer = seniorPlayers.filter((player) =>
+      hasNumber(player.careerAppearances) &&
+      Number(player.careerAppearances) > 0 &&
+      hasNumber(player.careerAveragePerformance) &&
+      Number(player.careerAveragePerformance) > 0
+    );
+    const formVsCareer = withCareer
+      .map((player) => ({ player, delta: performanceDelta(player) }))
+      .filter(({ delta }) => delta !== null)
+      .sort((a, b) => b.delta - a.delta);
+    const ratingMovers = [...players]
+      .filter((player) => hasNumber(player.ratingChange) && Number(player.ratingChange) !== 0)
+      .sort((a, b) => Math.abs(Number(b.ratingChange)) - Math.abs(Number(a.ratingChange)) || sortByRatingThenValue(a, b));
+    const listed = players.filter((player) => player.transferListed === true);
+    return {
+      withCareer: withCareer.length,
+      outperforming: formVsCareer.filter(({ delta }) => delta > 0).slice(0, 6),
+      underperforming: [...formVsCareer].reverse().filter(({ delta }) => delta < 0).slice(0, 6),
+      ratingMoverCount: ratingMovers.length,
+      ratingMovers: ratingMovers.slice(0, 10),
+      listed,
+    };
+  }, [players, seniorPlayers]);
+
   if (loading) return <main className="manager-portal-shell"><section className="card"><h1>Loading squad dashboard…</h1></section></main>;
   if (!dashboard && !error) return <main className="manager-portal-shell"><section className="card manager-login-card"><h1>Sign in first</h1><p className="muted">Use your Manager Portal sign-in, then come back to Squad &amp; Transfers.</p><a className="button" href="/">Go to Manager Portal</a></section></main>;
   if (error) return <main className="manager-portal-shell"><section className="card manager-login-card"><h1>Couldn’t load the dashboard</h1><p className="status">{error}</p><button type="button" onClick={loadDashboard}>Try again</button></section></main>;
@@ -195,6 +238,37 @@ export default function ManagerSquadDashboard() {
         <div className="card-header"><p className="eyebrow">Attention</p><h2>Squad watchlist</h2></div>
         {alerts.length ? <div className="squad-list">{alerts.map(({ player, flags }) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{player.age ?? '—'} · {player.position || '—'} · {player.rating ?? '—'} rated</span></div><div className="squad-tags">{flags.map((flag) => <span key={flag}>{flag}</span>)}</div></div>)}</div> : <p className="muted">No immediate contract, condition, morale or succession flags.</p>}
       </article>
+    </section>
+
+    <section className="card portal-panel">
+      <div className="card-header"><p className="eyebrow">Player Lab · v1</p><h2>Player Intelligence</h2></div>
+      <p className="muted">Current-season output compared with each player's archived career baseline. These are descriptive signals, not automatic selection recommendations.</p>
+      <div className="squad-standing-grid">
+        <span><strong>{intelligence.withCareer}</strong> career baselines</span>
+        <span><strong>{intelligence.outperforming.length}</strong> strongest positive deltas</span>
+        <span><strong>{intelligence.ratingMoverCount}</strong> recent rating movers</span>
+        <span><strong>{intelligence.listed.length}</strong> transfer listed</span>
+      </div>
+      <div className="portal-grid">
+        <article>
+          <h3>Above career level</h3>
+          {intelligence.outperforming.length ? <div className="squad-list">{intelligence.outperforming.map(({ player, delta }) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{mainPosition(player)} · current {number(player.averagePerformance, 2)} · career {number(player.careerAveragePerformance, 2)}</span></div><b>{signed(delta)}</b></div>)}</div> : <p className="muted">No comparable positive performance deltas yet.</p>}
+        </article>
+        <article>
+          <h3>Below career level</h3>
+          {intelligence.underperforming.length ? <div className="squad-list">{intelligence.underperforming.map(({ player, delta }) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{mainPosition(player)} · current {number(player.averagePerformance, 2)} · career {number(player.careerAveragePerformance, 2)}</span></div><b>{signed(delta)}</b></div>)}</div> : <p className="muted">No comparable negative performance deltas yet.</p>}
+        </article>
+      </div>
+      <div className="portal-grid">
+        <article>
+          <h3>Rating movement</h3>
+          {intelligence.ratingMovers.length ? <div className="squad-list">{intelligence.ratingMovers.map((player) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{mainPosition(player)} · {player.rating ?? '—'} rated{player.recentClubName ? ` · recent club ${player.recentClubName}` : ''}</span></div><b>{signed(player.ratingChange, 0)}</b></div>)}</div> : <p className="muted">No rating changes captured yet.</p>}
+        </article>
+        <article>
+          <h3>Market status</h3>
+          {intelligence.listed.length ? <div className="squad-list">{intelligence.listed.map((player) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{mainPosition(player)} · age {player.age ?? '—'} · {player.rating ?? '—'} rated</span></div><b>Transfer listed</b></div>)}</div> : <p className="muted">No players are explicitly transfer listed.</p>}
+        </article>
+      </div>
     </section>
 
     <section className="card portal-panel">
