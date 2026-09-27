@@ -41,7 +41,9 @@ with check (
     select 1 from public.manager_match_arrangements a
     join public.tournament_entries e on e.id=a.tournament_entry_id
     join public.manager_portal_accounts p on p.manager_id=e.manager_id and p.auth_user_id=auth.uid() and p.active=true
+    join public.matches m on m.id=a.match_id
     where a.auth_user_id=auth.uid()
+      and (a.tournament_entry_id=m.home_entry_id or a.tournament_entry_id=m.away_entry_id)
       and a.match_id::text=(storage.foldername(name))[2]
       and storage.filename(name) in ('evidence-a.jpg','evidence-a.png','evidence-a.webp','evidence-a.gif','evidence-b.jpg','evidence-b.png','evidence-b.webp','evidence-b.gif')
       and array_length(storage.foldername(name),1)=2
@@ -193,7 +195,10 @@ begin
        from public.tournament_entries e
        join public.manager_portal_accounts p
          on p.manager_id=e.manager_id and p.auth_user_id=v_user and p.active=true
+       join public.matches m on m.id=manager_match_arrangements.match_id
        where e.id=manager_match_arrangements.tournament_entry_id
+         and (manager_match_arrangements.tournament_entry_id=m.home_entry_id
+              or manager_match_arrangements.tournament_entry_id=m.away_entry_id)
      )
    returning * into v_arr;
   if v_arr.id is null then raise exception 'Record an arrangement action before adding evidence'; end if;
