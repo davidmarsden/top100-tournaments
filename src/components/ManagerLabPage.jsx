@@ -1322,6 +1322,8 @@ export default function ManagerLabPage() {
         // remain visible in the shortlist, but are descriptive rather than plans.
         primary: currentQualified[0] || null,
         alternative: currentQualified[1] || null,
+        lateAlternative: currentQualified[2] || null,
+        lastThrowAlternative: currentQualified[3] || null,
         dominantPrimary: dominantQualified[0] || null,
         dominantAlternative: dominantQualified[1] || null,
       };
@@ -2091,7 +2093,7 @@ export default function ManagerLabPage() {
       {worldFormulaMatches.length > 0 && <section className="card">
         <p className="eyebrow">Hamburger SV · Division 1 survival</p>
         <h2>Run-in Lab · opponent dossiers</h2>
-        <p className="muted">Each remaining fixture now has a live scouting dossier. Stability measures the opponent's latest five-field tactical family over their last 5/10 archived D1 matches. Counter evidence is paired league evidence from all five Top 100 divisions. Ranking now gives most weight to results achieved at an XI gap close to Hamburg's projected disadvantage, while still shrinking tiny samples toward 1.50 PPG; replication remains mandatory, and Hamburg's own direct evidence is kept separate. Once a five-field counter qualifies, the Lab profiles captured secondary instructions and prescribes only replicated values (≥60% share, ≥3 observations, ≥2 clubs).</p>
+        <p className="muted">Each remaining fixture now has a live scouting dossier. Stability measures the opponent's latest five-field tactical family over their last 5/10 archived D1 matches. Counter evidence is paired league evidence from all five Top 100 divisions. Ranking now gives most weight to results achieved at an XI gap close to Hamburg's projected disadvantage, while still shrinking tiny samples toward 1.50 PPG; replication remains mandatory, and Hamburg's own direct evidence is kept separate. Once a five-field counter qualifies, the Lab profiles captured secondary instructions and prescribes only replicated values (≥60% share, ≥3 observations, ≥2 clubs). The dossier also turns qualified alternatives into a 45/60/75 score-state decision script; its tactical families are evidence-backed, while the switch timings remain an explicit operational heuristic until in-match tactical states are archived.</p>
         <div className="run-in-dossiers">
           {runInLab.map((row, rowIndex) => <details className="card" key={`run-in:${row.date}:${row.opponent}`} open={rowIndex === 0}>
             <summary><strong>{row.date} · {row.venue} · {row.opponent}</strong>{row.primary ? <span> · plan: {familyLabel(row.primary.sample)} · {row.primary.confidence.label} confidence</span> : row.volatile && row.dominantPrimary ? <span> · contingency: {familyLabel(row.dominantPrimary.sample)} for established setup · {row.dominantPrimary.confidence.label} confidence</span> : null}</summary>
@@ -2121,6 +2123,33 @@ export default function ManagerLabPage() {
               {row.primary.confidence.warning && <p><strong>Sample warning:</strong> {row.primary.confidence.warning}</p>}
               {row.alternative && <p><strong>Alternative:</strong> {familyLabel(row.alternative.sample)} · {row.alternative.matches} world MP · {row.alternative.ppg.toFixed(2)} PPG · {row.alternative.confidence.label} confidence.</p>}
             </> : <p className="muted">{row.counters.length ? 'Paired observations exist, but none yet meet the minimum recommendation threshold of 3 matches across at least 2 clubs. They remain descriptive evidence below.' : 'No paired world evidence yet for the opponent\'s latest family. No recommendation is manufactured from missing data.'}</p>}
+            <h3>In-match decision script · 45 / 60 / 75</h3>
+            <p className="muted">Use the ranked alternatives as pre-planned switches if the scoreline demands a change. The archive currently supports the tactical families, not the minute of the switch or the score state, so 45/60/75 is an operational decision framework rather than a claim that changing at those minutes causes better results.</p>
+            <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Checkpoint</th><th>If behind</th><th>If level</th><th>If ahead</th></tr></thead><tbody>
+              <tr>
+                <td><strong>Start</strong></td>
+                <td colSpan="3">{row.primary ? <><strong>{familyLabel(row.primary.sample)}</strong> · Primary · {row.primary.confidence.label} confidence</> : <span className="muted">No evidence-backed starting family clears the recommendation threshold.</span>}</td>
+              </tr>
+              <tr>
+                <td><strong>45′ · HT</strong></td>
+                <td>{row.alternative ? <><strong>Switch to Alternative:</strong> {familyLabel(row.alternative.sample)}<br/><small>{row.alternative.matches} MP · {row.alternative.confidence.label} confidence</small></> : <span className="muted">No qualified alternative — do not manufacture one.</span>}</td>
+                <td>{row.primary ? <>Hold Primary. {row.volatile && row.dominantPrimary ? <><br/><small>If the opponent has reverted to its established setup, use the contingency below instead.</small></> : null}</> : <span className="muted">Use match evidence; no qualified default.</span>}</td>
+                <td>{row.primary ? <>Hold Primary.</> : <span className="muted">No evidence-backed protect-lead switch.</span>}</td>
+              </tr>
+              <tr>
+                <td><strong>60′</strong></td>
+                <td>{row.lateAlternative ? <><strong>If still behind, switch again:</strong> {familyLabel(row.lateAlternative.sample)}<br/><small>{row.lateAlternative.matches} MP · {row.lateAlternative.confidence.label} confidence</small></> : row.alternative ? <>Stay with the qualified Alternative; there is no second replicated option.</> : <span className="muted">No replicated chase-game alternative.</span>}</td>
+                <td>{row.primary ? <>Hold Primary unless the opponent's tactical family has visibly changed.</> : <span className="muted">No qualified default.</span>}</td>
+                <td>{row.primary ? <>Hold Primary; the archive does not yet identify a score-state-specific defensive switch.</> : <span className="muted">No qualified protect-lead plan.</span>}</td>
+              </tr>
+              <tr>
+                <td><strong>75′</strong></td>
+                <td>{row.lastThrowAlternative ? <><strong>Last evidence-backed alternative:</strong> {familyLabel(row.lastThrowAlternative.sample)}<br/><small>{row.lastThrowAlternative.matches} MP · {row.lastThrowAlternative.confidence.label} confidence</small></> : row.lateAlternative ? <>Stay with the 60′ alternative; no further family clears the evidence gate.</> : row.alternative ? <>Stay with Alternative; no further family clears the evidence gate.</> : <span className="muted">No evidence-backed last-throw family available.</span>}</td>
+                <td>{row.primary ? <>Hold Primary; only change for an observed opponent switch, not because the clock says 75.</> : <span className="muted">No qualified default.</span>}</td>
+                <td>{row.primary ? <>Protect the result with the Primary. No score-state evidence yet justifies inventing a defensive family.</> : <span className="muted">No evidence-backed protect-lead switch.</span>}</td>
+              </tr>
+            </tbody></table></div>
+            <p className="muted"><strong>Opponent switch override:</strong> if a volatile opponent visibly returns to its established family, the established-setup contingency takes priority over the scoreline script. Future match-engine capture should add actual 45/60/75 tactical states and score state so these timings can become empirical.</p>
             {row.avoid && <p><strong>Avoid / warning from Hamburg evidence:</strong> {familyLabel(row.avoid.sample)} · {row.avoid.matches} HSV matches against stronger XIs · {row.avoid.ppg.toFixed(2)} PPG · {row.avoid.gdPerGame>=0?'+':''}{row.avoid.gdPerGame.toFixed(2)} GD/game. This is a repeated HSV underperformance signal, not proof that the tactic caused the results.</p>}
             {row.volatile && row.dominant && <>
               <h3>Established-setup contingency</h3>
