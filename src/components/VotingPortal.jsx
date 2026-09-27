@@ -13,7 +13,6 @@ function governanceLabel(value) {
 
 export default function VotingPortal() {
   const [session, setSession] = useState(null);
-  const [email, setEmail] = useState('');
   const [account, setAccount] = useState(null);
   const [events, setEvents] = useState([]);
   const [questions, setQuestions] = useState([]);
@@ -63,15 +62,9 @@ export default function VotingPortal() {
     return map;
   }, [options]);
 
-  async function sendMagicLink(event) {
-    event.preventDefault();
-    setLoading(true); setMessage('');
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/vote`, shouldCreateUser: true },
-    });
-    setMessage(error ? error.message : 'Check your email for your secure voting sign-in link.');
-    setLoading(false);
+  function signInAtManagerPortal() {
+    const returnTo = encodeURIComponent(window.location.href);
+    window.location.assign(`https://manager.smtop100.blog/?returnTo=${returnTo}`);
   }
 
   async function loadVoting() {
@@ -207,7 +200,7 @@ export default function VotingPortal() {
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Voting unavailable.</strong><span>Supabase is not connected.</span></section></main>;
 
-  if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100</p><h1>Manager Voting</h1><p>Secure one-manager-one-vote polling using your existing Top 100 manager account.</p></section><section className="card manager-login-card"><h2>Sign in securely</h2><p className="muted">Use the same email address as your Manager Portal account.</p><form onSubmit={sendMagicLink}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button type="submit" disabled={loading}>{loading ? 'Sending…' : 'Email me a sign-in link'}</button></form>{message && <p className="status">{message}</p>}</section></main>;
+  if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100</p><h1>Manager Voting</h1><p>Voting uses your Top 100 Manager Portal account. There is no separate voting sign-in.</p></section><section className="card manager-login-card"><h2>Sign in with your Top 100 account</h2><p className="muted">We’ll take you to Manager Portal to sign in or claim your account, then bring you back here to vote.</p><button type="button" onClick={signInAtManagerPortal}>Continue to Manager Portal</button>{message && <p className="status">{message}</p>}</section></main>;
 
   const canRenderEvents = Boolean(account || isAdmin);
 

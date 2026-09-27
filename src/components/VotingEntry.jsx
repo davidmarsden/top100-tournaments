@@ -3,77 +3,73 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import VotingPortal from './VotingPortal.jsx';
 
 const MANAGER_ORIGIN = 'https://manager.smtop100.blog';
-const BRIDGE_TIMEOUT_MS = 15000;
+const BRIDGE_TIMEOUT_MS = 5000;
 
 export default function VotingEntry() {
-  const [checkingBridge, setCheckingBridge] = useState(true);
+  const [checkingReturn, setCheckingReturn] = useState(true);
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase || window.location.hostname !== 'vote.smtop100.blog') {
-      setCheckingBridge(false);
+      setCheckingReturn(false);
       return undefined;
     }
 
-    let finished = false;
-    let frame;
-    let timeout;
+    let active = true;
+    let frame = null;
+    let timer = null;
 
     const finish = () => {
-      if (finished) return;
-      finished = true;
-      if (timeout) window.clearTimeout(timeout);
-      setCheckingBridge(false);
+      if (!active) return;
+      if (timer) window.clearTimeout(timer);
+      window.removeEventListener('message', handleMessage);
       if (frame?.parentNode) frame.parentNode.removeChild(frame);
+      frame = null;
+      setCheckingReturn(false);
     };
 
     const handleMessage = async (event) => {
       if (event.origin !== MANAGER_ORIGIN || event.data?.type !== 'top100-manager-session') return;
-
       const bridgeSession = event.data.session;
       if (bridgeSession?.access_token && bridgeSession?.refresh_token) {
         const { error } = await supabase.auth.setSession(bridgeSession);
-        if (error) console.warn('Could not import Manager Portal session into Voting.', error);
+        if (error) console.warn('Could not complete Manager Portal sign-in handoff.', error);
       }
       finish();
     };
 
-    window.addEventListener('message', handleMessage);
+    async function initialise() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!active || data.session) return finish();
 
-    supabase.auth.getSession()
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn('Could not read Voting session before manager bridge check.', error);
-          finish();
-          return;
-        }
-        if (data.session) {
-          finish();
-          return;
-        }
-
+        // This bridge is now only a return handoff from the canonical Manager
+        // Portal. Voting never initiates its own magic-link sign-in.
+        window.addEventListener('message', handleMessage);
         frame = document.createElement('iframe');
         frame.src = `${MANAGER_ORIGIN}/auth/session-bridge`;
-        frame.title = 'Manager sign-in check';
+        frame.title = 'Completing Top 100 sign-in';
         frame.setAttribute('aria-hidden', 'true');
         frame.style.display = 'none';
         frame.addEventListener('error', finish, { once: true });
         document.body.appendChild(frame);
-        timeout = window.setTimeout(finish, BRIDGE_TIMEOUT_MS);
-      })
-      .catch((error) => {
-        console.warn('Manager sign-in bridge check failed.', error);
+        timer = window.setTimeout(finish, BRIDGE_TIMEOUT_MS);
+      } catch (error) {
+        console.warn('Could not complete Manager Portal sign-in handoff.', error);
         finish();
-      });
+      }
+    }
 
+    initialise();
     return () => {
-      if (timeout) window.clearTimeout(timeout);
+      active = false;
+      if (timer) window.clearTimeout(timer);
       window.removeEventListener('message', handleMessage);
       if (frame?.parentNode) frame.parentNode.removeChild(frame);
     };
   }, []);
 
-  if (checkingBridge) {
-    return <main className="manager-portal-shell"><section className="card"><h2>Checking manager sign-in…</h2></section></main>;
+  if (checkingReturn) {
+    return <main className="manager-portal-shell"><section className="card"><h2>Checking Top 100 sign-in…</h2><p className="muted">This should only take a few seconds.</p></section></main>;
   }
 
   return <VotingPortal />;
