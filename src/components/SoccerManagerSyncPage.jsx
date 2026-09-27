@@ -448,10 +448,14 @@ export default function SoccerManagerSyncPage() {
   async function importFiles(files) {
     const entries = [];
     const readErrors = [];
+    const captureTimes = [];
     for (const file of Array.from(files || [])) {
       try {
         const raw = JSON.parse(await file.text());
         if (raw?.kind === 'worldSquadBackfill' && Array.isArray(raw.payloads)) {
+          const capturedAt = typeof raw.capturedAt === 'string' && Number.isFinite(Date.parse(raw.capturedAt)) ? new Date(raw.capturedAt).toISOString() : null;
+          if (capturedAt) captureTimes.push(capturedAt);
+          else readErrors.push(`${file.name}: bundle capture timestamp is missing or invalid; staging will use the import time.`);
           for (const [index, payload] of raw.payloads.entries()) {
             if (!payload?.url || payload.data === undefined) {
               readErrors.push(`${file.name}: squad payload ${index + 1} is incomplete.`);
@@ -478,7 +482,9 @@ export default function SoccerManagerSyncPage() {
     const { next: normalizedRawEntries, errors } = normalizeCapturedEntries(rawEntries);
     const next = [...normalizedEntries, ...normalizedRawEntries];
     const allErrors = [...readErrors, ...errors];
-    setDiagnosticsCapturedAt(null);
+    const distinctCaptureTimes = [...new Set(captureTimes)];
+    setDiagnosticsCapturedAt(distinctCaptureTimes.length === 1 ? distinctCaptureTimes[0] : null);
+    if (distinctCaptureTimes.length > 1) allErrors.push('Imported bundles have different capture timestamps; staging will use the import time.');
     setPlayerDiagnostics([]);
     setMatchEngineSources([]);
     setMatchReplay(null);
