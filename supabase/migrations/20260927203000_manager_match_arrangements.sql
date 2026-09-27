@@ -42,8 +42,74 @@ create table if not exists public.manager_match_arrangement_events (
 alter table public.manager_match_arrangement_events enable row level security;
 drop policy if exists "Managers read own arrangement history" on public.manager_match_arrangement_events;
 create policy "Managers read own arrangement history" on public.manager_match_arrangement_events for select to authenticated using (auth.uid() = auth_user_id);
-drop policy if exists "Managers append own arrangement history" on public.manager_match_arrangement_events;
-create policy "Managers append own arrangement history" on public.manager_match_arrangement_events for insert to authenticated with check (auth.uid() = auth_user_id);
+-- Events are append-only through the SECURITY DEFINER RPC below. Clients cannot forge
+-- an event against another manager's arrangement.
+revoke insert, update, delete on public.manager_match_arrangement_events from authenticated;
 
 drop policy if exists "Managers delete own match evidence" on storage.objects;
 create policy "Managers delete own match evidence" on storage.objects for delete to authenticated using (bucket_id='match-evidence' and (storage.foldername(name))[1]=auth.uid()::text);
+
+create or replace function public.record_manager_match_arrangement_action(
+  p_match_id bigint,
+  p_tournament_entry_id bigint,
+  p_status text
+) returns public.manager_match_arrangements
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_arr public.manager_match_arrangements;
+begin
+  if v_user is null then raise exception 'Authentication required'; end if;
+  if p_status not in ('sent','received','chased','arranged','problem') then raise exception 'Invalid arrangement status'; end if;
+  if not exists (
+    select 1 from public.matches m
+    where m.id=p_match_id
+      and (m.home_entry_id=p_tournament_entry_id or m.away_entry_id=p_tournament_entry_id)
+  ) then raise exception 'Entry does not belong to this match'; end if;
+
+  insert into public.manager_match_arrangements(match_id,auth_user_id,tournament_entry_id,status,reported_at,updated_at)
+  values(p_match_id,v_user,p_tournament_entry_id,p_status,now(),now())
+  on conflict(match_id,auth_user_id) do update
+    set status=excluded.status,
+        tournament_entry_id=excluded.tournament_entry_id,
+        updated_at=now()
+  returning * into v_arr;
+
+  insert into public.manager_match_arrangement_events(arrangement_id,match_id,auth_user_id,tournament_entry_id,action,created_at)
+  values(v_arr.id,v_arr.match_id,v_arr.auth_user_id,v_arr.tournament_entry_id,p_status,now());
+
+  return v_arr;
+end;
+$$;
+revoke all on function public.record_manager_match_arrangement_action(bigint,bigint,text) from public;
+grant execute on function public.record_manager_match_arrangement_action(bigint,bigint,text) to authenticated;
+
+create or replace function public.attach_manager_match_evidence(
+  p_match_id bigint,
+  p_evidence_path text,
+  p_evidence_name text
+) returns public.manager_match_arrangements
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_arr public.manager_match_arrangements;
+begin
+  if v_user is null then raise exception 'Authentication required'; end if;
+  if p_evidence_path is null or split_part(p_evidence_path,'/',1) <> v_user::text
+     or split_part(p_evidence_path,'/',2) <> p_match_id::text then
+    raise exception 'Invalid evidence path';
+  end if;
+  update public.manager_match_arrangements
+     set evidence_path=p_evidence_path,evidence_name=p_evidence_name,updated_at=now()
+   where match_id=p_match_id and auth_user_id=v_user
+   returning * into v_arr;
+  if v_arr.id is null then raise exception 'Record an arrangement action before adding evidence'; end if;
+  return v_arr;
+end;
+$$;
+revoke all on function public.attach_manager_match_evidence(bigint,text,text) from public;
+grant execute on function public.attach_manager_match_evidence(bigint,text,text) to authenticated;
