@@ -118,6 +118,39 @@ function fieldNames(rows) {
   return [...new Set(rows.flatMap((row) => Object.keys(row || {})))].sort((a, b) => a.localeCompare(b));
 }
 
+const PLAYER_SOURCE_SENSITIVE_KEY = /(?:token|session|sessid|phpsessid|auth|secret|password|passwd|cookie)/i;
+
+function playerSourceFields(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return {};
+  const output = {};
+  let fields = 0;
+  for (const [key, value] of Object.entries(record)) {
+    if (fields >= 256 || PLAYER_SOURCE_SENSITIVE_KEY.test(key)) continue;
+    if (value === null || typeof value === 'boolean' || typeof value === 'number') {
+      output[key] = value;
+      fields += 1;
+      continue;
+    }
+    if (typeof value === 'string') {
+      output[key] = value.length > 1000 ? value.slice(0, 1000) : value;
+      fields += 1;
+      continue;
+    }
+    // Keep compact arrays/objects such as SM attribute/stat blocks, but reject
+    // large or unserialisable structures. This is source evidence, not a parser contract.
+    try {
+      const encoded = JSON.stringify(value);
+      if (encoded && encoded.length <= 12000) {
+        output[key] = JSON.parse(encoded);
+        fields += 1;
+      }
+    } catch {
+      // Ignore non-JSON source values.
+    }
+  }
+  return output;
+}
+
 function squadPlayerName(record) {
   const firstName = firstText(record?.playername, record?.name);
   const surname = firstText(record?.playersurname, record?.surname);
@@ -413,6 +446,7 @@ export function normalizeClubSquad(input, context = {}) {
     sourceContext: {
       action: sourceContext.action,
       latestId: sourceContext.latestId,
+      sourcePath: (() => { try { return new URL(context.sourceUrl).pathname; } catch { return null; } })(),
     },
     schema: {
       playerKeys: fieldNames(rows),
@@ -445,6 +479,9 @@ export function normalizeClubSquad(input, context = {}) {
       transferListed: firstBoolean(record.transferlisted, record.transfer_list, record.tl),
       photo: firstText(record.photofilename, record.PhotoFilename),
       ratingChangedAt: firstText(record.ratchgdate),
+      // Preserve the bounded, non-sensitive source row alongside normalized
+      // aliases so Player Lab can discover fields we do not understand yet.
+      sourceFields: playerSourceFields(record),
     };
     }),
   };
