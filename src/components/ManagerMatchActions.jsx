@@ -62,11 +62,14 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
     if(!ALLOWED_EVIDENCE_TYPES.has(file.type)){setMessage('Evidence must be a JPEG, PNG, WebP or GIF image.');return;}
     if(file.size>8*1024*1024){setMessage('Evidence images must be 8 MB or smaller.');return;}
     setUploading(match.id); setMessage('');
-    const ext=(file.name.split('.').pop()||'jpg').replace(/[^a-z0-9]/gi,'').toLowerCase();
-    const path=`${session.user.id}/${match.id}/evidence.${ext}`;
-    const uploaded=await supabase.storage.from('match-evidence').upload(path,file,{contentType:file.type,upsert:true});
-    if(uploaded.error){setMessage(uploaded.error.message);setUploading('');return;}
+    const extByType={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'};
+    const ext=extByType[file.type];
     const previousPath=current.evidence_path;
+    const previousFile=previousPath?.split('/').pop()||'';
+    const slot=previousFile.startsWith('evidence-a.')?'b':'a';
+    const path=`${session.user.id}/${match.id}/evidence-${slot}.${ext}`;
+    const uploaded=await supabase.storage.from('match-evidence').upload(path,file,{contentType:file.type,upsert:false});
+    if(uploaded.error){setMessage(uploaded.error.message);setUploading('');return;}
     const {data,error}=await supabase.rpc('attach_manager_match_evidence',{
       p_match_id: match.id,
       p_evidence_path: path,
@@ -76,8 +79,8 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
       await supabase.storage.from('match-evidence').remove([path]);
       setMessage(error.message);
     } else {
-      // A stable per-match object key bounds storage to one evidence object.
-      // If the extension changed, the old now-unreferenced object may be removed.
+      // Alternate between two bounded keys so the currently referenced object is
+      // never overwritten before the metadata swap succeeds.
       if(previousPath && previousPath!==path) {
         const removed=await supabase.storage.from('match-evidence').remove([previousPath]);
         if(removed.error)setMessage('New evidence saved, but the previous file could not be removed: '+removed.error.message);
