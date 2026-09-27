@@ -1137,22 +1137,26 @@ export default function ManagerLabPage() {
           assignments.push({ key: String(key), code, role: playerRoleLabel(code), validated, complete });
         });
       }
-      return { match, formation, anomalous, assignments };
+      const analyzable = Boolean(formation) &&
+        ['complete-xi-timeline', 'direct-xi', 'sparse-keyed-timeline'].includes(encoding.kind) &&
+        assignments.length > 0;
+      return { match, formation, anomalous, assignments, analyzable };
     });
+    const analyzableObservations = observations.filter((row) => row.analyzable);
     const metric = (rows) => {
       if (!rows.length) return { matches: 0, ppg: null, gd: null, winRate: null };
-      const pts = rows.map((r) => resultPoints(r.match));
+      const pts = rows.map((r) => resultPoints(r.match.result));
       return { matches: rows.length, ppg: pts.reduce((a,b)=>a+b,0)/rows.length, gd: rows.reduce((s,r)=>s+(Number(r.match.goalsFor)-Number(r.match.goalsAgainst)),0)/rows.length, winRate: pts.filter((p)=>p===3).length/rows.length };
     };
     const sev = new Map();
-    observations.forEach((r) => { const k=r.anomalous>=4?'4+':String(r.anomalous); if(!sev.has(k)) sev.set(k,[]); sev.get(k).push(r); });
+    analyzableObservations.forEach((r) => { const k=r.anomalous>=4?'4+':String(r.anomalous); if(!sev.has(k)) sev.set(k,[]); sev.get(k).push(r); });
     const severity=[...sev].map(([anomalies,rows])=>({anomalies,...metric(rows)})).sort((a,b)=>(a.anomalies==='4+'?99:+a.anomalies)-(b.anomalies==='4+'?99:+b.anomalies));
     const cm=new Map();
-    observations.forEach((r)=>{const id=String(r.match.sourceClubId||r.match.club||'unknown');const x=cm.get(id)||{sourceClubId:r.match.sourceClubId,club:r.match.club||id,clean:[],anomalous:[]};(r.anomalous?x.anomalous:x.clean).push(r);cm.set(id,x);});
+    analyzableObservations.forEach((r)=>{const id=String(r.match.sourceClubId||r.match.club||'unknown');const x=cm.get(id)||{sourceClubId:r.match.sourceClubId,club:r.match.club||id,clean:[],anomalous:[]};(r.anomalous?x.anomalous:x.clean).push(r);cm.set(id,x);});
     const clubs=[...cm.values()].filter((x)=>x.anomalous.length).map((x)=>({...x,cleanMetrics:metric(x.clean),anomalyMetrics:metric(x.anomalous)})).sort((a,b)=>b.anomalous.length-a.anomalous.length);
     const build=(wantValidated)=>{
       const m=new Map();
-      observations.forEach((r)=>r.assignments.filter((a)=>a.validated===wantValidated).forEach((a)=>{const id=`${r.formation}:${a.key}:${a.code}`;const x=m.get(id)||{formation:r.formation,key:a.key,code:a.code,role:a.role,rows:[],clubs:new Set(),complete:0,sparse:0};x.rows.push(r);if(r.match.sourceClubId)x.clubs.add(r.match.sourceClubId);if(a.complete)x.complete++;else x.sparse++;m.set(id,x);}));
+      analyzableObservations.forEach((r)=>r.assignments.filter((a)=>a.validated===wantValidated).forEach((a)=>{const id=`${r.formation}:${a.key}:${a.code}`;const x=m.get(id)||{formation:r.formation,key:a.key,code:a.code,role:a.role,rows:[],clubs:new Set(),complete:0,sparse:0};x.rows.push(r);if(r.match.sourceClubId)x.clubs.add(r.match.sourceClubId);if(a.complete)x.complete++;else x.sparse++;m.set(id,x);}));
       return [...m.values()].map((x)=>({formation:x.formation,key:x.key,code:x.code,role:x.role,clubCount:x.clubs.size,complete:x.complete,sparse:x.sparse,...metric(x.rows)})).sort((a,b)=>b.matches-a.matches);
     };
     return { assignments: build(true), anomalies: build(false), severity, clubs };
