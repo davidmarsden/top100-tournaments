@@ -205,6 +205,25 @@ function displayTacticValue(key, value) {
 const TACTIC_KEYS = ['formation','mentality','passingStyle','attackingStyle','tempo','pressing','defensiveLine','width','aggression','creativity','fluidity','forwards','widePlay','usePlaymaker','useTargetMan','counterAttack','tightMarking','menBehindBall','sweeperKeeper'];
 const FAMILY_KEYS = ['formation','mentality','passingStyle','attackingStyle','tempo'];
 
+const HAMBURG_RUN_IN_S28 = [
+  { date: '2026-09-27', opponent: 'FC Porto', venue: 'A' },
+  { date: '2026-10-01', opponent: 'Hellas Verona', venue: 'H' },
+  { date: '2026-10-04', opponent: 'CSKA Moskva', venue: 'A' },
+  { date: '2026-10-08', opponent: '1. FC Köln', venue: 'H' },
+  { date: '2026-10-11', opponent: 'Levante UD', venue: 'A' },
+  { date: '2026-10-15', opponent: 'Arsenal', venue: 'H' },
+  { date: '2026-10-18', opponent: 'RCD Espanyol', venue: 'A' },
+  { date: '2026-10-22', opponent: 'São Paulo FC', venue: 'H' },
+  { date: '2026-10-25', opponent: 'Chelsea', venue: 'H' },
+  { date: '2026-10-29', opponent: 'Borussia Dortmund', venue: 'H' },
+  { date: '2026-11-01', opponent: 'Aston Villa', venue: 'A' },
+  { date: '2026-11-05', opponent: 'Barcelona', venue: 'A' },
+];
+const MAGIC_FAMILY = '4-2-3-1 B|Attacking|Mixed|Down Both Flanks|Fast';
+function familyLabel(match) {
+  return FAMILY_KEYS.map((key) => displayTacticValue(key, tacticValue(match, key))).join(' · ');
+}
+
 function tacticSignature(match, keys = TACTIC_KEYS) {
   return keys.map((key) => normalizedTacticValue(match, key) ?? '—').join('|');
 }
@@ -1105,6 +1124,52 @@ export default function ManagerLabPage() {
     return effects.sort((a,b) => b.matches - a.matches || b.strata - a.strata || b.deltaPpg - a.deltaPpg).slice(0, 20);
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
 
+  const runInLab = useMemo(() => {
+    if (!worldFormulaMatches.length) return [];
+    const d1 = worldFormulaMatches.filter((match) => match.competition === 'Division 1');
+    const byFixture = new Map();
+    d1.forEach((match) => {
+      const id = String(match.fixtureId ?? '');
+      if (!id) return;
+      const pair = byFixture.get(id) || [];
+      pair.push(match);
+      byFixture.set(id, pair);
+    });
+    const hamburgRows = d1.filter((match) => String(match.sourceClubId) === '48506708');
+    return HAMBURG_RUN_IN_S28.map((fixture) => {
+      const opponentRows = d1.filter((match) => match.club === fixture.opponent || match.sourceClubName === fixture.opponent);
+      const familyCounts = new Map();
+      opponentRows.forEach((match) => {
+        const key = tacticSignature(match, FAMILY_KEYS);
+        const row = familyCounts.get(key) || { key, sample: match, matches: 0, points: 0 };
+        row.matches += 1; row.points += resultPoints(match.result); row.sample = match; familyCounts.set(key, row);
+      });
+      const dominant = [...familyCounts.values()].sort((a,b) => b.matches - a.matches || b.points - a.points)[0] || null;
+      const latest = [...opponentRows].sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')) || Number(b.fixtureId || 0) - Number(a.fixtureId || 0))[0] || null;
+      const currentKey = latest ? tacticSignature(latest, FAMILY_KEYS) : null;
+      const counterMap = new Map();
+      if (currentKey) d1.filter((match) => tacticSignature(match, FAMILY_KEYS) === currentKey).forEach((target) => {
+        const counterpart = (byFixture.get(String(target.fixtureId)) || []).find((row) => String(row.sourceClubId) !== String(target.sourceClubId));
+        if (!counterpart) return;
+        const key = tacticSignature(counterpart, FAMILY_KEYS);
+        const entry = counterMap.get(key) || { key, sample: counterpart, matches: 0, points: 0, gd: 0, wins: 0 };
+        entry.matches += 1; entry.points += resultPoints(counterpart.result);
+        entry.gd += (Number(counterpart.goalsFor)||0) - (Number(counterpart.goalsAgainst)||0);
+        if (counterpart.result === 'W') entry.wins += 1;
+        counterMap.set(key, entry);
+      });
+      const counters = [...counterMap.values()].map((row) => ({...row, ppg: row.points/row.matches, gdPerGame: row.gd/row.matches}))
+        .sort((a,b) => b.matches-a.matches || b.ppg-a.ppg || b.gdPerGame-a.gdPerGame).slice(0,3);
+      const previous = hamburgRows.find((match) => match.opponent === fixture.opponent) || null;
+      return {
+        ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey,
+        magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
+        previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null,
+        latestXi: latest ? numericValue(latest.ourXiRating) : null, counters,
+      };
+    });
+  }, [worldFormulaMatches]);
+
   const playerRoleEncodingAudit = useMemo(() => {
     const byKind = new Map();
     const byClub = new Map();
@@ -1864,6 +1929,23 @@ export default function ManagerLabPage() {
           </tbody></table></div>
         </>}
       </section>
+
+      {worldFormulaMatches.length > 0 && <section className="card">
+        <p className="eyebrow">Hamburger SV · Division 1 survival</p>
+        <h2>Run-in Lab</h2>
+        <p className="muted">The final 12 league opponents, using archived S28 opening tactics. Latest family is the most recent captured five-field setup; Magic MP counts exact 4-2-3-1 B · Attacking · Mixed · Down Both Flanks · Fast appearances. Counter evidence pairs both sides of D1 fixtures against that latest family: useful evidence, not a guaranteed counter.</p>
+        <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Date</th><th>Fixture</th><th>Latest family</th><th>Magic MP</th><th>Latest XI / age</th><th>Previous HSV meeting</th><th>Observed counter evidence</th></tr></thead><tbody>
+          {runInLab.map((row) => <tr key={`run-in:${row.date}:${row.opponent}`}>
+            <td><strong>{row.date}</strong></td><td><strong>{row.venue} · {row.opponent}</strong><br /><small>{row.observedMatches} archived D1 observations</small></td>
+            <td>{row.latest ? <><strong>{familyLabel(row.latest)}</strong>{row.dominant && row.dominant.key !== row.currentKey && <small>Dominant: {familyLabel(row.dominant.sample)} ({row.dominant.matches} MP)</small>}</> : '—'}</td>
+            <td>{row.magicMatches ? <strong>{row.magicMatches}</strong> : '0'}</td>
+            <td>{row.latestXi === null ? '—' : row.latestXi.toFixed(1)}<br /><small>{row.latestAge === null ? 'age —' : `${row.latestAge.toFixed(1)} yrs`}</small></td>
+            <td>{row.previous ? <><strong className={`lab-result ${row.previous.result}`}>{row.previous.goalsFor}–{row.previous.goalsAgainst}</strong><br /><small>{familyLabel(row.previous)}</small></> : '—'}</td>
+            <td>{row.counters.length ? row.counters.map((counter, index) => <div key={counter.key}>{index + 1}. <strong>{familyLabel(counter.sample)}</strong><br /><small>{counter.matches} MP · {counter.ppg.toFixed(2)} PPG · {counter.wins} wins · {counter.gdPerGame >= 0 ? '+' : ''}{counter.gdPerGame.toFixed(2)} GD/g</small></div>) : <span className="muted">No paired D1 evidence</span>}</td>
+          </tr>)}
+        </tbody></table></div>
+        <p className="muted">The run-in list is the S28 schedule captured on 27 September 2026. Re-run the Soccer Manager archive sync as the season progresses so opponent evidence stays current.</p>
+      </section>}
 
       {worldFormulaMatches.length > 0 && <section className="card">
         <h2>Cross-division replication · {worldFormulaStrength}</h2>
