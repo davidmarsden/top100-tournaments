@@ -46,9 +46,11 @@ async function deleteByTournament(db, table, ids) {
 }
 
 async function deleteByMatch(db, table, ids) {
-  if (!ids.length) return;
-  const { error } = await db.from(table).delete().in('match_id', ids);
-  if (error && !String(error.message || '').includes('does not exist')) throw error;
+  const batchSize = 250;
+  for (let offset = 0; offset < ids.length; offset += batchSize) {
+    const { error } = await db.from(table).delete().in('match_id', ids.slice(offset, offset + batchSize));
+    if (error && !String(error.message || '').includes('does not exist')) throw error;
+  }
 }
 
 async function deleteMatchesForTournamentTeardown(db, ids) {
