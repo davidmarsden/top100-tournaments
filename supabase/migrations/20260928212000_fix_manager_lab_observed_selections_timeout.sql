@@ -23,13 +23,27 @@ with latest as (
 ), joined as (
  select o.*,p.name current_name,p.rating current_rating,p.main_position,p.age,p.average_performance,p.career_appearances,p.career_average_performance,p.rating_change
  from observed o left join public.soccer_manager_players p on p.game_world_id=v_world_id and p.source_player_id=o.source_player_id
+), squad_counts as (
+ select
+  case when e.player->>'teamSide'='h' then s.home_source_club_id else s.away_source_club_id end source_club_id,
+  e.player->>'playerDataId' source_player_id,
+  count(*)::integer squad_selections
+ from latest s
+ cross join lateral jsonb_array_elements(coalesce(s.source_data->'players','[]'::jsonb)) e(player)
+ where nullif(e.player->>'playerDataId','') is not null
+ group by 1,2
 )
-select jsonb_build_object('selections',coalesce(jsonb_agg(jsonb_build_object(
- 'fixtureId',fixture_id,'date',match_date,'competition',competition,'sourceClubId',source_club_id,'club',club_name,'starter',is_starter,
- 'sourcePlayerId',source_player_id,'matchPlayerId',match_player_id,'observedName',observed_name,'observedRating',observed_rating,'matchRating',match_rating,
- 'positionDescription',position_description,'currentName',current_name,'currentRating',current_rating,'mainPosition',main_position,'age',age,
- 'averagePerformance',average_performance,'careerAppearances',career_appearances,'careerAveragePerformance',career_average_performance,'ratingChange',rating_change
-) order by match_date,fixture_id,source_club_id,side_order),'[]'::jsonb)) into result from joined;
+select jsonb_build_object(
+ 'selections',coalesce(jsonb_agg(jsonb_build_object(
+  'fixtureId',fixture_id,'date',match_date,'competition',competition,'sourceClubId',source_club_id,'club',club_name,'starter',is_starter,
+  'sourcePlayerId',source_player_id,'matchPlayerId',match_player_id,'observedName',observed_name,'observedRating',observed_rating,'matchRating',match_rating,
+  'positionDescription',position_description,'currentName',current_name,'currentRating',current_rating,'mainPosition',main_position,'age',age,
+  'averagePerformance',average_performance,'careerAppearances',career_appearances,'careerAveragePerformance',career_average_performance,'ratingChange',rating_change
+ ) order by match_date,fixture_id,source_club_id,side_order),'[]'::jsonb),
+ 'squadSelectionCounts',coalesce((select jsonb_agg(jsonb_build_object(
+  'sourceClubId',source_club_id,'sourcePlayerId',source_player_id,'squadSelections',squad_selections
+ )) from squad_counts),'[]'::jsonb)
+) into result from joined;
 return result; end; $$;
 revoke all on function public.manager_lab_observed_selections(text) from public,anon;
 grant execute on function public.manager_lab_observed_selections(text) to authenticated,service_role;
