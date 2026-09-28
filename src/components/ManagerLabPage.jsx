@@ -1238,7 +1238,11 @@ export default function ManagerLabPage() {
         }
         hamburgUsage.set(key, entry);
       });
-      const hamburgSelection = [...hamburgUsage.values()].sort((a,b) => b.starts-a.starts || String(b.lastDate||'').localeCompare(String(a.lastDate||'')) || Number(b.currentRating||b.observedRating||0)-Number(a.currentRating||a.observedRating||0)).slice(0,11);
+      const hamburgCurrentIds = new Set(hamburgSquad.map((player) => String(player.sourcePlayerId)));
+      const hamburgSelection = [...hamburgUsage.values()]
+        .filter((player) => hamburgCurrentIds.has(String(player.sourcePlayerId || '')))
+        .sort((a,b) => b.starts-a.starts || String(b.lastDate||'').localeCompare(String(a.lastDate||'')) || Number(b.currentRating||b.observedRating||0)-Number(a.currentRating||a.observedRating||0))
+        .slice(0,11);
       const selectedIds = new Set(hamburgSelection.map((player) => String(player.sourcePlayerId || '')));
       const hamburgAlternatives = hamburgSquad
         .filter((player) => !selectedIds.has(String(player.sourcePlayerId)))
