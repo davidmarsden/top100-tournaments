@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeSoccerManagerPayload, summarizeNormalizedPayload } from '../lib/soccerManagerSync';
 import { normalizeSoccerManagerMatchReplay, summarizeMatchReplay } from '../lib/soccerManagerMatchReplay';
-import { isHamburgSeasonBackfill, normalizeHamburgSeasonBackfill } from '../lib/soccerManagerMatchBackfill';
+import { isHamburgSeasonBackfill, isSoccerManagerReplayNetworkTrace, normalizeHamburgSeasonBackfill, normalizeSoccerManagerReplayNetworkTrace } from '../lib/soccerManagerMatchBackfill';
 import {
   collectorBookmarklet,
   isAllowedSoccerManagerOrigin,
@@ -470,6 +470,11 @@ export default function SoccerManagerSyncPage() {
           entries.push(...normalized.entries.map((entry) => ({ ...entry, alreadyNormalized: true })));
           readErrors.push(...normalized.errors.map((message) => `${file.name}: ${message}`));
           readErrors.push(...normalized.failures.map((failure) => `${file.name}: fixture ${failure.fixtureId || '?'} was not captured: ${failure.error || 'unknown error'}`));
+        } else if (isSoccerManagerReplayNetworkTrace(raw)) {
+          const pageSetupId = new URLSearchParams(window.location.search).get('sid');
+          const normalized = normalizeSoccerManagerReplayNetworkTrace(raw, { setupId: pageSetupId });
+          entries.push(...normalized.entries.map((entry) => ({ ...entry, alreadyNormalized: true })));
+          readErrors.push(...normalized.errors.map((message) => `${file.name}: ${message}`));
         } else {
           entries.push({ name: file.name, raw });
         }
