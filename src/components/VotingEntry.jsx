@@ -65,6 +65,29 @@ export default function VotingEntry() {
 
     async function initialise() {
       try {
+        // Preferred path: Manager Portal performs a top-level return navigation
+        // and leaves the session in window.name. Unlike a hidden iframe this
+        // works when mobile browsers partition/block cross-site frame storage.
+        // Clear it before awaiting anything so credentials never linger.
+        let returnSession = null;
+        if (window.name) {
+          try {
+            const payload = JSON.parse(window.name);
+            if (payload?.type === 'top100-manager-return-session') {
+              returnSession = payload.session;
+              window.name = '';
+            }
+          } catch {
+            // window.name may legitimately belong to some unrelated browsing context.
+          }
+        }
+        if (returnSession?.access_token && returnSession?.refresh_token) {
+          const { error } = await supabase.auth.setSession(returnSession);
+          if (!active) return;
+          if (!error) return finish();
+          console.warn('Could not complete top-level Manager Portal sign-in handoff.', error);
+        }
+
         const { data } = await supabase.auth.getSession();
         if (!active || data.session) return finish();
 
