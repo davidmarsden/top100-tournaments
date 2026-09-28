@@ -458,6 +458,7 @@ export default function ManagerLabPage() {
   const [opponentPlayers, setOpponentPlayers] = useState([]);
   const [opponentPlayersStatus, setOpponentPlayersStatus] = useState('');
   const [observedSelections, setObservedSelections] = useState([]);
+  const [squadSelectionCounts, setSquadSelectionCounts] = useState([]);
 
   useEffect(() => {
     let mounted = true;
@@ -1308,7 +1309,7 @@ export default function ManagerLabPage() {
         const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
         const existing = hamburgUsage.get(key);
         const entry = existing || { ...selection, starts: 0, squadSelections: 0, lastDate: null };
-        entry.squadSelections += 1;
+        entry.squadSelections = squadCountMap.get(String(selection.sourcePlayerId || '')) ?? (entry.squadSelections + 1);
         if (selection.starter) entry.starts += 1;
         if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) {
           Object.assign(entry, selection);
@@ -1333,6 +1334,11 @@ export default function ManagerLabPage() {
         .slice(0,12);
       const hamburgObservedMatches = new Set(hamburgObserved.map((selection) => selection.fixtureId)).size;
       const observed = observedSelections.filter((selection) => String(selection.sourceClubId) === opponentClubId && selection.competition === 'Division 1');
+      const squadCountMap = new Map(
+        squadSelectionCounts
+          .filter((row) => String(row.sourceClubId) === opponentClubId)
+          .map((row) => [String(row.sourcePlayerId), Number(row.squadSelections || 0)])
+      );
       const starts = new Map();
       observed.forEach((selection) => {
         const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
@@ -1467,7 +1473,7 @@ export default function ManagerLabPage() {
         dominantAlternative: dominantQualified[1] || null,
       };
     });
-  }, [worldFormulaMatches, opponentPlayers, observedSelections]);
+  }, [worldFormulaMatches, opponentPlayers, observedSelections, squadSelectionCounts]);
 
   const playerRoleEncodingAudit = useMemo(() => {
     const byKind = new Map();
@@ -2121,8 +2127,10 @@ export default function ManagerLabPage() {
       if (selectionError) {
         setOpponentPlayersStatus(`Observed selections could not load: ${selectionError.message}`);
         setObservedSelections([]);
+        setSquadSelectionCounts([]);
       } else {
         setObservedSelections(Array.isArray(selectionData?.selections) ? selectionData.selections : []);
+        setSquadSelectionCounts(Array.isArray(selectionData?.squadSelectionCounts) ? selectionData.squadSelectionCounts : []);
       }
     }
   }
