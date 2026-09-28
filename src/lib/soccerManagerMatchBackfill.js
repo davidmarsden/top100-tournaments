@@ -1,5 +1,6 @@
 const HAMBURG_BACKFILL_KIND = 'hamburgSeasonMatchBackfill';
 const WORLD_BACKFILL_KIND = 'worldSeasonMatchBackfill';
+const NETWORK_TRACE_MATCH_PATH = '/matchreport-ajax-mobile.php';
 
 function text(value) {
   if (value === null || value === undefined) return null;
@@ -244,4 +245,54 @@ export function normalizeHamburgSeasonBackfill(value, options = {}) {
     }
   }
   return { entries, errors, failures: Array.isArray(value.failures) ? value.failures : [] };
+}
+
+
+function fixtureIdFromMatchReportUrl(value) {
+  try {
+    const url = new URL(String(value || ''), 'https://soccermanager.com');
+    if (url.pathname !== NETWORK_TRACE_MATCH_PATH || url.searchParams.get('action') !== 'mr') return null;
+    return text(url.searchParams.get('fixtureid'));
+  } catch {
+    return null;
+  }
+}
+
+export function isSoccerManagerReplayNetworkTrace(value) {
+  return Array.isArray(value?.events) && value.events.some((event) =>
+    event?.status === 200 && fixtureIdFromMatchReportUrl(event?.url) && typeof event?.responseBody === 'string'
+  );
+}
+
+export function normalizeSoccerManagerReplayNetworkTrace(value, options = {}) {
+  if (!isSoccerManagerReplayNetworkTrace(value)) throw new Error('This is not a supported Soccer Manager completed-match network trace.');
+  const nonZeroId = (candidate) => { const id = text(candidate); return id && id !== '0' ? id : null; };
+  let traceSetupId = nonZeroId(value?.setupId);
+  if (!traceSetupId) {
+    try { traceSetupId = nonZeroId(new URL(String(value?.pageUrl || '')).searchParams.get('sid')); } catch { /* diagnostic may omit a page URL */ }
+  }
+  const fallbackSetupId = nonZeroId(options.setupId);
+  if (traceSetupId && fallbackSetupId && traceSetupId !== fallbackSetupId) {
+    throw new Error(`The completed-match trace belongs to Soccer Manager setup ${traceSetupId}, but the Sync page is scoped to setup ${fallbackSetupId}. Open the matching game world before importing it.`);
+  }
+  const setupId = traceSetupId || fallbackSetupId;
+  if (!setupId || !/^\d+$/.test(setupId)) throw new Error('The completed-match trace does not contain the Soccer Manager setup id.');
+  const capturedAt = text(value?.capturedAt) || new Date().toISOString();
+  const seen = new Set();
+  const entries = [];
+  const errors = [];
+  for (const event of value.events) {
+    const fixtureId = fixtureIdFromMatchReportUrl(event?.url);
+    if (!fixtureId || event?.status !== 200 || typeof event?.responseBody !== 'string' || seen.has(fixtureId)) continue;
+    try {
+      const raw = JSON.parse(event.responseBody);
+      const payload = normalizeReport({ fixtureId, raw }, setupId, capturedAt);
+      seen.add(fixtureId);
+      entries.push({ id: `match-trace:${setupId}:${fixtureId}`, name: `Completed match ${fixtureId}`, sourceUrl: null, payload });
+    } catch (error) {
+      errors.push(`Fixture ${fixtureId}: ${error.message}`);
+    }
+  }
+  if (!entries.length) throw new Error(errors[0] || 'The trace contains no parseable completed match report.');
+  return { entries, errors };
 }

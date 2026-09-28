@@ -429,3 +429,12 @@ For normalized club-squad/player-stat rows, Sync keeps the established normalize
 Approved `squad_player` canonical versions already feed `soccer_manager_player_snapshots.source_data`, so these captured source fields become versioned private evidence without requiring a parallel raw-player table. Existing `playerChanges` capture remains the preferred retrospective rating-change source whenever Soccer Manager exposes those events.
 
 This first slice is intentionally capture-first. Unknown player endpoints are accepted only when their response has the existing qualifying player-row shape; a one-row/empty response is still trusted only for the known `clubinitdata2` squad endpoint. As we observe concrete player profile/history endpoints in diagnostics, they can be promoted to explicit trusted normalizers rather than guessed.
+
+
+## v0.18 completed-match trace importer
+
+The **Trace completed match** diagnostic is now also a supported import source. A downloaded replay network trace is accepted only when it contains a successful observed `matchreport-ajax-mobile.php?fixtureid=…&action=mr` response. The importer parses the captured response body, deduplicates repeated observations of the same fixture, derives the setup id from the trace page URL (or Sync-page context), and sends the report through the same match-report normalizer used by season backfills.
+
+This closes the diagnostic-to-archive loop without persisting the raw trace: the imported match becomes the existing stable `setupId + fixtureId` `match_snapshot` entity, then follows normal **stage → review/approve → Apply match archive** handling. Duplicate XHR observations in a trace cannot create duplicate match entities.
+
+Acceptance case: fixture `280690291`, FC Porto 2–1 Hamburger SV on 27 September 2026, observed directly in the completed-match network trace.
