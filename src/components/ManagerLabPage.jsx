@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import RedCardLab from './RedCardLab';
 
 const SETUP_ID = '239138';
 
@@ -2570,6 +2571,8 @@ export default function ManagerLabPage() {
           {instructionEffects.map((effect) => <tr key={`${effect.key}:${effect.value}`}><td><strong>{effect.label}</strong></td><td>{displayTacticValue(effect.key, effect.value)}</td><td>{effect.strata}</td><td>{effect.matches}</td><td>{effect.clubCount}</td><td>{effect.deltaPpg >= 0 ? '+' : ''}{effect.deltaPpg.toFixed(2)}</td></tr>)}
         </tbody></table></div> : <p className="muted">Not enough exact near-matches yet to isolate a single instruction. More archived league matches will make this view progressively stronger.</p>}
       </section>}
+
+      {worldFormulaMatches.length > 0 && <RedCardLab />}
 
       <section className="card">
         <h2>Opening tactical profile</h2>
