@@ -1304,12 +1304,17 @@ export default function ManagerLabPage() {
       const hamburgClubId = '48506708';
       const hamburgSquad = opponentPlayers.filter((player) => String(player.sourceClubId) === hamburgClubId);
       const hamburgObserved = observedSelections.filter((selection) => String(selection.sourceClubId) === hamburgClubId && selection.competition === 'Division 1');
+      const hamburgSquadCountMap = new Map(
+        squadSelectionCounts
+          .filter((row) => String(row.sourceClubId) === hamburgClubId)
+          .map((row) => [String(row.sourcePlayerId), Number(row.squadSelections || 0)])
+      );
       const hamburgUsage = new Map();
       hamburgObserved.forEach((selection) => {
         const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
         const existing = hamburgUsage.get(key);
         const entry = existing || { ...selection, starts: 0, squadSelections: 0, lastDate: null };
-        entry.squadSelections = squadCountMap.get(String(selection.sourcePlayerId || '')) ?? (entry.squadSelections + 1);
+        entry.squadSelections = hamburgSquadCountMap.get(String(selection.sourcePlayerId || '')) ?? (entry.squadSelections + 1);
         if (selection.starter) entry.starts += 1;
         if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) {
           Object.assign(entry, selection);
