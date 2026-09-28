@@ -437,7 +437,11 @@ function isTrustedClubSquadContext(context = {}) {
 }
 
 export function normalizeClubSquad(input, context = {}) {
-  const rows = findClubSquadRows(input, isTrustedClubSquadContext(context) ? 1 : 2);
+  const trustedContext = isTrustedClubSquadContext(context);
+  const explicitFullRows = trustedContext && Array.isArray(input?.SquadList?.Players?.Full)
+    ? input.SquadList.Players.Full
+    : null;
+  const rows = explicitFullRows || findClubSquadRows(input, trustedContext ? 1 : 2);
   const sourceContext = parseSourceContext(context.sourceUrl);
   return {
     kind: 'clubSquad',
