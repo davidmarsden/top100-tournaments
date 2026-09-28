@@ -457,8 +457,8 @@ export default function ManagerLabPage() {
   const [worldFormulaDivision, setWorldFormulaDivision] = useState('All Top 100 divisions');
   const [opponentPlayers, setOpponentPlayers] = useState([]);
   const [opponentPlayersStatus, setOpponentPlayersStatus] = useState('');
-  const [observedSelections, setObservedSelections] = useState([]);
-  const [squadSelectionCounts, setSquadSelectionCounts] = useState([]);
+  const [observedSelections, setObservedSelections] = useState(null);
+  const [squadSelectionCounts, setSquadSelectionCounts] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -1242,7 +1242,7 @@ export default function ManagerLabPage() {
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
 
   const runInLab = useMemo(() => {
-    if (!worldFormulaMatches.length) return [];
+    if (!worldFormulaMatches.length || !Array.isArray(observedSelections) || !Array.isArray(squadSelectionCounts)) return [];
     const league = worldFormulaMatches.filter((match) => /^Division [1-5]$/.test(match.competition || ''));
     const d1 = league.filter((match) => match.competition === 'Division 1');
     const fixtureKey = (match) => `${match.competition || 'unknown'}:${match.fixtureId ?? ''}`;
@@ -2131,8 +2131,8 @@ export default function ManagerLabPage() {
       const { data: selectionData, error: selectionError } = await supabase.rpc('manager_lab_observed_selections', { target_setup_id: SETUP_ID });
       if (selectionError) {
         setOpponentPlayersStatus(`Observed selections could not load: ${selectionError.message}`);
-        setObservedSelections([]);
-        setSquadSelectionCounts([]);
+        setObservedSelections(null);
+        setSquadSelectionCounts(null);
       } else {
         setObservedSelections(Array.isArray(selectionData?.selections) ? selectionData.selections : []);
         setSquadSelectionCounts(Array.isArray(selectionData?.squadSelectionCounts) ? selectionData.squadSelectionCounts : []);
