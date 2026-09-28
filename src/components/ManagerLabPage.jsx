@@ -379,6 +379,7 @@ export default function ManagerLabPage() {
   const [worldFormulaDivision, setWorldFormulaDivision] = useState('All Top 100 divisions');
   const [opponentPlayers, setOpponentPlayers] = useState([]);
   const [opponentPlayersStatus, setOpponentPlayersStatus] = useState('');
+  const [observedSelections, setObservedSelections] = useState([]);
 
   useEffect(() => {
     let mounted = true;
@@ -1217,9 +1218,25 @@ export default function ManagerLabPage() {
         row.matches += 1; row.points += resultPoints(match.result); row.sample = match; familyCounts.set(key, row);
       });
       const dominant = [...familyCounts.values()].sort((a,b) => b.matches - a.matches || b.points - a.points)[0] || null;
+      const opponentClubId = String(latest?.sourceClubId || opponentRows[0]?.sourceClubId || '');
       const squadPlayers = opponentPlayers
-        .filter((player) => String(player.sourceClubId) === String(latest?.sourceClubId || opponentRows[0]?.sourceClubId || ''))
+        .filter((player) => String(player.sourceClubId) === opponentClubId)
         .sort((a,b) => Number(b.rating || 0)-Number(a.rating || 0) || Number(a.age || 0)-Number(b.age || 0));
+      const observed = observedSelections.filter((selection) => String(selection.sourceClubId) === opponentClubId && selection.competition === 'Division 1');
+      const starts = new Map();
+      observed.forEach((selection) => {
+        const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
+        const existing = starts.get(key);
+        const entry = existing || { ...selection, starts: 0, squadSelections: 0, lastDate: null };
+        entry.squadSelections += 1;
+        if (selection.starter) entry.starts += 1;
+        if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) {
+          Object.assign(entry, selection);
+          entry.lastDate = selection.date;
+        }
+        starts.set(key, entry);
+      });
+      const observedCore = [...starts.values()].sort((a,b) => b.starts-a.starts || String(b.lastDate||'').localeCompare(String(a.lastDate||'')) || Number(b.currentRating||b.observedRating||0)-Number(a.currentRating||a.observedRating||0)).slice(0,11);
       const likelyXi = squadPlayers.slice(0, 11);
       const squadRating = squadPlayers.length ? squadPlayers.reduce((sum, player) => sum + Number(player.rating || 0), 0) / squadPlayers.length : null;
       const likelyXiRating = likelyXi.length ? likelyXi.reduce((sum, player) => sum + Number(player.rating || 0), 0) / likelyXi.length : null;
@@ -1325,7 +1342,7 @@ export default function ManagerLabPage() {
         ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey, stability5, stability10,
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
-        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, squadRating, likelyXiRating, likelyXiCareer,
+        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, observedCore, selectionMatches: new Set(observed.map((selection)=>selection.fixtureId)).size, squadRating, likelyXiRating, likelyXiCareer,
         counters, dominantCounters, volatile,
         // A recommendation needs replication. One- and two-match observations
         // remain visible in the shortlist, but are descriptive rather than plans.
@@ -1337,7 +1354,7 @@ export default function ManagerLabPage() {
         dominantAlternative: dominantQualified[1] || null,
       };
     });
-  }, [worldFormulaMatches, opponentPlayers]);
+  }, [worldFormulaMatches, opponentPlayers, observedSelections]);
 
   const playerRoleEncodingAudit = useMemo(() => {
     const byKind = new Map();
@@ -1987,6 +2004,13 @@ export default function ManagerLabPage() {
     } else {
       setOpponentPlayers(Array.isArray(playerData?.players) ? playerData.players : []);
       setOpponentPlayersStatus('');
+      const { data: selectionData, error: selectionError } = await supabase.rpc('manager_lab_observed_selections', { target_setup_id: SETUP_ID });
+      if (selectionError) {
+        setOpponentPlayersStatus(`Observed selections could not load: ${selectionError.message}`);
+        setObservedSelections([]);
+      } else {
+        setObservedSelections(Array.isArray(selectionData?.selections) ? selectionData.selections : []);
+      }
     }
   }
 
@@ -2123,6 +2147,13 @@ export default function ManagerLabPage() {
               <tr><th>Previous HSV meeting</th><td>{row.previous ? <><strong className={`lab-result ${row.previous.result}`}>{row.previous.goalsFor}–{row.previous.goalsAgainst}</strong> · {row.previous.venue}<br /><small>HSV: {familyLabel(row.previous)}</small></> : 'No earlier S28 Hamburg meeting archived'}</td></tr>
               <tr><th>Magic-family usage</th><td>{row.magicMatches} of {row.observedMatches} archived opponent D1 matches</td></tr>
             </tbody></table></div>
+            {row.observedCore.length > 0 && <>
+              <h3>Observed selections · Division 1</h3>
+              <p className="muted">These are the players this manager has actually started in archived D1 match reports. The core XI is ranked by starts, with recency and current rating only breaking ties. {row.selectionMatches} match reports with player selections observed.</p>
+              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Starts</th><th>Squad selections</th><th>Current rating</th><th>Match rating</th><th>Last seen</th></tr></thead><tbody>
+                {row.observedCore.map((player) => <tr key={`observed:${row.opponent}:${player.sourcePlayerId || player.matchPlayerId || player.observedName}`}><td><strong>{player.currentName || player.observedName}</strong></td><td>{player.mainPosition || player.positionDescription || '—'}</td><td><strong>{player.starts}</strong></td><td>{player.squadSelections}</td><td>{player.currentRating ?? player.observedRating ?? '—'}</td><td>{Number(player.matchRating || 0)>0 ? Number(player.matchRating).toFixed(1) : '—'}</td><td>{player.lastDate || '—'}</td></tr>)}
+              </tbody></table></div>
+            </>}
             {row.likelyXi.length > 0 && <>
               <h3>Opponent Intelligence · personnel</h3>
               <p className="muted">Top XI below is a personnel-strength shortlist from the current squad snapshot, not a claim that these eleven will start. Match-report XI evidence remains the source of truth for observed selections.</p>
