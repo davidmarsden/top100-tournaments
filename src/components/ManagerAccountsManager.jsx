@@ -50,20 +50,31 @@ export default function ManagerAccountsManager() {
   const [rememberAliases, setRememberAliases] = useState({});
   const [suggestions, setSuggestions] = useState({});
   const [suggestionErrors, setSuggestionErrors] = useState({});
+  const [managerDirectory, setManagerDirectory] = useState([]);
+  const [managerSearches, setManagerSearches] = useState({});
   const [search, setSearch] = useState('');
 
   useEffect(() => { loadClaims(); }, []);
 
   async function loadClaims() {
     setLoading(true);
-    const [claimsResult, accountsResult] = await Promise.all([
+    const [claimsResult, accountsResult, managersResult] = await Promise.all([
       supabase.from('manager_portal_claims')
-      .select('id, email, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, reviewed_at, reviewed_by_label, created_at, managers:suggested_manager_id(id, name, display_name)')
+      .select('id, email, game_world_id, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, reviewed_at, reviewed_by_label, created_at, managers:suggested_manager_id(id, name, display_name)')
       .order('created_at', { ascending: false }),
       supabase.from('manager_portal_accounts')
         .select('id, auth_user_id, manager_id, email, active, created_at, updated_at, managers(id, name, display_name), game_worlds(id, name, slug)')
         .order('created_at', { ascending: false }),
+      supabase.from('manager_game_world_memberships')
+        .select('manager_id, game_world_id, managers(id, name, display_name)')
+        .eq('active', true),
     ]);
+    if (!managersResult.error) setManagerDirectory((managersResult.data || []).map((row) => ({
+      id: row.manager_id,
+      game_world_id: row.game_world_id,
+      name: row.managers?.name,
+      display_name: row.managers?.display_name,
+    })));
     const nextAccounts = accountsResult.error ? null : (accountsResult.data || []);
     if (nextAccounts) setAccounts(nextAccounts);
 
@@ -112,6 +123,12 @@ export default function ManagerAccountsManager() {
     });
   }
 
+  function chooseManager(claimId, manager) {
+    setManagerOverrides((current) => ({ ...current, [claimId]: String(manager.id) }));
+    setSelectedTeams((current) => ({ ...current, [claimId]: '' }));
+    setManagerSearches((current) => ({ ...current, [claimId]: manager.display_name || manager.name || `Manager #${manager.id}` }));
+  }
+
   function chooseSuggestion(claimId, suggestion) {
     setManagerOverrides((current) => ({ ...current, [claimId]: String(suggestion.manager_id) }));
     setSelectedTeams((current) => ({ ...current, [claimId]: String(suggestion.team_id) }));
@@ -119,9 +136,10 @@ export default function ManagerAccountsManager() {
   }
 
   async function approve(claim) {
-    const managerId = Number(managerOverrides[claim.id] || claim.suggested_manager_id);
+    const hasOverride = Object.prototype.hasOwnProperty.call(managerOverrides, claim.id);
+    const managerId = Number(hasOverride ? managerOverrides[claim.id] : claim.suggested_manager_id);
     const teamId = selectedTeams[claim.id] ? Number(selectedTeams[claim.id]) : null;
-    if (!managerId) return setStatus('Choose a suggested match or enter the canonical manager ID.');
+    if (!managerId) return setStatus('Choose a suggested match or select a manager from the directory.');
 
     const chosen = (suggestions[claim.id] || []).find((row) => Number(row.manager_id) === managerId && (!teamId || Number(row.team_id) === teamId));
     const canonicalLabel = chosen ? `${chosen.manager_name} · ${chosen.team_name}` : `manager #${managerId}`;
@@ -216,7 +234,8 @@ export default function ManagerAccountsManager() {
         {pending.map((claim) => {
           const claimSuggestions = suggestions[claim.id] || [];
           const suggestionError = suggestionErrors[claim.id];
-          const selectedManagerId = Number(managerOverrides[claim.id] || claim.suggested_manager_id);
+          const hasManagerOverride = Object.prototype.hasOwnProperty.call(managerOverrides, claim.id);
+          const selectedManagerId = Number(hasManagerOverride ? managerOverrides[claim.id] : claim.suggested_manager_id);
           const selectedTeamId = Number(selectedTeams[claim.id] || 0);
           return <article className="entrant-row registration-row" key={claim.id}>
             <div className="registration-details">
@@ -243,15 +262,43 @@ export default function ManagerAccountsManager() {
                     <small>{suggestion.score}% match · {(suggestion.reasons || []).join(' · ')}</small>
                   </button>;
                 })}
-              </div> : <span>No likely match found. Search using the canonical manager ID below.</span>}
+              </div> : <span>No tournament-history match found. Search the manager directory below.</span>}
 
-              <label>Canonical manager ID
+              <label>Find canonical manager
                 <input
-                  type="number"
-                  value={managerOverrides[claim.id] ?? claim.suggested_manager_id ?? ''}
-                  onChange={(event) => setManagerOverrides((current) => ({ ...current, [claim.id]: event.target.value }))}
+                  type="search"
+                  value={managerSearches[claim.id] ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setManagerSearches((current) => ({ ...current, [claim.id]: value }));
+                    setManagerOverrides((current) => ({ ...current, [claim.id]: '' }));
+                    setSelectedTeams((current) => ({ ...current, [claim.id]: '' }));
+                  }}
+                  placeholder={claim.claimed_manager_name || 'Search manager name…'}
                 />
               </label>
+              {(() => {
+                const query = normalise(managerSearches[claim.id] || claim.claimed_manager_name);
+                const matches = managerDirectory
+                  .filter((manager) => Number(manager.game_world_id) === Number(claim.game_world_id))
+                  .filter((manager) => normalise(manager.display_name || manager.name).includes(query))
+                  .slice(0, 8);
+                return query && matches.length ? <div className="claim-suggestion-list manager-directory-results">
+                  <span className="muted">Manager directory</span>
+                  {matches.map((manager) => {
+                    const selected = selectedManagerId === Number(manager.id) && !selectedTeamId;
+                    return <button
+                      type="button"
+                      className={selected ? 'claim-suggestion selected' : 'claim-suggestion'}
+                      key={manager.id}
+                      onClick={() => chooseManager(claim.id, manager)}
+                    >
+                      <strong>{manager.display_name || manager.name}</strong>
+                      <small>Canonical manager ID {manager.id}</small>
+                    </button>;
+                  })}
+                </div> : query ? <span className="muted">No manager directory matches.</span> : null;
+              })()}
 
               {selectedTeamId > 0 && <label className="checkbox-row">
                 <input
