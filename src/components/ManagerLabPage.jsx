@@ -1222,6 +1222,34 @@ export default function ManagerLabPage() {
       const squadPlayers = opponentPlayers
         .filter((player) => String(player.sourceClubId) === opponentClubId)
         .sort((a,b) => Number(b.rating || 0)-Number(a.rating || 0) || Number(a.age || 0)-Number(b.age || 0));
+      const hamburgClubId = '48506708';
+      const hamburgSquad = opponentPlayers.filter((player) => String(player.sourceClubId) === hamburgClubId);
+      const hamburgObserved = observedSelections.filter((selection) => String(selection.sourceClubId) === hamburgClubId && selection.competition === 'Division 1');
+      const hamburgUsage = new Map();
+      hamburgObserved.forEach((selection) => {
+        const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
+        const existing = hamburgUsage.get(key);
+        const entry = existing || { ...selection, starts: 0, squadSelections: 0, lastDate: null };
+        entry.squadSelections += 1;
+        if (selection.starter) entry.starts += 1;
+        if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) {
+          Object.assign(entry, selection);
+          entry.lastDate = selection.date;
+        }
+        hamburgUsage.set(key, entry);
+      });
+      const hamburgSelection = [...hamburgUsage.values()].sort((a,b) => b.starts-a.starts || String(b.lastDate||'').localeCompare(String(a.lastDate||'')) || Number(b.currentRating||b.observedRating||0)-Number(a.currentRating||a.observedRating||0)).slice(0,11);
+      const selectedIds = new Set(hamburgSelection.map((player) => String(player.sourcePlayerId || '')));
+      const hamburgAlternatives = hamburgSquad
+        .filter((player) => !selectedIds.has(String(player.sourcePlayerId)))
+        .map((player) => {
+          const current = Number(player.averagePerformance || 0);
+          const career = Number(player.careerAveragePerformance || 0);
+          return { ...player, performanceDelta: current > 0 && career > 0 ? current-career : null };
+        })
+        .sort((a,b) => Number(b.rating||0)-Number(a.rating||0) || Number(b.performanceDelta ?? -99)-Number(a.performanceDelta ?? -99))
+        .slice(0,12);
+      const hamburgObservedMatches = new Set(hamburgObserved.map((selection) => selection.fixtureId)).size;
       const observed = observedSelections.filter((selection) => String(selection.sourceClubId) === opponentClubId && selection.competition === 'Division 1');
       const starts = new Map();
       observed.forEach((selection) => {
@@ -1342,7 +1370,8 @@ export default function ManagerLabPage() {
         ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey, stability5, stability10,
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
-        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, observedCore, selectionMatches: new Set(observed.map((selection)=>selection.fixtureId)).size, squadRating, likelyXiRating, likelyXiCareer,
+        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, observedCore, selectionMatches: new Set(observed.map((selection)=>selection.fixtureId)).size,
+        hamburgSelection, hamburgAlternatives, hamburgObservedMatches, squadRating, likelyXiRating, likelyXiCareer,
         counters, dominantCounters, volatile,
         // A recommendation needs replication. One- and two-match observations
         // remain visible in the shortlist, but are descriptive rather than plans.
@@ -2147,6 +2176,19 @@ export default function ManagerLabPage() {
               <tr><th>Previous HSV meeting</th><td>{row.previous ? <><strong className={`lab-result ${row.previous.result}`}>{row.previous.goalsFor}–{row.previous.goalsAgainst}</strong> · {row.previous.venue}<br /><small>HSV: {familyLabel(row.previous)}</small></> : 'No earlier S28 Hamburg meeting archived'}</td></tr>
               <tr><th>Magic-family usage</th><td>{row.magicMatches} of {row.observedMatches} archived opponent D1 matches</td></tr>
             </tbody></table></div>
+            {row.hamburgSelection.length > 0 && <>
+              <h3>Hamburg Selection Lab</h3>
+              <p className="muted">The same scrutiny applied to us. “Recent core” is the eleven Hamburg players with the strongest observed starting record in archived D1 reports ({row.hamburgObservedMatches} matches). Alternatives are current squad options, not automatic recommendations: rating and performance evidence are shown so selection remains position- and tactic-dependent.</p>
+              <h4>Our observed recent core</h4>
+              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Starts</th><th>Rating</th><th>Current</th><th>Career</th><th>Δ rating</th><th>Last seen</th></tr></thead><tbody>
+                {row.hamburgSelection.map((player) => <tr key={`hsv-core:${row.opponent}:${player.sourcePlayerId || player.matchPlayerId || player.observedName}`}><td><strong>{player.currentName || player.observedName}</strong></td><td>{player.mainPosition || player.positionDescription || '—'}</td><td><strong>{player.starts}</strong></td><td>{player.currentRating ?? player.observedRating ?? '—'}</td><td>{Number(player.averagePerformance || 0)>0 ? Number(player.averagePerformance).toFixed(2) : '—'}</td><td>{Number(player.careerAppearances || 0)>0 && Number(player.careerAveragePerformance || 0)>0 ? `${Number(player.careerAveragePerformance).toFixed(2)} (${player.careerAppearances})` : '—'}</td><td>{Number(player.ratingChange || 0) ? `${Number(player.ratingChange)>0?'+':''}${player.ratingChange}` : '—'}</td><td>{player.lastDate || '—'}</td></tr>)}
+              </tbody></table></div>
+              <h4>Credible squad alternatives</h4>
+              <p className="muted">Highest-rated players outside that observed core. Current form is compared with career performance where both baselines exist; this deliberately does not force a player into an unsuitable position.</p>
+              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Rating</th><th>Current</th><th>Career</th><th>Form Δ</th><th>Rating Δ</th></tr></thead><tbody>
+                {row.hamburgAlternatives.map((player) => <tr key={`hsv-alt:${row.opponent}:${player.sourcePlayerId}`}><td><strong>{player.name}</strong></td><td>{player.mainPosition || player.position || '—'}</td><td>{player.age ?? '—'}</td><td><strong>{player.rating ?? '—'}</strong></td><td>{Number(player.averagePerformance || 0)>0 ? Number(player.averagePerformance).toFixed(2) : '—'}</td><td>{Number(player.careerAppearances || 0)>0 && Number(player.careerAveragePerformance || 0)>0 ? Number(player.careerAveragePerformance).toFixed(2) : '—'}</td><td>{player.performanceDelta !== null ? `${player.performanceDelta>=0?'+':''}${player.performanceDelta.toFixed(2)}` : '—'}</td><td>{Number(player.ratingChange || 0) ? `${Number(player.ratingChange)>0?'+':''}${player.ratingChange}` : '—'}</td></tr>)}
+              </tbody></table></div>
+            </>}
             {row.observedCore.length > 0 && <>
               <h3>Observed selections · Division 1</h3>
               <p className="muted">These are the players this manager has actually started in archived D1 match reports. The core XI is ranked by starts, with recency and current rating only breaking ties. {row.selectionMatches} match reports with player selections observed.</p>
