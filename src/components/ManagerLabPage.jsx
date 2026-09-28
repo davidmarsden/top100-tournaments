@@ -244,19 +244,57 @@ function selectionEvidenceScore(player, usage) {
 
 function buildFormationSelection(squad, usageByPlayer, formation) {
   if (formation !== '4-2-3-1 B') return [];
-  const available = new Map(squad.map((player) => [String(player.sourcePlayerId), player]));
-  return FORMATION_4231B_SELECTION_SLOTS.map((slot, index) => {
-    const candidates = [...available.values()]
+
+  const candidatesBySlot = FORMATION_4231B_SELECTION_SLOTS.map((slot) =>
+    squad
       .filter((player) => slot.eligible.includes(String(player.mainPosition || player.position || '')))
       .map((player) => {
         const usage = usageByPlayer.get(String(player.sourcePlayerId)) || null;
         return { ...player, usage, selectionScore: selectionEvidenceScore(player, usage) };
       })
-      .sort((a,b) => b.selectionScore-a.selectionScore || Number(b.rating||0)-Number(a.rating||0) || Number(b.averagePerformance||0)-Number(a.averagePerformance||0));
-    const player = candidates[0] || null;
-    if (player) available.delete(String(player.sourcePlayerId));
-    return { slot: slot.label, slotIndex: index, player, alternatives: candidates.slice(1,4) };
-  });
+      .sort((a,b) => b.selectionScore-a.selectionScore || Number(b.rating||0)-Number(a.rating||0) || Number(b.averagePerformance||0)-Number(a.averagePerformance||0))
+  );
+
+  // Solve the XI as one assignment rather than greedily consuming players in
+  // slot order. Most-constrained-first search avoids flexible CM/AM slots
+  // stealing the only player who can fill a later position.
+  const slotOrder = candidatesBySlot
+    .map((candidates, slotIndex) => ({ slotIndex, candidates }))
+    .sort((a,b) => a.candidates.length-b.candidates.length || a.slotIndex-b.slotIndex);
+  let best = null;
+  const chosen = Array(FORMATION_4231B_SELECTION_SLOTS.length).fill(null);
+  const search = (depth, used, score, filled) => {
+    if (depth === slotOrder.length) {
+      if (!best || filled > best.filled || (filled === best.filled && score > best.score)) {
+        best = { filled, score, chosen: [...chosen] };
+      }
+      return;
+    }
+    const { slotIndex, candidates } = slotOrder[depth];
+    for (const player of candidates) {
+      const id = String(player.sourcePlayerId);
+      if (used.has(id)) continue;
+      chosen[slotIndex] = player;
+      used.add(id);
+      search(depth + 1, used, score + player.selectionScore, filled + 1);
+      used.delete(id);
+      chosen[slotIndex] = null;
+    }
+    // Keep a fallback path so incomplete squads still render honestly.
+    search(depth + 1, used, score, filled);
+  };
+  search(0, new Set(), 0, 0);
+
+  const selected = best?.chosen || chosen;
+  const selectedIds = new Set(selected.filter(Boolean).map((player) => String(player.sourcePlayerId)));
+  return FORMATION_4231B_SELECTION_SLOTS.map((slot, slotIndex) => ({
+    slot: slot.label,
+    slotIndex,
+    player: selected[slotIndex] || null,
+    alternatives: candidatesBySlot[slotIndex]
+      .filter((player) => !selectedIds.has(String(player.sourcePlayerId)))
+      .slice(0,3),
+  }));
 }
 
 const MAGIC_FAMILY = '4-2-3-1 B|Attacking|Mixed|Down Both Flanks|Fast';
@@ -2229,7 +2267,13 @@ export default function ManagerLabPage() {
               <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Starts</th><th>Rating</th><th>Current</th><th>Career</th><th>Δ rating</th><th>Last seen</th></tr></thead><tbody>
                 {row.hamburgSelection.map((player) => <tr key={`hsv-core:${row.opponent}:${player.sourcePlayerId || player.matchPlayerId || player.observedName}`}><td><strong>{player.currentName || player.observedName}</strong></td><td>{player.mainPosition || player.positionDescription || '—'}</td><td><strong>{player.starts}</strong></td><td>{player.currentRating ?? player.observedRating ?? '—'}</td><td>{Number(player.averagePerformance || 0)>0 ? Number(player.averagePerformance).toFixed(2) : '—'}</td><td>{Number(player.careerAppearances || 0)>0 && Number(player.careerAveragePerformance || 0)>0 ? `${Number(player.careerAveragePerformance).toFixed(2)} (${player.careerAppearances})` : '—'}</td><td>{Number(player.ratingChange || 0) ? `${Number(player.ratingChange)>0?'+':''}${player.ratingChange}` : '—'}</td><td>{player.lastDate || '—'}</td></tr>)}
               </tbody></table></div>
-              {row.hamburgFormationSelection.length > 0 && <>
+              <h4>Credible squad alternatives</h4>
+              <p className="muted">Highest-rated players outside that observed core. Current form is compared with career performance where both baselines exist; this deliberately does not force a player into an unsuitable position.</p>
+              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Rating</th><th>Current</th><th>Career</th><th>Form Δ</th><th>Rating Δ</th></tr></thead><tbody>
+                {row.hamburgAlternatives.map((player) => <tr key={`hsv-alt:${row.opponent}:${player.sourcePlayerId}`}><td><strong>{player.name}</strong></td><td>{player.mainPosition || player.position || '—'}</td><td>{player.age ?? '—'}</td><td><strong>{player.rating ?? '—'}</strong></td><td>{Number(player.averagePerformance || 0)>0 ? Number(player.averagePerformance).toFixed(2) : '—'}</td><td>{Number(player.careerAppearances || 0)>0 && Number(player.careerAveragePerformance || 0)>0 ? Number(player.careerAveragePerformance).toFixed(2) : '—'}</td><td>{player.performanceDelta !== null ? `${player.performanceDelta>=0?'+':''}${player.performanceDelta.toFixed(2)}` : '—'}</td><td>{Number(player.ratingChange || 0) ? `${Number(player.ratingChange)>0?'+':''}${player.ratingChange}` : '—'}</td></tr>)}
+              </tbody></table></div>
+            </>}
+            {row.hamburgFormationSelection.length > 0 && <>
                 <h4>Formation-aware XI · {row.plannedFormation}</h4>
                 <p className="muted">This is a selection-pressure model for the dossier's evidence-backed primary formation, not a claim about hidden match-engine attributes. Each slot only considers players whose archived main position fits that role; rating leads, current performance makes a modest adjustment, and observed D1 starts are a small continuity tie-breaker. The alternatives column exposes the next eligible options instead of hiding the choice.</p>
                 <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Slot</th><th>Proposed player</th><th>Pos</th><th>Rating</th><th>Current</th><th>Career</th><th>D1 starts</th><th>Next eligible</th></tr></thead><tbody>
@@ -2237,12 +2281,7 @@ export default function ManagerLabPage() {
                 </tbody></table></div>
               </>}
               {row.primary && row.plannedFormation && row.hamburgFormationSelection.length === 0 && <p className="muted"><strong>Formation-aware XI:</strong> no position template is encoded yet for {row.plannedFormation}; the Lab will not pretend a generic top eleven is positionally valid.</p>}
-              <h4>Credible squad alternatives</h4>
-              <p className="muted">Highest-rated players outside that observed core. Current form is compared with career performance where both baselines exist; this deliberately does not force a player into an unsuitable position.</p>
-              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Rating</th><th>Current</th><th>Career</th><th>Form Δ</th><th>Rating Δ</th></tr></thead><tbody>
-                {row.hamburgAlternatives.map((player) => <tr key={`hsv-alt:${row.opponent}:${player.sourcePlayerId}`}><td><strong>{player.name}</strong></td><td>{player.mainPosition || player.position || '—'}</td><td>{player.age ?? '—'}</td><td><strong>{player.rating ?? '—'}</strong></td><td>{Number(player.averagePerformance || 0)>0 ? Number(player.averagePerformance).toFixed(2) : '—'}</td><td>{Number(player.careerAppearances || 0)>0 && Number(player.careerAveragePerformance || 0)>0 ? Number(player.careerAveragePerformance).toFixed(2) : '—'}</td><td>{player.performanceDelta !== null ? `${player.performanceDelta>=0?'+':''}${player.performanceDelta.toFixed(2)}` : '—'}</td><td>{Number(player.ratingChange || 0) ? `${Number(player.ratingChange)>0?'+':''}${player.ratingChange}` : '—'}</td></tr>)}
-              </tbody></table></div>
-            </>}
+
             {row.observedCore.length > 0 && <>
               <h3>Observed selections · Division 1</h3>
               <p className="muted">These are the players this manager has actually started in archived D1 match reports. The core XI is ranked by starts, with recency and current rating only breaking ties. {row.selectionMatches} match reports with player selections observed.</p>
