@@ -196,6 +196,22 @@ function Setup({ session, claim: initialClaim, onClaimChanged }) {
   );
 }
 
+function ReturnHandoff({ session, returnTo }) {
+  useEffect(() => {
+    if (!session?.access_token || !session?.refresh_token || !returnTo) return;
+    // Top-level navigation does not depend on hidden iframe/cross-site storage.
+    // window.name survives this one navigation, is not sent in the URL or HTTP
+    // request, and is cleared immediately by the receiving Top 100 app.
+    window.name = JSON.stringify({
+      type: 'top100-manager-return-session',
+      session: { access_token: session.access_token, refresh_token: session.refresh_token },
+    });
+    window.location.replace(returnTo);
+  }, [session?.access_token, session?.refresh_token, returnTo]);
+
+  return <main className="manager-portal-shell"><section className="card"><h1>Sign-in complete ✓</h1><p>Taking you back to Community Polls…</p></section></main>;
+}
+
 export default function ManagerEntry({ registrationMode = false }) {
   const returnTo = safeReturnTo();
   const [session, setSession] = useState(undefined);
@@ -281,6 +297,7 @@ export default function ManagerEntry({ registrationMode = false }) {
   if (identity.state === 'loading' || identity.state === 'idle') return <main className="manager-portal-shell"><section className="card"><h1>Manager sign-in</h1><p>Signed in ✓ · Checking your manager link…</p></section></main>;
   if (identity.state === 'error') return <main className="manager-portal-shell"><section className="card"><h1>We couldn't check your manager link</h1><p className="status">{identity.error}</p><button type="button" className="secondary" onClick={() => supabase.auth.signOut()}>Sign out</button></section></main>;
   if (identity.state === 'setup') return <Setup session={session} claim={identity.claim} onClaimChanged={(claim) => setIdentity({ state: 'setup', account: null, claim, error: '' })} />;
+  if (identity.state === 'linked' && returnTo) return <ReturnHandoff session={session} returnTo={returnTo} />;
 
   return (
     <>
