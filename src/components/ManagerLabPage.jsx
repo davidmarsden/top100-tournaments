@@ -377,6 +377,8 @@ export default function ManagerLabPage() {
   const [worldFormulaStatus, setWorldFormulaStatus] = useState('');
   const [worldFormulaStrength, setWorldFormulaStrength] = useState('Stronger opponent XI');
   const [worldFormulaDivision, setWorldFormulaDivision] = useState('All Top 100 divisions');
+  const [opponentPlayers, setOpponentPlayers] = useState([]);
+  const [opponentPlayersStatus, setOpponentPlayersStatus] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -1215,6 +1217,13 @@ export default function ManagerLabPage() {
         row.matches += 1; row.points += resultPoints(match.result); row.sample = match; familyCounts.set(key, row);
       });
       const dominant = [...familyCounts.values()].sort((a,b) => b.matches - a.matches || b.points - a.points)[0] || null;
+      const squadPlayers = opponentPlayers
+        .filter((player) => String(player.sourceClubId) === String(latest?.sourceClubId || opponentRows[0]?.sourceClubId || ''))
+        .sort((a,b) => Number(b.rating || 0)-Number(a.rating || 0) || Number(a.age || 0)-Number(b.age || 0));
+      const likelyXi = squadPlayers.slice(0, 11);
+      const squadRating = squadPlayers.length ? squadPlayers.reduce((sum, player) => sum + Number(player.rating || 0), 0) / squadPlayers.length : null;
+      const likelyXiRating = likelyXi.length ? likelyXi.reduce((sum, player) => sum + Number(player.rating || 0), 0) / likelyXi.length : null;
+      const likelyXiCareer = likelyXi.filter((player) => Number(player.careerAppearances || 0) > 0 && Number(player.careerAveragePerformance || 0) > 0);
       const latestXi = latest ? numericValue(latest.ourXiRating) : null;
       const hamburgXi = hamburgLatest ? numericValue(hamburgLatest.ourXiRating) : null;
       const projectedXiGap = hamburgXi !== null && latestXi !== null ? hamburgXi-latestXi : null;
@@ -1316,7 +1325,7 @@ export default function ManagerLabPage() {
         ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey, stability5, stability10,
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
-        projectedXiGap, ageBands, avoid,
+        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, squadRating, likelyXiRating, likelyXiCareer,
         counters, dominantCounters, volatile,
         // A recommendation needs replication. One- and two-match observations
         // remain visible in the shortlist, but are descriptive rather than plans.
@@ -1328,7 +1337,7 @@ export default function ManagerLabPage() {
         dominantAlternative: dominantQualified[1] || null,
       };
     });
-  }, [worldFormulaMatches]);
+  }, [worldFormulaMatches, opponentPlayers]);
 
   const playerRoleEncodingAudit = useMemo(() => {
     const byKind = new Map();
@@ -1970,6 +1979,15 @@ export default function ManagerLabPage() {
     }
     setWorldFormulaMatches(Array.isArray(data?.matches) ? data.matches : []);
     setWorldFormulaStatus('');
+    setOpponentPlayersStatus('Loading Player Intelligence…');
+    const { data: playerData, error: playerError } = await supabase.rpc('manager_lab_opponent_players', { target_setup_id: SETUP_ID });
+    if (playerError) {
+      setOpponentPlayers([]);
+      setOpponentPlayersStatus(`Player Intelligence could not load: ${playerError.message}`);
+    } else {
+      setOpponentPlayers(Array.isArray(playerData?.players) ? playerData.players : []);
+      setOpponentPlayersStatus('');
+    }
   }
 
   const tacticProfile = useMemo(() => {
@@ -2101,9 +2119,17 @@ export default function ManagerLabPage() {
               <tr><th>Latest opponent setup</th><td>{row.latest ? <><strong>{familyLabel(row.latest)}</strong><br /><small>{formulaText(row.latest)}</small></> : 'No archived setup'}</td></tr>
               <tr><th>Tactical stability</th><td>Last 5: <strong>{row.stability5.pct === null ? '—' : `${row.stability5.same}/${row.stability5.matches} (${(row.stability5.pct*100).toFixed(0)}%)`}</strong> · Last 10: <strong>{row.stability10.pct === null ? '—' : `${row.stability10.same}/${row.stability10.matches} (${(row.stability10.pct*100).toFixed(0)}%)`}</strong>{row.dominant && row.dominant.key !== row.currentKey && <><br /><small>Longer-run dominant: {familyLabel(row.dominant.sample)} · {row.dominant.matches} MP</small></>}</td></tr>
               <tr><th>XI / age profile</th><td>Opponent latest XI <strong>{row.latestXi === null ? '—' : row.latestXi.toFixed(1)}</strong> · avg age <strong>{row.latestAge === null ? '—' : row.latestAge.toFixed(1)}</strong>{row.ageBands.some(([,value]) => value !== null) && <><br /><small>{row.ageBands.map(([label,value]) => `${label} ${value ?? '—'}`).join(' · ')}</small></>}<br /><small>Hamburg latest XI {row.hamburgXi === null ? '—' : row.hamburgXi.toFixed(1)} · projected Δ XI {row.projectedXiGap === null ? '—' : `${row.projectedXiGap>=0?'+':''}${row.projectedXiGap.toFixed(1)}`} (HSV minus opponent). Age is context, not a strength penalty.</small></td></tr>
+              <tr><th>Player Intelligence</th><td>{row.squadPlayers.length ? <><strong>{row.squadPlayers.length} current players</strong> · squad avg {row.squadRating?.toFixed(1) || '—'} · top-11 rating {row.likelyXiRating?.toFixed(1) || '—'}<br /><small>{row.squadPlayers.filter((player) => Number(player.rating)>=90).length} rated 90+ · {row.squadPlayers.filter((player) => Number(player.rating)>=88).length} rated 88+ · {row.squadPlayers.filter((player) => player.transferListed).length} transfer-listed</small></> : <span className="muted">{opponentPlayersStatus || 'No Player Intelligence snapshot mapped to this opponent.'}</span>}</td></tr>
               <tr><th>Previous HSV meeting</th><td>{row.previous ? <><strong className={`lab-result ${row.previous.result}`}>{row.previous.goalsFor}–{row.previous.goalsAgainst}</strong> · {row.previous.venue}<br /><small>HSV: {familyLabel(row.previous)}</small></> : 'No earlier S28 Hamburg meeting archived'}</td></tr>
               <tr><th>Magic-family usage</th><td>{row.magicMatches} of {row.observedMatches} archived opponent D1 matches</td></tr>
             </tbody></table></div>
+            {row.likelyXi.length > 0 && <>
+              <h3>Opponent Intelligence · personnel</h3>
+              <p className="muted">Top XI below is a personnel-strength shortlist from the current squad snapshot, not a claim that these eleven will start. Match-report XI evidence remains the source of truth for observed selections.</p>
+              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Rating</th><th>Current</th><th>Career</th><th>Δ rating</th></tr></thead><tbody>
+                {row.likelyXi.map((player) => <tr key={`intel:${row.opponent}:${player.sourcePlayerId}`}><td><strong>{player.name}</strong></td><td>{player.mainPosition || player.position || '—'}</td><td>{player.age ?? '—'}</td><td><strong>{player.rating ?? '—'}</strong></td><td>{Number(player.averagePerformance || 0)>0 ? Number(player.averagePerformance).toFixed(2) : '—'}</td><td>{Number(player.careerAppearances || 0)>0 && Number(player.careerAveragePerformance || 0)>0 ? `${Number(player.careerAveragePerformance).toFixed(2)} (${player.careerAppearances})` : '—'}</td><td>{Number(player.ratingChange || 0) ? `${Number(player.ratingChange)>0?'+':''}${player.ratingChange}` : '—'}</td></tr>)}
+              </tbody></table></div>
+            </>}
             <h3>{row.opponent} plan</h3>
             {row.primary ? <>
               <p><strong>Primary:</strong> {familyLabel(row.primary.sample)} <strong>· {row.primary.confidence.label} confidence</strong></p>
