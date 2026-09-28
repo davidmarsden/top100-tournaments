@@ -267,11 +267,16 @@ export function isSoccerManagerReplayNetworkTrace(value) {
 export function normalizeSoccerManagerReplayNetworkTrace(value, options = {}) {
   if (!isSoccerManagerReplayNetworkTrace(value)) throw new Error('This is not a supported Soccer Manager completed-match network trace.');
   const nonZeroId = (candidate) => { const id = text(candidate); return id && id !== '0' ? id : null; };
-  let setupId = nonZeroId(value?.setupId) || nonZeroId(options.setupId);
-  if (!setupId) {
-    try { setupId = nonZeroId(new URL(String(value?.pageUrl || '')).searchParams.get('sid')); } catch { /* diagnostic may omit a page URL */ }
+  let traceSetupId = nonZeroId(value?.setupId);
+  if (!traceSetupId) {
+    try { traceSetupId = nonZeroId(new URL(String(value?.pageUrl || '')).searchParams.get('sid')); } catch { /* diagnostic may omit a page URL */ }
   }
-  if (!setupId || !/^\d+$/.test(setupId)) throw new Error('The completed-match trace does not contain a Soccer Manager setup id.');
+  const fallbackSetupId = nonZeroId(options.setupId);
+  if (traceSetupId && fallbackSetupId && traceSetupId !== fallbackSetupId) {
+    throw new Error(`The completed-match trace belongs to Soccer Manager setup ${traceSetupId}, but the Sync page is scoped to setup ${fallbackSetupId}. Open the matching game world before importing it.`);
+  }
+  const setupId = traceSetupId || fallbackSetupId;
+  if (!setupId || !/^\d+$/.test(setupId)) throw new Error('The completed-match trace does not contain the Soccer Manager setup id.');
   const capturedAt = text(value?.capturedAt) || new Date().toISOString();
   const seen = new Set();
   const entries = [];
