@@ -60,16 +60,21 @@ export default function ManagerAccountsManager() {
     setLoading(true);
     const [claimsResult, accountsResult, managersResult] = await Promise.all([
       supabase.from('manager_portal_claims')
-      .select('id, email, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, reviewed_at, reviewed_by_label, created_at, managers:suggested_manager_id(id, name, display_name)')
+      .select('id, email, game_world_id, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, reviewed_at, reviewed_by_label, created_at, managers:suggested_manager_id(id, name, display_name)')
       .order('created_at', { ascending: false }),
       supabase.from('manager_portal_accounts')
         .select('id, auth_user_id, manager_id, email, active, created_at, updated_at, managers(id, name, display_name), game_worlds(id, name, slug)')
         .order('created_at', { ascending: false }),
-      supabase.from('managers')
-        .select('id, name, display_name')
-        .order('display_name', { ascending: true }),
+      supabase.from('manager_game_world_memberships')
+        .select('manager_id, game_world_id, managers(id, name, display_name)')
+        .eq('active', true),
     ]);
-    if (!managersResult.error) setManagerDirectory(managersResult.data || []);
+    if (!managersResult.error) setManagerDirectory((managersResult.data || []).map((row) => ({
+      id: row.manager_id,
+      game_world_id: row.game_world_id,
+      name: row.managers?.name,
+      display_name: row.managers?.display_name,
+    })));
     const nextAccounts = accountsResult.error ? null : (accountsResult.data || []);
     if (nextAccounts) setAccounts(nextAccounts);
 
@@ -131,7 +136,8 @@ export default function ManagerAccountsManager() {
   }
 
   async function approve(claim) {
-    const managerId = Number(managerOverrides[claim.id] || claim.suggested_manager_id);
+    const hasOverride = Object.prototype.hasOwnProperty.call(managerOverrides, claim.id);
+    const managerId = Number(hasOverride ? managerOverrides[claim.id] : claim.suggested_manager_id);
     const teamId = selectedTeams[claim.id] ? Number(selectedTeams[claim.id]) : null;
     if (!managerId) return setStatus('Choose a suggested match or select a manager from the directory.');
 
@@ -228,7 +234,8 @@ export default function ManagerAccountsManager() {
         {pending.map((claim) => {
           const claimSuggestions = suggestions[claim.id] || [];
           const suggestionError = suggestionErrors[claim.id];
-          const selectedManagerId = Number(managerOverrides[claim.id] || claim.suggested_manager_id);
+          const hasManagerOverride = Object.prototype.hasOwnProperty.call(managerOverrides, claim.id);
+          const selectedManagerId = Number(hasManagerOverride ? managerOverrides[claim.id] : claim.suggested_manager_id);
           const selectedTeamId = Number(selectedTeams[claim.id] || 0);
           return <article className="entrant-row registration-row" key={claim.id}>
             <div className="registration-details">
@@ -273,6 +280,7 @@ export default function ManagerAccountsManager() {
               {(() => {
                 const query = normalise(managerSearches[claim.id] || claim.claimed_manager_name);
                 const matches = managerDirectory
+                  .filter((manager) => Number(manager.game_world_id) === Number(claim.game_world_id))
                   .filter((manager) => normalise(manager.display_name || manager.name).includes(query))
                   .slice(0, 8);
                 return query && matches.length ? <div className="claim-suggestion-list manager-directory-results">
