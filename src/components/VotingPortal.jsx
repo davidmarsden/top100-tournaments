@@ -63,7 +63,11 @@ export default function VotingPortal() {
   }, [options]);
 
   function signInAtManagerPortal() {
-    const returnTo = encodeURIComponent(window.location.href);
+    const nonce = crypto.randomUUID();
+    sessionStorage.setItem('top100-voting-handoff-nonce', nonce);
+    const target = new URL('/vote', window.location.origin);
+    target.searchParams.set('handoff', nonce);
+    const returnTo = encodeURIComponent(target.toString());
     window.location.assign(`https://manager.smtop100.blog/?returnTo=${returnTo}`);
   }
 
