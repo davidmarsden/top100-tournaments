@@ -8,28 +8,30 @@ select id into v_world_id from public.game_worlds where external_world_id::text=
 if v_world_id is null then raise exception 'No archived Soccer Manager world %',target_setup_id; end if;
 with latest as (
  select distinct on(s.source_fixture_id) s.* from public.soccer_manager_match_snapshots s where s.game_world_id=v_world_id and s.competition_name='Division 1' order by s.source_fixture_id,s.source_version desc
-), appearances as (
+), ranked_appearances as (
  select s.source_fixture_id fixture_id,coalesce(s.source_data->'fixture'->>'date',s.source_data->>'turnDate') match_date,
  case when e.player->>'teamSide'='h' then s.home_source_club_id else s.away_source_club_id end source_club_id,
  case when e.player->>'teamSide'='h' then s.home_name else s.away_name end club_name,
- e.player->>'playerDataId' source_player_id,e.player->>'playerId' match_player_id,e.player->>'name' observed_name,
+ nullif(e.player->>'playerDataId','') source_player_id,e.player->>'playerId' match_player_id,e.player->>'name' observed_name,
+ coalesce(nullif(e.player->>'playerDataId',''),'match:'||nullif(e.player->>'playerId',''),'name:'||nullif(e.player->>'name','')) player_key,
  nullif(e.player->>'overallRating','')::numeric observed_rating,nullif(e.player->>'matchRating','')::numeric match_rating,e.player->>'positionDescription' position_description,
  row_number() over(partition by s.source_fixture_id,e.player->>'teamSide' order by e.n)<=11 is_starter
  from latest s cross join lateral jsonb_array_elements(coalesce(s.source_data->'players','[]'::jsonb)) with ordinality e(player,n)
- where nullif(e.player->>'playerDataId','') is not null
+), appearances as (
+ select * from ranked_appearances where player_key is not null
 ), usage as (
- select source_club_id,source_player_id,count(*)::integer squad_selections,count(*) filter(where is_starter)::integer starts,max(match_date) last_date
+ select source_club_id,player_key,count(*)::integer squad_selections,count(*) filter(where is_starter)::integer starts,max(match_date) last_date
  from appearances group by 1,2
 ), recent as (
- select distinct on(source_club_id,source_player_id) * from appearances
- order by source_club_id,source_player_id,match_date desc nulls last,fixture_id desc
+ select distinct on(source_club_id,player_key) * from appearances
+ order by source_club_id,player_key,match_date desc nulls last,fixture_id desc
 ), club_matches as (
  select source_club_id,count(distinct fixture_id)::integer observed_matches from appearances group by 1
 ), observed as (
  select r.fixture_id,r.match_date,'Division 1'::text competition,r.source_club_id,r.club_name,0 side_order,r.is_starter,
  r.source_player_id,r.match_player_id,r.observed_name,r.observed_rating,r.match_rating,r.position_description,
  u.starts,u.squad_selections,u.last_date
- from usage u join recent r using(source_club_id,source_player_id)
+ from usage u join recent r using(source_club_id,player_key)
 ), joined as (
  select o.*,p.name current_name,p.rating current_rating,p.main_position,p.age,p.average_performance,p.career_appearances,p.career_average_performance,p.rating_change
  from observed o left join public.soccer_manager_players p on p.game_world_id=v_world_id and p.source_player_id=o.source_player_id
