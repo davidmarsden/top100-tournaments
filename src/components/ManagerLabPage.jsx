@@ -2127,25 +2127,23 @@ export default function ManagerLabPage() {
     }
   }
 
-  // Do not memoize this filtered summary. `rows` is rebuilt on every render,
-  // so a useMemo here never saved work and, more importantly, this hook sat
-  // below the archive-loading early return. The first successful archive load
-  // therefore changed the number of hooks executed and crashed React.
-  const tacticProfileKeys = [
-    ['Formation', 'formation'], ['Mentality', 'mentality'], ['Passing', 'passingStyle'],
-    ['Attacking style', 'attackingStyle'], ['Tempo', 'tempo'], ['Pressing', 'pressing'],
-    ['Defensive line', 'defensiveLine'], ['Width', 'width'], ['Aggression', 'aggression'],
-    ['Creativity', 'creativity'], ['Counter attack', 'counterAttack'], ['Tight marking', 'tightMarking'],
-    ['Men behind ball', 'menBehindBall'], ['Sweeper keeper', 'sweeperKeeper'],
-  ];
-  const tacticProfile = tacticProfileKeys.map(([label, key]) => {
-    const counts = new Map();
-    rows.forEach((match) => {
-      const value = tacticValue(match, key);
-      if (value !== null && value !== undefined && value !== '') counts.set(String(value), (counts.get(String(value)) || 0) + 1);
-    });
-    return { label, key, values: [...counts.entries()].sort((a, b) => b[1] - a[1]) };
-  }).filter((item) => item.values.length);
+  const tacticProfile = useMemo(() => {
+    const keys = [
+      ['Formation', 'formation'], ['Mentality', 'mentality'], ['Passing', 'passingStyle'],
+      ['Attacking style', 'attackingStyle'], ['Tempo', 'tempo'], ['Pressing', 'pressing'],
+      ['Defensive line', 'defensiveLine'], ['Width', 'width'], ['Aggression', 'aggression'],
+      ['Creativity', 'creativity'], ['Counter attack', 'counterAttack'], ['Tight marking', 'tightMarking'],
+      ['Men behind ball', 'menBehindBall'], ['Sweeper keeper', 'sweeperKeeper'],
+    ];
+    return keys.map(([label, key]) => {
+      const counts = new Map();
+      rows.forEach((match) => {
+        const value = tacticValue(match, key);
+        if (value !== null && value !== undefined && value !== '') counts.set(String(value), (counts.get(String(value)) || 0) + 1);
+      });
+      return { label, key, values: [...counts.entries()].sort((a, b) => b[1] - a[1]) };
+    }).filter((item) => item.values.length);
+  }, [rows]);
 
   return <main className="app-shell manager-lab">
     <section className="hero">
