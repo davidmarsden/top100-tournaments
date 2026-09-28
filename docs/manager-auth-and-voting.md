@@ -107,7 +107,9 @@ Owns ordinary-manager sign-in and account linking. For an unlinked authenticated
 
 Does not own a separate ordinary-manager sign-in. It consumes the Manager Portal identity/session handoff, looks up the active linked manager account, and relies on the frozen voting electorate for eligibility.
 
-An authenticated linked manager who is in the electorate should see the poll. If they are not eligible, the UI should say so explicitly; do not translate authorization filtering into “there are no voting events”.
+An authenticated linked manager who is in the electorate should see the poll.
+
+**Outstanding UX requirement:** a linked manager who is not eligible for an event is currently filtered out by voting-event RLS, so the client can still collapse “not in this electorate” into the generic “No votes available” state. The voting UI should eventually distinguish “no poll exists” from “poll exists but this manager is not eligible”. Until that is implemented, do not treat the generic empty state as proof that no poll exists.
 
 ### Admin
 
@@ -177,7 +179,8 @@ Treat these as regression requirements:
 - Existing ballots must survive account/onboarding fixes and electorate repairs.
 - Voting turnout/quorum uses the frozen electorate.
 - Community Polls must not create a second ordinary-manager authentication system.
-- Cross-origin session handoff must be bounded and must fail visibly rather than loop.
+- Cross-origin session handoff must be bounded and must not loop.
+- **Outstanding:** handoff failure is not yet surfaced explicitly to the user; `VotingEntry` currently falls through to the signed-out voting screen after bridge/setSession failure or timeout. Add a distinct user-facing handoff failure state before treating “fail visibly” as an invariant.
 - Authenticated Manager Portal entry must not be served from a stale PWA shell.
 - Empty/error states must describe the actual state rather than masking authorization problems.
 
