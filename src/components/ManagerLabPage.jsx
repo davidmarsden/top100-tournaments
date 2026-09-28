@@ -1242,7 +1242,7 @@ export default function ManagerLabPage() {
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
 
   const runInLab = useMemo(() => {
-    if (!worldFormulaMatches.length) return [];
+    if (!worldFormulaMatches.length || !Array.isArray(observedSelections) || !Array.isArray(squadSelectionCounts)) return [];
     const league = worldFormulaMatches.filter((match) => /^Division [1-5]$/.test(match.competition || ''));
     const d1 = league.filter((match) => match.competition === 'Division 1');
     const fixtureKey = (match) => `${match.competition || 'unknown'}:${match.fixtureId ?? ''}`;
