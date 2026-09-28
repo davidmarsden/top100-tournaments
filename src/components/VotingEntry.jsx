@@ -74,8 +74,18 @@ export default function VotingEntry() {
           try {
             const payload = JSON.parse(window.name);
             if (payload?.type === 'top100-manager-return-session') {
-              returnSession = payload.session;
+              const expectedNonce = sessionStorage.getItem('top100-voting-handoff-nonce');
+              sessionStorage.removeItem('top100-voting-handoff-nonce');
+              const urlNonce = new URLSearchParams(window.location.search).get('handoff');
+              if (expectedNonce && payload.nonce === expectedNonce && urlNonce === expectedNonce) {
+                returnSession = payload.session;
+              }
               window.name = '';
+              if (urlNonce) {
+                const cleanUrl = new URL(window.location.href);
+                cleanUrl.searchParams.delete('handoff');
+                window.history.replaceState({}, '', cleanUrl);
+              }
             }
           } catch {
             // window.name may legitimately belong to some unrelated browsing context.
