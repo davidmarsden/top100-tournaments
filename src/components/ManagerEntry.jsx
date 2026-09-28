@@ -201,26 +201,28 @@ function Setup({ session, claim: initialClaim, onClaimChanged }) {
 }
 
 function ReturnHandoff({ session, returnTo }) {
-  useEffect(() => {
-    if (!session?.access_token || !session?.refresh_token || !returnTo) return;
-    const target = new URL(returnTo);
-    const nonce = target.searchParams.get('handoff');
-    if (!nonce) {
-      window.location.replace('https://vote.smtop100.blog/vote');
-      return;
-    }
-    // Top-level navigation does not depend on hidden iframe/cross-site storage.
-    // window.name survives this one navigation, is not sent in the URL or HTTP
-    // request, and is cleared immediately by the receiving Top 100 app.
-    window.name = JSON.stringify({
-      type: 'top100-manager-return-session',
-      nonce,
-      session: { access_token: session.access_token, refresh_token: session.refresh_token },
-    });
-    window.location.replace(returnTo);
-  }, [session?.access_token, session?.refresh_token, returnTo]);
+  const [message, setMessage] = useState('Preparing secure handoff…');
 
-  return <main className="manager-portal-shell"><section className="card"><h1>Sign-in complete ✓</h1><p>Taking you back to Community Polls…</p></section></main>;
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const target = new URL(returnTo);
+        if (target.origin !== 'https://vote.smtop100.blog' || !/^\/vote\/?$/.test(target.pathname)) throw new Error('Invalid voting destination.');
+        const { data, error } = await supabase.rpc('create_manager_auth_handoff');
+        if (error) throw error;
+        if (!active) return;
+        target.search = '';
+        target.searchParams.set('handoff', data);
+        window.location.replace(target.toString());
+      } catch (error) {
+        if (active) setMessage(error?.message || 'Could not continue to Community Polls.');
+      }
+    })();
+    return () => { active = false; };
+  }, [session?.user?.id, returnTo]);
+
+  return <main className="manager-portal-shell"><section className="card"><h1>Sign-in complete ✓</h1><p>{message}</p></section></main>;
 }
 
 export default function ManagerEntry({ registrationMode = false }) {
