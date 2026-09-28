@@ -206,7 +206,6 @@ const TACTIC_KEYS = ['formation','mentality','passingStyle','attackingStyle','te
 const FAMILY_KEYS = ['formation','mentality','passingStyle','attackingStyle','tempo'];
 
 const HAMBURG_RUN_IN_S28 = [
-  { date: '2026-09-27', opponent: 'FC Porto', venue: 'A' },
   { date: '2026-10-01', opponent: 'Hellas Verona', venue: 'H' },
   { date: '2026-10-04', opponent: 'CSKA Moskva', venue: 'A' },
   { date: '2026-10-08', opponent: '1. FC Köln', venue: 'H' },
@@ -219,6 +218,47 @@ const HAMBURG_RUN_IN_S28 = [
   { date: '2026-11-01', opponent: 'Aston Villa', venue: 'A' },
   { date: '2026-11-05', opponent: 'Barcelona', venue: 'A' },
 ];
+const HAMBURG_SOURCE_CLUB_ID = '48506708';
+
+const FORMATION_4231B_SELECTION_SLOTS = [
+  { label: 'GK', eligible: ['GK'] },
+  { label: 'RB', eligible: ['D(R)', 'DM(R)'] },
+  { label: 'LB', eligible: ['D(L)', 'DM(L)'] },
+  { label: 'CB', eligible: ['D(C)'] },
+  { label: 'CB', eligible: ['D(C)'] },
+  { label: 'CM', eligible: ['M(C)', 'DM(C)'] },
+  { label: 'AM', eligible: ['AM(C)', 'M(C)'] },
+  { label: 'CM', eligible: ['M(C)', 'DM(C)'] },
+  { label: 'ST', eligible: ['F(C)'] },
+  { label: 'RW', eligible: ['AM(R)', 'F(R)'] },
+  { label: 'LW', eligible: ['AM(L)', 'F(L)'] },
+];
+
+function selectionEvidenceScore(player, usage) {
+  const rating = Number(player.rating || 0);
+  const current = Number(player.averagePerformance || 0);
+  const performanceAdjustment = current > 0 ? Math.max(-1, Math.min(1.5, (current - 6.5) * 0.75)) : 0;
+  const usageAdjustment = Math.min(0.5, Number(usage?.starts || 0) / 50);
+  return rating + performanceAdjustment + usageAdjustment;
+}
+
+function buildFormationSelection(squad, usageByPlayer, formation) {
+  if (formation !== '4-2-3-1 B') return [];
+  const available = new Map(squad.map((player) => [String(player.sourcePlayerId), player]));
+  return FORMATION_4231B_SELECTION_SLOTS.map((slot, index) => {
+    const candidates = [...available.values()]
+      .filter((player) => slot.eligible.includes(String(player.mainPosition || player.position || '')))
+      .map((player) => {
+        const usage = usageByPlayer.get(String(player.sourcePlayerId)) || null;
+        return { ...player, usage, selectionScore: selectionEvidenceScore(player, usage) };
+      })
+      .sort((a,b) => b.selectionScore-a.selectionScore || Number(b.rating||0)-Number(a.rating||0) || Number(b.averagePerformance||0)-Number(a.averagePerformance||0));
+    const player = candidates[0] || null;
+    if (player) available.delete(String(player.sourcePlayerId));
+    return { slot: slot.label, slotIndex: index, player, alternatives: candidates.slice(1,4) };
+  });
+}
+
 const MAGIC_FAMILY = '4-2-3-1 B|Attacking|Mixed|Down Both Flanks|Fast';
 function familyLabel(match) {
   return FAMILY_KEYS.map((key) => displayTacticValue(key, tacticValue(match, key))).join(' · ');
@@ -1344,6 +1384,8 @@ export default function ManagerLabPage() {
       const qualified = (rows) => rows.filter((counter) => counter.matches >= 3 && counter.clubCount >= 2);
       const currentQualified = qualified(currentCounterEvidence);
       const dominantQualified = qualified(dominantCounterEvidence);
+      const plannedFormation = currentQualified[0] ? displayTacticValue('formation', tacticValue(currentQualified[0].sample, 'formation')) : null;
+      const hamburgFormationSelection = buildFormationSelection(hamburgSquad, hamburgUsage, plannedFormation);
       const volatile = Boolean(dominant && dominant.key !== currentKey && stability5.pct !== null && stability5.pct < 0.6);
       const previous = sortedRecent(hamburgRows.filter((match) => match.opponent === fixture.opponent && match.date && String(match.date) < fixture.date))[0] || null;
       const hamburgStronger = hamburgRows.filter((match) => {
@@ -1375,7 +1417,7 @@ export default function ManagerLabPage() {
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
         projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, observedCore, selectionMatches: new Set(observed.map((selection)=>selection.fixtureId)).size,
-        hamburgSelection, hamburgAlternatives, hamburgObservedMatches, squadRating, likelyXiRating, likelyXiCareer,
+        hamburgSelection, hamburgAlternatives, hamburgObservedMatches, hamburgFormationSelection, plannedFormation, squadRating, likelyXiRating, likelyXiCareer,
         counters, dominantCounters, volatile,
         // A recommendation needs replication. One- and two-match observations
         // remain visible in the shortlist, but are descriptive rather than plans.
@@ -2187,6 +2229,14 @@ export default function ManagerLabPage() {
               <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Starts</th><th>Rating</th><th>Current</th><th>Career</th><th>Δ rating</th><th>Last seen</th></tr></thead><tbody>
                 {row.hamburgSelection.map((player) => <tr key={`hsv-core:${row.opponent}:${player.sourcePlayerId || player.matchPlayerId || player.observedName}`}><td><strong>{player.currentName || player.observedName}</strong></td><td>{player.mainPosition || player.positionDescription || '—'}</td><td><strong>{player.starts}</strong></td><td>{player.currentRating ?? player.observedRating ?? '—'}</td><td>{Number(player.averagePerformance || 0)>0 ? Number(player.averagePerformance).toFixed(2) : '—'}</td><td>{Number(player.careerAppearances || 0)>0 && Number(player.careerAveragePerformance || 0)>0 ? `${Number(player.careerAveragePerformance).toFixed(2)} (${player.careerAppearances})` : '—'}</td><td>{Number(player.ratingChange || 0) ? `${Number(player.ratingChange)>0?'+':''}${player.ratingChange}` : '—'}</td><td>{player.lastDate || '—'}</td></tr>)}
               </tbody></table></div>
+              {row.hamburgFormationSelection.length > 0 && <>
+                <h4>Formation-aware XI · {row.plannedFormation}</h4>
+                <p className="muted">This is a selection-pressure model for the dossier's evidence-backed primary formation, not a claim about hidden match-engine attributes. Each slot only considers players whose archived main position fits that role; rating leads, current performance makes a modest adjustment, and observed D1 starts are a small continuity tie-breaker. The alternatives column exposes the next eligible options instead of hiding the choice.</p>
+                <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Slot</th><th>Proposed player</th><th>Pos</th><th>Rating</th><th>Current</th><th>Career</th><th>D1 starts</th><th>Next eligible</th></tr></thead><tbody>
+                  {row.hamburgFormationSelection.map((pick) => <tr key={`hsv-xi:${row.opponent}:${pick.slotIndex}`}><td><strong>{pick.slot}</strong></td><td>{pick.player ? <strong>{pick.player.name}</strong> : <span className="muted">No eligible player</span>}</td><td>{pick.player?.mainPosition || pick.player?.position || '—'}</td><td>{pick.player?.rating ?? '—'}</td><td>{Number(pick.player?.averagePerformance || 0)>0 ? Number(pick.player.averagePerformance).toFixed(2) : '—'}</td><td>{Number(pick.player?.careerAppearances || 0)>0 && Number(pick.player?.careerAveragePerformance || 0)>0 ? Number(pick.player.careerAveragePerformance).toFixed(2) : '—'}</td><td>{pick.player?.usage?.starts ?? 0}</td><td>{pick.alternatives.length ? pick.alternatives.map((player) => `${player.name} (${player.rating})`).join(' · ') : '—'}</td></tr>)}
+                </tbody></table></div>
+              </>}
+              {row.primary && row.plannedFormation && row.hamburgFormationSelection.length === 0 && <p className="muted"><strong>Formation-aware XI:</strong> no position template is encoded yet for {row.plannedFormation}; the Lab will not pretend a generic top eleven is positionally valid.</p>}
               <h4>Credible squad alternatives</h4>
               <p className="muted">Highest-rated players outside that observed core. Current form is compared with career performance where both baselines exist; this deliberately does not force a player into an unsuitable position.</p>
               <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Rating</th><th>Current</th><th>Career</th><th>Form Δ</th><th>Rating Δ</th></tr></thead><tbody>
