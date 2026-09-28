@@ -1224,18 +1224,16 @@ export default function ManagerLabPage() {
         .sort((a,b) => Number(b.rating || 0)-Number(a.rating || 0) || Number(a.age || 0)-Number(b.age || 0));
       const observed = observedSelections.filter((selection) => String(selection.sourceClubId) === opponentClubId && selection.competition === 'Division 1');
       const starts = new Map();
-      observed.filter((selection) => selection.starter).forEach((selection) => {
+      observed.forEach((selection) => {
         const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
-        const entry = starts.get(key) || { ...selection, starts: 0, appearances: 0, lastDate: null };
-        entry.starts += 1; entry.appearances += 1;
-        if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) entry.lastDate = selection.date;
-        starts.set(key, entry);
-      });
-      observed.filter((selection) => !selection.starter).forEach((selection) => {
-        const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
-        const entry = starts.get(key) || { ...selection, starts: 0, appearances: 0, lastDate: null };
-        entry.appearances += 1;
-        if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) entry.lastDate = selection.date;
+        const existing = starts.get(key);
+        const entry = existing || { ...selection, starts: 0, squadSelections: 0, lastDate: null };
+        entry.squadSelections += 1;
+        if (selection.starter) entry.starts += 1;
+        if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) {
+          Object.assign(entry, selection);
+          entry.lastDate = selection.date;
+        }
         starts.set(key, entry);
       });
       const observedCore = [...starts.values()].sort((a,b) => b.starts-a.starts || String(b.lastDate||'').localeCompare(String(a.lastDate||'')) || Number(b.currentRating||b.observedRating||0)-Number(a.currentRating||a.observedRating||0)).slice(0,11);
@@ -1344,7 +1342,7 @@ export default function ManagerLabPage() {
         ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey, stability5, stability10,
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
-        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, observedCore, observedMatches: new Set(observed.map((selection)=>selection.fixtureId)).size, squadRating, likelyXiRating, likelyXiCareer,
+        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, observedCore, selectionMatches: new Set(observed.map((selection)=>selection.fixtureId)).size, squadRating, likelyXiRating, likelyXiCareer,
         counters, dominantCounters, volatile,
         // A recommendation needs replication. One- and two-match observations
         // remain visible in the shortlist, but are descriptive rather than plans.
@@ -2151,9 +2149,9 @@ export default function ManagerLabPage() {
             </tbody></table></div>
             {row.observedCore.length > 0 && <>
               <h3>Observed selections · Division 1</h3>
-              <p className="muted">These are the players this manager has actually started in archived D1 match reports. The core XI is ranked by starts, with recency and current rating only breaking ties. {row.observedMatches} matches observed.</p>
-              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Starts</th><th>Apps</th><th>Current rating</th><th>Match rating</th><th>Last seen</th></tr></thead><tbody>
-                {row.observedCore.map((player) => <tr key={`observed:${row.opponent}:${player.sourcePlayerId || player.matchPlayerId || player.observedName}`}><td><strong>{player.currentName || player.observedName}</strong></td><td>{player.mainPosition || player.positionDescription || '—'}</td><td><strong>{player.starts}</strong></td><td>{player.appearances}</td><td>{player.currentRating ?? player.observedRating ?? '—'}</td><td>{Number(player.matchRating || 0)>0 ? Number(player.matchRating).toFixed(1) : '—'}</td><td>{player.lastDate || '—'}</td></tr>)}
+              <p className="muted">These are the players this manager has actually started in archived D1 match reports. The core XI is ranked by starts, with recency and current rating only breaking ties. {row.selectionMatches} match reports with player selections observed.</p>
+              <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Player</th><th>Pos</th><th>Starts</th><th>Squad selections</th><th>Current rating</th><th>Match rating</th><th>Last seen</th></tr></thead><tbody>
+                {row.observedCore.map((player) => <tr key={`observed:${row.opponent}:${player.sourcePlayerId || player.matchPlayerId || player.observedName}`}><td><strong>{player.currentName || player.observedName}</strong></td><td>{player.mainPosition || player.positionDescription || '—'}</td><td><strong>{player.starts}</strong></td><td>{player.squadSelections}</td><td>{player.currentRating ?? player.observedRating ?? '—'}</td><td>{Number(player.matchRating || 0)>0 ? Number(player.matchRating).toFixed(1) : '—'}</td><td>{player.lastDate || '—'}</td></tr>)}
               </tbody></table></div>
             </>}
             {row.likelyXi.length > 0 && <>
