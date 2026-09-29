@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import RedCardLab from './RedCardLab';
 
 const SETUP_ID = '239138';
 
@@ -2240,6 +2241,8 @@ export default function ManagerLabPage() {
           </tbody></table></div>
         </>}
       </section>
+
+      {worldFormulaMatches.length > 0 && <RedCardLab />}
 
       {worldFormulaMatches.length > 0 && <section className="card">
         <p className="eyebrow">Hamburger SV · Division 1 survival</p>
