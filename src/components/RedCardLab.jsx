@@ -28,7 +28,7 @@ function tacticStateCount(tactics) {
   return Math.max(0, ...Object.values(instructions).map((value) => Array.isArray(value) ? value.length : 0));
 }
 
-export default function RedCardLab() {
+export default function RedCardLab({ onExportData }) {
   const [matches, setMatches] = useState([]);
   const [status, setStatus] = useState('Loading red-card matches…');
 
@@ -79,6 +79,52 @@ export default function RedCardLab() {
       byStrength: byContext('strengthBand',['Stronger XI','Similar XI','Weaker XI','Unknown']) };
   
   }, [matches]);
+
+  useEffect(() => {
+    if (!onExportData || status) return;
+    onExportData({
+      version: 2,
+      matchCount: matches.length,
+      oneSidedCount: analysis.oneSided.length,
+      wins: analysis.wins,
+      draws: analysis.draws,
+      losses: analysis.losses,
+      avoidDefeatRate: analysis.oneSided.length ? (analysis.wins + analysis.draws) / analysis.oneSided.length : null,
+      byDivision: analysis.byDivision,
+      byScoreState: analysis.byScoreState,
+      byStrength: analysis.byStrength,
+      matches: analysis.contextual.map(({ match, side, result, scoreState: state, strengthBand: band, tacticStates }) => ({
+        fixtureId: match.fixtureId,
+        date: match.date ?? null,
+        competition: match.competition ?? null,
+        homeClubId: match.homeClubId ?? null,
+        awayClubId: match.awayClubId ?? null,
+        home: match.home ?? null,
+        away: match.away ?? null,
+        finalScore: [match.homeScore, match.awayScore],
+        dismissedSide: side,
+        dismissedTeam: side === 'h' ? match.home : match.away,
+        result,
+        redCards: match.redCards,
+        firstRedMinute: match.firstRedMinute ?? null,
+        scoreStateAtFirstRed: state,
+        scoreAtFirstRedReliable: Boolean(match.scoreAtFirstRedReliable),
+        scoreAtFirstRed: match.scoreAtFirstRedReliable ? [match.homeScoreAtFirstRed, match.awayScoreAtFirstRed] : null,
+        dismissedXiGap: match.dismissedXiGap ?? null,
+        strengthBand: band,
+        homeXiRating: match.homeXiRating ?? null,
+        awayXiRating: match.awayXiRating ?? null,
+        tacticStateCount: tacticStates,
+        dismissedTeamTactics: side === 'h' ? match.homeTactics : match.awayTactics,
+        opponentTactics: side === 'h' ? match.awayTactics : match.homeTactics,
+      })),
+      caveats: [
+        'Score state is unknown unless the archived goal timeline is complete, attributed and reconciles with the final score.',
+        'Captured tactical states do not yet have verified event minutes, so they cannot be labelled as post-dismissal changes.',
+        'Associations are descriptive and do not establish that a dismissal causes improved performance.',
+      ],
+    });
+  }, [analysis, matches, onExportData, status]);
 
   if (status) return <section className="card"><h2>Red Card Lab</h2><p className="muted">{status}</p></section>;
 
