@@ -85,7 +85,7 @@ export default function RedCardLab() {
   const avoidDefeat = analysis.oneSided.length ? (analysis.wins + analysis.draws) / analysis.oneSided.length : 0;
   return <section className="card">
     <h2>🟥 Red Card Lab</h2>
-    <p className="muted">Does Soccer Manager really make ten men harder to beat? This first pass uses the latest archived version of every S28 league fixture across all five Top 100 divisions. It separates one-sided dismissals from matches where both teams had reds. These are descriptive outcomes: without a reliable score-at-dismissal timeline they do not yet prove a post-red-card boost.</p>
+    <p className="muted">Does Soccer Manager really make ten men harder to beat? This first pass uses the latest archived version of every S28 league fixture across all five Top 100 divisions. It separates one-sided dismissals from matches where both teams had reds. Experiment 2 controls for dismissal timing, score state where the event timeline is complete, and starting-XI strength. These remain descriptive associations rather than proof that going down to ten causes a boost.</p>
 
     <div className="lab-stat-grid">
       <div><strong>{matches.length}</strong><span>matches with reds</span></div>
