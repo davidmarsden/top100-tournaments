@@ -24,6 +24,7 @@ export default function VotingPortal() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [results, setResults] = useState({});
+  const [participants, setParticipants] = useState({});
   const [finalResults, setFinalResults] = useState({});
   const [editingEventId, setEditingEventId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
@@ -174,6 +175,12 @@ export default function VotingPortal() {
     await loadVoting();
   }
 
+  async function loadParticipants(eventId) {
+    const { data, error } = await supabase.rpc('get_voting_participants', { target_event_id: eventId });
+    if (error) return setMessage(error.message);
+    setParticipants((current) => ({ ...current, [eventId]: data || [] }));
+  }
+
   async function loadResults(eventId) {
     const { data, error } = await supabase.rpc('get_voting_results', { target_event_id: eventId });
     if (error) return setMessage(error.message);
@@ -219,12 +226,14 @@ export default function VotingPortal() {
       const eventQuestions = questionsByEvent.get(vote.id) || [];
       const existingBallot = ballots.find((ballot) => ballot.event_id === vote.id);
       const resultRows = results[vote.id] || [];
+      const participantRows = participants[vote.id] || [];
       const finalResult = finalResults[vote.id];
       const now = new Date();
       const deadlinePassed = Boolean(vote.closes_at) && new Date(vote.closes_at) <= now;
       const canVote = Boolean(account) && vote.status === 'open' && (!vote.opens_at || new Date(vote.opens_at) <= now) && (!vote.closes_at || !deadlinePassed);
       const manualReleased = vote.results_visibility === 'manual_release' && Boolean(vote.results_released_at);
-      const resultsAvailable = isAdmin || vote.results_visibility === 'live' || manualReleased || (vote.results_visibility === 'after_close' && (vote.status === 'closed' || deadlinePassed));
+      const voteClosed = vote.status === 'closed' || deadlinePassed;
+      const resultsAvailable = (isAdmin && voteClosed) || (!isAdmin && (vote.results_visibility === 'live' || manualReleased || (vote.results_visibility === 'after_close' && voteClosed)));
       const canFinalise = isAdmin && !finalResult && (vote.status === 'closed' || (vote.status === 'open' && deadlinePassed));
       const canRelease = isAdmin && vote.results_visibility === 'manual_release' && !vote.results_released_at && Boolean(finalResult) && (vote.status === 'closed' || deadlinePassed);
       return <section className={`card voting-card voting-card--${vote.status}`} key={vote.id}>
@@ -247,6 +256,8 @@ export default function VotingPortal() {
         {isAdmin && vote.status === 'open' && !deadlinePassed && <button type="button" className="secondary" onClick={() => closeEvent(vote.id)}>Close vote now</button>}
         {canFinalise && <button type="button" className="secondary" onClick={() => finaliseEvent(vote)}>{vote.event_type === 'awards' ? 'Finalise Awards categories' : 'Finalise result'}</button>}
         {canRelease && <button type="button" className="secondary" onClick={() => releaseResults(vote.id)}>Release results</button>}
+        {isAdmin && <button type="button" className="secondary" onClick={() => loadParticipants(vote.id)}>Who has voted</button>}
+        {isAdmin && participantRows.length > 0 && <div className="voting-participants" style={{ marginTop: '1rem' }}><h3>Who has voted</h3><p className="muted">{participantRows.length} ballot{participantRows.length === 1 ? '' : 's'} submitted. Ballot choices stay hidden while voting is open.</p><ol>{participantRows.map((row) => <li key={row.manager_id}>{row.manager_name} <span className="muted">— {formatDate(row.submitted_at)}</span></li>)}</ol></div>}
         {resultsAvailable && <button type="button" className="secondary" onClick={() => loadResults(vote.id)}>Show vote totals</button>}
         {finalResult && <div style={{ marginTop: '1rem' }}><h3>Official result</h3><p><strong>{finalResult.decision_summary}</strong></p><p className="muted">Turnout: {finalResult.ballots_cast}/{finalResult.electorate_count} ({finalResult.turnout_percent}%) · Quorum {finalResult.quorum_met ? 'met' : 'not met'}</p>{vote.results_visibility === 'manual_release' && <p className="muted">Results: {vote.results_released_at ? `released ${formatDate(vote.results_released_at)}` : 'awaiting manual release'}</p>}</div>}
         {resultRows.length > 0 && <div style={{ marginTop: '1rem' }}>{resultRows.map((row) => <div key={`${row.question_id}-${row.option_id}`}>{row.question_title}: {row.option_label} — <strong>{row.votes}</strong></div>)}</div>}
