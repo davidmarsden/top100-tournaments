@@ -459,6 +459,7 @@ export default function ManagerLabPage() {
   const [opponentPlayersStatus, setOpponentPlayersStatus] = useState('');
   const [observedSelections, setObservedSelections] = useState(null);
   const [squadSelectionCounts, setSquadSelectionCounts] = useState(null);
+  const [selectionClubMatchCounts, setSelectionClubMatchCounts] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -1242,7 +1243,7 @@ export default function ManagerLabPage() {
   }, [worldFormulaMatches, worldFormulaDivision, worldFormulaStrength]);
 
   const runInLab = useMemo(() => {
-    if (!worldFormulaMatches.length || !Array.isArray(observedSelections) || !Array.isArray(squadSelectionCounts)) return [];
+    if (!worldFormulaMatches.length || !Array.isArray(observedSelections) || !Array.isArray(squadSelectionCounts) || !Array.isArray(selectionClubMatchCounts)) return [];
     const league = worldFormulaMatches.filter((match) => /^Division [1-5]$/.test(match.competition || ''));
     const d1 = league.filter((match) => match.competition === 'Division 1');
     const fixtureKey = (match) => `${match.competition || 'unknown'}:${match.fixtureId ?? ''}`;
@@ -1309,19 +1310,7 @@ export default function ManagerLabPage() {
           .filter((row) => String(row.sourceClubId) === hamburgClubId)
           .map((row) => [String(row.sourcePlayerId), Number(row.squadSelections || 0)])
       );
-      const hamburgUsage = new Map();
-      hamburgObserved.forEach((selection) => {
-        const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
-        const existing = hamburgUsage.get(key);
-        const entry = existing || { ...selection, starts: 0, squadSelections: 0, lastDate: null };
-        entry.squadSelections = hamburgSquadCountMap.get(String(selection.sourcePlayerId || '')) ?? (entry.squadSelections + 1);
-        if (selection.starter) entry.starts += 1;
-        if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) {
-          Object.assign(entry, selection);
-          entry.lastDate = selection.date;
-        }
-        hamburgUsage.set(key, entry);
-      });
+      const hamburgUsage = new Map(hamburgObserved.map((selection) => [String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName), { ...selection, starts: Number(selection.starts || 0), squadSelections: hamburgSquadCountMap.get(String(selection.sourcePlayerId || '')) ?? Number(selection.squadSelections || 0), lastDate: selection.lastDate || selection.date || null }]));
       const hamburgCurrentIds = new Set(hamburgSquad.map((player) => String(player.sourcePlayerId)));
       const hamburgSelection = [...hamburgUsage.values()]
         .filter((player) => hamburgCurrentIds.has(String(player.sourcePlayerId || '')))
@@ -1337,26 +1326,14 @@ export default function ManagerLabPage() {
         })
         .sort((a,b) => Number(b.rating||0)-Number(a.rating||0) || Number(b.performanceDelta ?? -99)-Number(a.performanceDelta ?? -99))
         .slice(0,12);
-      const hamburgObservedMatches = new Set(hamburgObserved.map((selection) => selection.fixtureId)).size;
+      const hamburgObservedMatches = Number(selectionClubMatchCounts.find((row) => String(row.sourceClubId) === hamburgClubId)?.observedMatches || 0);
       const observed = observedSelections.filter((selection) => String(selection.sourceClubId) === opponentClubId && selection.competition === 'Division 1');
       const squadCountMap = new Map(
         squadSelectionCounts
           .filter((row) => String(row.sourceClubId) === opponentClubId)
           .map((row) => [String(row.sourcePlayerId), Number(row.squadSelections || 0)])
       );
-      const starts = new Map();
-      observed.forEach((selection) => {
-        const key = String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName);
-        const existing = starts.get(key);
-        const entry = existing || { ...selection, starts: 0, squadSelections: 0, lastDate: null };
-        entry.squadSelections += 1;
-        if (selection.starter) entry.starts += 1;
-        if (!entry.lastDate || String(selection.date || '') > String(entry.lastDate)) {
-          Object.assign(entry, selection);
-          entry.lastDate = selection.date;
-        }
-        starts.set(key, entry);
-      });
+      const starts = new Map(observed.map((selection) => [String(selection.sourcePlayerId || selection.matchPlayerId || selection.observedName), { ...selection, starts: Number(selection.starts || 0), squadSelections: squadCountMap.get(String(selection.sourcePlayerId || '')) ?? Number(selection.squadSelections || 0), lastDate: selection.lastDate || selection.date || null }]));
       const observedCore = [...starts.values()].sort((a,b) => b.starts-a.starts || String(b.lastDate||'').localeCompare(String(a.lastDate||'')) || Number(b.currentRating||b.observedRating||0)-Number(a.currentRating||a.observedRating||0)).slice(0,11);
       const likelyXi = squadPlayers.slice(0, 11);
       const squadRating = squadPlayers.length ? squadPlayers.reduce((sum, player) => sum + Number(player.rating || 0), 0) / squadPlayers.length : null;
@@ -1465,7 +1442,7 @@ export default function ManagerLabPage() {
         ...fixture, observedMatches: opponentRows.length, dominant, latest, currentKey, stability5, stability10,
         magicMatches: opponentRows.filter((match) => tacticSignature(match, FAMILY_KEYS) === MAGIC_FAMILY).length,
         previous, latestAge: latest ? numericValue(latest.reportedAvgAge) : null, latestXi, hamburgXi,
-        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, observedCore, selectionMatches: new Set(observed.map((selection)=>selection.fixtureId)).size,
+        projectedXiGap, ageBands, avoid, squadPlayers, likelyXi, observedCore, selectionMatches: Number(selectionClubMatchCounts.find((row) => String(row.sourceClubId) === opponentClubId)?.observedMatches || 0),
         hamburgSelection, hamburgAlternatives, hamburgObservedMatches, hamburgFormationSelection, plannedFormation, squadRating, likelyXiRating, likelyXiCareer,
         counters, dominantCounters, volatile,
         // A recommendation needs replication. One- and two-match observations
@@ -1478,7 +1455,7 @@ export default function ManagerLabPage() {
         dominantAlternative: dominantQualified[1] || null,
       };
     });
-  }, [worldFormulaMatches, opponentPlayers, observedSelections, squadSelectionCounts]);
+  }, [worldFormulaMatches, opponentPlayers, observedSelections, squadSelectionCounts, selectionClubMatchCounts]);
 
   const playerRoleEncodingAudit = useMemo(() => {
     const byKind = new Map();
@@ -2133,9 +2110,11 @@ export default function ManagerLabPage() {
         setOpponentPlayersStatus(`Observed selections could not load: ${selectionError.message}`);
         setObservedSelections(null);
         setSquadSelectionCounts(null);
+        setSelectionClubMatchCounts(null);
       } else {
-        setObservedSelections(Array.isArray(selectionData?.selections) ? selectionData.selections : []);
-        setSquadSelectionCounts(Array.isArray(selectionData?.squadSelectionCounts) ? selectionData.squadSelectionCounts : []);
+        setObservedSelections(Array.isArray(selectionData?.usage) ? selectionData.usage : []);
+        setSquadSelectionCounts(Array.isArray(selectionData?.usage) ? selectionData.usage : []);
+        setSelectionClubMatchCounts(Array.isArray(selectionData?.clubMatchCounts) ? selectionData.clubMatchCounts : []);
       }
     }
   }
