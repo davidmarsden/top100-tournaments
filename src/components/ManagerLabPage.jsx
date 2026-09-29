@@ -457,6 +457,7 @@ export default function ManagerLabPage() {
   const [sweeperKeeper, setSweeperKeeper] = useState('All');
   const [venue, setVenue] = useState('All');
   const [worldFormulaMatches, setWorldFormulaMatches] = useState([]);
+  const [redCardExport, setRedCardExport] = useState(null);
   const [worldFormulaStatus, setWorldFormulaStatus] = useState('');
   const [worldFormulaStrength, setWorldFormulaStrength] = useState('Stronger opponent XI');
   const [worldFormulaDivision, setWorldFormulaDivision] = useState('All Top 100 divisions');
@@ -971,6 +972,7 @@ export default function ManagerLabPage() {
       })),
       playerComposition,
       tacticalSquadContext,
+      redCardLab: redCardExport,
       instructionEffects: instructionEffects.map((effect) => ({
         instruction: effect.label,
         key: effect.key,
@@ -2242,7 +2244,7 @@ export default function ManagerLabPage() {
         </>}
       </section>
 
-      {worldFormulaMatches.length > 0 && <RedCardLab />}
+      {worldFormulaMatches.length > 0 && <RedCardLab onExportData={setRedCardExport} />}
 
       {worldFormulaMatches.length > 0 && <section className="card">
         <p className="eyebrow">Hamburger SV · Division 1 survival</p>
