@@ -30,15 +30,20 @@ function tacticStateCount(tactics) {
 
 export default function RedCardLab({ onExportData }) {
   const [matches, setMatches] = useState([]);
+  const [controls, setControls] = useState([]);
   const [status, setStatus] = useState('Loading red-card matches…');
 
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data, error } = await supabase.rpc('manager_lab_red_cards', { target_setup_id: SETUP_ID });
+      const [{ data, error }, { data: controlData, error: controlError }] = await Promise.all([
+        supabase.rpc('manager_lab_red_cards', { target_setup_id: SETUP_ID }),
+        supabase.rpc('manager_lab_red_card_controls', { target_setup_id: SETUP_ID }),
+      ]);
       if (!mounted) return;
-      if (error) { setStatus(`Red Card Lab could not load: ${error.message}`); return; }
+      if (error || controlError) { setStatus(`Red Card Lab could not load: ${error?.message || controlError?.message}`); return; }
       setMatches(Array.isArray(data?.matches) ? data.matches : []);
+      setControls(Array.isArray(controlData?.matches) ? controlData.matches : []);
       setStatus('');
     })();
     return () => { mounted = false; };
@@ -74,11 +79,37 @@ export default function RedCardLab({ onExportData }) {
       const sample = contextual.filter((row) => row[field] === label);
       return { label, played: sample.length, wins: sample.filter((row) => row.result === 'W').length, draws: sample.filter((row) => row.result === 'D').length, losses: sample.filter((row) => row.result === 'L').length };
     });
-    return { oneSided, wins, draws, losses, multi, hamburg, byDivision, contextual,
+    const reliable = contextual.filter((row) => row.match.scoreAtFirstRedReliable && row.match.firstRedMinute != null && row.match.dismissedXiGap != null);
+    const stateAt = (match, side, minute) => {
+      let h=0,a=0;
+      (match.goalEvents||[]).forEach((g)=>{ if(Number(g.minute)<Number(minute)){ if(g.side==='h')h++; if(g.side==='a')a++; }});
+      const gf=side==='h'?h:a, ga=side==='h'?a:h;
+      return gf>ga?'Leading':gf===ga?'Level':'Behind';
+    };
+    const matched = reliable.map((row) => {
+      const targetGap=Number(row.match.dismissedXiGap), sample=[];
+      controls.forEach((m)=>{
+        const side=row.side;
+        if(m.competition!==row.match.competition) return;
+        const gap=side==='h'?Number(m.homeXiRating)-Number(m.awayXiRating):Number(m.awayXiRating)-Number(m.homeXiRating);
+        if(Math.abs(gap-targetGap)>1 || stateAt(m,side,row.match.firstRedMinute)!==row.scoreState) return;
+        sample.push(outcomeFor(m,side));
+      });
+      return {fixtureId:row.match.fixtureId,result:row.result,controls:sample.length,
+        controlWinRate:sample.length?sample.filter(x=>x==='W').length/sample.length:null,
+        controlAvoidRate:sample.length?sample.filter(x=>x!=='L').length/sample.length:null};
+    }).filter((row)=>row.controls>=5);
+    const avg=(key)=>matched.length?matched.reduce((s,r)=>s+r[key],0)/matched.length:null;
+    const experiment3={eligibleRedCases:reliable.length,matchedRedCases:matched.length,controlPoolMatches:controls.length,
+      actualWinRate:matched.length?matched.filter(r=>r.result==='W').length/matched.length:null,
+      expectedWinRate:avg('controlWinRate'),
+      actualAvoidRate:matched.length?matched.filter(r=>r.result!=='L').length/matched.length:null,
+      expectedAvoidRate:avg('controlAvoidRate'),matches:matched};
+    return { oneSided, wins, draws, losses, multi, hamburg, byDivision, contextual, experiment3,
       byScoreState: byContext('scoreState',['Leading','Level','Behind','Unknown']),
       byStrength: byContext('strengthBand',['Stronger XI','Similar XI','Weaker XI','Unknown']) };
   
-  }, [matches]);
+  }, [matches, controls]);
 
   useEffect(() => {
     if (!onExportData || status) return;
@@ -93,6 +124,7 @@ export default function RedCardLab({ onExportData }) {
       byDivision: analysis.byDivision,
       byScoreState: analysis.byScoreState,
       byStrength: analysis.byStrength,
+      experiment3: analysis.experiment3,
       matches: analysis.contextual.map(({ match, side, result, scoreState: state, strengthBand: band, tacticStates }) => ({
         fixtureId: match.fixtureId,
         date: match.date ?? null,
@@ -156,6 +188,17 @@ export default function RedCardLab({ onExportData }) {
     <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>XI band</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>Avoid defeat</th></tr></thead><tbody>
       {analysis.byStrength.map((row) => <tr key={row.label}><td><strong>{row.label}</strong></td><td>{row.played}</td><td>{row.wins}</td><td>{row.draws}</td><td>{row.losses}</td><td>{row.played ? (((row.wins+row.draws)/row.played)*100).toFixed(1)+'%' : '—'}</td></tr>)}
     </tbody></table></div>
+
+    <h3>Experiment 3 · matched 11-v-11 control</h3>
+    <p className="muted">Each reliable one-sided dismissal is compared with ordinary no-red league matches from the same division, viewed at the exact dismissal minute, from the same home/away perspective, with the same score state and a starting-XI gap within ±1.0 rating point. Cases need at least five controls.</p>
+    <div className="lab-stat-grid">
+      <div><strong>{analysis.experiment3.matchedRedCases}</strong><span>matched red cases</span></div>
+      <div><strong>{analysis.experiment3.actualWinRate==null?'—':(analysis.experiment3.actualWinRate*100).toFixed(1)+'%'}</strong><span>reduced-team wins</span></div>
+      <div><strong>{analysis.experiment3.expectedWinRate==null?'—':(analysis.experiment3.expectedWinRate*100).toFixed(1)+'%'}</strong><span>matched 11-v-11 wins</span></div>
+      <div><strong>{analysis.experiment3.actualAvoidRate==null?'—':(analysis.experiment3.actualAvoidRate*100).toFixed(1)+'%'}</strong><span>reduced avoids defeat</span></div>
+      <div><strong>{analysis.experiment3.expectedAvoidRate==null?'—':(analysis.experiment3.expectedAvoidRate*100).toFixed(1)+'%'}</strong><span>11-v-11 avoids defeat</span></div>
+    </div>
+    <p className="muted">This is a matched observational benchmark, not a randomized counterfactual. Re-used control matches are averaged within each red-card case before the overall comparison.</p>
 
     <h3>One-sided dismissal detail</h3>
     <div className="table-wrap"><table className="manager-lab-table"><thead><tr><th>Match</th><th>Red</th><th>State</th><th>XI gap</th><th>Tactic states</th><th>Result</th></tr></thead><tbody>
