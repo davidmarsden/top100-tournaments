@@ -245,47 +245,51 @@ function selectionEvidenceScore(player, usage) {
 function buildFormationSelection(squad, usageByPlayer, formation) {
   if (formation !== '4-2-3-1 B') return [];
 
+  const scoredPlayers = squad.map((player) => {
+    const usage = usageByPlayer.get(String(player.sourcePlayerId)) || null;
+    return { ...player, usage, selectionScore: selectionEvidenceScore(player, usage) };
+  });
   const candidatesBySlot = FORMATION_4231B_SELECTION_SLOTS.map((slot) =>
-    squad
+    scoredPlayers
       .filter((player) => slot.eligible.includes(String(player.mainPosition || player.position || '')))
-      .map((player) => {
-        const usage = usageByPlayer.get(String(player.sourcePlayerId)) || null;
-        return { ...player, usage, selectionScore: selectionEvidenceScore(player, usage) };
-      })
       .sort((a,b) => b.selectionScore-a.selectionScore || Number(b.rating||0)-Number(a.rating||0) || Number(b.averagePerformance||0)-Number(a.averagePerformance||0))
   );
 
-  // Solve the XI as one assignment rather than greedily consuming players in
-  // slot order. Most-constrained-first search avoids flexible CM/AM slots
-  // stealing the only player who can fill a later position.
-  const slotOrder = candidatesBySlot
-    .map((candidates, slotIndex) => ({ slotIndex, candidates }))
-    .sort((a,b) => a.candidates.length-b.candidates.length || a.slotIndex-b.slotIndex);
-  let best = null;
-  const chosen = Array(FORMATION_4231B_SELECTION_SLOTS.length).fill(null);
-  const search = (depth, used, score, filled) => {
-    if (depth === slotOrder.length) {
-      if (!best || filled > best.filled || (filled === best.filled && score > best.score)) {
-        best = { filled, score, chosen: [...chosen] };
-      }
-      return;
+  // Maximum-weight bipartite assignment using a slot bitmask. The previous
+  // recursive search explored permutations of the whole squad and could become
+  // exponential once selection history loaded, freezing Run-in Lab before its
+  // dossiers rendered. There are only 11 slots, so at most 2^11 states.
+  let states = new Map([[0, { score: 0, chosen: Array(FORMATION_4231B_SELECTION_SLOTS.length).fill(null) }]]);
+  scoredPlayers.forEach((player) => {
+    const eligibleSlots = FORMATION_4231B_SELECTION_SLOTS
+      .map((slot, slotIndex) => slot.eligible.includes(String(player.mainPosition || player.position || '')) ? slotIndex : -1)
+      .filter((slotIndex) => slotIndex >= 0);
+    if (!eligibleSlots.length) return;
+    const next = new Map(states);
+    states.forEach((state, mask) => {
+      eligibleSlots.forEach((slotIndex) => {
+        const bit = 1 << slotIndex;
+        if (mask & bit) return;
+        const nextMask = mask | bit;
+        const score = state.score + player.selectionScore;
+        const existing = next.get(nextMask);
+        if (!existing || score > existing.score) {
+          const chosen = [...state.chosen];
+          chosen[slotIndex] = player;
+          next.set(nextMask, { score, chosen });
+        }
+      });
+    });
+    states = next;
+  });
+  const best = [...states.entries()].reduce((winner, [mask, state]) => {
+    const filled = mask.toString(2).replace(/0/g, '').length;
+    if (!winner || filled > winner.filled || (filled === winner.filled && state.score > winner.state.score)) {
+      return { filled, state };
     }
-    const { slotIndex, candidates } = slotOrder[depth];
-    for (const player of candidates) {
-      const id = String(player.sourcePlayerId);
-      if (used.has(id)) continue;
-      chosen[slotIndex] = player;
-      used.add(id);
-      search(depth + 1, used, score + player.selectionScore, filled + 1);
-      used.delete(id);
-      chosen[slotIndex] = null;
-    }
-    // Keep a fallback path so incomplete squads still render honestly.
-    search(depth + 1, used, score, filled);
-  };
-  search(0, new Set(), 0, 0);
-
-  const selected = best?.chosen || chosen;
+    return winner;
+  }, null);
+  const selected = best?.state.chosen || Array(FORMATION_4231B_SELECTION_SLOTS.length).fill(null);
   const selectedIds = new Set(selected.filter(Boolean).map((player) => String(player.sourcePlayerId)));
   return FORMATION_4231B_SELECTION_SLOTS.map((slot, slotIndex) => ({
     slot: slot.label,
