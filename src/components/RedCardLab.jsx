@@ -97,7 +97,12 @@ export default function RedCardLab({ onExportData }) {
         const side=row.side;
         if(m.competition!==row.match.competition) return;
         const gap=side==='h'?Number(m.homeXiRating)-Number(m.awayXiRating):Number(m.awayXiRating)-Number(m.homeXiRating);
-        if(Math.abs(gap-targetGap)>1 || stateAt(m,side,row.match.firstRedMinute,null)!==row.scoreState) return;
+        const firstRedSequence=(row.match.redCards||[])
+          .filter((card)=>Number(card.minute)===Number(row.match.firstRedMinute))
+          .map((card)=>Number(card.sequence))
+          .filter(Number.isFinite)
+          .sort((a,b)=>a-b)[0];
+        if(Math.abs(gap-targetGap)>1 || stateAt(m,side,row.match.firstRedMinute,firstRedSequence)!==row.scoreState) return;
         sample.push(outcomeFor(m,side));
       });
       return {fixtureId:row.match.fixtureId,result:row.result,controls:sample.length,
