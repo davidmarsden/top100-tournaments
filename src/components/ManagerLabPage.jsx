@@ -2220,7 +2220,7 @@ export default function ManagerLabPage() {
           </div>
           <div className="button-row">
             {!worldFormulaMatches.length && <button className="button secondary" type="button" onClick={loadWorldFormulaLab}>Load world evidence</button>}
-            {worldFormulaMatches.length > 0 && <button className="button secondary" type="button" onClick={downloadFormulaLabJson}>Download JSON results</button>}
+            {worldFormulaMatches.length > 0 && <button className="button secondary" type="button" onClick={downloadFormulaLabJson} disabled={!redCardExport} title={!redCardExport ? 'Waiting for Red Card Lab data…' : undefined}>{redCardExport ? 'Download JSON results' : 'Preparing JSON results…'}</button>}
           </div>
         </div>
         {worldFormulaStatus && <p className="status">{worldFormulaStatus}</p>}
