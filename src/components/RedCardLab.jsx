@@ -80,9 +80,14 @@ export default function RedCardLab({ onExportData }) {
       return { label, played: sample.length, wins: sample.filter((row) => row.result === 'W').length, draws: sample.filter((row) => row.result === 'D').length, losses: sample.filter((row) => row.result === 'L').length };
     });
     const reliable = contextual.filter((row) => row.match.scoreAtFirstRedReliable && row.match.firstRedMinute != null && row.match.dismissedXiGap != null);
-    const stateAt = (match, side, minute) => {
+    const stateAt = (match, side, minute, sequence) => {
       let h=0,a=0;
-      (match.goalEvents||[]).forEach((g)=>{ if(Number(g.minute)<Number(minute)){ if(g.side==='h')h++; if(g.side==='a')a++; }});
+      (match.goalEvents||[]).forEach((g)=>{
+        const goalMinute=Number(g.minute);
+        const beforeCutoff=goalMinute<Number(minute) ||
+          (goalMinute===Number(minute) && sequence!=null && Number(g.sequence)<Number(sequence));
+        if(beforeCutoff){ if(g.side==='h')h++; if(g.side==='a')a++; }
+      });
       const gf=side==='h'?h:a, ga=side==='h'?a:h;
       return gf>ga?'Leading':gf===ga?'Level':'Behind';
     };
@@ -92,7 +97,7 @@ export default function RedCardLab({ onExportData }) {
         const side=row.side;
         if(m.competition!==row.match.competition) return;
         const gap=side==='h'?Number(m.homeXiRating)-Number(m.awayXiRating):Number(m.awayXiRating)-Number(m.homeXiRating);
-        if(Math.abs(gap-targetGap)>1 || stateAt(m,side,row.match.firstRedMinute)!==row.scoreState) return;
+        if(Math.abs(gap-targetGap)>1 || stateAt(m,side,row.match.firstRedMinute,null)!==row.scoreState) return;
         sample.push(outcomeFor(m,side));
       });
       return {fixtureId:row.match.fixtureId,result:row.result,controls:sample.length,
