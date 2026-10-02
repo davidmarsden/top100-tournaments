@@ -15,7 +15,13 @@ function localDateTimeValue(value) {
   return local.toISOString().slice(0, 16);
 }
 
-export default function AdminPollBuilder({ onCreated, setMessage }) {
+function minimumDeadlineValue() {
+  const date = new Date(Date.now() + 60 * 1000);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 16);
+}
+
+export default function AdminPollBuilder({ onCreated, setMessage, refreshKey = 0 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [question, setQuestion] = useState('');
@@ -43,12 +49,13 @@ export default function AdminPollBuilder({ onCreated, setMessage }) {
       .in('status', ['draft', 'open'])
       .order('created_at', { ascending: false });
     if (error) return setMessage(error.message);
-    const rows = data || [];
+    const now = Date.now();
+    const rows = (data || []).filter((poll) => poll.status === 'draft' || !poll.closes_at || new Date(poll.closes_at).getTime() > now);
     setEditablePolls(rows);
     setDeadlinePollId((current) => current && rows.some((poll) => String(poll.id) === String(current)) ? current : (rows[0] ? String(rows[0].id) : ''));
   }
 
-  useEffect(() => { loadEditablePolls(); }, []);
+  useEffect(() => { loadEditablePolls(); }, [refreshKey]);
 
   useEffect(() => {
     const poll = editablePolls.find((item) => String(item.id) === String(deadlinePollId));
@@ -77,11 +84,13 @@ export default function AdminPollBuilder({ onCreated, setMessage }) {
   async function updateDeadline(event) {
     event.preventDefault();
     if (!deadlinePollId || !deadlineValue) return setMessage('Choose a poll and closing date.');
+    const replacementDeadline = new Date(deadlineValue);
+    if (replacementDeadline.getTime() <= Date.now()) return setMessage('Poll closing date must be in the future.');
     setSavingDeadline(true);
     setMessage('Updating poll closing date…');
     const { error } = await supabase.rpc('update_voting_event_deadline', {
       target_event_id: Number(deadlinePollId),
-      new_closes_at: new Date(deadlineValue).toISOString(),
+      new_closes_at: replacementDeadline.toISOString(),
     });
     setSavingDeadline(false);
     if (error) return setMessage(error.message);
@@ -94,12 +103,12 @@ export default function AdminPollBuilder({ onCreated, setMessage }) {
     <section className="card">
       <p className="eyebrow">Administrator</p>
       <h2>Edit poll closing date</h2>
-      <p className="muted">Change the deadline for a draft or open Community Poll. This does not recreate the poll, resnapshot the electorate or alter existing ballots.</p>
+      <p className="muted">Change the deadline for a draft or still-open Community Poll. Once a voting deadline has passed, it cannot be reopened by moving the deadline.</p>
       {editablePolls.length ? <form onSubmit={updateDeadline}>
         <label>Poll<select value={deadlinePollId} onChange={(event) => setDeadlinePollId(event.target.value)}>{editablePolls.map((poll) => <option key={poll.id} value={poll.id}>{poll.title} — {poll.status}</option>)}</select></label>
-        <label>Voting closes<input type="datetime-local" value={deadlineValue} onChange={(event) => setDeadlineValue(event.target.value)} required /></label>
+        <label>Voting closes<input type="datetime-local" min={minimumDeadlineValue()} value={deadlineValue} onChange={(event) => setDeadlineValue(event.target.value)} required /></label>
         <button type="submit" disabled={savingDeadline}>{savingDeadline ? 'Saving…' : 'Update closing date'}</button>
-      </form> : <p className="muted">There are no draft or open Community Polls to edit.</p>}
+      </form> : <p className="muted">There are no draft or open Community Polls with an editable deadline.</p>}
     </section>
 
     <section className="card">
