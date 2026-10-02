@@ -14,6 +14,7 @@ declare
 begin
   if not public.is_admin() then raise exception 'Administrator access required'; end if;
   if new_closes_at is null then raise exception 'Poll closing date cannot be blank'; end if;
+  if new_closes_at <= now() then raise exception 'Poll closing date must be in the future'; end if;
 
   select closes_at, status into v_old_closes_at, v_status
   from public.voting_events
@@ -22,6 +23,9 @@ begin
 
   if not found then raise exception 'Voting event not found'; end if;
   if v_status not in ('draft', 'open') then raise exception 'Only draft or open polls can have their closing date changed'; end if;
+  if v_status = 'open' and v_old_closes_at is not null and v_old_closes_at <= now() then
+    raise exception 'Voting has already closed; its deadline cannot be extended';
+  end if;
 
   update public.voting_events
   set closes_at = new_closes_at,
