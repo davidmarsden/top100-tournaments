@@ -1,0 +1,1 @@
+20261002_audited_voting_deadline_edits.sql must be applied before using the new Community Poll deadline editor. The UI calls update_voting_event_deadline and will surface the Supabase RPC error if the migration is not yet deployed.
