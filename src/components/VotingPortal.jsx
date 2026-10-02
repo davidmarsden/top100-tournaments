@@ -63,6 +63,11 @@ export default function VotingPortal() {
     return map;
   }, [options]);
 
+  const pollEditorRefreshKey = useMemo(() => events
+    .filter((event) => event.event_type === 'poll')
+    .map((event) => `${event.id}:${event.status}:${event.closes_at || ''}`)
+    .join('|'), [events]);
+
   function signInAtManagerPortal() {
     const nonce = crypto.randomUUID();
     sessionStorage.setItem('top100-voting-handoff-nonce', nonce);
@@ -95,9 +100,7 @@ export default function VotingPortal() {
     const ownBallotQuery = managerAccount
       ? supabase.from('voting_ballots').select('*').in('event_id', eventIds).eq('manager_id', managerAccount.manager_id)
       : Promise.resolve({ data: [], error: null });
-
     const finalResultQuery = supabase.from('voting_event_results').select('*').in('event_id', eventIds);
-
     const [questionResult, ballotResult, finalResultResult] = await Promise.all([
       supabase.from('voting_questions').select('*').in('event_id', eventIds).order('sort_order').order('id'),
       ownBallotQuery,
@@ -106,15 +109,12 @@ export default function VotingPortal() {
     if (questionResult.error) { setMessage(questionResult.error.message); setLoading(false); return; }
     const questionRows = questionResult.data || [];
     setQuestions(questionRows);
-
     const finalMap = {};
     (finalResultResult.error ? [] : (finalResultResult.data || [])).forEach((row) => { finalMap[row.event_id] = row; });
     setFinalResults(finalMap);
-
     const questionIds = questionRows.map((row) => row.id);
     const ballotRows = ballotResult.error ? [] : (ballotResult.data || []);
     setBallots(ballotRows);
-
     const [optionResult, responseResult] = await Promise.all([
       questionIds.length ? supabase.from('voting_options').select('*').in('question_id', questionIds).order('sort_order').order('id') : Promise.resolve({ data: [], error: null }),
       ballotRows.length ? supabase.from('voting_responses').select('*').in('ballot_id', ballotRows.map((row) => row.id)) : Promise.resolve({ data: [], error: null }),
@@ -125,7 +125,6 @@ export default function VotingPortal() {
     const existing = {};
     responseRows.forEach((row) => { existing[row.question_id] = row.option_id; });
     setAnswers(existing);
-
     if (managerAccount) setMessage('Voting account verified.');
     else if (adminAccess) setMessage('Administrator access verified.');
     else setMessage('Your sign-in is valid, but you do not have an active manager account.');
@@ -135,9 +134,7 @@ export default function VotingPortal() {
   async function submitBallot(eventId) {
     if (!account) return setMessage('An active manager account is required to vote.');
     const eventQuestions = questionsByEvent.get(eventId) || [];
-    const payload = eventQuestions
-      .filter((question) => answers[question.id])
-      .map((question) => ({ question_id: question.id, option_id: Number(answers[question.id]) }));
+    const payload = eventQuestions.filter((question) => answers[question.id]).map((question) => ({ question_id: question.id, option_id: Number(answers[question.id]) }));
     setMessage('Saving your ballot…');
     const { error } = await supabase.rpc('submit_voting_ballot', { target_event_id: eventId, answers: payload });
     if (error) return setMessage(error.message);
@@ -187,34 +184,20 @@ export default function VotingPortal() {
     setResults((current) => ({ ...current, [eventId]: data || [] }));
   }
 
-  function startEdit(vote) {
-    setEditingEventId(vote.id);
-    setEditTitle(vote.title || '');
-    setEditDescription(vote.description || '');
-  }
-
+  function startEdit(vote) { setEditingEventId(vote.id); setEditTitle(vote.title || ''); setEditDescription(vote.description || ''); }
   async function saveEdit(vote) {
     const title = editTitle.trim();
     if (!title) return setMessage('Poll title cannot be blank.');
-    const { error } = await supabase.rpc('update_voting_event_text', {
-      target_event_id: vote.id,
-      new_title: title,
-      new_description: editDescription.trim(),
-    });
+    const { error } = await supabase.rpc('update_voting_event_text', { target_event_id: vote.id, new_title: title, new_description: editDescription.trim() });
     if (error) return setMessage(error.message);
-    setEditingEventId(null);
-    setMessage('Poll text updated.');
-    await loadVoting();
+    setEditingEventId(null); setMessage('Poll text updated.'); await loadVoting();
   }
-
   async function logout() { await supabase.auth.signOut(); setMessage('Signed out.'); }
 
   if (!hasSupabaseConfig || !supabase) return <main className="manager-portal-shell"><section className="warning-card"><strong>Voting unavailable.</strong><span>Supabase is not connected.</span></section></main>;
-
   if (!session) return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100</p><h1>Manager Voting</h1><p>Voting uses your Top 100 Manager Portal account. There is no separate voting sign-in.</p></section><section className="card manager-login-card"><h2>Sign in with your Top 100 account</h2><p className="muted">We’ll take you to Manager Portal to sign in or claim your account, then bring you back here to vote.</p><button type="button" onClick={signInAtManagerPortal}>Continue to Manager Portal</button>{message && <p className="status">{message}</p>}</section></main>;
 
   const canRenderEvents = Boolean(account || isAdmin);
-
   return <main className="manager-portal-shell">
     <section className="manager-portal-hero"><div><p className="eyebrow">Top 100</p><h1>Manager Voting</h1><p>{account ? `Signed in as ${account.managers?.display_name || account.managers?.name || 'manager'}.` : `Signed in as ${session.user.email}.`}</p></div><button type="button" className="secondary" onClick={logout}>Sign out</button></section>
     {message && <p className="status">{message}</p>}
@@ -238,14 +221,7 @@ export default function VotingPortal() {
       const canRelease = isAdmin && vote.results_visibility === 'manual_release' && !vote.results_released_at && Boolean(finalResult) && (vote.status === 'closed' || deadlinePassed);
       return <section className={`card voting-card voting-card--${vote.status}`} key={vote.id}>
         <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : governanceLabel(vote.governance_kind)} · {vote.status}</p>
-        {editingEventId === vote.id ? <div className="voting-card__edit">
-          <label>Poll title<input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
-          <label>Description <span className="muted">— blank lines become separate paragraphs</span><textarea rows={8} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label>
-          <div className="button-row"><button type="button" onClick={() => saveEdit(vote)}>Save changes</button><button type="button" className="secondary" onClick={() => setEditingEventId(null)}>Cancel</button></div>
-        </div> : <>
-          <h2>{vote.title}</h2>
-          {vote.description && <div className="voting-card__proposal">{vote.description.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
-        </>}
+        {editingEventId === vote.id ? <div className="voting-card__edit"><label>Poll title<input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label><label>Description <span className="muted">— blank lines become separate paragraphs</span><textarea rows={8} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label><div className="button-row"><button type="button" onClick={() => saveEdit(vote)}>Save changes</button><button type="button" className="secondary" onClick={() => setEditingEventId(null)}>Cancel</button></div></div> : <><h2>{vote.title}</h2>{vote.description && <div className="voting-card__proposal">{vote.description.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}</>}
         <div className="voting-card__meta"><span><strong>Opens</strong> {formatDate(vote.opens_at)}</span><span><strong>Closes</strong> {formatDate(vote.closes_at)}</span></div>
         {vote.event_type === 'poll' && <p className="voting-card__rules"><strong>Voting rules:</strong> quorum {vote.quorum_percent || 0}% · {vote.decision_rule}{vote.decision_rule !== 'plurality' ? ` at ${vote.threshold_percent}%` : ''} · tie: {(vote.tie_policy || 'no_change').replaceAll('_', ' ')}</p>}
         {isAdmin && editingEventId !== vote.id && <button type="button" className="secondary voting-card__edit-button" onClick={() => startEdit(vote)}>Edit poll text</button>}
@@ -263,6 +239,6 @@ export default function VotingPortal() {
         {resultRows.length > 0 && <div style={{ marginTop: '1rem' }}>{resultRows.map((row) => <div key={`${row.question_id}-${row.option_id}`}>{row.question_title}: {row.option_label} — <strong>{row.votes}</strong></div>)}</div>}
       </section>;
     })}
-    {!loading && isAdmin && <AdminPollBuilder onCreated={loadVoting} setMessage={setMessage} />}
+    {!loading && isAdmin && <AdminPollBuilder onCreated={loadVoting} setMessage={setMessage} refreshKey={pollEditorRefreshKey} />}
   </main>;
 }

@@ -1,0 +1,7 @@
+Verification command:
+node scripts/check-poll-deadline-editor.mjs
+
+Expected output:
+Poll deadline editor regression check passed.
+
+Build verification should also run the existing npm run build command in CI/deploy preview.
