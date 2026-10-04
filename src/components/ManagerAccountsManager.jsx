@@ -2,335 +2,64 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import './ManagerAccountsManager.css';
 
-const normalise = (value) => String(value || '')
-  .toLowerCase()
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .replace(/[^a-z0-9]+/g, ' ')
-  .trim();
-
-function confidenceTone(confidence) {
-  if (confidence === 'Very strong') return 'strong';
-  if (confidence === 'Likely') return 'likely';
-  return 'possible';
-}
-
-function formatReviewedAt(value) {
-  if (!value) return '';
-  return new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
-
+const normalise = (value) => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const formatReviewedAt = (value) => value ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '';
+function confidenceTone(confidence) { return confidence === 'Very strong' ? 'strong' : confidence === 'Likely' ? 'likely' : 'possible'; }
 function NameComparison({ claimed, canonical }) {
-  const claimedWords = normalise(claimed).split(' ').filter(Boolean);
-  const canonicalWords = new Set(normalise(canonical).split(' ').filter(Boolean));
-  const differentWords = claimedWords.filter((word) => !canonicalWords.has(word));
-
-  if (!differentWords.length || normalise(claimed) === normalise(canonical)) {
-    return <span className="claim-name-comparison exact">Same club name after normalisation</span>;
-  }
-
-  return <span className="claim-name-comparison">
-    Submitted: {claimedWords.map((word, index) => <span
-      className={canonicalWords.has(word) ? '' : 'claim-name-difference'}
-      key={`${word}-${index}`}
-    >{index ? ' ' : ''}{word}</span>)} → Canonical: <strong>{canonical}</strong>
-  </span>;
+  const claimedWords = normalise(claimed).split(' ').filter(Boolean); const canonicalWords = new Set(normalise(canonical).split(' ').filter(Boolean));
+  if (!claimedWords.filter((word) => !canonicalWords.has(word)).length || normalise(claimed) === normalise(canonical)) return <span className="claim-name-comparison exact">Same club name after normalisation</span>;
+  return <span className="claim-name-comparison">Submitted: {claimedWords.map((word,index)=><span className={canonicalWords.has(word)?'':'claim-name-difference'} key={`${word}-${index}`}>{index?' ':''}{word}</span>)} → Canonical: <strong>{canonical}</strong></span>;
 }
 
 export default function ManagerAccountsManager() {
-  const [claims, setClaims] = useState([]);
-  const [accounts, setAccounts] = useState([]);
-  const [status, setStatus] = useState('Loading manager claims...');
-  const [loading, setLoading] = useState(false);
-  const [managerOverrides, setManagerOverrides] = useState({});
-  const [selectedTeams, setSelectedTeams] = useState({});
-  const [rememberAliases, setRememberAliases] = useState({});
-  const [suggestions, setSuggestions] = useState({});
-  const [suggestionErrors, setSuggestionErrors] = useState({});
-  const [managerDirectory, setManagerDirectory] = useState([]);
-  const [managerSearches, setManagerSearches] = useState({});
-  const [search, setSearch] = useState('');
+  const [claims,setClaims]=useState([]), [accounts,setAccounts]=useState([]), [identities,setIdentities]=useState([]), [managerDirectory,setManagerDirectory]=useState([]);
+  const [status,setStatus]=useState('Loading manager claims...'), [loading,setLoading]=useState(false), [search,setSearch]=useState('');
+  const [managerOverrides,setManagerOverrides]=useState({}), [selectedTeams,setSelectedTeams]=useState({}), [rememberAliases,setRememberAliases]=useState({}), [suggestions,setSuggestions]=useState({}), [suggestionErrors,setSuggestionErrors]=useState({}), [managerSearches,setManagerSearches]=useState({});
+  useEffect(()=>{ loadClaims(); },[]);
 
-  useEffect(() => { loadClaims(); }, []);
-
-  async function loadClaims() {
+  async function loadClaims(){
     setLoading(true);
-    const [claimsResult, accountsResult, managersResult] = await Promise.all([
-      supabase.from('manager_portal_claims')
-      .select('id, email, game_world_id, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, reviewed_at, reviewed_by_label, created_at, managers:suggested_manager_id(id, name, display_name)')
-      .order('created_at', { ascending: false }),
-      supabase.from('manager_portal_accounts')
-        .select('id, auth_user_id, manager_id, email, active, created_at, updated_at, managers(id, name, display_name), game_worlds(id, name, slug)')
-        .order('created_at', { ascending: false }),
-      supabase.from('manager_game_world_memberships')
-        .select('manager_id, game_world_id, managers(id, name, display_name)')
-        .eq('active', true),
+    const [claimsResult,accountsResult,managersResult,identitiesResult]=await Promise.all([
+      supabase.from('manager_portal_claims').select('id, email, game_world_id, claimed_manager_name, claimed_club_name, suggested_manager_id, status, review_notes, reviewed_at, reviewed_by_label, created_at, managers:suggested_manager_id(id, name, display_name)').order('created_at',{ascending:false}),
+      supabase.from('manager_portal_accounts').select('id, auth_user_id, manager_id, email, active, created_at, updated_at, managers(id, name, display_name), game_worlds(id, name, slug)').order('created_at',{ascending:false}),
+      supabase.from('manager_game_world_memberships').select('manager_id, game_world_id, managers(id, name, display_name)').eq('active',true),
+      supabase.from('manager_soccer_manager_identities').select('manager_id, manager_name, game_world_id, game_world_name, game_world_slug, team_id, team_name, sm_manager_key, sm_manager_id, sm_club_key, sm_club_id, sm_manager_name, membership_active, assignment_updated_at').eq('membership_active',true).order('manager_name').order('game_world_name'),
     ]);
-    if (!managersResult.error) setManagerDirectory((managersResult.data || []).map((row) => ({
-      id: row.manager_id,
-      game_world_id: row.game_world_id,
-      name: row.managers?.name,
-      display_name: row.managers?.display_name,
-    })));
-    const nextAccounts = accountsResult.error ? null : (accountsResult.data || []);
-    if (nextAccounts) setAccounts(nextAccounts);
-
-    if (claimsResult.error) {
-      setStatus(accountsResult.error
-        ? `Could not load manager claims: ${claimsResult.error.message}; account register also failed: ${accountsResult.error.message}`
-        : `${nextAccounts.length} linked manager accounts loaded; claims failed: ${claimsResult.error.message}`);
-      setLoading(false);
-      return;
-    }
-
-    const nextClaims = claimsResult.data || [];
-    setClaims(nextClaims);
-    setStatus(accountsResult.error
-      ? `${nextClaims.length} manager claims loaded; account register failed: ${accountsResult.error.message}`
-      : `${nextAccounts.length} linked manager accounts · ${nextClaims.length} claims.`);
-    await loadSuggestions(nextClaims.filter((claim) => claim.status === 'pending'));
-    setLoading(false);
+    if(!managersResult.error)setManagerDirectory((managersResult.data||[]).map(row=>({id:row.manager_id,game_world_id:row.game_world_id,name:row.managers?.name,display_name:row.managers?.display_name})));
+    const nextAccounts=accountsResult.error?[]:(accountsResult.data||[]); setAccounts(nextAccounts);
+    if(!identitiesResult.error)setIdentities(identitiesResult.data||[]);
+    if(claimsResult.error){setStatus(`Could not load manager claims: ${claimsResult.error.message}`);setLoading(false);return;}
+    const nextClaims=claimsResult.data||[]; setClaims(nextClaims);
+    const warnings=[accountsResult.error&&`accounts: ${accountsResult.error.message}`,identitiesResult.error&&`SM identities: ${identitiesResult.error.message}`].filter(Boolean);
+    setStatus(`${nextAccounts.length} linked manager accounts · ${nextClaims.length} claims.${warnings.length?` Some data failed to load (${warnings.join('; ')}).`:''}`);
+    await loadSuggestions(nextClaims.filter(c=>c.status==='pending')); setLoading(false);
   }
-
-  async function loadSuggestions(pendingClaims) {
-    const results = await Promise.all(pendingClaims.map(async (claim) => {
-      const { data, error } = await supabase.rpc('manager_portal_claim_suggestions', {
-        target_claim_id: claim.id,
-      });
-      return { claimId: claim.id, rows: data || [], error };
-    }));
-
-    setSuggestions(Object.fromEntries(results.map(({ claimId, rows, error }) => [claimId, error ? [] : rows])));
-    setSuggestionErrors(Object.fromEntries(results.filter(({ error }) => error).map(({ claimId, error }) => [claimId, error.message])));
-
-    setManagerOverrides((current) => {
-      const next = { ...current };
-      results.forEach(({ claimId, rows, error }) => {
-        if (!error && rows[0] && !next[claimId]) next[claimId] = String(rows[0].manager_id);
-      });
-      return next;
-    });
-
-    setSelectedTeams((current) => {
-      const next = { ...current };
-      results.forEach(({ claimId, rows, error }) => {
-        if (!error && rows[0] && !next[claimId]) next[claimId] = String(rows[0].team_id);
-      });
-      return next;
-    });
+  async function loadSuggestions(pendingClaims){
+    const results=await Promise.all(pendingClaims.map(async claim=>{const {data,error}=await supabase.rpc('manager_portal_claim_suggestions',{target_claim_id:claim.id});return{claimId:claim.id,rows:data||[],error};}));
+    setSuggestions(Object.fromEntries(results.map(({claimId,rows,error})=>[claimId,error?[]:rows]))); setSuggestionErrors(Object.fromEntries(results.filter(r=>r.error).map(({claimId,error})=>[claimId,error.message])));
+    setManagerOverrides(current=>{const next={...current};results.forEach(({claimId,rows,error})=>{if(!error&&rows[0]&&!next[claimId])next[claimId]=String(rows[0].manager_id);});return next;});
+    setSelectedTeams(current=>{const next={...current};results.forEach(({claimId,rows,error})=>{if(!error&&rows[0]&&!next[claimId])next[claimId]=String(rows[0].team_id);});return next;});
   }
-
-  function chooseManager(claimId, manager) {
-    setManagerOverrides((current) => ({ ...current, [claimId]: String(manager.id) }));
-    setSelectedTeams((current) => ({ ...current, [claimId]: '' }));
-    setManagerSearches((current) => ({ ...current, [claimId]: manager.display_name || manager.name || `Manager #${manager.id}` }));
-  }
-
-  function chooseSuggestion(claimId, suggestion) {
-    setManagerOverrides((current) => ({ ...current, [claimId]: String(suggestion.manager_id) }));
-    setSelectedTeams((current) => ({ ...current, [claimId]: String(suggestion.team_id) }));
-    setRememberAliases((current) => ({ ...current, [claimId]: current[claimId] ?? true }));
-  }
-
-  async function approve(claim) {
-    const hasOverride = Object.prototype.hasOwnProperty.call(managerOverrides, claim.id);
-    const managerId = Number(hasOverride ? managerOverrides[claim.id] : claim.suggested_manager_id);
-    const teamId = selectedTeams[claim.id] ? Number(selectedTeams[claim.id]) : null;
-    if (!managerId) return setStatus('Choose a suggested match or select a manager from the directory.');
-
-    const chosen = (suggestions[claim.id] || []).find((row) => Number(row.manager_id) === managerId && (!teamId || Number(row.team_id) === teamId));
-    const canonicalLabel = chosen ? `${chosen.manager_name} · ${chosen.team_name}` : `manager #${managerId}`;
-    if (!window.confirm(`Link ${claim.claimed_manager_name} · ${claim.claimed_club_name} to ${canonicalLabel}?`)) return;
-
-    setLoading(true);
-    const { error } = await supabase.rpc('approve_manager_portal_claim_with_alias', {
-      target_claim_id: claim.id,
-      target_manager_id: managerId,
-      target_team_id: teamId,
-      remember_team_alias: rememberAliases[claim.id] !== false,
-    });
-
-    if (error) setStatus('Approval failed: ' + error.message);
-    else {
-      setStatus(`Manager account linked successfully${teamId && rememberAliases[claim.id] !== false ? '; club spelling remembered.' : '.'}`);
-      await loadClaims();
-    }
-    setLoading(false);
-  }
-
-  async function reject(claim) {
-    const notes = window.prompt('Reason for rejection or correction needed:', claim.review_notes || 'Please check your manager name and current club.');
-    if (notes === null) return;
-    setLoading(true);
-    const { error } = await supabase.rpc('reject_manager_portal_claim', { target_claim_id: claim.id, notes });
-    if (error) setStatus('Rejection failed: ' + error.message);
-    else { setStatus('Claim rejected. The manager can correct and resubmit it.'); await loadClaims(); }
-    setLoading(false);
-  }
-
-  const matchesSearch = (claim) => {
-    const query = normalise(search);
-    if (!query) return true;
-    const suggestionText = (suggestions[claim.id] || [])
-      .map((row) => `${row.manager_name} ${row.team_name}`)
-      .join(' ');
-    return normalise(`${claim.claimed_manager_name} ${claim.claimed_club_name} ${claim.email} ${suggestionText}`).includes(query);
-  };
-
-  const pending = useMemo(() => claims.filter((claim) => claim.status === 'pending' && matchesSearch(claim)), [claims, search, suggestions]);
-  const reviewed = useMemo(() => claims.filter((claim) => claim.status !== 'pending' && matchesSearch(claim)), [claims, search, suggestions]);
-
-  const matchingAccounts = useMemo(() => {
-    const query = normalise(search);
-    if (!query) return accounts;
-    return accounts.filter((row) => normalise(`${row.managers?.display_name || row.managers?.name || ''} ${row.email} ${row.game_worlds?.name || ''}`).includes(query));
-  }, [accounts, search]);
+  function chooseManager(claimId,manager){setManagerOverrides(c=>({...c,[claimId]:String(manager.id)}));setSelectedTeams(c=>({...c,[claimId]:''}));setManagerSearches(c=>({...c,[claimId]:manager.display_name||manager.name||`Manager #${manager.id}`}));}
+  function chooseSuggestion(claimId,suggestion){setManagerOverrides(c=>({...c,[claimId]:String(suggestion.manager_id)}));setSelectedTeams(c=>({...c,[claimId]:String(suggestion.team_id)}));setRememberAliases(c=>({...c,[claimId]:c[claimId]??true}));}
+  async function approve(claim){const has=Object.prototype.hasOwnProperty.call(managerOverrides,claim.id),managerId=Number(has?managerOverrides[claim.id]:claim.suggested_manager_id),teamId=selectedTeams[claim.id]?Number(selectedTeams[claim.id]):null;if(!managerId)return setStatus('Choose a suggested match or select a manager from the directory.');const chosen=(suggestions[claim.id]||[]).find(r=>Number(r.manager_id)===managerId&&(!teamId||Number(r.team_id)===teamId));if(!window.confirm(`Link ${claim.claimed_manager_name} · ${claim.claimed_club_name} to ${chosen?`${chosen.manager_name} · ${chosen.team_name}`:`manager #${managerId}`}?`))return;setLoading(true);const{error}=await supabase.rpc('approve_manager_portal_claim_with_alias',{target_claim_id:claim.id,target_manager_id:managerId,target_team_id:teamId,remember_team_alias:rememberAliases[claim.id]!==false});if(error)setStatus('Approval failed: '+error.message);else{setStatus('Manager account linked successfully.');await loadClaims();}setLoading(false);}
+  async function reject(claim){const notes=window.prompt('Reason for rejection or correction needed:',claim.review_notes||'Please check your manager name and current club.');if(notes===null)return;setLoading(true);const{error}=await supabase.rpc('reject_manager_portal_claim',{target_claim_id:claim.id,notes});if(error)setStatus('Rejection failed: '+error.message);else{setStatus('Claim rejected.');await loadClaims();}setLoading(false);}
+  const identitiesByManager=useMemo(()=>identities.reduce((map,row)=>{(map[row.manager_id]??=[]).push(row);return map;},{}),[identities]);
+  const matchesSearch=claim=>{const q=normalise(search);const claimIdentities=identitiesByManager[claim.suggested_manager_id]||[];const identityText=claimIdentities.map(i=>`${i.game_world_name} ${i.team_name} ${i.sm_manager_key} ${i.sm_manager_id} ${i.sm_club_key} ${i.sm_club_id} ${i.sm_manager_name}`).join(' ');return !q||normalise(`${claim.claimed_manager_name} ${claim.claimed_club_name} ${claim.email} ${identityText} ${(suggestions[claim.id]||[]).map(r=>{const suggestionIdentities=identitiesByManager[r.manager_id]||[];return `${r.manager_name} ${r.team_name} ${suggestionIdentities.map(i=>`${i.game_world_name} ${i.team_name} ${i.sm_manager_key} ${i.sm_manager_id} ${i.sm_club_key} ${i.sm_club_id} ${i.sm_manager_name}`).join(' ')}`;}).join(' ')}`).includes(q);};
+  const pending=useMemo(()=>claims.filter(c=>c.status==='pending'&&matchesSearch(c)),[claims,search,suggestions,identitiesByManager]), reviewed=useMemo(()=>claims.filter(c=>c.status!=='pending'&&matchesSearch(c)),[claims,search,suggestions,identitiesByManager]);
+  const matchingAccounts=useMemo(()=>{const q=normalise(search);return !q?accounts:accounts.filter(row=>{const identityText=(identitiesByManager[row.manager_id]||[]).map(i=>`${i.game_world_name} ${i.team_name} ${i.sm_manager_key} ${i.sm_manager_id} ${i.sm_club_key} ${i.sm_club_id} ${i.sm_manager_name}`).join(' ');return normalise(`${row.managers?.display_name||row.managers?.name||''} ${row.email} ${row.game_worlds?.name||''} ${identityText}`).includes(q);});},[accounts,search,identitiesByManager]);
 
   return <div className="registration-manager">
-    <section className="entrant-panel">
-      <div className="card-header row">
-        <div>
-          <p className="eyebrow">Account register</p>
-          <h3>Linked Manager Portal accounts</h3>
-          <p className="muted">These are the managers who have completed the account process and are linked to a canonical Top 100 manager record.</p>
-        </div>
-        <strong>{accounts.filter((row) => row.active).length} active</strong>
-      </div>
-      {!matchingAccounts.length ? <p className="muted">{search ? 'No linked accounts match this search.' : 'No linked manager accounts yet.'}</p> : <div className="entrant-list">
-        {matchingAccounts.map((row) => <article className="entrant-row" key={row.id}>
-          <div>
-            <strong>{row.managers?.display_name || row.managers?.name || `Manager #${row.manager_id}`}</strong>
-            <span>{row.email} · {row.game_worlds?.name || 'Game world not recorded'}</span>
-            <span className="claim-audit">{row.active ? 'Active account' : 'Inactive account'} · linked {formatReviewedAt(row.created_at)}{row.updated_at && row.updated_at !== row.created_at ? ` · updated ${formatReviewedAt(row.updated_at)}` : ''}</span>
-          </div>
-        </article>)}
-      </div>}
+    <section className="entrant-panel"><div className="card-header row"><div><p className="eyebrow">Account register</p><h3>Linked Manager Portal accounts</h3><p className="muted">One canonical person, with their world-specific Soccer Manager assignments shown underneath.</p></div><strong>{accounts.filter(r=>r.active).length} active</strong></div>
+      {!matchingAccounts.length?<p className="muted">{search?'No linked accounts match this search.':'No linked manager accounts yet.'}</p>:<div className="entrant-list">{matchingAccounts.map(row=><article className="entrant-row" key={row.id}><div><strong>{row.managers?.display_name||row.managers?.name||`Manager #${row.manager_id}`}</strong><span>{row.email} · {row.game_worlds?.name||'Game world not recorded'}</span><span className="claim-audit">{row.active?'Active account':'Inactive account'} · linked {formatReviewedAt(row.created_at)}</span>{(identitiesByManager[row.manager_id]||[]).map(identity=><div className="manager-sm-identity" key={`${identity.manager_id}-${identity.game_world_id}`}><strong>{identity.game_world_name}</strong><span>{identity.team_name||'No synced club assignment'}</span><small>SM manager {identity.sm_manager_id||'not captured'} · SM club {identity.sm_club_id||'not captured'}{identity.sm_manager_name&&identity.sm_manager_name!==row.managers?.display_name?` · SM name: ${identity.sm_manager_name}`:''}</small></div>)}</div></article>)}</div>}
     </section>
 
-    <section className="entrant-panel">
-      <div className="card-header row">
-        <div>
-          <p className="eyebrow">Manager Portal</p>
-          <h3>Pending account claims</h3>
-          <p className="muted">Choose a ranked match, approve it in one click, and optionally remember unusual club spellings for future claims.</p>
-        </div>
-        <button type="button" className="secondary" onClick={loadClaims} disabled={loading}>Refresh claims</button>
-      </div>
-
-      <label className="manager-claim-search">Search manager, club or email
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Try Jibriil, Wolfsburg or an email address…"
-        />
-      </label>
-      <p className="status">{status}{search ? ` Showing ${pending.length + reviewed.length} matching claims.` : ''}</p>
-
-      {!pending.length ? <p className="muted">{search ? 'No pending claims match this search.' : 'No manager claims are waiting for approval.'}</p> : <div className="entrant-list">
-        {pending.map((claim) => {
-          const claimSuggestions = suggestions[claim.id] || [];
-          const suggestionError = suggestionErrors[claim.id];
-          const hasManagerOverride = Object.prototype.hasOwnProperty.call(managerOverrides, claim.id);
-          const selectedManagerId = Number(hasManagerOverride ? managerOverrides[claim.id] : claim.suggested_manager_id);
-          const selectedTeamId = Number(selectedTeams[claim.id] || 0);
-          return <article className="entrant-row registration-row" key={claim.id}>
-            <div className="registration-details">
-              <strong>{claim.claimed_manager_name} · {claim.claimed_club_name}</strong>
-              <span>{claim.email}</span>
-
-              {suggestionError ? <span className="error-text">Could not load likely matches: {suggestionError}</span> : claimSuggestions.length ? <div className="claim-suggestion-list">
-                <span className="muted">Possible matches</span>
-                {claimSuggestions.map((suggestion) => {
-                  const selected = selectedManagerId === Number(suggestion.manager_id) && selectedTeamId === Number(suggestion.team_id);
-                  const tone = confidenceTone(suggestion.confidence);
-                  return <button
-                    type="button"
-                    className={selected ? 'claim-suggestion selected' : 'claim-suggestion'}
-                    key={`${suggestion.manager_id}-${suggestion.team_id}`}
-                    onClick={() => chooseSuggestion(claim.id, suggestion)}
-                  >
-                    <div className="claim-suggestion-heading">
-                      <strong>{suggestion.team_name}</strong>
-                      <span className={`claim-confidence ${tone}`}>{tone === 'strong' ? '●' : tone === 'likely' ? '◆' : '○'} {suggestion.confidence}</span>
-                    </div>
-                    <span>{suggestion.manager_name} · S{suggestion.latest_season || '—'}{suggestion.seed ? ` · seed ${suggestion.seed}` : ''}{suggestion.group_code ? ` · group ${suggestion.group_code}` : ''}</span>
-                    <NameComparison claimed={claim.claimed_club_name} canonical={suggestion.team_name} />
-                    <small>{suggestion.score}% match · {(suggestion.reasons || []).join(' · ')}</small>
-                  </button>;
-                })}
-              </div> : <span>No tournament-history match found. Search the manager directory below.</span>}
-
-              <label>Find canonical manager
-                <input
-                  type="search"
-                  value={managerSearches[claim.id] ?? ''}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setManagerSearches((current) => ({ ...current, [claim.id]: value }));
-                    setManagerOverrides((current) => ({ ...current, [claim.id]: '' }));
-                    setSelectedTeams((current) => ({ ...current, [claim.id]: '' }));
-                  }}
-                  placeholder={claim.claimed_manager_name || 'Search manager name…'}
-                />
-              </label>
-              {(() => {
-                const query = normalise(managerSearches[claim.id] || claim.claimed_manager_name);
-                const matches = managerDirectory
-                  .filter((manager) => Number(manager.game_world_id) === Number(claim.game_world_id))
-                  .filter((manager) => normalise(manager.display_name || manager.name).includes(query))
-                  .slice(0, 8);
-                return query && matches.length ? <div className="claim-suggestion-list manager-directory-results">
-                  <span className="muted">Manager directory</span>
-                  {matches.map((manager) => {
-                    const selected = selectedManagerId === Number(manager.id) && !selectedTeamId;
-                    return <button
-                      type="button"
-                      className={selected ? 'claim-suggestion selected' : 'claim-suggestion'}
-                      key={manager.id}
-                      onClick={() => chooseManager(claim.id, manager)}
-                    >
-                      <strong>{manager.display_name || manager.name}</strong>
-                      <small>Canonical manager ID {manager.id}</small>
-                    </button>;
-                  })}
-                </div> : query ? <span className="muted">No manager directory matches.</span> : null;
-              })()}
-
-              {selectedTeamId > 0 && <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={rememberAliases[claim.id] !== false}
-                  onChange={(event) => setRememberAliases((current) => ({ ...current, [claim.id]: event.target.checked }))}
-                />
-                Remember “{claim.claimed_club_name}” as an alias for the selected club
-              </label>}
-            </div>
-            <div className="button-row">
-              <button type="button" onClick={() => approve(claim)} disabled={loading || !selectedManagerId}>Approve and link</button>
-              <button type="button" className="danger" onClick={() => reject(claim)} disabled={loading}>Reject</button>
-            </div>
-          </article>;
-        })}
-      </div>}
+    <section className="entrant-panel"><div className="card-header row"><div><p className="eyebrow">Manager Portal</p><h3>Pending account claims</h3><p className="muted">Prefer stable SM identity evidence where available; tournament/name matching remains a fallback.</p></div><button type="button" className="secondary" onClick={loadClaims} disabled={loading}>Refresh claims</button></div>
+      <label className="manager-claim-search">Search manager, club, SM ID or email<input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Try Tom Lee, Schalke, 13051324 or an email…" /></label><p className="status">{status}</p>
+      {!pending.length?<p className="muted">{search?'No pending claims match this search.':'No manager claims are waiting for approval.'}</p>:<div className="entrant-list">{pending.map(claim=>{const claimSuggestions=suggestions[claim.id]||[],suggestionError=suggestionErrors[claim.id],has=Object.prototype.hasOwnProperty.call(managerOverrides,claim.id),selectedManagerId=Number(has?managerOverrides[claim.id]:claim.suggested_manager_id),selectedTeamId=Number(selectedTeams[claim.id]||0);return <article className="entrant-row registration-row" key={claim.id}><div className="registration-details"><strong>{claim.claimed_manager_name} · {claim.claimed_club_name}</strong><span>{claim.email}</span>{suggestionError?<span className="error-text">Could not load likely matches: {suggestionError}</span>:claimSuggestions.length?<div className="claim-suggestion-list"><span className="muted">Possible matches</span>{claimSuggestions.map(s=>{const selected=selectedManagerId===Number(s.manager_id)&&selectedTeamId===Number(s.team_id),tone=confidenceTone(s.confidence);return <button type="button" className={selected?'claim-suggestion selected':'claim-suggestion'} key={`${s.manager_id}-${s.team_id}`} onClick={()=>chooseSuggestion(claim.id,s)}><div className="claim-suggestion-heading"><strong>{s.team_name}</strong><span className={`claim-confidence ${tone}`}>{s.confidence}</span></div><span>{s.manager_name}</span><NameComparison claimed={claim.claimed_club_name} canonical={s.team_name}/><small>{s.score}% match · {(s.reasons||[]).join(' · ')}</small></button>;})}</div>:<span>No tournament-history match found. Search the manager directory below.</span>}
+        <label>Find canonical manager<input type="search" value={managerSearches[claim.id]??''} onChange={e=>{setManagerSearches(c=>({...c,[claim.id]:e.target.value}));setManagerOverrides(c=>({...c,[claim.id]:''}));setSelectedTeams(c=>({...c,[claim.id]:''}));}} placeholder={claim.claimed_manager_name||'Search manager name…'}/></label>{(()=>{const q=normalise(managerSearches[claim.id]||claim.claimed_manager_name),matches=managerDirectory.filter(m=>Number(m.game_world_id)===Number(claim.game_world_id)).filter(m=>normalise(m.display_name||m.name).includes(q)).slice(0,8);return q&&matches.length?<div className="claim-suggestion-list manager-directory-results"><span className="muted">Manager directory</span>{matches.map(m=><button type="button" className={selectedManagerId===Number(m.id)&&!selectedTeamId?'claim-suggestion selected':'claim-suggestion'} key={m.id} onClick={()=>chooseManager(claim.id,m)}><strong>{m.display_name||m.name}</strong><small>Canonical manager ID {m.id}</small></button>)}</div>:q?<span className="muted">No manager directory matches.</span>:null;})()}{selectedTeamId>0&&<label className="checkbox-row"><input type="checkbox" checked={rememberAliases[claim.id]!==false} onChange={e=>setRememberAliases(c=>({...c,[claim.id]:e.target.checked}))}/>Remember “{claim.claimed_club_name}” as an alias for the selected club</label>}</div><div className="button-row"><button type="button" onClick={()=>approve(claim)} disabled={loading||!selectedManagerId}>Approve and link</button><button type="button" className="danger" onClick={()=>reject(claim)} disabled={loading}>Reject</button></div></article>;})}</div>}
     </section>
 
-    <section className="entrant-panel">
-      <p className="eyebrow">History</p>
-      <h3>Reviewed claims</h3>
-      {!reviewed.length ? <p className="muted">{search ? 'No reviewed claims match this search.' : 'No claims reviewed yet.'}</p> : <div className="entrant-list">
-        {reviewed.map((claim) => <article className="entrant-row" key={claim.id}>
-          <div>
-            <strong>{claim.claimed_manager_name} · {claim.claimed_club_name}</strong>
-            <span>{claim.email} · {claim.status}</span>
-            {claim.review_notes && <span>{claim.review_notes}</span>}
-            {claim.reviewed_at && <span className="claim-audit">{claim.status === 'approved' ? 'Approved' : 'Rejected'} by {claim.reviewed_by_label || 'an administrator'} · {formatReviewedAt(claim.reviewed_at)}</span>}
-          </div>
-        </article>)}
-      </div>}
-    </section>
+    <section className="entrant-panel"><p className="eyebrow">History</p><h3>Reviewed claims</h3>{!reviewed.length?<p className="muted">{search?'No reviewed claims match this search.':'No claims reviewed yet.'}</p>:<div className="entrant-list">{reviewed.map(claim=><article className="entrant-row" key={claim.id}><div><strong>{claim.claimed_manager_name} · {claim.claimed_club_name}</strong><span>{claim.email} · {claim.status}</span>{claim.review_notes&&<span>{claim.review_notes}</span>}{claim.reviewed_at&&<span className="claim-audit">{claim.status==='approved'?'Approved':'Rejected'} by {claim.reviewed_by_label||'an administrator'} · {formatReviewedAt(claim.reviewed_at)}</span>}</div></article>)}</div>}</section>
   </div>;
 }
