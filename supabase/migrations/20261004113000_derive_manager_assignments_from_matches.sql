@@ -1,6 +1,7 @@
--- Derive current world manager assignments from the manager IDs already present in
--- approved Match Report / Results / Schedule source payloads. This avoids scraping
--- the Manager List DOM and treats match-level evidence as an observed assignment.
+-- Refresh current world manager assignments from the canonical Soccer Manager
+-- manager_assignment entities produced by competition sync. These entities already
+-- preserve customerID + clubID from customerFileNames, so no Manager List DOM scrape
+-- or match-replay inference is required.
 
 create or replace function public.refresh_soccer_manager_world_manager_assignments_from_matches(
   target_setup_id text
@@ -23,62 +24,64 @@ begin
   order by id limit 1;
   if v_world_id is null then raise exception 'No archived Soccer Manager world %', target_setup_id; end if;
 
-  create temporary table if not exists _sm_manager_observations(
-    source_club_id text,
-    team_id bigint,
-    source_manager_id text,
-    source_manager_name text,
-    observed_at timestamptz
-  ) on commit drop;
-  truncate _sm_manager_observations;
+  -- Count the authoritative current observations. normalizeCompetitionSnapshot builds
+  -- these from customerFileNames: clubId -> customerID/displayName.
+  select count(*)::integer into v_seen
+  from public.soccer_manager_canonical_entities e
+  where e.entity_type='manager_assignment'
+    and e.data->>'setupId'=trim(target_setup_id)
+    and nullif(trim(e.data->>'managerId'),'') is not null
+    and nullif(trim(e.data->>'clubId'),'') is not null;
 
-  -- Source payload field names vary between Schedule/Results/Match Report captures,
-  -- so accept the verified spellings documented by the collectors/IMC comparison.
-  insert into _sm_manager_observations
-  select s.home_source_club_id, s.home_team_id,
-    coalesce(s.source_data->>'homeManagerSmId',s.source_data->>'home_sm_manager_id',s.source_data->>'homeManagerId'),
-    coalesce(s.source_data->>'homeManager',s.source_data->>'home_manager_name'),
-    s.captured_at
-  from public.soccer_manager_match_snapshots s
-  where s.game_world_id=v_world_id
-    and coalesce(s.source_data->>'homeManagerSmId',s.source_data->>'home_sm_manager_id',s.source_data->>'homeManagerId') is not null
-  union all
-  select s.away_source_club_id, s.away_team_id,
-    coalesce(s.source_data->>'awayManagerSmId',s.source_data->>'away_sm_manager_id',s.source_data->>'awayManagerId'),
-    coalesce(s.source_data->>'awayManager',s.source_data->>'away_manager_name'),
-    s.captured_at
-  from public.soccer_manager_match_snapshots s
-  where s.game_world_id=v_world_id
-    and coalesce(s.source_data->>'awayManagerSmId',s.source_data->>'away_sm_manager_id',s.source_data->>'awayManagerId') is not null;
-
-  select count(*) into v_seen from _sm_manager_observations;
-
-  -- Map stable SM manager IDs to an existing canonical human when we already know
-  -- that identity. Never invent a human from a display name.
-  with latest as (
-    select distinct on(source_club_id)
-      source_club_id,team_id,source_manager_id,source_manager_name,observed_at
-    from _sm_manager_observations
-    where nullif(trim(source_manager_id),'') is not null
-    order by source_club_id,observed_at desc
-  ), resolved as (
-    select l.*,
-      (select al.target_id
-       from public.soccer_manager_archive_links al
-       where al.source_type='manager' and al.target_type='manager'
-         and split_part(al.source_key,':',2)=l.source_manager_id
-       order by al.updated_at desc limit 1) manager_id
-    from latest l
+  with observations as (
+    select distinct on (e.data->>'clubId')
+      nullif(trim(e.data->>'clubId'),'') source_club_id,
+      nullif(trim(e.data->>'managerId'),'') source_manager_id,
+      nullif(trim(e.data->>'displayName'),'') source_manager_name,
+      e.last_approved_at observed_at
+    from public.soccer_manager_canonical_entities e
+    where e.entity_type='manager_assignment'
+      and e.data->>'setupId'=trim(target_setup_id)
+      and nullif(trim(e.data->>'managerId'),'') is not null
+      and nullif(trim(e.data->>'clubId'),'') is not null
+    order by e.data->>'clubId',e.last_approved_at desc,e.version desc,e.entity_key desc
+  ), mapped as (
+    select o.*,
+      cl.target_id team_id,
+      identity.manager_id
+    from observations o
+    left join public.soccer_manager_archive_links cl
+      on cl.source_type='club'
+     and cl.target_type='team'
+     and cl.source_key=trim(target_setup_id)||':'||o.source_club_id
+    left join lateral (
+      -- A bare SM customer ID is cross-world identity evidence only when every
+      -- existing world-qualified link agrees on one canonical human. Conflicts stay
+      -- unresolved for admin reconciliation rather than picking the newest link.
+      select case when count(distinct al.target_id)=1 then min(al.target_id) else null end manager_id
+      from public.soccer_manager_archive_links al
+      where al.source_type='manager'
+        and al.target_type='manager'
+        and split_part(al.source_key,':',2)=o.source_manager_id
+    ) identity on true
   )
   insert into public.soccer_manager_world_manager_assignments(
-    game_world_id,manager_id,team_id,source_manager_key,source_manager_name,updated_at
+    game_world_id,team_id,manager_id,source_manager_key,source_manager_name,assigned_at,updated_at
   )
-  select v_world_id,r.manager_id,r.team_id,
-    trim(target_setup_id)||':'||r.source_manager_id,r.source_manager_name,r.observed_at
-  from resolved r
-  where r.manager_id is not null
-  on conflict (game_world_id,manager_id) do update set
-    team_id=excluded.team_id,
+  select v_world_id,m.team_id,m.manager_id,
+    trim(target_setup_id)||':'||m.source_manager_id,m.source_manager_name,
+    coalesce(m.observed_at,now()),coalesce(m.observed_at,now())
+  from mapped m
+  where m.manager_id is not null
+    and m.team_id is not null
+  on conflict (game_world_id,team_id) do update set
+    assigned_at=case
+      when public.soccer_manager_world_manager_assignments.manager_id is distinct from excluded.manager_id
+        or public.soccer_manager_world_manager_assignments.source_manager_key is distinct from excluded.source_manager_key
+      then excluded.assigned_at
+      else public.soccer_manager_world_manager_assignments.assigned_at
+    end,
+    manager_id=excluded.manager_id,
     source_manager_key=excluded.source_manager_key,
     source_manager_name=coalesce(excluded.source_manager_name,public.soccer_manager_world_manager_assignments.source_manager_name),
     updated_at=greatest(public.soccer_manager_world_manager_assignments.updated_at,excluded.updated_at);
@@ -87,6 +90,9 @@ begin
   return query select v_seen,v_linked;
 end;
 $$;
+
+comment on function public.refresh_soccer_manager_world_manager_assignments_from_matches(text) is
+  'Compatibility-named admin refresh: rebuilds current SM world assignments from canonical manager_assignment entities (customerFileNames), not replay DOM data.';
 
 revoke all on function public.refresh_soccer_manager_world_manager_assignments_from_matches(text) from public,anon;
 grant execute on function public.refresh_soccer_manager_world_manager_assignments_from_matches(text) to authenticated;
