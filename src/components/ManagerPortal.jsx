@@ -140,6 +140,8 @@ export default function ManagerPortal({ registrationMode = false, session = null
     const address = email.trim();
     if (!address) return;
 
+    // Guard against a duplicate submission before React has committed the disabled state.
+    if (magicLinkStatus === 'sending') return;
     const requestId = ++magicLinkRequestId.current;
     magicLinkCooldownUntil.current = now + 60000;
     setMagicLinkStatus('sending');
@@ -169,6 +171,8 @@ export default function ManagerPortal({ registrationMode = false, session = null
   }
 
   function resetMagicLink() {
+    // A late response from an abandoned request must never overwrite the new form.
+    magicLinkRequestId.current += 1;
     magicLinkCooldownUntil.current = 0;
     setMagicLinkResendIn(0);
     setMagicLinkStatus('idle');
