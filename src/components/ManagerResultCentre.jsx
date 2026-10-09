@@ -94,22 +94,37 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
     if (!window.confirm(`Publish ${homeName} ${homeScore}–${awayScore} ${awayName} provisionally?\n\nRuling: ${rulingText}${reason ? `\nReason: ${reason}` : ''}`)) return;
 
     setLoading(true);
-    const { error } = await supabase.rpc('submit_manager_result_with_ruling', {
-      target_match_id: fixture.id,
-      target_home_score: homeScore,
-      target_away_score: awayScore,
-      target_ruling: targetRuling,
-      target_reason: reason || null,
-    });
-    if (error) setStatus('Could not submit result: ' + error.message);
-    else {
+    setStatus('');
+    try {
+      const { error } = await supabase.rpc('submit_manager_result_with_ruling', {
+        target_match_id: fixture.id,
+        target_home_score: homeScore,
+        target_away_score: awayScore,
+        target_ruling: targetRuling,
+        target_reason: reason || null,
+      });
+      if (error) throw error;
+
+      // The write is complete: confirmation must not depend on a later read.
       setStatus(managerRuling === 'played'
-        ? 'Result published provisionally. The table is updated, with admin final checks and an opponent appeal still available.'
-        : 'Forfeit reported provisionally. The result is visible now but remains subject to the administrator’s final check and an opponent appeal.');
-      await loadSubmissions();
-      await onResultChanged?.();
+        ? 'Result published provisionally. Awaiting the administrator’s final check.'
+        : 'Forfeit reported provisionally. Awaiting the administrator’s final check.');
+      // Avoid blocking the button indefinitely on post-submit reads.
+      const refreshes = await Promise.allSettled([
+        Promise.race([
+          loadSubmissions(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Submission refresh timed out')), 8000)),
+        ]),
+        onResultChanged?.(),
+      ]);
+      if (refreshes.some((result) => result.status === 'rejected')) {
+        setStatus('Result published provisionally. Some details could not refresh; reload the page to see the latest fixtures.');
+      }
+    } catch (error) {
+      setStatus('Could not submit result: ' + (error?.message || 'Please try again.'));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function respond(submission, response) {
