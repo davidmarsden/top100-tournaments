@@ -140,7 +140,7 @@ export default function ManagerResultCentre({ selectedEntry, fixtures, onResultC
     setLoading(false);
   }
 
-  if (!visibleFixtures.length) return null;
+  // Keep post-submit confirmations and refresh warnings visible even when the\n  // last outstanding fixture has moved into the results list.\n  if (!visibleFixtures.length && !status) return null;
 
   return <section className="card portal-panel result-centre">
     <div className="card-header"><p className="eyebrow">Result centre</p><h2>Submit results, report forfeits and raise appeals</h2><p className="muted">A submitted score or forfeit is published provisionally. The opposing manager may appeal, and an administrator completes the final check before any forfeit affects prize-draw eligibility.</p></div>
