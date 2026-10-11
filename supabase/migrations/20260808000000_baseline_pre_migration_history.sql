@@ -4910,4 +4910,13 @@ CREATE EVENT TRIGGER ensure_rls ON ddl_command_end
   WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
   EXECUTE FUNCTION public.rls_auto_enable();
 
+-- [F13] Default privileges for objects that later migrations create, restated from production's
+-- pg_default_acl. Production's project predates Supabase's tighter defaults; new databases
+-- (including Preview branches) grant new tables only DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN
+-- to API roles and new functions to postgres only. Later migrations rely on production's defaults.
+-- Placed last so the explicit grants dumped above for baseline objects are unaffected.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+
 RESET check_function_bodies;

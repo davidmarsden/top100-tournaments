@@ -62,6 +62,10 @@ create or replace view vault.decrypted_secrets as select id, name, secret, secre
 
 -- pg_net: provided as a local stub extension (control file), created by the migrations themselves.
 
-alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+-- Default privileges as a NEW Supabase database (e.g. a Preview branch) has them in Oct 2026, observed
+-- read-only on a Preview branch. Deliberately tighter than production (finding F13), so the replay
+-- proves the baseline restates production's defaults itself.
+alter default privileges in schema public revoke all on tables from anon, authenticated, service_role;
+alter default privileges in schema public grant delete, truncate, references, trigger, maintain on tables to anon, authenticated, service_role;
+alter default privileges in schema public revoke all on sequences from anon, authenticated, service_role;
+alter default privileges in schema public revoke execute on functions from public;
