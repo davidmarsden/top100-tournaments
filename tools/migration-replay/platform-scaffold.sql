@@ -17,7 +17,7 @@ grant usage on schema public to anon, authenticated, service_role;
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
 create extension if not exists "uuid-ossp" with schema extensions;
-create extension if not exists pg_trgm with schema extensions;
+-- pg_trgm is NOT pre-installed: production got it from repo SQL, and Supabase Preview does not provide it (finding F12).
 create extension if not exists pg_stat_statements with schema extensions;
 grant usage on schema extensions to anon, authenticated, service_role;
 

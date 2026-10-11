@@ -17,6 +17,11 @@
 -- against production; every object in it already exists there.
 
 SET check_function_bodies = false;
+
+-- [F12] Created by docs/legacy-supabase-migrations/20260718_manager_claim_suggestions.sql. A schema-only
+-- dump of `public` omits extensions living in the `extensions` schema, so it is restated here.
+-- similarity() from pg_trgm is used by manager-claim matching functions.
+create extension if not exists pg_trgm with schema extensions;
 --
 -- PostgreSQL database dump
 --
