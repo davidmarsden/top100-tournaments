@@ -1,0 +1,1 @@
+drop function if exists public.submit_manager_tournament_registration(bigint,bigint,numeric,text);
