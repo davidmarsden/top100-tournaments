@@ -1,0 +1,63 @@
+# Supabase migration reconciliation — complete recovered source inventory
+
+{
+  "verifiedRemoteOriginals": 130,
+  "localFiles": 173,
+  "matchingVersionInEitherRepo": 4,
+  "localDifferentVersion": 169,
+  "remoteWithoutSameName": 46,
+  "remoteWithSameName": 84,
+  "warning": "Filename inventory only: raw SQL semantic comparison incomplete; never execute recovered SQL on a populated database",
+  "missingName": [
+    "20260824171251_database_hardening_and_io_optimisation.sql",
+    "20260824171332_security_definer_execute_grant_correction.sql",
+    "20260901085032_remove_superseded_team_id_registration_rpc.sql",
+    "20260901152015_seed_top100_clubs_1.sql",
+    "20260901152039_seed_top100_clubs_2.sql",
+    "20260901152101_seed_regen_clubs_1.sql",
+    "20260901152126_seed_regen_clubs_2.sql",
+    "20260901152137_seed_directory_managers.sql",
+    "20260901155320_extend_registration_rating_to_95.sql",
+    "20260901155554_optimize_game_world_club_policies.sql",
+    "20260901170308_public_route_catalogue_registration_shells.sql",
+    "20260902091952_harden_knockout_only_workflow.sql",
+    "20260902093321_z_harden_knockout_only_workflow_retry.sql",
+    "20260902094707_lock_knockout_round_dependencies.sql",
+    "20260902101914_scope_knockout_winner_guard_to_knockout_only.sql",
+    "20260902111003_knockout_score_and_field_guards.sql",
+    "20260902113602_block_knockout_advancement_during_result_review.sql",
+    "20260902115945_lock_knockout_structure_after_draw.sql",
+    "20260902121831_guard_knockout_only_completion.sql",
+    "20260902123649_harden_knockout_bye_result_guards.sql",
+    "20260902125518_preserve_knockout_invariants_and_round_uniqueness.sql",
+    "20260902135507_public_knockout_final_resolution.sql",
+    "20260902150624_normalize_knockout_entry_seeds.sql",
+    "20260902155252_lock_knockout_entry_roster.sql",
+    "20260902163036_atomic_knockout_opening_draw.sql",
+    "20260902164523_atomic_successor_and_structure_guards.sql",
+    "20260902165858_block_knockout_predecessor_deletes.sql",
+    "20260902172208_lock_advanced_knockout_predecessor_structure.sql",
+    "20260902174024_control_knockout_round_deletion.sql",
+    "20260902175951_close_knockout_generation_and_final_review_races.sql",
+    "20260905223532_progressive_knockout_fet_preview.sql",
+    "20260907215406_all_manager_polls_v1.sql",
+    "20260907215433_all_manager_polls_v1_rpc_execute_hardening.sql",
+    "20260910180316_serialize_top100_roster_cap_check.sql",
+    "20260920131225_allow_pristine_knockout_leg_conversion.sql",
+    "20260920132404_two_leg_review_hardening.sql",
+    "20260920133611_two_leg_concurrency_and_double_forfeit.sql",
+    "20260920135503_harden_two_leg_result_approval.sql",
+    "20260926172929_distinguish_duplicate_soccer_manager_sync_reviews.sql",
+    "20260928081411_guard_manager_lab_opponent_players_v2.sql",
+    "20260928091521_improve_manager_claim_matching_current_directory.sql",
+    "20260928145209_snapshot_all_active_top100_managers_for_votes.sql",
+    "20260928220142_create_manager_auth_handoff_rpc.sql",
+    "20260929184646_red_card_lab_same_minute_unordered.sql",
+    "20260930221350_tackling_lab_experiment_3_audit_fix.sql",
+    "20261004213749_manager_lab_match_cards.sql"
+  ]
+}
+
+Original SQL from all 130 applied history entries is stored under `docs/recovered-supabase-migrations/`. This is an archival source-of-truth copy; no migration replay has been performed. The local migrations in both repositories may include unapplied work or superseded versions and must be preserved pending classification.
+
+**Not an approved repair:** Do not bulk replace the executable `supabase/migrations` directory or use `supabase migration repair` against production based on filename matching alone. The GitHub Supabase Preview check is not yet verified green.
