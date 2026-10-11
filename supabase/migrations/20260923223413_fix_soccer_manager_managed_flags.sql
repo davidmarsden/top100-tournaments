@@ -1,5 +1,5 @@
 -- Treat Soccer Manager numeric managed flags as managed when positive.
--- Live Top 100 captures use 2 for most managed clubs and 1 for one managed club.
+-- Live captures use 2 for most managed clubs and 1 for one managed club.
 
 create or replace function public.apply_soccer_manager_core_archive(
   target_setup_id text default null
