@@ -8,6 +8,15 @@ Companion to PR #321 (recovered migration history). This records how the pre-9 A
 - Replayed into an empty PostgreSQL 17 database, those 132 files produce a `public` schema whose fingerprint is **identical to production across 1,940 objects**: every column (type, nullability, default, identity), constraint, index, function body (whitespace-normalised), function grant, RLS flag, policy, trigger, view and table grant. Storage-bucket policies also match.
 - That includes, by name, manager authentication and hand-off (`create_manager_auth_handoff`, `manager_auth_handoffs`), account linking and claims (`approve_manager_portal_claim*`, `find_manager_portal_claim_match*`, `link_manager_to_sm_assignment`, `manager_soccer_manager_identities`), and voting (`submit_voting_ballot`, `open_voting_event`, `get_voting_results`, `voting_*` tables and policies).
 
+
+### Supabase Preview verification (11 Oct 2026, commit `0c080a2`)
+
+- The Supabase Preview check on PR #322 is **green**. The preview database applied all 132 migrations, `20260808000000` to `20261004213749`.
+- The same fingerprint query was run read-only on the preview and on production minutes apart: **identical across all 1,940 objects**, grants included. Storage policies, the `match-evidence` bucket and the `ensure_rls` event trigger also match.
+- Production's fingerprint was also unchanged from the start of the session.
+- Only difference outside `public`: `pg_net` is installed in the `extensions` schema on the preview and in `public` in production. That's a platform default; the `net.*` functions are the same either way.
+- Getting a real run took three corrections that only Supabase could reveal: F12 (`pg_trgm`), F13 (default privileges), and closing and reopening the PR, because Supabase creates preview branches only when a PR is opened.
+
 ## Method
 
 1. **Catalog extraction (read-only).** 20 tables in production are created by no SQL file anywhere in the repository's full git history (1,963 commits): `achievements, admin_users, attachments, audit_log, competitions, forfeits, groups, honours, manager_clubs, managers, matches, seasons, settings, team_aliases, teams, tournament_entries, tournament_formats, tournament_rounds, tournament_stages, tournaments`. They were made in the dashboard before July. Their definitions came from production's catalog, **minus every column and constraint that later repo SQL adds**, so the historical scripts still add those themselves. Also from the catalog: `is_admin()` and four public-read policies with no repo source. File: `tools/migration-replay/catalog-objects-not-in-repo.sql`.
