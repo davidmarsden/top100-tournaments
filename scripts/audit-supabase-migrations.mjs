@@ -1,53 +1,22 @@
 #!/usr/bin/env node
-/**
- * Read-only migration inventory / comparison helper.
- * Usage:
- *   node scripts/audit-supabase-migrations.mjs --remote path/to/export.json --lab path/to/top100-manager-lab
- * JSON export format: [{ "version": "...", "name": "...", "statements": ["..."] }]
- * Does not connect to a database, execute SQL, or modify migration files.
- */
+/** Read-only inventory of archived, executable and Manager Lab migrations. */
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-const args = process.argv.slice(2);
-function arg(flag) { const i=args.indexOf(flag); return i<0 ? undefined : args[i+1]; }
-const remoteFile=arg('--remote');
-const labDir=arg('--lab');
-if (!remoteFile || !labDir) {
-  console.error('Usage: node scripts/audit-supabase-migrations.mjs --remote export.json --lab ../top100-manager-lab [--output report.json]');
-  process.exit(2);
-}
-const remote=JSON.parse(fs.readFileSync(remoteFile,'utf8'));
-if (!Array.isArray(remote) || remote.some(x=>!/^\d{14}$/.test(String(x.version)) || typeof x.name!=='string' || !Array.isArray(x.statements))) {
-  throw new Error('Invalid remote migration export: expected version, name and statements fields.');
-}
-function gather(repo,root) {
-  const dir=path.join(root,'supabase','migrations');
-  return fs.readdirSync(dir).filter(n=>n.endsWith('.sql')).map(name=>({
-    repo, name, file:path.join(dir,name), version:name.split('_')[0],
-    logicalName:name.replace(/^\d{8,14}_/,'').replace(/^z+_/,'').replace(/\.sql$/,''),
-    sql:fs.readFileSync(path.join(dir,name),'utf8')
-  }));
-}
-const local=[...gather('top100-tournaments',process.cwd()),...gather('top100-manager-lab',labDir)];
-const canonical=s=>s.replace(/\r\n/g,'\n').trim();
-const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
-const result=remote.map(r=>{
- const sql=r.statements.join('\n');
- const candidates=local.filter(f=>f.logicalName===r.name || f.version===r.version);
- const ordered=[...candidates].sort((a,b)=>Number(b.version===r.version)-Number(a.version===r.version));
- return {
-  version:r.version,name:r.name,remoteSha256:hash(sql),
-  matches:ordered.map(f=>({
-   repo:f.repo,file:path.relative(f.repo==='top100-tournaments'?process.cwd():labDir,f.file),
-   version:f.version,exact:f.sql===sql,trimmed:canonical(f.sql)===canonical(sql),
-   sha256:hash(f.sql),contentLength:f.sql.length
-  }))
- };
-});
-const summary={remote:remote.length,local:local.length,exact:result.filter(x=>x.matches.some(y=>y.exact)).length,whitespaceEquivalent:result.filter(x=>x.matches.some(y=>y.trimmed)).length,noCandidates:result.filter(x=>!x.matches.length).length,differentSql:result.filter(x=>x.matches.length && !x.matches.some(y=>y.trimmed)).length};
-const output={summary,migrations:result};
-const outFile=arg('--output');
-if(outFile)fs.writeFileSync(outFile,JSON.stringify(output,null,2)+'\n');
+const args=process.argv.slice(2);
+const arg=flag=>{const i=args.indexOf(flag);return i<0?undefined:args[i+1];};
+const recoveredDir=arg('--recovered'),labDir=arg('--lab');
+if(!recoveredDir||!labDir)throw new Error('Usage: --recovered docs/recovered-supabase-migrations --lab manager-lab [--output report.json]');
+const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
+function files(dir){return fs.readdirSync(dir).filter(x=>x.endsWith('.sql')).sort().map(name=>({name,version:name.split('_')[0],logicalName:name.replace(/^\d+_/,'').replace(/\.sql$/,''),sql:fs.readFileSync(path.join(dir,name),'utf8')}));}
+const recovered=files(recoveredDir), executable=files('supabase/migrations'), lab=files(path.join(labDir,'supabase/migrations'));
+if(!recovered.length)throw new Error('Recovered migration archive is empty');
+const byVersion=new Map(executable.map(x=>[x.version,x]));
+const matches=recovered.map(r=>{const e=byVersion.get(r.version);return{version:r.version,name:r.logicalName,executable:e?.name??null,identical:e?sha(e.sql)===sha(r.sql):false,sha256:sha(r.sql)};});
+const missing=matches.filter(x=>!x.executable),different=matches.filter(x=>x.executable&&!x.identical);
+const extra=executable.filter(x=>!recovered.some(r=>r.version===x.version)).map(x=>x.name);
+const summary={recovered:recovered.length,executable:executable.length,managerLab:lab.length,missing:missing.length,different:different.length,extra:extra.length,scope:'Version and byte comparison of recovered SQL; not a production semantic SQL audit'};
+const output={summary,missing,different,extra,matches};
+if(arg('--output'))fs.writeFileSync(arg('--output'),JSON.stringify(output,null,2)+'\n');
 console.log(JSON.stringify(summary,null,2));
-if(summary.noCandidates||summary.differentSql)process.exitCode=1;
+if(missing.length||different.length||extra.length)process.exitCode=1;
