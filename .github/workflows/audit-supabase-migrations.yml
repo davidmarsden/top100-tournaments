@@ -1,0 +1,45 @@
+name: Audit Supabase migration SQL (read-only)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tournaments
+        uses: actions/checkout@v4
+      - name: Checkout Manager Lab
+        uses: actions/checkout@v4
+        with:
+          repository: davidmarsden/top100-manager-lab
+          path: manager-lab
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check for read-only migration export
+        env:
+          REMOTE_MIGRATION_EXPORT: ${{ secrets.SUPABASE_MIGRATION_AUDIT_JSON }}
+        run: |
+          if [ -z "$REMOTE_MIGRATION_EXPORT" ]; then
+            echo "::error::Set SUPABASE_MIGRATION_AUDIT_JSON to the read-only JSON export of supabase_migrations.schema_migrations."
+            exit 1
+          fi
+          printf '%s' "$REMOTE_MIGRATION_EXPORT" > "$RUNNER_TEMP/remote-migrations.json"
+      - name: Compare SQL against both repositories
+        run: |
+          node scripts/audit-supabase-migrations.mjs \
+            --remote "$RUNNER_TEMP/remote-migrations.json" \
+            --lab manager-lab \
+            --output "$RUNNER_TEMP/migration-audit.json"
+      - name: Upload comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-comparison-report
+          path: ${{ runner.temp }}/migration-audit.json
+          if-no-files-found: warn
+          retention-days: 7
