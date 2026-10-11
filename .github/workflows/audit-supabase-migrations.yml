@@ -1,9 +1,15 @@
 name: Audit Supabase migration SQL (read-only)
 on:
   workflow_dispatch:
+    inputs:
+      export_artifact_run_id:
+        description: 'Run ID containing a private migration-export artifact (no database credentials)'
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   audit:
@@ -17,21 +23,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Export migration history using read-only SQL
+      - name: Download private migration export artifact
         env:
-          AUDIT_DATABASE_URL: ${{ secrets.SUPABASE_AUDIT_DATABASE_URL }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.export_artifact_run_id }}
         run: |
-          if [ -z "$AUDIT_DATABASE_URL" ]; then
-            echo "::error::Set SUPABASE_AUDIT_DATABASE_URL to a restricted read-only PostgreSQL connection URL."
-            exit 1
-          fi
-          psql "$AUDIT_DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 \
-            -c "select coalesce(json_agg(json_build_object('version',version,'name',name,'statements',statements) order by version),'[]'::json) from supabase_migrations.schema_migrations" \
-            > "$RUNNER_TEMP/remote-migrations.json"
-      - name: Inventory and compare migration sources
+          mkdir -p "$RUNNER_TEMP/migration-export"
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name supabase-migration-export --dir "$RUNNER_TEMP/migration-export"
+          test -s "$RUNNER_TEMP/migration-export/remote-migrations.json"
+      - name: Compare migration sources
         run: |
           node scripts/audit-supabase-migrations.mjs \
-            --remote "$RUNNER_TEMP/remote-migrations.json" \
+            --remote "$RUNNER_TEMP/migration-export/remote-migrations.json" \
             --lab manager-lab \
             --output "$RUNNER_TEMP/migration-audit.json"
       - name: Upload comparison report
