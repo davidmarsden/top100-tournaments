@@ -1,0 +1,4 @@
+comment = 'local stub of pg_net for replay only'
+default_version = '0.20.3'
+relocatable = false
+schema = net

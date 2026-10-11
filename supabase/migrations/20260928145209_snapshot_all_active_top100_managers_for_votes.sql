@@ -33,4 +33,5 @@ join public.game_worlds gw on gw.id=gm.game_world_id and gw.slug='top-100'
 join public.managers m on m.id=gm.manager_id
 left join public.manager_portal_accounts a on a.manager_id=gm.manager_id and a.game_world_id=gm.game_world_id and a.active=true
 where gm.active=true
+  and exists (select 1 from public.voting_events ve where ve.id=5) -- [F7] replay-safety guard: production data repair; no-op on an empty database
 on conflict (event_id,manager_id) do update set manager_account_id=coalesce(excluded.manager_account_id,voting_electorate.manager_account_id),manager_name=excluded.manager_name;
