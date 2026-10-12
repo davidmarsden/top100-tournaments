@@ -5,26 +5,21 @@ import ManagerResourceHub from './ManagerResourceHub.jsx';
 import ManagerReminderPreferences from './ManagerReminderPreferences.jsx';
 
 const REQUEST_TIMEOUT_MS = 10000;
-// Single sign-on: a session started on another Top 100 site (e.g. an admin signed in to the
-// Control Room) is imported through that site's /auth/session-bridge page before the email
-// sign-in form is shown. Sessions are stored per subdomain, so without this an admin had to
-// request a separate magic link for My Matches even though it is the same Supabase user.
-const SESSION_BRIDGE_ORIGINS = ['https://admin.smtop100.blog', 'https://tournaments.smtop100.blog'];
-const SESSION_BRIDGE_TIMEOUT_MS = 4000;
-// After an explicit sign-out we must not import the *same* session straight back from another
-// site, but any later sign-in elsewhere (a new session) should work again. So we remember the
-// signed-out session's id, not a blanket "signed out" flag.
+// Single sign-on: if the user is already signed in on another Top 100 site (e.g. an admin in the
+// Control Room; it is the same Supabase user), get a one-time handoff code from that site's tiny
+// /auth/sso-bridge.html page and exchange it for a NEW, independent session here. Session tokens
+// are never copied between sites, so neither site can invalidate the other when it renews.
+const SSO_BRIDGE_ORIGINS = ['https://admin.smtop100.blog', 'https://tournaments.smtop100.blog'];
+const SSO_BRIDGE_TIMEOUT_MS = 8000;
+const HANDOFF_EXCHANGE_URL = 'https://xxntutejknolhmbssqdf.supabase.co/functions/v1/exchange-manager-handoff';
+// Which other-site session our current session was imported from, and, after an explicit sign-out
+// here, which source session must not be imported again. A new sign-in elsewhere is a new session.
+const SSO_SOURCE_KEY = 'top100-manager-sso-source-session';
 const SIGNED_OUT_SESSION_KEY = 'top100-manager-signed-out-session';
 
-function sessionIdOf(accessToken) {
-  try {
-    const payload = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(window.atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '='))).session_id || null;
-  } catch { return null; }
-}
-function readSignedOutSessionId() { try { return window.localStorage.getItem(SIGNED_OUT_SESSION_KEY); } catch { return null; } }
-function writeSignedOutSessionId(id) {
-  try { if (id) window.localStorage.setItem(SIGNED_OUT_SESSION_KEY, id); else window.localStorage.removeItem(SIGNED_OUT_SESSION_KEY); } catch { /* storage unavailable */ }
+function readKey(key) { try { return window.localStorage.getItem(key); } catch { return null; } }
+function writeKey(key, value) {
+  try { if (value) window.localStorage.setItem(key, value); else window.localStorage.removeItem(key); } catch { /* storage unavailable */ }
 }
 
 function isReturningFromEmailLink() {
@@ -32,10 +27,11 @@ function isReturningFromEmailLink() {
   return /access_token=|error_description=/.test(hash) || /[?&](code|token_hash|error_description)=/.test(search);
 }
 
-// Ask one origin's bridge page for its session. Resolves to { access_token, refresh_token } or null.
-function requestBridgedSession(origin) {
+// Ask one site's bridge for a handoff code. Resolves to { code, sourceSessionId } or null.
+function requestHandoffCode(origin, suppressSessionId) {
   return new Promise((resolve) => {
     const frame = document.createElement('iframe');
+    const nonce = Math.random().toString(36).slice(2);
     let timer;
     const finish = (value) => {
       window.clearTimeout(timer);
@@ -44,32 +40,44 @@ function requestBridgedSession(origin) {
       resolve(value);
     };
     const onMessage = (event) => {
-      if (event.origin !== origin || event.source !== frame.contentWindow || event.data?.type !== 'top100-manager-session') return;
-      const bridged = event.data.session;
-      finish(bridged?.access_token && bridged?.refresh_token ? bridged : null);
+      if (event.origin !== origin || event.source !== frame.contentWindow) return;
+      if (event.data?.type === 'top100-sso-ready') {
+        frame.contentWindow.postMessage({ type: 'top100-sso-request', nonce, suppressSessionId }, origin);
+        return;
+      }
+      if (event.data?.type !== 'top100-sso-response' || event.data.nonce !== nonce) return;
+      finish(event.data.status === 'ok' && event.data.code ? { code: event.data.code, sourceSessionId: event.data.sourceSessionId || null } : null);
     };
     window.addEventListener('message', onMessage);
-    frame.src = `${origin}/auth/session-bridge`;
+    frame.src = `${origin}/auth/sso-bridge.html`;
     frame.title = 'Checking Top 100 sign-in';
     frame.setAttribute('aria-hidden', 'true');
     frame.style.display = 'none';
     frame.addEventListener('error', () => finish(null), { once: true });
-    timer = window.setTimeout(() => finish(null), SESSION_BRIDGE_TIMEOUT_MS);
+    timer = window.setTimeout(() => finish(null), SSO_BRIDGE_TIMEOUT_MS);
     document.body.appendChild(frame);
   });
 }
 
-async function importSessionFromOtherTop100Sites() {
+async function signInFromOtherTop100Sites() {
   if (window.location.hostname !== 'manager.smtop100.blog') return null;
   if (isReturningFromEmailLink()) return null;
-  const signedOutSessionId = readSignedOutSessionId();
-  for (const origin of SESSION_BRIDGE_ORIGINS) {
-    const bridged = await requestBridgedSession(origin);
-    if (!bridged) continue;
-    // The session the user just signed out of here: don't bring it back.
-    if (signedOutSessionId && sessionIdOf(bridged.access_token) === signedOutSessionId) continue;
-    const { data, error } = await supabase.auth.setSession(bridged);
-    if (!error && data.session) return data.session;
+  const suppressSessionId = readKey(SIGNED_OUT_SESSION_KEY);
+  for (const origin of SSO_BRIDGE_ORIGINS) {
+    const handoff = await requestHandoffCode(origin, suppressSessionId);
+    if (!handoff) continue;
+    const response = await fetch(HANDOFF_EXCHANGE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: handoff.code }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.token_hash) continue;
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: payload.token_hash, type: 'email' });
+    if (error || !data.session) continue;
+    writeKey(SSO_SOURCE_KEY, handoff.sourceSessionId);
+    writeKey(SIGNED_OUT_SESSION_KEY, null);
+    return data.session;
   }
   return null;
 }
@@ -196,19 +204,25 @@ export default function ManagerEntry({ registrationMode = false }) {
     if (!hasSupabaseConfig || !supabase) { setSession(null); return undefined; }
     let active = true;
     let importing = false;
-    let currentSessionId = null;
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
-      if (event === 'SIGNED_OUT') writeSignedOutSessionId(currentSessionId);
-      if (event === 'SIGNED_IN') writeSignedOutSessionId(null);
-      currentSessionId = nextSession?.access_token ? sessionIdOf(nextSession.access_token) : null;
+      if (event === 'SIGNED_OUT') {
+        // Explicit sign-out: don't sign straight back in from the session we came from.
+        writeKey(SIGNED_OUT_SESSION_KEY, readKey(SSO_SOURCE_KEY));
+        writeKey(SSO_SOURCE_KEY, null);
+      }
+      if (event === 'SIGNED_IN' && !importing) {
+        // Signed in here directly (email link): forget any earlier suppression.
+        writeKey(SIGNED_OUT_SESSION_KEY, null);
+        writeKey(SSO_SOURCE_KEY, null);
+      }
       if (event === 'INITIAL_SESSION' && !nextSession) {
         // No session on this site yet: try the other Top 100 sites before showing the form.
         // Run outside the auth callback, where auth-js holds its lock.
         importing = true;
         window.setTimeout(async () => {
           let imported = null;
-          try { imported = await importSessionFromOtherTop100Sites(); } catch { imported = null; }
+          try { imported = await signInFromOtherTop100Sites(); } catch { imported = null; }
           importing = false;
           if (active) setSession(imported || null);
         }, 0);
