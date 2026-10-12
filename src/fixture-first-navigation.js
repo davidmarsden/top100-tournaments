@@ -180,7 +180,7 @@ function ensurePublicFixtureNav() {
   if (!knockoutOnly && !existing && nav) {
     const callout = document.createElement('section');
     callout.className = 'fixture-first-callout'; callout.dataset.fixtureFirst = 'public-callout';
-    callout.innerHTML = `<div><p class="eyebrow">Looking for your match?</p><strong>Find the date first, then the opponent.</strong><span>The tournament schedule is below. For the simple personalised view — who you send a friendly to, and who you are waiting for — use My Matches.</span></div><div class="fixture-first-actions"><a class="button" href="#schedule">📅 View schedule</a><a class="button secondary" href="${MANAGER_URL}">👤 My Matches</a></div>`;
+    callout.innerHTML = `<div><p class="eyebrow">Looking for your match?</p><strong>Find the date first, then the opponent.</strong><span>The tournament schedule is below. For the simple personalised view — who you send a friendly to, and who you are waiting for — use My Matches.</span></div><div class="fixture-first-actions"><a class="button" href="${MANAGER_URL}">👤 My Matches</a></div>`;
     nav.parentNode.insertBefore(callout, nav);
   }
 }
