@@ -2151,7 +2151,7 @@ export default function ManagerLabPage() {
         <h1>Manager Lab</h1>
         <p>{selectedClub?.name || 'Club'}, S28. Evidence from the archived match reports — results, underlying match numbers and the tactics used.</p>
       </div><div className="button-row">
-        <a className="button secondary" href="/admin/soccer-manager-sync">Soccer Manager Sync</a>
+        <a className="button secondary" href="https://lab.smtop100.blog/sync">Soccer Manager Sync</a>
         <a className="button secondary" href="/admin">Tournament admin</a>
       </div></div>
     </section>
