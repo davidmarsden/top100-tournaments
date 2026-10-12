@@ -1,1 +1,6 @@
+# Manager Lab and Soccer Manager sync have moved to top100-manager-lab (lab.smtop100.blog).
+# Temporary (302) while the old implementation is retired from this repository.
+/admin/manager-lab          https://lab.smtop100.blog/lab   302!
+/admin/soccer-manager-sync  https://lab.smtop100.blog/sync  302!
+
 /* /index.html 200
