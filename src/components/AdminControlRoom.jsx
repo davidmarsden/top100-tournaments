@@ -4,7 +4,7 @@ const TOOLS = [
   { title: 'Tournament admin', description: 'Run Youth Cup, World Club Cup and other competitions.', href: 'https://tournaments.smtop100.blog/admin', action: 'Tournament admin' },
   { title: 'Soccer Manager sync', description: 'Import Soccer Manager data and diagnostics.', href: 'https://tournaments.smtop100.blog/admin/soccer-manager-sync', action: 'Open sync' },
   { title: 'Result submissions', description: 'Review submitted tournament results.', href: 'https://tournaments.smtop100.blog/admin/result-submissions', action: 'Review results' },
-  { title: 'Manager Lab', description: 'Performance and manager analysis tools.', href: 'https://tournaments.smtop100.blog/admin/manager-lab', action: 'Open lab' },
+  { title: 'Manager Lab', description: 'Performance and manager analysis tools.', href: 'https://lab.smtop100.blog/', action: 'Open lab' },
   { title: 'Manager Awards', description: 'Awards voting and historical honours.', href: 'https://awards.smtop100.blog/', action: 'Open Awards' },
   { title: 'Publishing Desk', description: 'Write and publish Top 100 stories.', href: 'https://write.smtop100.blog/', action: 'Open publishing' },
 ];
