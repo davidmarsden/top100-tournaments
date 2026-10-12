@@ -11,6 +11,7 @@ const REQUEST_TIMEOUT_MS = 10000;
 // are never copied between sites, so neither site can invalidate the other when it renews.
 const SSO_BRIDGE_ORIGINS = ['https://admin.smtop100.blog', 'https://tournaments.smtop100.blog'];
 const SSO_BRIDGE_TIMEOUT_MS = 8000;
+const SSO_STEP_TIMEOUT_MS = 8000;
 const HANDOFF_EXCHANGE_URL = 'https://xxntutejknolhmbssqdf.supabase.co/functions/v1/exchange-manager-handoff';
 // Which other-site session our current session was imported from, and, after an explicit sign-out
 // here, which source session must not be imported again. A new sign-in elsewhere is a new session.
@@ -66,15 +67,31 @@ async function signInFromOtherTop100Sites() {
   for (const origin of SSO_BRIDGE_ORIGINS) {
     const handoff = await requestHandoffCode(origin, suppressSessionId);
     if (!handoff) continue;
-    const response = await fetch(HANDOFF_EXCHANGE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: handoff.code }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload?.token_hash) continue;
-    const { data, error } = await supabase.auth.verifyOtp({ token_hash: payload.token_hash, type: 'email' });
-    if (error || !data.session) continue;
+    // Every network step is bounded: a stalled backend must fall back to the email form, never
+    // leave the page on "Checking your sign-in…".
+    let data;
+    try {
+      const controller = new AbortController();
+      const abortTimer = window.setTimeout(() => controller.abort(), SSO_STEP_TIMEOUT_MS);
+      let payload;
+      try {
+        const response = await fetch(HANDOFF_EXCHANGE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: handoff.code }),
+          signal: controller.signal,
+        });
+        payload = response.ok ? await response.json() : null;
+      } finally {
+        window.clearTimeout(abortTimer);
+      }
+      if (!payload?.token_hash) continue;
+      const result = await timeout(supabase.auth.verifyOtp({ token_hash: payload.token_hash, type: 'email' }), 'Sign-in handoff');
+      if (result.error || !result.data?.session) continue;
+      data = result.data;
+    } catch {
+      continue;
+    }
     writeKey(SSO_SOURCE_KEY, handoff.sourceSessionId);
     writeKey(SIGNED_OUT_SESSION_KEY, null);
     return data.session;
