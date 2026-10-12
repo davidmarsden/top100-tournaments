@@ -11,10 +11,21 @@ const REQUEST_TIMEOUT_MS = 10000;
 // request a separate magic link for My Matches even though it is the same Supabase user.
 const SESSION_BRIDGE_ORIGINS = ['https://admin.smtop100.blog', 'https://tournaments.smtop100.blog'];
 const SESSION_BRIDGE_TIMEOUT_MS = 4000;
-const SIGNED_OUT_FLAG = 'top100-manager-signed-out';
+// After an explicit sign-out we must not import the *same* session straight back from another
+// site, but any later sign-in elsewhere (a new session) should work again. So we remember the
+// signed-out session's id, not a blanket "signed out" flag.
+const SIGNED_OUT_SESSION_KEY = 'top100-manager-signed-out-session';
 
-function readFlag() { try { return window.localStorage.getItem(SIGNED_OUT_FLAG) === '1'; } catch { return false; } }
-function writeFlag(on) { try { if (on) window.localStorage.setItem(SIGNED_OUT_FLAG, '1'); else window.localStorage.removeItem(SIGNED_OUT_FLAG); } catch { /* storage unavailable */ } }
+function sessionIdOf(accessToken) {
+  try {
+    const payload = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(window.atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '='))).session_id || null;
+  } catch { return null; }
+}
+function readSignedOutSessionId() { try { return window.localStorage.getItem(SIGNED_OUT_SESSION_KEY); } catch { return null; } }
+function writeSignedOutSessionId(id) {
+  try { if (id) window.localStorage.setItem(SIGNED_OUT_SESSION_KEY, id); else window.localStorage.removeItem(SIGNED_OUT_SESSION_KEY); } catch { /* storage unavailable */ }
+}
 
 function isReturningFromEmailLink() {
   const { hash, search } = window.location;
@@ -50,10 +61,13 @@ function requestBridgedSession(origin) {
 
 async function importSessionFromOtherTop100Sites() {
   if (window.location.hostname !== 'manager.smtop100.blog') return null;
-  if (readFlag() || isReturningFromEmailLink()) return null;
+  if (isReturningFromEmailLink()) return null;
+  const signedOutSessionId = readSignedOutSessionId();
   for (const origin of SESSION_BRIDGE_ORIGINS) {
     const bridged = await requestBridgedSession(origin);
     if (!bridged) continue;
+    // The session the user just signed out of here: don't bring it back.
+    if (signedOutSessionId && sessionIdOf(bridged.access_token) === signedOutSessionId) continue;
     const { data, error } = await supabase.auth.setSession(bridged);
     if (!error && data.session) return data.session;
   }
@@ -182,12 +196,12 @@ export default function ManagerEntry({ registrationMode = false }) {
     if (!hasSupabaseConfig || !supabase) { setSession(null); return undefined; }
     let active = true;
     let importing = false;
+    let currentSessionId = null;
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
-      // Remember an explicit sign-out so we don't immediately sign the user back in from
-      // another Top 100 site. Signing in again (by email link or elsewhere) clears it.
-      if (event === 'SIGNED_OUT') writeFlag(true);
-      if (event === 'SIGNED_IN') writeFlag(false);
+      if (event === 'SIGNED_OUT') writeSignedOutSessionId(currentSessionId);
+      if (event === 'SIGNED_IN') writeSignedOutSessionId(null);
+      currentSessionId = nextSession?.access_token ? sessionIdOf(nextSession.access_token) : null;
       if (event === 'INITIAL_SESSION' && !nextSession) {
         // No session on this site yet: try the other Top 100 sites before showing the form.
         // Run outside the auth callback, where auth-js holds its lock.
