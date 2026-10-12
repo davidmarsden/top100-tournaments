@@ -115,3 +115,7 @@ Publish directory:
 ```bash
 dist
 ```
+
+## Database migrations
+
+Every migration that creates a table, view or function must grant API access explicitly or declare the object private. See [docs/migration-permissions.md](docs/migration-permissions.md). The **Migration permissions** CI check enforces this on pull requests, and the **Supabase Preview** check proves migrations apply on a fresh Supabase database.
