@@ -48,6 +48,8 @@ Diagnostic or data-only scripts were not replayed: `database/2026-07-05-clean-te
 
 ## Product notes (outside this repair's scope)
 
+_Resolved by migrations `20261011231000` (F4), `20261011231100` (F9) and `20261011231200` (F13)._
+
 - **F4:** `get_public_youth_winners()` was meant to be retired on 18 July but is still live in production.
 - **F9:** the 18 July "Fix VfL club matching" change (`canonical_manager_claim_club`) never reached production, so claims for VfL/VfB/SV/Wolfsburg-style club names may still fail to auto-match.
 - **F7:** migrations should not carry one-off production data repairs with hard-coded ids; use the SQL editor and record the action.
