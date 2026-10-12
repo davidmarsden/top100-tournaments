@@ -1,17 +1,25 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
-const cors = {
-  "Access-Control-Allow-Origin": "https://vote.smtop100.blog",
-  "Access-Control-Allow-Headers": "content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Content-Type": "application/json",
+// Each consuming site may only redeem codes minted for it.
+const DESTINATIONS: Record<string, { destination: string; redirectTo: string }> = {
+  "https://vote.smtop100.blog": { destination: "vote", redirectTo: "https://vote.smtop100.blog/vote" },
+  "https://manager.smtop100.blog": { destination: "manager", redirectTo: "https://manager.smtop100.blog/" },
 };
 
 Deno.serve(async (req) => {
+  const origin = req.headers.get("origin") || "";
+  const target = DESTINATIONS[origin];
+  const cors = {
+    "Access-Control-Allow-Origin": target ? origin : "https://vote.smtop100.blog",
+    "Access-Control-Allow-Headers": "content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Content-Type": "application/json",
+    "Vary": "Origin",
+  };
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: cors });
-  if (req.headers.get("origin") !== "https://vote.smtop100.blog") {
+  if (!target) {
     return new Response(JSON.stringify({ error: "Invalid origin" }), { status: 403, headers: cors });
   }
 
@@ -34,7 +42,7 @@ Deno.serve(async (req) => {
     .from("manager_auth_handoffs")
     .select("auth_user_id,expires_at,consumed_at")
     .eq("code_hash", hash)
-    .eq("destination", "vote")
+    .eq("destination", target.destination)
     .maybeSingle();
 
   if (!row || row.consumed_at || new Date(row.expires_at) <= new Date()) {
@@ -69,11 +77,11 @@ Deno.serve(async (req) => {
   const { data: link, error: linkError } = await service.auth.admin.generateLink({
     type: "magiclink",
     email: userData.user.email,
-    options: { redirectTo: "https://vote.smtop100.blog/vote" },
+    options: { redirectTo: target.redirectTo },
   });
 
   if (linkError || !link?.properties?.hashed_token) {
-    return new Response(JSON.stringify({ error: "Could not create voting session" }), { status: 500, headers: cors });
+    return new Response(JSON.stringify({ error: "Could not create session" }), { status: 500, headers: cors });
   }
 
   return new Response(JSON.stringify({ token_hash: link.properties.hashed_token }), { headers: cors });
