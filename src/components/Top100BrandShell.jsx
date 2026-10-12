@@ -62,6 +62,10 @@ function normalizeManagerUi(root) {
     if (eyebrow.textContent.trim() === 'Manager Portal') eyebrow.textContent = 'My Matches';
   });
   root.querySelectorAll('.status').forEach((status) => {
+    // Only write when something changes. Assigning textContent always replaces the node's
+    // children, which the shell's MutationObserver sees as a change: an unconditional write
+    // re-triggered normalize() forever and froze My Matches whenever a status message showed.
+    if (!status.textContent.includes('Manager Portal')) return;
     status.textContent = status.textContent.replaceAll('Manager Portal', 'My Matches');
   });
 }
@@ -78,14 +82,23 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
   useEffect(() => {
     const shell = document.querySelector('.top100-site-shell');
     if (!shell) return undefined;
+    const options = { childList: true, subtree: true, characterData: true };
+    let observer;
     const normalize = () => {
-      replaceInternalStatusLabels(shell);
-      if (isVoting) normalizeCommunityPollUi(shell);
-      if (isManager) normalizeManagerUi(shell);
+      // Our own edits must never re-trigger this observer: pause it while normalising and
+      // discard the records our edits produced before resuming.
+      observer?.disconnect();
+      try {
+        replaceInternalStatusLabels(shell);
+        if (isVoting) normalizeCommunityPollUi(shell);
+        if (isManager) normalizeManagerUi(shell);
+      } finally {
+        observer?.takeRecords();
+        observer?.observe(shell, options);
+      }
     };
+    observer = new MutationObserver(normalize);
     normalize();
-    const observer = new MutationObserver(normalize);
-    observer.observe(shell, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
   }, [isVoting, isManager]);
 
