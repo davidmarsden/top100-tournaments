@@ -5,6 +5,60 @@ import ManagerResourceHub from './ManagerResourceHub.jsx';
 import ManagerReminderPreferences from './ManagerReminderPreferences.jsx';
 
 const REQUEST_TIMEOUT_MS = 10000;
+// Single sign-on: a session started on another Top 100 site (e.g. an admin signed in to the
+// Control Room) is imported through that site's /auth/session-bridge page before the email
+// sign-in form is shown. Sessions are stored per subdomain, so without this an admin had to
+// request a separate magic link for My Matches even though it is the same Supabase user.
+const SESSION_BRIDGE_ORIGINS = ['https://admin.smtop100.blog', 'https://tournaments.smtop100.blog'];
+const SESSION_BRIDGE_TIMEOUT_MS = 4000;
+const SIGNED_OUT_FLAG = 'top100-manager-signed-out';
+
+function readFlag() { try { return window.localStorage.getItem(SIGNED_OUT_FLAG) === '1'; } catch { return false; } }
+function writeFlag(on) { try { if (on) window.localStorage.setItem(SIGNED_OUT_FLAG, '1'); else window.localStorage.removeItem(SIGNED_OUT_FLAG); } catch { /* storage unavailable */ } }
+
+function isReturningFromEmailLink() {
+  const { hash, search } = window.location;
+  return /access_token=|error_description=/.test(hash) || /[?&](code|token_hash|error_description)=/.test(search);
+}
+
+// Ask one origin's bridge page for its session. Resolves to { access_token, refresh_token } or null.
+function requestBridgedSession(origin) {
+  return new Promise((resolve) => {
+    const frame = document.createElement('iframe');
+    let timer;
+    const finish = (value) => {
+      window.clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+      frame.remove();
+      resolve(value);
+    };
+    const onMessage = (event) => {
+      if (event.origin !== origin || event.source !== frame.contentWindow || event.data?.type !== 'top100-manager-session') return;
+      const bridged = event.data.session;
+      finish(bridged?.access_token && bridged?.refresh_token ? bridged : null);
+    };
+    window.addEventListener('message', onMessage);
+    frame.src = `${origin}/auth/session-bridge`;
+    frame.title = 'Checking Top 100 sign-in';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.display = 'none';
+    frame.addEventListener('error', () => finish(null), { once: true });
+    timer = window.setTimeout(() => finish(null), SESSION_BRIDGE_TIMEOUT_MS);
+    document.body.appendChild(frame);
+  });
+}
+
+async function importSessionFromOtherTop100Sites() {
+  if (window.location.hostname !== 'manager.smtop100.blog') return null;
+  if (readFlag() || isReturningFromEmailLink()) return null;
+  for (const origin of SESSION_BRIDGE_ORIGINS) {
+    const bridged = await requestBridgedSession(origin);
+    if (!bridged) continue;
+    const { data, error } = await supabase.auth.setSession(bridged);
+    if (!error && data.session) return data.session;
+  }
+  return null;
+}
 
 function timeout(promise, label) {
   let timer;
@@ -127,7 +181,29 @@ export default function ManagerEntry({ registrationMode = false }) {
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setSession(null); return undefined; }
     let active = true;
-    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => { if (!active) return; setSession(nextSession || null); if (!nextSession) setIdentity({ state: 'idle', account: null, claim: null, error: '' }); });
+    let importing = false;
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!active) return;
+      // Remember an explicit sign-out so we don't immediately sign the user back in from
+      // another Top 100 site. Signing in again (by email link or elsewhere) clears it.
+      if (event === 'SIGNED_OUT') writeFlag(true);
+      if (event === 'SIGNED_IN') writeFlag(false);
+      if (event === 'INITIAL_SESSION' && !nextSession) {
+        // No session on this site yet: try the other Top 100 sites before showing the form.
+        // Run outside the auth callback, where auth-js holds its lock.
+        importing = true;
+        window.setTimeout(async () => {
+          let imported = null;
+          try { imported = await importSessionFromOtherTop100Sites(); } catch { imported = null; }
+          importing = false;
+          if (active) setSession(imported || null);
+        }, 0);
+        return;
+      }
+      if (importing && !nextSession) return;
+      setSession(nextSession || null);
+      if (!nextSession) setIdentity({ state: 'idle', account: null, claim: null, error: '' });
+    });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
 
