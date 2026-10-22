@@ -7,12 +7,6 @@ function isStandalone() {
   return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
-function isIosSafari() {
-  const ua = window.navigator.userAgent;
-  const ios = /iphone|ipad|ipod/i.test(ua) || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
-  return ios && /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
-}
-
 function recentlyDismissed() {
   try {
     const at = Number(window.localStorage.getItem(DISMISS_KEY) || 0);
@@ -37,7 +31,8 @@ export default function Top100InstallPrompt() {
     };
   }, []);
 
-  if (hidden || (!deferred && !isIosSafari())) return null;
+  // The how-to guide covers iOS and manual installs; this only offers Chrome's one-tap install.
+  if (hidden || !deferred) return null;
 
   function dismiss() {
     try { window.localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* storage unavailable */ }
@@ -57,12 +52,10 @@ export default function Top100InstallPrompt() {
       <img src="/top100-icon-192.png" alt="" width="48" height="48" />
       <div>
         <strong>Add Top 100 to your home screen</strong>
-        {deferred
-          ? <span>Open it like an app and get notifications for your fixtures.</span>
-          : <span>Tap <b>Share</b> then <b>Add to Home Screen</b>. Notifications on iPhone need this.</span>}
+        <span>Open it like an app and get notifications for your fixtures.</span>
       </div>
       <div className="top100-install-prompt__actions">
-        {deferred && <button type="button" onClick={install}>Install</button>}
+        <button type="button" onClick={install}>Install</button>
         <button type="button" className="secondary" onClick={dismiss}>Not now</button>
       </div>
     </aside>
