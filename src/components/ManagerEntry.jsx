@@ -129,6 +129,24 @@ function SignIn({ returnTo, registrationMode }) {
   const [email, setEmail] = useState('');
   const [state, setState] = useState('idle');
   const [message, setMessage] = useState('');
+  const [code, setCode] = useState('');
+  const [codeState, setCodeState] = useState({ state: 'idle', message: '' });
+
+  // The emailed code signs in wherever it is typed. On iPhone the email link
+  // opens Safari, which can't sign in the home-screen app (separate storage).
+  async function verifyCode(event) {
+    event.preventDefault();
+    const token = code.replace(/\s+/g, '');
+    if (!/^\d{6,10}$/.test(token) || codeState.state === 'checking') return;
+    setCodeState({ state: 'checking', message: '' });
+    try {
+      const { error } = await timeout(supabase.auth.verifyOtp({ email: email.trim(), token, type: 'email' }), 'Sign-in code check');
+      if (error) throw error;
+      setCodeState({ state: 'done', message: 'Signed in ✓' });
+    } catch (error) {
+      setCodeState({ state: 'error', message: error?.message || 'That code did not work. Use the newest email you received.' });
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -155,7 +173,7 @@ function SignIn({ returnTo, registrationMode }) {
     }
   }
 
-  return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100</p><h1>Manager sign-in</h1><p>One account for Top 100 and Top 100 Regen.</p></section><section className="card manager-login-card"><h2>{state === 'sent' ? 'Check your email' : 'Sign in securely'}</h2>{state === 'sent' ? <><p className="status" role="status">{message}</p><p className="muted">The link can take a few minutes to arrive. Older links may stop working after you request a newer one.</p><button type="button" className="secondary" onClick={() => { setState('idle'); setMessage(''); }}>Use a different email</button></> : <form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={state === 'sending'} /></label><button type="submit" disabled={state === 'sending'}>{state === 'sending' ? 'Sending…' : 'Email me a sign-in link'}</button>{message && <p className="status" role="alert">{message}</p>}</form>}</section></main>;
+  return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100</p><h1>Manager sign-in</h1><p>One account for Top 100 and Top 100 Regen.</p></section><section className="card manager-login-card"><h2>{state === 'sent' ? 'Check your email' : 'Sign in securely'}</h2>{state === 'sent' ? <><p className="status" role="status">{message}</p><p className="muted">The link can take a few minutes to arrive. Older links may stop working after you request a newer one.</p><form className="sign-in-code-form" onSubmit={verifyCode}><label>Or enter the code from the email<input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,12}" maxLength={12} value={code} onChange={(event) => setCode(event.target.value)} required disabled={codeState.state === 'checking' || codeState.state === 'done'} /></label><p className="muted">Using Top 100 from your iPhone home screen? Enter the code here instead of tapping the link.</p><button type="submit" disabled={codeState.state === 'checking' || codeState.state === 'done'}>{codeState.state === 'checking' ? 'Checking…' : 'Sign in with code'}</button>{codeState.message && <p className="status" role={codeState.state === 'error' ? 'alert' : 'status'}>{codeState.message}</p>}</form><button type="button" className="secondary" onClick={() => { setState('idle'); setMessage(''); setCode(''); setCodeState({ state: 'idle', message: '' }); }}>Use a different email</button></> : <form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={state === 'sending'} /></label><button type="submit" disabled={state === 'sending'}>{state === 'sending' ? 'Sending…' : 'Email me a sign-in link'}</button>{message && <p className="status" role="alert">{message}</p>}</form>}</section></main>;
 }
 
 function Setup({ session, claim: initialClaim, onClaimChanged }) {

@@ -30,7 +30,7 @@ export default function Top100AppGuide({ signedIn = false }) {
         </li>
         <li>
           <strong>Open Top 100 from your home screen</strong>
-          <span>{signedIn ? 'It opens like an app, already signed in.' : 'It opens like an app. Sign in with your email as usual.'}</span>
+          <span>{signedIn ? 'It opens like an app. If it asks you to sign in, use the code from the sign-in email.' : 'It opens like an app. Sign in there: on iPhone, type the code from the sign-in email rather than tapping the link.'}</span>
         </li>
         <li>
           <strong>Tap Turn on notifications</strong>
