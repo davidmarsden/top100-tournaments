@@ -3,6 +3,9 @@ import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import ManagerPortal from './ManagerPortal.jsx';
 import ManagerResourceHub from './ManagerResourceHub.jsx';
 import ManagerReminderPreferences from './ManagerReminderPreferences.jsx';
+import Top100AppHome from './Top100AppHome.jsx';
+import Top100InstallPrompt from './Top100InstallPrompt.jsx';
+import Top100Notifications from './Top100Notifications.jsx';
 
 const REQUEST_TIMEOUT_MS = 10000;
 // Single sign-on: if the user is already signed in on another Top 100 site (e.g. an admin in the
@@ -276,5 +279,12 @@ export default function ManagerEntry({ registrationMode = false }) {
   if (identity.state === 'error') return <main className="manager-portal-shell"><section className="card"><h1>We couldn't check your manager link</h1><p className="status">{identity.error}</p><button type="button" className="secondary" onClick={() => supabase.auth.signOut()}>Sign out</button></section></main>;
   if (identity.state === 'setup') return <Setup session={session} claim={identity.claim} onClaimChanged={(claim) => setIdentity({ state: 'setup', account: null, claim, error: '' })} />;
   if (identity.state === 'linked' && returnTo) return <ReturnHandoff session={session} returnTo={returnTo} />;
-  return <><ManagerPortal registrationMode={registrationMode} returnTo={returnTo} session={session} />{!registrationMode && <ManagerReminderPreferences session={session} authLoading={false} />}{!registrationMode && <ManagerResourceHub />}</>;
+  if (registrationMode) return <ManagerPortal registrationMode returnTo={returnTo} session={session} />;
+  return <>
+    <div className="top100-app-top"><Top100InstallPrompt /><Top100AppHome session={session} /></div>
+    <ManagerPortal returnTo={returnTo} session={session} />
+    <div className="top100-app-bottom"><Top100Notifications session={session} /></div>
+    <ManagerReminderPreferences session={session} authLoading={false} />
+    <ManagerResourceHub />
+  </>;
 }

@@ -1,18 +1,24 @@
 {
-  "name": "Top 100 My Matches",
-  "short_name": "My Matches",
-  "description": "Your Top 100 tournament fixtures, results and manager match workflow.",
-  "start_url": "/",
+  "id": "/",
+  "name": "Top 100",
+  "short_name": "Top 100",
+  "description": "Your Top 100 club, fixtures, notifications and quick links into Soccer Manager.",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0B1F3B",
   "theme_color": "#0B1F3B",
+  "categories": ["sports", "games"],
   "icons": [
-    {
-      "src": "/top100-app-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+    { "src": "/top100-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/top100-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/top100-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/top100-app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Notifications", "url": "/?source=pwa#notifications", "icons": [{ "src": "/top100-icon-192.png", "sizes": "192x192" }] },
+    { "name": "Squad & Transfers", "url": "/squad", "icons": [{ "src": "/top100-icon-192.png", "sizes": "192x192" }] },
+    { "name": "Top 100 Chat", "url": "/chat", "icons": [{ "src": "/top100-icon-192.png", "sizes": "192x192" }] }
   ]
 }
