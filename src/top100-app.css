@@ -10,6 +10,13 @@
 .top100-install-prompt span { color: #475569; font-size: 0.9rem; }
 .top100-install-prompt__actions { display: flex; gap: 8px; flex: none; }
 
+.top100-app-guide { padding: 20px; border: 1px solid #dce5f5; border-radius: 24px; background: #fff; box-shadow: 0 12px 30px rgba(21, 39, 75, 0.06); }
+.top100-app-guide h2 { margin: 2px 0 12px; font-size: clamp(1.25rem, 3vw, 1.6rem); }
+.top100-app-guide > ol { display: grid; gap: 12px; margin: 0; padding-left: 1.4rem; }
+.top100-app-guide > ol > li > strong, .top100-app-guide > ol > li > span { display: block; }
+.top100-app-guide > ol > li > span, .top100-app-guide ul { margin-top: 4px; color: #475569; font-size: 0.92rem; }
+.top100-app-guide ul { display: grid; gap: 4px; padding-left: 1.1rem; }
+.top100-app-guide ul span { font-weight: 800; color: #0f172a; }
 .top100-app-home { display: grid; gap: 14px; }
 .top100-sm-shortcuts { display: grid; gap: 12px; padding: 20px; border-radius: 24px; background: linear-gradient(135deg, #0b1f3b, #134e4a); color: #fff; }
 .top100-sm-shortcuts h2 { margin: 2px 0 0; color: #fff; font-size: clamp(1.4rem, 3.5vw, 2rem); }
