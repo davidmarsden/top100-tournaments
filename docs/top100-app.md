@@ -18,11 +18,13 @@ Soccer Manager's in-game private messages cannot be included: they are only read
 3. `push-dispatch` claims pending rows (`claim_pending_push_notifications`, `SKIP LOCKED`), sends Web Push with `web-push`, then reports back (`complete_push_notifications`), removing expired devices.
 4. `push-dispatch-scheduled` runs every five minutes: it queues day-before/fixture-day reminders (from 08:00 UK time) and retries anything still pending. Pending notifications older than two days are dropped from the push queue.
 
+Read notifications are not yet pruned automatically; with about 100 managers the table grows slowly. Add a retention job if it ever matters.
+
 The manager-host service worker (`public/pwa-sw.js`) still has **no fetch handler** and deletes legacy shell caches, so the portal is never served from a cache. It only shows notifications and opens the right page when one is tapped.
 
 ## Setup
 
-1. Apply `supabase/migrations/20261022190000_top100_app_home_and_notifications.sql`.
+1. Database: applied to production on 22 October 2026 as the nine `20261022*_top100_app_*` migrations.
 2. Generate VAPID keys: `npx web-push generate-vapid-keys`.
 3. Netlify environment variables:
 
