@@ -16,7 +16,7 @@ Soccer Manager's in-game private messages cannot be included: they are only read
 1. Triggers on `matches`, `manager_match_arrangement_events` and `match_comments`, plus `send_manager_broadcast()` and `enqueue_chat_reply_notification()`, insert rows into `manager_notifications` (deduplicated by `dedupe_key`).
 2. `wake_push_dispatcher` calls `/.netlify/functions/push-dispatch` through pg_net once per transaction.
 3. `push-dispatch` claims pending rows (`claim_pending_push_notifications`, `SKIP LOCKED`), sends Web Push with `web-push`, then reports back (`complete_push_notifications`), removing expired devices.
-4. `push-dispatch-scheduled` runs every five minutes: it queues day-before/fixture-day reminders (from 08:00 UK time) and retries anything still pending. Pending notifications older than two days are dropped from the push queue.
+4. `push-dispatch-scheduled` runs every five minutes: it queues day-before/fixture-day reminders (from 08:00 UK time), a daily "sync due" reminder to global admins when the last Top 100 sync is over a day old (from 09:00 UK time, linking to `lab.smtop100.blog/sync`), and retries anything still pending. Pending notifications older than two days are dropped from the push queue.
 
 Read notifications are not yet pruned automatically; with about 100 managers the table grows slowly. Add a retention job if it ever matters.
 
