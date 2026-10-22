@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/top100-app-icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link id="app-manifest" rel="manifest" href="/tournaments.webmanifest" />
     <meta name="theme-color" content="#0B1F3B" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -28,12 +29,9 @@
         if (!host.startsWith('manager.')) return;
 
         // The authenticated Manager Portal must never be pinned to an old app shell.
-        // Remove legacy Top 100 service-worker caches before React starts.
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistrations()
-            .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
-            .catch(() => undefined);
-        }
+        // Remove legacy Top 100 service-worker caches before React starts. The
+        // current worker only handles push notifications and has no fetch handler,
+        // so it stays registered; main.jsx replaces any legacy caching worker.
         if ('caches' in window) {
           caches.keys()
             .then((keys) => Promise.all(

@@ -7,6 +7,7 @@ import './schedule.css';
 import './tournament-hub.css';
 import './tournament-builder.css';
 import './manager-portal.css';
+import './top100-app.css';
 import './brand-system.css';
 import './public-page-overrides.css';
 import './fixture-polish.css';
@@ -101,29 +102,19 @@ renderApplication().catch((error) => {
   }
 });
 
+// Chrome can fire beforeinstallprompt before React mounts; keep it for Top100InstallPrompt.
+// Only the manager host (the Top 100 app) shows its own install prompt.
+if (window.location.hostname === 'manager.smtop100.blog') window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  window.__top100InstallPrompt = event;
+  window.dispatchEvent(new Event('top100-install-available'));
+});
+
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', async () => {
-    const isManagerHost = window.location.hostname === 'manager.smtop100.blog';
-
-    if (isManagerHost) {
-      try {
-        // Only clients already controlled by a legacy worker need the
-        // retirement worker. A clean/current Manager Portal must not create a
-        // new registration: the retirement worker unregisters itself and
-        // navigates clients, so unconditional registration would reload-loop.
-        if (!navigator.serviceWorker.controller) return;
-
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        const existing = registrations.find((registration) =>
-          registration.scope === `${window.location.origin}/`
-        );
-        if (!existing) return;
-
-        await existing.update();
-      } catch (_) {}
-      return;
-    }
-
+  window.addEventListener('load', () => {
+    // On manager.smtop100.blog the worker only handles push notifications (no
+    // fetch handler, no caches), so registering it there is safe. Registering
+    // also replaces any legacy shell-caching worker left over from older versions.
     navigator.serviceWorker.register('/pwa-sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => undefined);
   });
 }

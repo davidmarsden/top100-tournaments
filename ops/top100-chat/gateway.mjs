@@ -14,6 +14,11 @@ const vapidPublicKey = String(process.env.TOP100_CHAT_VAPID_PUBLIC_KEY || '');
 const vapidPrivateKey = String(process.env.TOP100_CHAT_VAPID_PRIVATE_KEY || '');
 const vapidSubject = String(process.env.TOP100_CHAT_VAPID_SUBJECT || 'mailto:admin@smtop100.blog');
 const pushStorePath = String(process.env.TOP100_CHAT_PUSH_STORE || '/var/lib/top100-chat/push-subscriptions.json');
+// Optional: also forward reply events to the Top 100 app (manager.smtop100.blog)
+// inbox and Web Push. Both values must be set; the secret matches the Netlify
+// TOP100_CHAT_EVENT_SECRET.
+const appChatEventUrl = String(process.env.TOP100_APP_CHAT_EVENT_URL || '');
+const appChatEventSecret = String(process.env.TOP100_APP_CHAT_EVENT_SECRET || '');
 const maxPushSubscriptionsPerManager = 8;
 const maxPushSubscriptionsTotal = 500;
 const cookieSecret = crypto.createHmac('sha256', ssoSecret).update('top100-chat-cookie-v1').digest();
@@ -199,6 +204,25 @@ function activePushSubscriptionCountForManager(managerId) {
   ).length;
 }
 
+function forwardReplyToTop100App(managerId, replyId, senderName, excerpt) {
+  if (!appChatEventUrl || !appChatEventSecret) return;
+  const validReply = Number.isInteger(replyId) && replyId > 0;
+  fetch(appChatEventUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-top100-chat-event-secret': appChatEventSecret },
+    body: JSON.stringify({
+      managerId,
+      author: senderName,
+      excerpt,
+      url: validReply ? 'https://chat.smtop100.blog/?id=' + replyId : 'https://chat.smtop100.blog/',
+      eventKey: validReply ? 'reply-' + replyId : 'reply-' + Date.now(),
+    }),
+    signal: AbortSignal.timeout(5000),
+  }).then((response) => {
+    if (!response.ok) console.error('top100 app chat event: HTTP', response.status);
+  }).catch((error) => console.error('top100 app chat event:', error.message));
+}
+
 async function sendReplyPush(event) {
   pruneExpiredPushSubscriptions();
   const recipientMatch = /^manager(\d+)$/.exec(String(event.recipientScreenname || ''));
@@ -210,6 +234,7 @@ async function sendReplyPush(event) {
   const replyId = Number(event.replyId);
   const senderName = cleanNotificationText(event.senderName, 120) || 'A Top 100 manager';
   const body = cleanNotificationText(event.excerpt, 180) || 'replied to your post.';
+  forwardReplyToTop100App(managerId, replyId, senderName, body);
   const payload = JSON.stringify({
     title: senderName + ' replied in Top 100 Chat',
     body,

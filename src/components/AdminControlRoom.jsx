@@ -1,3 +1,5 @@
+import AdminBroadcastComposer from './AdminBroadcastComposer.jsx';
+
 const TOOLS = [
   { title: 'Community Polls', description: 'Create, open, close and finalise manager polls.', href: 'https://vote.smtop100.blog/vote', action: 'Manage polls' },
   { title: 'Manager accounts', description: 'Manage Top 100 manager identities and account lifecycle.', href: 'https://tournaments.smtop100.blog/admin/manager-accounts', action: 'Manage managers' },
@@ -16,5 +18,6 @@ export default function AdminControlRoom() {
       <div className="manager-resource-hub__intro"><p className="eyebrow">Admin tools</p><h2 id="admin-tools-heading">Where do you want to go?</h2><p>This page links to the existing admin tools rather than duplicating them.</p></div>
       <div className="manager-resource-grid">{TOOLS.map((tool) => <a key={tool.title} className="manager-resource-card" href={tool.href}><strong>{tool.title}</strong><span>{tool.description}</span><span className="muted">{tool.action} →</span></a>)}</div>
     </section>
+    <AdminBroadcastComposer />
   </main>;
 }
