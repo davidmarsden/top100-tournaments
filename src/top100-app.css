@@ -38,7 +38,11 @@
 
 .top100-division-table { padding: 4px 16px; border: 1px solid #dce5f5; border-radius: 20px; background: #fff; }
 .top100-division-table summary { padding: 10px 0; font-weight: 800; cursor: pointer; }
+.top100-app-home > * { min-width: 0; }
 .top100-division-table .table-wrap { overflow-x: auto; padding-bottom: 12px; }
+/* The global table min-width (760px) would stretch the whole home grid; five columns fit a phone. */
+.top100-division-table table { min-width: 0; }
+.top100-division-table th, .top100-division-table td { padding: 0.6rem 0.5rem; }
 .top100-division-table a { color: inherit; }
 
 .top100-notifications { scroll-margin-top: 16px; }
