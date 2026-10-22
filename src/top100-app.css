@@ -60,6 +60,9 @@
 .top100-inbox li span { color: #475569; font-size: 0.88rem; overflow-wrap: anywhere; }
 .top100-inbox li time { color: #64748b; font-size: 0.76rem; font-weight: 800; }
 
+.sign-in-code-form { display: grid; gap: 10px; margin: 16px 0; padding-top: 16px; border-top: 1px solid #e4ebf7; }
+.sign-in-code-form input { letter-spacing: 0.2em; font-size: 1.2rem; text-align: center; }
+.sign-in-code-form .muted { margin: 0; font-size: 0.86rem; }
 .admin-broadcast { margin-top: 20px; }
 .admin-broadcast form { display: grid; gap: 10px; }
 .admin-broadcast textarea { min-height: 96px; }
