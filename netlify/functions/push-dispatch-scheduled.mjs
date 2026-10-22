@@ -16,7 +16,8 @@ export default async () => {
   try {
     // Reminders go to the in-app inbox even when Web Push isn't configured.
     const reminders = await rpc(config, 'enqueue_due_fixture_reminders');
-    const syncReminders = await rpc(config, 'enqueue_sync_due_reminders');
+    // Optional: never let the admin reminder block fixture reminders or retries.
+    const syncReminders = await rpc(config, 'enqueue_sync_due_reminders').catch((error) => ({ error: error.message }));
     if (missing.length) return json({ ok: true, reminders, syncReminders, push: `not configured (${missing.join(', ')})` });
     return json({ ok: true, reminders, syncReminders, ...(await dispatchPending(config)) });
   } catch (error) {
