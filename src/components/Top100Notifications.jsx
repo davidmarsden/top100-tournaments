@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
+// Tolerate a key pasted into Netlify with its label, quotes or whitespace.
+const VAPID_PUBLIC_KEY = String(import.meta.env.VITE_VAPID_PUBLIC_KEY || '').trim()
+  .replace(/^VITE_VAPID_PUBLIC_KEY\s*=\s*/, '').replace(/^["']|["']$/g, '').trim();
 
 const CATEGORIES = [
   { key: 'fixtures', label: 'Fixtures', description: 'New fixtures, plus day-before and fixture-day reminders.' },
@@ -34,6 +36,30 @@ function pushSupported() {
 async function workerRegistration() {
   const existing = await navigator.serviceWorker.getRegistration('/');
   return existing || navigator.serviceWorker.register('/pwa-sw.js', { scope: '/', updateViaCache: 'none' });
+}
+
+function sameKey(buffer, key) {
+  if (!buffer) return false;
+  const a = new Uint8Array(buffer);
+  return a.length === key.length && a.every((byte, index) => byte === key[index]);
+}
+
+// The device's subscription for the current VAPID key. A subscription made with
+// an older key (after a key rotation) can no longer receive pushes, so it is
+// dropped and, when the manager already allowed notifications, replaced.
+async function currentSubscription(registration, { create = false } = {}) {
+  const key = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+  let subscription = await registration.pushManager.getSubscription();
+  if (subscription && !sameKey(subscription.options?.applicationServerKey, key)) {
+    await supabase.rpc('delete_my_push_subscription', { p_endpoint: subscription.endpoint });
+    await subscription.unsubscribe();
+    subscription = null;
+    create = true;
+  }
+  if (!subscription && create && Notification.permission === 'granted') {
+    subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  }
+  return subscription;
 }
 
 async function saveSubscription(subscription) {
@@ -91,7 +117,7 @@ export default function Top100Notifications({ session }) {
       if (Notification.permission === 'denied') { if (active) setDevice({ state: 'blocked', message: '' }); return; }
       try {
         const registration = await workerRegistration();
-        const subscription = await registration.pushManager.getSubscription();
+        const subscription = await currentSubscription(registration);
         // Re-save on every visit so the device stays linked to the signed-in account.
         if (subscription && Notification.permission === 'granted') await saveSubscription(subscription);
         if (active) setDevice({ state: subscription ? 'on' : 'off', message: '' });
@@ -119,8 +145,7 @@ export default function Top100Notifications({ session }) {
       if (permission !== 'granted') { setDevice({ state: permission === 'denied' ? 'blocked' : 'off', message: '' }); return; }
       const registration = await workerRegistration();
       await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription()
-        || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+      const subscription = await currentSubscription(registration, { create: true });
       await saveSubscription(subscription);
       setDevice({ state: 'on', message: '' });
       setMessage('Notifications are on for this device.');

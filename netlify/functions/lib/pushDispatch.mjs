@@ -10,13 +10,21 @@ import webpush from 'web-push';
 const BATCH_SIZE = 100;
 const TIME_BUDGET_MS = 20000;
 
+// Tolerate a value pasted with its label ("VAPID_PRIVATE_KEY=…"), quotes or
+// surrounding whitespace, which the key generator's output makes easy to do.
+export function envValue(name) {
+  const raw = Netlify.env.get(name);
+  if (!raw) return raw;
+  return String(raw).trim().replace(new RegExp(`^${name}\\s*=\\s*`), '').replace(/^["']|["']$/g, '').trim();
+}
+
 export function pushConfig() {
   return {
     supabaseUrl: Netlify.env.get('VITE_SUPABASE_URL'),
     serviceRoleKey: Netlify.env.get('SUPABASE_SERVICE_ROLE_KEY'),
-    vapidPublicKey: Netlify.env.get('VITE_VAPID_PUBLIC_KEY'),
-    vapidPrivateKey: Netlify.env.get('VAPID_PRIVATE_KEY'),
-    vapidSubject: Netlify.env.get('VAPID_SUBJECT') || 'mailto:admin@smtop100.blog',
+    vapidPublicKey: envValue('VITE_VAPID_PUBLIC_KEY'),
+    vapidPrivateKey: envValue('VAPID_PRIVATE_KEY'),
+    vapidSubject: envValue('VAPID_SUBJECT') || 'mailto:admin@smtop100.blog',
   };
 }
 
