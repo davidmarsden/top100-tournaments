@@ -7,10 +7,14 @@ const json = (body, status = 200) => Response.json(body, { status });
 export default async () => {
   const config = pushConfig();
   const missing = missingConfig(config);
-  if (missing.length) return json({ skipped: true, reason: `Push delivery is not configured (${missing.join(', ')}).` }, 202);
+  if (missing.includes('supabaseUrl') || missing.includes('serviceRoleKey')) {
+    return json({ skipped: true, reason: 'Supabase is not configured.' }, 202);
+  }
 
   try {
+    // Reminders go to the in-app inbox even when Web Push isn't configured.
     const reminders = await rpc(config, 'enqueue_due_fixture_reminders');
+    if (missing.length) return json({ ok: true, reminders, push: `not configured (${missing.join(', ')})` });
     return json({ ok: true, reminders, ...(await dispatchPending(config)) });
   } catch (error) {
     return json({ error: error.message || 'Scheduled push dispatch failed.' }, 500);

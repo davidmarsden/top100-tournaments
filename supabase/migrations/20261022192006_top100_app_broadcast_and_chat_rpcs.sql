@@ -95,3 +95,4 @@ as $$
 $$;
 
 revoke all on function public.top100_my_account_id() from public, anon, authenticated;
+-- @permissions private public.top100_my_account_id(): internal, called only by the security definer notification RPCs
