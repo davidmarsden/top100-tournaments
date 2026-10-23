@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const AdminAuthContext = createContext({ isGlobalAdmin: false, managedTournamentIds: [], organiserAssignments: [], userEmail: '', logout: async () => {} });
@@ -21,6 +21,7 @@ export default function AdminGate({ children, requireGlobal = false }) {
   const [userEmail, setUserEmail] = useState('');
   const [accessError, setAccessError] = useState('');
   const [loginError, setLoginError] = useState('');
+  const accessCheckGeneration = useRef(0);
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setChecking(false); return undefined; }
@@ -100,12 +101,14 @@ export default function AdminGate({ children, requireGlobal = false }) {
     checkSession();
     return () => {
       mounted = false;
+      accessCheckGeneration.current += 1;
       cleanupBridge();
       listener.subscription.unsubscribe();
     };
   }, []);
 
   async function checkAccess(user, background = false, preserveAccessError = false) {
+    const generation = ++accessCheckGeneration.current;
     if (!user) {
       setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail('');
       if (!preserveAccessError) setAccessError('');
@@ -117,12 +120,14 @@ export default function AdminGate({ children, requireGlobal = false }) {
       supabase.rpc('has_tournament_admin_access'),
       supabase.from('tournament_organisers').select('tournament_id, role, active').eq('auth_user_id', user.id).eq('active', true),
     ]);
+    // Ignore older permission checks that complete after a newer session event.
+    if (generation !== accessCheckGeneration.current) return;
     const global = Boolean(adminResult.data) && !adminResult.error;
     const assignments = assignmentsResult.error ? [] : assignmentsResult.data || [];
     setUserEmail(user.email || 'signed-in user');
     setIsGlobalAdmin(global);
     setOrganiserAssignments(assignments);
-    setHasAccess((Boolean(accessResult.data) && !accessResult.error) || global);
+    setHasAccess((Boolean(accessResult.data) && !accessResult.error) || global || assignments.some((row) => row.active));
     const permissionError = adminResult.error || accessResult.error || assignmentsResult.error;
     setAccessError(permissionError ? 'Could not verify tournament permissions: ' + permissionError.message : '');
     setChecking(false);
