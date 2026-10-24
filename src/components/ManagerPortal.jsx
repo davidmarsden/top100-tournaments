@@ -48,7 +48,7 @@ function buildStandings(entries, matches) {
   return [...rows.values()].map((row) => ({ ...row, gd: row.gf - row.ga })).sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf || a.team.localeCompare(b.team));
 }
 
-export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '', authStage = '', returnTo = '' }) {
+export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '', authStage = '', returnTo = '', onWorldChange = null }) {
   const [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [loadStage, setLoadStage] = useState('Waiting for sign-in');
@@ -107,6 +107,8 @@ export default function ManagerPortal({ registrationMode = false, session = null
   }, [magicLinkResendIn]);
 
   const selectedEntry = useMemo(() => entries.find((entry) => String(entry.id) === String(selectedEntryId)) || entries[0] || null, [entries, selectedEntryId]);
+  const shownWorldId = selectedEntry?.tournaments?.game_world_id ?? account?.game_world_id ?? null;
+  useEffect(() => { if (onWorldChange && account) onWorldChange(shownWorldId); }, [onWorldChange, account, shownWorldId]);
   const selectedTournamentMatches = useMemo(() => selectedEntry ? matches.filter((match) => match.tournament_id === selectedEntry.tournament_id) : [], [matches, selectedEntry]);
   const myMatches = useMemo(() => selectedEntry ? selectedTournamentMatches.filter((match) => match.home_entry_id === selectedEntry.id || match.away_entry_id === selectedEntry.id) : [], [selectedTournamentMatches, selectedEntry]);
   const upcoming = useMemo(() => myMatches.filter((match) => !isPlayed(match) && !['voided','cancelled'].includes(String(match.status || '').toLowerCase())).sort((a, b) => String(a.fixture_date || '9999').localeCompare(String(b.fixture_date || '9999')) || Number(a.match_order || 0) - Number(b.match_order || 0)), [myMatches]);

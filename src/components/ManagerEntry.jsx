@@ -238,6 +238,14 @@ export default function ManagerEntry({ registrationMode = false }) {
   const returnTo = safeReturnTo();
   const [session, setSession] = useState(undefined);
   const [identity, setIdentity] = useState({ state: 'idle', account: null, claim: null, error: '' });
+  // The world the Manager Portal is showing, so the app home matches it (undefined until it reports).
+  const [portalWorldId, setPortalWorldId] = useState(undefined);
+  useEffect(() => {
+    if (portalWorldId !== undefined || identity.state !== 'linked') return undefined;
+    // Fall back to the account's home world if the portal can't load its entries.
+    const timer = window.setTimeout(() => setPortalWorldId((current) => (current === undefined ? null : current)), 6000);
+    return () => window.clearTimeout(timer);
+  }, [portalWorldId, identity.state]);
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setSession(null); return undefined; }
@@ -300,8 +308,8 @@ export default function ManagerEntry({ registrationMode = false }) {
   if (identity.state === 'linked' && returnTo) return <ReturnHandoff session={session} returnTo={returnTo} />;
   if (registrationMode) return <ManagerPortal registrationMode returnTo={returnTo} session={session} />;
   return <>
-    <div className="top100-app-top"><Top100InstallPrompt /><Top100AppHome session={session} /><Top100AppGuide signedIn /></div>
-    <ManagerPortal returnTo={returnTo} session={session} />
+    <div className="top100-app-top"><Top100InstallPrompt /><Top100AppHome session={session} gameWorldId={portalWorldId} /><Top100AppGuide signedIn /></div>
+    <ManagerPortal returnTo={returnTo} session={session} onWorldChange={setPortalWorldId} />
     <div className="top100-app-bottom"><Top100Notifications session={session} /></div>
     <ManagerReminderPreferences session={session} authLoading={false} />
     <ManagerResourceHub />

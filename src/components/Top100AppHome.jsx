@@ -38,22 +38,27 @@ function formList(form) {
   return Array.isArray(form) ? form.map((points) => FORM_RESULTS[Number(points)]).filter(Boolean) : [];
 }
 
-export default function Top100AppHome({ session }) {
+// gameWorldId follows the world the Manager Portal is showing: undefined while it is still loading,
+// null for the account's home world.
+export default function Top100AppHome({ session, gameWorldId }) {
   const [home, setHome] = useState(null);
   const [state, setState] = useState('loading');
 
   useEffect(() => {
-    if (!session?.user?.id || !supabase) return undefined;
+    if (!session?.user?.id || !supabase || gameWorldId === undefined) return undefined;
     let active = true;
     setState('loading');
-    supabase.rpc('get_my_top100_app_home').then(({ data, error }) => {
+    const request = gameWorldId
+      ? supabase.rpc('get_my_top100_app_home_for_world', { target_game_world_id: gameWorldId })
+      : supabase.rpc('get_my_top100_app_home');
+    request.then(({ data, error }) => {
       if (!active) return;
       if (error) { setState('unavailable'); return; }
       setHome(data);
       setState('ready');
     });
     return () => { active = false; };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, gameWorldId]);
 
   if (state === 'unavailable') return null;
   if (state === 'loading') return <section className="top100-app-home" aria-busy="true"><p className="muted">Loading your club…</p></section>;
