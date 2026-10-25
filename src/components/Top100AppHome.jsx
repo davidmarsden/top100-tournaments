@@ -40,9 +40,11 @@ function formList(form) {
 
 // gameWorldId follows the world the Manager Portal is showing: undefined while it is still loading,
 // null for the account's home world.
-export default function Top100AppHome({ session, gameWorldId }) {
+export default function Top100AppHome({ session, gameWorldId, onSelectWorld = null }) {
   const [home, setHome] = useState(null);
   const [state, setState] = useState('loading');
+  // Kept across loads so the switcher stays in place while another world loads.
+  const [worlds, setWorlds] = useState([]);
 
   useEffect(() => {
     if (!session?.user?.id || !supabase || gameWorldId === undefined) return undefined;
@@ -55,13 +57,30 @@ export default function Top100AppHome({ session, gameWorldId }) {
       if (!active) return;
       if (error) { setState('unavailable'); return; }
       setHome(data);
+      if (Array.isArray(data?.worlds)) setWorlds(data.worlds);
+      // A remembered world where this manager no longer has a club falls back to the home world.
+      if (gameWorldId && onSelectWorld && Array.isArray(data?.worlds) && data.worlds.length
+        && !data.worlds.some((world) => Number(world.id) === Number(gameWorldId))) onSelectWorld(null);
       setState('ready');
     });
     return () => { active = false; };
   }, [session?.user?.id, gameWorldId]);
 
+  const shownWorldId = Number(gameWorldId || home?.world?.id) || null;
+  const switcher = onSelectWorld && worlds.length > 1 ? (
+    <div className="top100-world-switcher" role="tablist" aria-label="Game world">
+      {worlds.map((world) => (
+        <button key={world.id} type="button" role="tab" aria-selected={Number(world.id) === shownWorldId}
+          className={Number(world.id) === shownWorldId ? 'is-active' : ''}
+          onClick={() => { if (Number(world.id) !== shownWorldId) onSelectWorld(Number(world.id)); }}>
+          <strong>{world.name}</strong><span>{world.club}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+
   if (state === 'unavailable') return null;
-  if (state === 'loading') return <section className="top100-app-home" aria-busy="true"><p className="muted">Loading your club…</p></section>;
+  if (state === 'loading') return <section className="top100-app-home" aria-busy="true">{switcher}<p className="muted">Loading your club…</p></section>;
 
   const setupId = home?.world?.setupId;
   const club = home?.club;
@@ -75,6 +94,7 @@ export default function Top100AppHome({ session, gameWorldId }) {
 
   return (
     <section className="top100-app-home" aria-labelledby="top100-app-home-heading">
+      {switcher}
       <div className="top100-sm-shortcuts">
         <div>
           <p className="eyebrow">Soccer Manager</p>
