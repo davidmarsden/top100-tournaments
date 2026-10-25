@@ -110,7 +110,7 @@ export default function Top100AppHome({ session, gameWorldId }) {
           <article className="top100-app-card">
             <p className="eyebrow">Squad</p>
             <div className="top100-app-card__headline"><strong>{squad.seniorPlayers}</strong><span>senior · {squad.youthPlayers} youth</span></div>
-            <p className="muted top100-app-card__meta">Avg rating {squad.averageRating ?? '—'} · Value {money(squad.totalValue)} · <a href="/squad">Squad &amp; transfers</a></p>
+            <p className="muted top100-app-card__meta">Avg rating {squad.averageRating ?? '—'} · Value {money(squad.totalValue)} · <a href={home?.world?.id ? `/squad?world=${home.world.id}` : '/squad'}>Squad &amp; transfers</a></p>
           </article>
         ) : null}
       </div>

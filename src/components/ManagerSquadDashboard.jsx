@@ -76,7 +76,11 @@ export default function ManagerSquadDashboard() {
         setDashboard(null);
         return;
       }
-      const { data, error: rpcError } = await supabase.rpc('get_my_soccer_manager_dashboard');
+      // ?world=<game world id> shows that world's club (My Matches links pass the world it shows).
+      const worldId = Number(new URLSearchParams(window.location.search).get('world'));
+      const { data, error: rpcError } = Number.isInteger(worldId) && worldId > 0
+        ? await supabase.rpc('get_my_soccer_manager_dashboard_for_world', { target_game_world_id: worldId })
+        : await supabase.rpc('get_my_soccer_manager_dashboard');
       if (rpcError) throw rpcError;
       setDashboard(data || null);
     } catch (loadError) {
