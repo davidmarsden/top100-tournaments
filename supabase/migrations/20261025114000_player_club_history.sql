@@ -10,6 +10,10 @@
 -- club career. Player Intelligence now compares this season against the
 -- player's club seasons before the current one instead.
 
+-- @permissions private public.soccer_manager_player_club_seasons: written by save_soccer_manager_player_club_history(), read through security definer RPCs
+-- @permissions private public.soccer_manager_player_club_history: written by save_soccer_manager_player_club_history(), read through security definer RPCs
+-- @permissions private public.soccer_manager_player_club_baselines: read only by security definer dashboard and lab RPCs
+
 create table if not exists public.soccer_manager_player_club_seasons (
   game_world_id bigint not null references public.game_worlds(id) on delete cascade,
   source_player_id text not null,

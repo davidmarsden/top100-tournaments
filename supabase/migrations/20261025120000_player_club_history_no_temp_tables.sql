@@ -2,6 +2,9 @@
 -- second call in the same transaction failed with "relation already exists". Parse the
 -- batch with two helper functions instead.
 
+-- @permissions private public.soccer_manager_club_history_batch_players(jsonb): called only by save_soccer_manager_player_club_history()
+-- @permissions private public.soccer_manager_club_history_batch_seasons(jsonb): called only by save_soccer_manager_player_club_history()
+
 create or replace function public.soccer_manager_club_history_batch_players(target_players jsonb)
 returns table (player_id text, current_season integer, seasons jsonb)
 language sql
