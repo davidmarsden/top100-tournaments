@@ -269,13 +269,16 @@ grant execute on function public.get_soccer_manager_player_club_history_needed(t
 grant execute on function public.save_soccer_manager_player_club_history(text, jsonb) to authenticated;
 
 -- Point Player Intelligence at the club baseline. These functions are patched in place so
--- the rest of their bodies stay exactly as deployed.
+-- the rest of their bodies stay exactly as deployed. A function that already reads the
+-- baseline is left alone, so the migration can run again on a database where it was
+-- applied by hand.
 do $migration$
 declare
   definition text;
   patched text;
 begin
   definition := pg_get_functiondef('public.get_my_soccer_manager_dashboard_for_world(bigint)'::regprocedure);
+  if position('soccer_manager_player_club_baselines' in definition) = 0 then
   patched := replace(definition,
 '      ''careerAppearances'', player.career_appearances,
       ''careerAveragePerformance'', player.career_average_performance,
@@ -306,8 +309,10 @@ begin
     raise exception 'get_my_soccer_manager_dashboard_for_world did not match the expected definition';
   end if;
   execute patched;
+  end if;
 
   definition := pg_get_functiondef('public.manager_lab_opponent_players(text)'::regprocedure);
+  if position('soccer_manager_player_club_baselines' in definition) = 0 then
   patched := replace(definition,
 '      p.goals, p.assists, p.career_appearances, p.career_average_performance, p.career_goals,
       p.career_assists, p.rating_change, p.transfer_listed
@@ -323,8 +328,10 @@ begin
     raise exception 'manager_lab_opponent_players did not match the expected definition';
   end if;
   execute patched;
+  end if;
 
   definition := pg_get_functiondef('public.manager_lab_observed_selections(text)'::regprocedure);
+  if position('soccer_manager_player_club_baselines' in definition) = 0 then
   patched := replace(definition,
 'p.average_performance,p.career_appearances,p.career_average_performance,p.rating_change
  from observed o left join public.soccer_manager_players p on p.game_world_id=v_world_id and p.source_player_id=o.source_player_id',
@@ -335,5 +342,6 @@ begin
     raise exception 'manager_lab_observed_selections did not match the expected definition';
   end if;
   execute patched;
+  end if;
 end;
 $migration$;

@@ -1,6 +1,10 @@
 -- save_soccer_manager_player_club_history built two "on commit drop" temp tables, so a
 -- second call in the same transaction failed with "relation already exists". Parse the
 -- batch with two helper functions instead.
+--
+-- get_soccer_manager_player_club_history_needed also returns the requested player who was
+-- collected longest ago. The world's current season is only learned from collected players,
+-- so without this a season rollover would go unnoticed while every player was still fresh.
 
 -- @permissions private public.soccer_manager_club_history_batch_players(jsonb): called only by save_soccer_manager_player_club_history()
 -- @permissions private public.soccer_manager_club_history_batch_seasons(jsonb): called only by save_soccer_manager_player_club_history()
@@ -149,5 +153,75 @@ begin
   get diagnostics v_players = row_count;
 
   return jsonb_build_object('gameWorldId', v_world_id, 'players', v_players, 'seasons', v_seasons, 'currentSeason', v_world_season);
+end;
+$$;
+
+create or replace function public.get_soccer_manager_player_club_history_needed(
+  target_setup_id text,
+  target_player_ids text[]
+)
+returns text[]
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  setup_id text := nullif(trim(target_setup_id), '');
+  v_world_id bigint;
+  v_world_season integer;
+  needed text[];
+begin
+  if (select auth.uid()) is null or not public.is_admin() then
+    raise exception 'Global admin access required';
+  end if;
+  if setup_id is null or setup_id !~ '^[0-9]+$' then
+    raise exception 'Soccer Manager setup id must be numeric';
+  end if;
+  if coalesce(cardinality(target_player_ids), 0) > 10000 then
+    raise exception 'Too many players in one request';
+  end if;
+
+  select id into v_world_id
+  from public.game_worlds
+  where external_world_id = setup_id::bigint
+  order by id
+  limit 1;
+  if v_world_id is null then
+    raise exception 'No archived Soccer Manager world %', setup_id;
+  end if;
+
+  select max(current_season_num) into v_world_season
+  from public.soccer_manager_player_club_history
+  where game_world_id = v_world_id;
+
+  with requested as (
+    select distinct trim(raw_id) as player_id
+    from unnest(coalesce(target_player_ids, '{}')) raw_id
+    where trim(raw_id) ~ '^[1-9][0-9]*$'
+  ),
+  stale as (
+    select requested.player_id
+    from requested
+    left join public.soccer_manager_player_club_history history
+      on history.game_world_id = v_world_id
+     and history.source_player_id = requested.player_id
+    where history.source_player_id is null
+       or history.current_season_num < v_world_season
+       or history.captured_at < now() - interval '60 days'
+  ),
+  season_probe as (
+    select requested.player_id
+    from requested
+    join public.soccer_manager_player_club_history history
+      on history.game_world_id = v_world_id
+     and history.source_player_id = requested.player_id
+    order by history.captured_at, requested.player_id
+    limit 1
+  )
+  select coalesce(array_agg(ids.player_id order by ids.player_id), '{}')
+    into needed
+  from (select player_id from stale union select player_id from season_probe) ids;
+
+  return needed;
 end;
 $$;
