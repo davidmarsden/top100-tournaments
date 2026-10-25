@@ -239,20 +239,26 @@ export default function ManagerEntry({ registrationMode = false }) {
   const returnTo = safeReturnTo();
   const [session, setSession] = useState(undefined);
   const [identity, setIdentity] = useState({ state: 'idle', account: null, claim: null, error: '' });
-  // The game world My Matches is showing: the one last picked in the switcher, otherwise the world
-  // of the portal's first tournament entry (undefined until the portal reports it).
-  const [portalWorldId, setPortalWorldId] = useState(() => {
-    const stored = Number(readKey(GAME_WORLD_KEY));
+  // The game world My Matches is showing: the one this account last picked in the switcher,
+  // otherwise the world of the portal's first tournament entry (undefined until it reports).
+  // The choice is kept per account, so another manager on the same browser starts afresh.
+  const worldKey = session?.user?.id ? `${GAME_WORLD_KEY}:${session.user.id}` : null;
+  const storedWorldId = useMemo(() => {
+    const stored = worldKey ? Number(readKey(worldKey)) : NaN;
     return Number.isInteger(stored) && stored > 0 ? stored : undefined;
-  });
-  const chooseWorld = (worldId) => { writeKey(GAME_WORLD_KEY, worldId ? String(worldId) : null); setPortalWorldId(worldId); };
-  const reportPortalWorld = useCallback((worldId) => setPortalWorldId((current) => (current === undefined ? worldId : current)), []);
+  }, [worldKey]);
+  const [worldChoice, setWorldChoice] = useState({ key: null, id: undefined });
+  const portalWorldId = worldChoice.key === worldKey && worldChoice.id !== undefined ? worldChoice.id : storedWorldId;
+  const chooseWorld = (worldId) => { if (worldKey) writeKey(worldKey, worldId ? String(worldId) : null); setWorldChoice({ key: worldKey, id: worldId }); };
+  const reportPortalWorld = useCallback((worldId) => setWorldChoice((current) => (
+    (current.key === worldKey && current.id !== undefined) || storedWorldId ? current : { key: worldKey, id: worldId }
+  )), [worldKey, storedWorldId]);
   useEffect(() => {
     if (portalWorldId !== undefined || identity.state !== 'linked') return undefined;
     // Fall back to the account's home world if the portal can't load its entries.
-    const timer = window.setTimeout(() => setPortalWorldId((current) => (current === undefined ? null : current)), 6000);
+    const timer = window.setTimeout(() => reportPortalWorld(null), 6000);
     return () => window.clearTimeout(timer);
-  }, [portalWorldId, identity.state]);
+  }, [portalWorldId, identity.state, reportPortalWorld]);
 
   useEffect(() => {
     if (!hasSupabaseConfig || !supabase) { setSession(null); return undefined; }

@@ -58,6 +58,9 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
       if (error) { setState('unavailable'); return; }
       setHome(data);
       if (Array.isArray(data?.worlds)) setWorlds(data.worlds);
+      // A remembered world where this manager no longer has a club falls back to the home world.
+      if (gameWorldId && onSelectWorld && Array.isArray(data?.worlds) && data.worlds.length
+        && !data.worlds.some((world) => Number(world.id) === Number(gameWorldId))) onSelectWorld(null);
       setState('ready');
     });
     return () => { active = false; };
