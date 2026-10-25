@@ -246,21 +246,21 @@ export default function ManagerSquadDashboard() {
 
     <section className="card portal-panel">
       <div className="card-header"><p className="eyebrow">Player Lab · v1</p><h2>Player Intelligence</h2></div>
-      <p className="muted">Current-season output compared with each player's archived career baseline. These are descriptive signals, not automatic selection recommendations.</p>
+      <p className="muted">This season's average performance compared with each player's previous club seasons in this game world (weighted by appearances). Club history is collected by Sync everything, so a player shows up here once theirs is in. These are descriptive signals, not automatic selection recommendations.</p>
       <div className="squad-standing-grid">
-        <span><strong>{intelligence.withCareer}</strong> career baselines</span>
+        <span><strong>{intelligence.withCareer}</strong> club history baselines</span>
         <span><strong>{intelligence.outperforming.length}</strong> strongest positive deltas</span>
         <span><strong>{intelligence.ratingMoverCount}</strong> recent rating movers</span>
         <span><strong>{intelligence.listed.length}</strong> transfer listed</span>
       </div>
       <div className="portal-grid">
         <article>
-          <h3>Above career level</h3>
-          {intelligence.outperforming.length ? <div className="squad-list">{intelligence.outperforming.map(({ player, delta }) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{mainPosition(player)} · current {number(player.averagePerformance, 2)} · career {number(player.careerAveragePerformance, 2)}</span></div><b>{signed(delta)}</b></div>)}</div> : <p className="muted">No comparable positive performance deltas yet.</p>}
+          <h3>Above previous seasons</h3>
+          {intelligence.outperforming.length ? <div className="squad-list">{intelligence.outperforming.map(({ player, delta }) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{mainPosition(player)} · current {number(player.averagePerformance, 2)} · previous {number(player.careerAveragePerformance, 2)} over {player.careerAppearances} apps</span></div><b>{signed(delta)}</b></div>)}</div> : <p className="muted">No comparable positive performance deltas yet.</p>}
         </article>
         <article>
-          <h3>Below career level</h3>
-          {intelligence.underperforming.length ? <div className="squad-list">{intelligence.underperforming.map(({ player, delta }) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{mainPosition(player)} · current {number(player.averagePerformance, 2)} · career {number(player.careerAveragePerformance, 2)}</span></div><b>{signed(delta)}</b></div>)}</div> : <p className="muted">No comparable negative performance deltas yet.</p>}
+          <h3>Below previous seasons</h3>
+          {intelligence.underperforming.length ? <div className="squad-list">{intelligence.underperforming.map(({ player, delta }) => <div className="squad-list-row" key={player.id}><div><strong>{playerName(player)}</strong><span>{mainPosition(player)} · current {number(player.averagePerformance, 2)} · previous {number(player.careerAveragePerformance, 2)} over {player.careerAppearances} apps</span></div><b>{signed(delta)}</b></div>)}</div> : <p className="muted">No comparable negative performance deltas yet.</p>}
         </article>
       </div>
       <div className="portal-grid">
