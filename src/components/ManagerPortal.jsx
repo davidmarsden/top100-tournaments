@@ -48,7 +48,7 @@ function buildStandings(entries, matches) {
   return [...rows.values()].map((row) => ({ ...row, gd: row.gf - row.ga })).sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf || a.team.localeCompare(b.team));
 }
 
-export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '', authStage = '', returnTo = '', onWorldChange = null }) {
+export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '', authStage = '', returnTo = '', worldId = undefined, onWorldChange = null }) {
   const [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [loadStage, setLoadStage] = useState('Waiting for sign-in');
@@ -106,9 +106,11 @@ export default function ManagerPortal({ registrationMode = false, session = null
     return () => window.clearInterval(timer);
   }, [magicLinkResendIn]);
 
-  const selectedEntry = useMemo(() => entries.find((entry) => String(entry.id) === String(selectedEntryId)) || entries[0] || null, [entries, selectedEntryId]);
-  const shownWorldId = selectedEntry?.tournaments?.game_world_id ?? account?.game_world_id ?? null;
-  useEffect(() => { if (onWorldChange && account) onWorldChange(shownWorldId); }, [onWorldChange, account, shownWorldId]);
+  // My Matches shows one game world at a time (picked in the club card's switcher); until one is
+  // picked, report the world of the first entry so the club card can follow it.
+  const worldEntries = useMemo(() => (worldId ? entries.filter((entry) => Number(entry.tournaments?.game_world_id) === Number(worldId)) : entries), [entries, worldId]);
+  const selectedEntry = useMemo(() => worldEntries.find((entry) => String(entry.id) === String(selectedEntryId)) || worldEntries[0] || null, [worldEntries, selectedEntryId]);
+  useEffect(() => { if (onWorldChange && account && !worldId) onWorldChange(selectedEntry?.tournaments?.game_world_id ?? account.game_world_id ?? null); }, [onWorldChange, account, worldId, selectedEntry]);
   const selectedTournamentMatches = useMemo(() => selectedEntry ? matches.filter((match) => match.tournament_id === selectedEntry.tournament_id) : [], [matches, selectedEntry]);
   const myMatches = useMemo(() => selectedEntry ? selectedTournamentMatches.filter((match) => match.home_entry_id === selectedEntry.id || match.away_entry_id === selectedEntry.id) : [], [selectedTournamentMatches, selectedEntry]);
   const upcoming = useMemo(() => myMatches.filter((match) => !isPlayed(match) && !['voided','cancelled'].includes(String(match.status || '').toLowerCase())).sort((a, b) => String(a.fixture_date || '9999').localeCompare(String(b.fixture_date || '9999')) || Number(a.match_order || 0) - Number(b.match_order || 0)), [myMatches]);
@@ -380,9 +382,9 @@ export default function ManagerPortal({ registrationMode = false, session = null
     </main>;
   }
 
-  return <main className="manager-portal-shell"><section className="manager-portal-hero"><div><p className="eyebrow">Manager Portal · {selectedEntry?.tournaments?.game_worlds?.name || account.game_worlds?.name || 'Top 100'}</p><h1>{account.managers?.display_name || account.managers?.name || 'Top 100 Manager'}</h1><p>{selectedEntry ? `${selectedEntry.teams?.name} · ${selectedEntry.tournaments?.name}` : 'No active tournament entry found'}</p></div><div className="button-row">{organiserAssignments.length > 0 && <a className="button" href="/admin">{adminAssignments.length === 1 && organiserAssignments.length === 1 ? `Manage ${organiserAssignments[0].tournaments?.name || 'tournament'}` : 'Manage tournaments'}</a>}{returnTo && <a className="button" href={returnTo}>Continue</a>}<a className="button secondary" href={shownWorldId ? `/squad?world=${shownWorldId}` : '/squad'}>Squad &amp; transfers</a><a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
-    {entries.length > 1 && <section className="card portal-selector"><label>Tournament entry<select value={selectedEntry?.id || ''} onChange={(event) => setSelectedEntryId(event.target.value)}>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.tournaments?.name} — {entry.teams?.name}</option>)}</select></label></section>}
-    {!selectedEntry ? <section className="card"><h2>Account linked successfully</h2><p>Your fixtures will appear here when you enter a competition.</p><a className="button" href="/manager/registration">Register for a tournament</a></section> : <>
+  return <main className="manager-portal-shell"><section className="manager-portal-actions" aria-label="Manager Portal"><div className="button-row">{organiserAssignments.length > 0 && <a className="button" href="/admin">{adminAssignments.length === 1 && organiserAssignments.length === 1 ? `Manage ${organiserAssignments[0].tournaments?.name || 'tournament'}` : 'Manage tournaments'}</a>}{returnTo && <a className="button" href={returnTo}>Continue</a>}<a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
+    {worldEntries.length > 1 && <section className="card portal-selector"><label>Tournament entry<select value={selectedEntry?.id || ''} onChange={(event) => setSelectedEntryId(event.target.value)}>{worldEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.tournaments?.name} — {entry.teams?.name}</option>)}</select></label></section>}
+    {!selectedEntry ? <section className="card"><h2>{entries.length ? 'No tournament entry in this game world' : 'Account linked successfully'}</h2><p>Your fixtures will appear here when you enter a competition.</p><a className="button" href="/manager/registration">Register for a tournament</a></section> : <>
       <section className="portal-metrics"><article><span>Team</span><strong>{selectedEntry.teams?.name}</strong></article><article><span>Group</span><strong>{selectedEntry.group_code ? `Group ${selectedEntry.group_code}` : 'TBC'}</strong></article><article><span>Position</span><strong>{ordinal(myPosition)}</strong></article><article><span>Record</span><strong>{results.length} played</strong></article></section>
       <ManagerMatchActions session={session} selectedEntry={selectedEntry} fixtures={upcoming} />
       <ManagerResultCentre selectedEntry={selectedEntry} fixtures={upcoming} onResultChanged={refreshResultFixtures} />

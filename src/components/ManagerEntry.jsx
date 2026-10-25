@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import ManagerPortal from './ManagerPortal.jsx';
 import ManagerResourceHub from './ManagerResourceHub.jsx';
@@ -21,6 +21,7 @@ const HANDOFF_EXCHANGE_URL = 'https://xxntutejknolhmbssqdf.supabase.co/functions
 // here, which source session must not be imported again. A new sign-in elsewhere is a new session.
 const SSO_SOURCE_KEY = 'top100-manager-sso-source-session';
 const SIGNED_OUT_SESSION_KEY = 'top100-manager-signed-out-session';
+const GAME_WORLD_KEY = 'top100-manager-game-world';
 
 function readKey(key) { try { return window.localStorage.getItem(key); } catch { return null; } }
 function writeKey(key, value) {
@@ -238,8 +239,14 @@ export default function ManagerEntry({ registrationMode = false }) {
   const returnTo = safeReturnTo();
   const [session, setSession] = useState(undefined);
   const [identity, setIdentity] = useState({ state: 'idle', account: null, claim: null, error: '' });
-  // The world the Manager Portal is showing, so the app home matches it (undefined until it reports).
-  const [portalWorldId, setPortalWorldId] = useState(undefined);
+  // The game world My Matches is showing: the one last picked in the switcher, otherwise the world
+  // of the portal's first tournament entry (undefined until the portal reports it).
+  const [portalWorldId, setPortalWorldId] = useState(() => {
+    const stored = Number(readKey(GAME_WORLD_KEY));
+    return Number.isInteger(stored) && stored > 0 ? stored : undefined;
+  });
+  const chooseWorld = (worldId) => { writeKey(GAME_WORLD_KEY, worldId ? String(worldId) : null); setPortalWorldId(worldId); };
+  const reportPortalWorld = useCallback((worldId) => setPortalWorldId((current) => (current === undefined ? worldId : current)), []);
   useEffect(() => {
     if (portalWorldId !== undefined || identity.state !== 'linked') return undefined;
     // Fall back to the account's home world if the portal can't load its entries.
@@ -308,8 +315,8 @@ export default function ManagerEntry({ registrationMode = false }) {
   if (identity.state === 'linked' && returnTo) return <ReturnHandoff session={session} returnTo={returnTo} />;
   if (registrationMode) return <ManagerPortal registrationMode returnTo={returnTo} session={session} />;
   return <>
-    <div className="top100-app-top"><Top100InstallPrompt /><Top100AppHome session={session} gameWorldId={portalWorldId} /><Top100AppGuide signedIn /></div>
-    <ManagerPortal returnTo={returnTo} session={session} onWorldChange={setPortalWorldId} />
+    <div className="top100-app-top"><Top100InstallPrompt /><Top100AppHome session={session} gameWorldId={portalWorldId} onSelectWorld={chooseWorld} /><Top100AppGuide signedIn /></div>
+    <ManagerPortal returnTo={returnTo} session={session} worldId={portalWorldId} onWorldChange={reportPortalWorld} />
     <div className="top100-app-bottom"><Top100Notifications session={session} /></div>
     <ManagerReminderPreferences session={session} authLoading={false} />
     <ManagerResourceHub />
