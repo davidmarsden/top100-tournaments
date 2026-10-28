@@ -44,6 +44,7 @@ create table public.squad_cap_breaches (
   current_count integer,
   started_on date,
   ended_on date,
+  key_date date,
   evidence jsonb not null default '{}'::jsonb,
   first_detected_at timestamptz not null default now(),
   last_checked_at timestamptz not null default now(),
@@ -225,6 +226,9 @@ begin
       max(day.peak_low) as peak_low,
       min(day.d) filter (where day.peak_high > p_limit) as started_on,
       max(day.d) filter (where day.peak_high > p_limit) as ended_on,
+      -- The day most likely to be over: highest best-case peak, then the most signings.
+      (array_agg(day.d order by day.peak_low desc, day.ins desc, day.peak_high desc, day.d desc)
+        filter (where day.peak_high > p_limit))[1] as key_date,
       max(day.drift) as drift,
       jsonb_agg(jsonb_build_object(
         'date', day.d, 'turn', day.turn, 'peak_low', day.peak_low, 'peak_high', day.peak_high,
@@ -236,7 +240,7 @@ begin
   )
   insert into public.squad_cap_breaches as breach (
     game_world_id, source_world_id, source_club_id, game_world_club_id, team_id, club_name, manager_id, manager_name,
-    window_key, confidence, status, squad_limit, peak_count, current_count, started_on, ended_on, evidence
+    window_key, confidence, status, squad_limit, peak_count, current_count, started_on, ended_on, key_date, evidence
   )
   select v_world_id, v_source_world, interval_breach.club, crosswalk.game_world_club_id, crosswalk.team_id,
     coalesce(crosswalk.source_club_name, 'Club ' || interval_breach.club), assignment.manager_id,
@@ -244,7 +248,7 @@ begin
     'between:' || to_char(interval_breach.captured_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'),
     case when interval_breach.peak_low > p_limit then 'likely' else 'possible' end,
     'open', p_limit, interval_breach.peak_high, interval_breach.n,
-    interval_breach.started_on, interval_breach.ended_on,
+    interval_breach.started_on, interval_breach.ended_on, interval_breach.key_date,
     jsonb_build_object(
       'previous_capture', jsonb_build_object('captured_at', interval_breach.prev_at, 'players', interval_breach.prev_n),
       'next_capture', jsonb_build_object('captured_at', interval_breach.captured_at, 'players', interval_breach.n),
@@ -262,6 +266,7 @@ begin
     peak_count = excluded.peak_count,
     started_on = excluded.started_on,
     ended_on = excluded.ended_on,
+    key_date = excluded.key_date,
     evidence = excluded.evidence,
     last_checked_at = now();
 
@@ -287,7 +292,7 @@ as $$
         || ' before the next transfer turn and let the admins know. Breaches can lead to a transfer ban (rule 7).'
     else
       p_breach.club_name || ' went over the ' || p_breach.squad_limit || '-player limit (up to ' || p_breach.peak_count
-        || ' players' || coalesce(' on ' || to_char(p_breach.started_on, 'FMDD Mon'), '')
+        || ' players' || coalesce(' on ' || to_char(coalesce(p_breach.key_date, p_breach.started_on), 'FMDD Mon'), '')
         || '). Rule 4.1 applies at all times, including between transfer turns. Please keep the squad at '
         || p_breach.squad_limit || ' or fewer before completing new signings.'
   end;
