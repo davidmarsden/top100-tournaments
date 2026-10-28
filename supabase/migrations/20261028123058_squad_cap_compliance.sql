@@ -22,15 +22,12 @@
 -- capture counts and the replay. Loaned-in players are in Soccer Manager's
 -- squad count (confirmed with Dinamo Zagreb, October 2026).
 --
--- enqueue_squad_cap_alerts() refreshes the register and queues notifications:
+-- enqueue_squad_cap_alerts() refreshes the register and queues notifications
+-- (category admin_alerts, which managers cannot switch off):
 -- confirmed breaches go to the club's manager and the administrators at once;
 -- likely/possible ones go to administrators, and to the manager only once
 -- upheld. It is called every five minutes by push-dispatch-scheduled and is
 -- idempotent.
-
-alter table public.manager_notifications drop constraint manager_notifications_category_check;
-alter table public.manager_notifications add constraint manager_notifications_category_check
-  check (category in ('fixtures', 'results', 'opponent_actions', 'match_comments', 'chat_replies', 'broadcasts', 'admin_alerts', 'compliance'));
 
 create table public.squad_cap_breaches (
   id bigint generated always as identity primary key,
@@ -93,36 +90,21 @@ create policy "Admins read squad cap breaches" on public.squad_cap_breaches
   for select to authenticated using (public.is_admin());
 grant select on public.squad_cap_breaches to authenticated;
 
-create or replace function public.refresh_squad_cap_breaches(p_world_slug text default 'top-100', p_limit integer default 50)
-returns integer
-language plpgsql
+-- Squad size at every reviewed capture, less excluded players.
+create or replace function public.squad_cap_captures(p_source_world bigint)
+returns table (club text, n integer, captured_at timestamptz)
+language sql
+stable
 security definer
 set search_path = ''
 as $$
-declare
-  v_world_id bigint;
-  v_source_world bigint;
-  v_before integer;
-  v_after integer;
-begin
-  select world.id, world.external_world_id into v_world_id, v_source_world
-  from public.game_worlds world where world.slug = p_world_slug;
-  if v_world_id is null or v_source_world is null then return 0; end if;
-
-  select count(*) into v_before from public.squad_cap_breaches where game_world_id = v_world_id;
-
-  -- Safe to call twice in one transaction.
-  drop table if exists pg_temp.squad_cap_captures;
-  drop table if exists pg_temp.squad_cap_days;
-
-  create temporary table squad_cap_captures on commit drop as
   select distinct on (change.after_data->>'clubId', run.captured_at)
     change.after_data->>'clubId' as club,
     (change.after_data->>'playerCount')::integer
       - (select count(*)::integer
          from jsonb_array_elements_text(coalesce(change.after_data->'rosterPlayerIds', '[]'::jsonb)) roster(player_id)
          join public.squad_cap_exclusions exclusion
-           on exclusion.source_world_id = v_source_world
+           on exclusion.source_world_id = p_source_world
           and exclusion.source_club_id = change.after_data->>'clubId'
           and exclusion.source_player_id = roster.player_id
           and (exclusion.excluded_from is null or run.captured_at::date >= exclusion.excluded_from)
@@ -132,17 +114,28 @@ begin
   join public.soccer_manager_sync_runs run on run.id = change.run_id
   where change.entity_type = 'squad_scope'
     and change.status = 'approved'
-    and change.after_data->>'setupId' = v_source_world::text
+    and change.after_data->>'setupId' = p_source_world::text
     and change.after_data->>'playerCount' ~ '^[0-9]+$'
   order by change.after_data->>'clubId', run.captured_at, change.id desc;
+$$;
 
-  -- Day-by-day replay of every interval between two captures of a club.
-  create temporary table squad_cap_days on commit drop as
+-- Day-by-day replay of every interval between two captures of a club.
+create or replace function public.squad_cap_replay(p_world_id bigint, p_source_world bigint)
+returns table (
+  club text, n integer, captured_at timestamptz, prev_n integer, prev_at timestamptz, d date,
+  turn integer, ins integer, net integer, transfers jsonb,
+  before_backward bigint, before_forward bigint, drift bigint, peak_high bigint, peak_low bigint
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
   with intervals as (
     select club, n, captured_at,
       lag(n) over w as prev_n,
       lag(captured_at) over w as prev_at
-    from squad_cap_captures
+    from public.squad_cap_captures(p_source_world)
     window w as (partition by club order by captured_at)
   ),
   all_moves as (
@@ -150,20 +143,20 @@ begin
       transfer.from_club_name, transfer.to_club_name, transfer.accepted_date, transfer.first_seen_at,
       transfer.source_data->>'playerId' as player_id
     from public.soccer_manager_transfers transfer
-    where transfer.game_world_id = v_world_id and transfer.status = 9
+    where transfer.game_world_id = p_world_id and transfer.status = 9
     union all
     select transfer.from_source_club_id, -1, transfer.source_turn, transfer.player_name,
       transfer.from_club_name, transfer.to_club_name, transfer.accepted_date, transfer.first_seen_at,
       transfer.source_data->>'playerId'
     from public.soccer_manager_transfers transfer
-    where transfer.game_world_id = v_world_id and transfer.status = 9
+    where transfer.game_world_id = p_world_id and transfer.status = 9
   ),
   moves as (
     -- Excluded players never count, so their moves do not change the count either.
     select move.* from all_moves move
     where not exists (
       select 1 from public.squad_cap_exclusions exclusion
-      where exclusion.source_world_id = v_source_world
+      where exclusion.source_world_id = p_source_world
         and exclusion.source_club_id = move.club
         and exclusion.source_player_id = move.player_id)
   ),
@@ -205,6 +198,28 @@ begin
     greatest(before_backward, before_forward) + ins as peak_high,
     least(before_backward, before_forward) + ins as peak_low
   from walked;
+$$;
+
+-- @permissions private public.squad_cap_captures: called only by refresh_squad_cap_breaches()
+-- @permissions private public.squad_cap_replay: called only by refresh_squad_cap_breaches()
+
+create or replace function public.refresh_squad_cap_breaches(p_world_slug text default 'top-100', p_limit integer default 50)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_world_id bigint;
+  v_source_world bigint;
+  v_before integer;
+  v_after integer;
+begin
+  select world.id, world.external_world_id into v_world_id, v_source_world
+  from public.game_worlds world where world.slug = p_world_slug;
+  if v_world_id is null or v_source_world is null then return 0; end if;
+
+  select count(*) into v_before from public.squad_cap_breaches where game_world_id = v_world_id;
 
   -- 1. Confirmed breaches: runs of consecutive over-limit captures.
   with flagged as (
@@ -212,7 +227,7 @@ begin
       capture.n > p_limit as over,
       sum(case when capture.n > p_limit then 0 else 1 end) over (partition by club order by captured_at) as grp,
       max(captured_at) over (partition by club) as latest_at
-    from squad_cap_captures capture
+    from public.squad_cap_captures(v_source_world) capture
   ),
   episodes as (
     select club, grp,
@@ -227,9 +242,9 @@ begin
   ),
   enriched as (
     select episode.*,
-      (select min(capture.captured_at) from squad_cap_captures capture
+      (select min(capture.captured_at) from public.squad_cap_captures(v_source_world) capture
         where capture.club = episode.club and capture.captured_at > episode.last_at) as cleared_at,
-      (select min(day.d) from squad_cap_days day
+      (select min(day.d) from public.squad_cap_replay(v_world_id, v_source_world) day
         where day.club = episode.club and day.captured_at = episode.first_at and day.peak_high > p_limit) as estimated_start
     from episodes episode
   )
@@ -280,7 +295,7 @@ begin
       jsonb_agg(jsonb_build_object(
         'date', day.d, 'turn', day.turn, 'peak_low', day.peak_low, 'peak_high', day.peak_high,
         'transfers', day.transfers) order by day.d) filter (where day.peak_high > p_limit) as days
-    from squad_cap_days day
+    from public.squad_cap_replay(v_world_id, v_source_world) day
     where day.n <= p_limit and day.prev_n <= p_limit
     group by day.club, day.captured_at, day.prev_at, day.n, day.prev_n
     having max(day.peak_high) > p_limit
@@ -374,7 +389,7 @@ begin
       where account.manager_id = v_breach.manager_id and account.active = true
     loop
       perform public.enqueue_manager_notification(
-        v_account, 'compliance',
+        v_account, 'admin_alerts',
         'Squad limit: ' || v_breach.club_name,
         public.squad_cap_breach_message(v_breach),
         v_rules_url,

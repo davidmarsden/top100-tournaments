@@ -33,8 +33,8 @@ Players an administrator rules out of the count are listed in `squad_cap_exclusi
 
 `enqueue_squad_cap_alerts()` runs every five minutes from `push-dispatch-scheduled` and is idempotent:
 
-- **confirmed and still open:** the club's manager (category `compliance`, always pushed) and every administrator (`admin_alerts`).
-- **likely / possible:** administrators only. The manager is notified once an administrator upholds it.
+- **confirmed and still open:** the club's manager (category `admin_alerts`, which managers cannot switch off) and every administrator (`admin_alerts`).
+- **likely:** administrators. **possible:** listed on the compliance page only, since one squad change that is not a transfer can explain them. Either reaches the manager once an administrator upholds it.
 - An administrator alert says when the manager has no active Manager Portal account, so they can be contacted directly.
 
 Administrators decide with `review_squad_cap_breach(id, 'upheld' | 'dismissed' | 'open', note)`. An administrator's decision is never overwritten by later syncs. `squad_cap_overview()` lists every club's latest squad size.
