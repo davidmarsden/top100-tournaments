@@ -1,25 +1,17 @@
 # Squad cap compliance
 
-Top 100 rule 4.1 limits a club to 50 players, with loans counting both ways. Migration `20261028120000_squad_cap_compliance.sql` checks this from Soccer Manager Sync data and tells the people who need to know.
+Top 100 rule 4.1 limits a club to 50 players, with loans counting both ways. Migrations `20261028123058_squad_cap_compliance.sql` and `20261028170855_squad_cap_sync_and_reports.sql` check this from Soccer Manager Sync data and tells the people who need to know.
 
 ## Evidence
 
-| Confidence | Source | Meaning |
-|---|---|---|
-| **confirmed** | A reviewed squad capture (`squad_scope.playerCount`) over 50 | The club was over the limit when synced. Consecutive over-limit captures are one breach; it resolves itself once a later capture is back to 50 or fewer. |
-| **likely** | Transfer replay between two compliant captures | Every reading of the transfers puts the club over 50 on at least one day. |
-| **possible** | Same replay, worst case only | Over 50 only if the day's signings landed before its sales, or if the non-transfer changes happened early. |
+A breach is one of two things:
 
-### Why the replay is needed
+| Source | Meaning |
+|---|---|
+| **A sync** | A reviewed squad capture (`squad_scope.playerCount`) counted more than 50 players. Consecutive over-limit captures are one breach, which resolves itself once a later capture is back to 50 or fewer. The transfer list dates when it first went over. |
+| **A report** | `report_squad_cap_breach(club, players, date, note)`. From an admin (the alerts page) it counts as confirmed, and the club's manager is told at once. From a manager (Manager Portal, Squad & Transfers) it goes to the admin team, and the club's manager is told only if they uphold it. |
 
-Syncs are snapshots. Lyon went from 49 to 51 and back to 50 on 19 October 2026 (turn 34: Guimarães and Idder in, Skóraś out), between the 27 September and 22 October captures. Neither capture showed a breach.
-
-`refresh_squad_cap_breaches()` replays each interval between two captures of a club, day by day, from `soccer_manager_transfers`:
-
-- Transfers carry a day but no time, so a day's signings are assumed to land before its sales (`peak_high`).
-- Squad changes that are not transfers, such as youth intake, releases and retirements, appear as drift between the two captures (`evidence.non_transfer_change`). They could have happened on any day. The replay therefore runs backward from the later capture and forward from the earlier one, and keeps both readings (`peak_low` to `peak_high`).
-
-Daily syncs keep the intervals short and make between-sync results sharper. The "Top 100 sync due" reminder already prompts one a day.
+Until 28 October 2026 the transfer list was also replayed between syncs to estimate "likely" and "possible" breaches. Those estimates were mostly youth intake and other squad changes that are not transfers, so they raised too many false alarms (Lyon's real breach on 19 October was among 27 of them). The replay no longer raises breaches; its old rows stay in the table but are not listed or alerted on. Daily syncs (the "Top 100 sync due" reminder) and reports cover what happens between them.
 
 ### Loans
 
@@ -33,9 +25,10 @@ Players an administrator rules out of the count are listed in `squad_cap_exclusi
 
 `enqueue_squad_cap_alerts()` runs every five minutes from `push-dispatch-scheduled` and is idempotent:
 
-- **confirmed and still open:** the club's manager (category `admin_alerts`, which managers cannot switch off) and every administrator (`admin_alerts`).
-- **likely:** administrators. **possible:** listed on the compliance page only, since one squad change that is not a transfer can explain them. Either reaches the manager once an administrator upholds it.
-- An administrator alert says when the manager has no active Manager Portal account, so they can be contacted directly.
+- **Counted on a sync, or reported by an admin:** the club's manager (category `admin_alerts`, which managers cannot switch off) and the admin team.
+- **Reported by a manager:** the admin team, who uphold or dismiss it on the alerts page. Upholding it notifies the club's manager.
+- **Began before the current manager was appointed:** the admin team only.
+- An admin alert says when the manager has no active Manager Portal account, so they can be contacted directly.
 
 Administrators decide with `review_squad_cap_breach(id, 'upheld' | 'dismissed' | 'open', note)`. An administrator's decision is never overwritten by later syncs. `squad_cap_overview()` lists every club's latest squad size.
 

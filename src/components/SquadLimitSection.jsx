@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import SquadBreachReportForm from './SquadBreachReportForm.jsx';
 
 // Rule 4.1 (50 players, loans both ways). Detection and notifications live in the shared
 // database: see top100-tournaments docs/squad-cap-compliance.md.
 
-const CONFIDENCE = {
-  confirmed: 'Confirmed by a sync',
-  likely: 'Likely (between syncs)',
-  possible: 'Possible (between syncs, worst case)',
+// A breach is a sync that captured more than 50 players, or a report.
+const SOURCE = {
+  sync: 'Counted on a sync',
+  admin_report: 'Reported by an admin',
+  manager_report: 'Reported by a manager: uphold to notify the club',
 };
 
 const date = (value) => (value ? new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '–');
 
 function Evidence({ breach }) {
   const evidence = breach.evidence || {};
+  if (breach.source !== 'sync') {
+    return <p>Reported by {evidence.reported_by || 'an admin'} for {date(breach.started_on)}{evidence.note ? `: ${evidence.note}` : '.'}</p>;
+  }
   if (evidence.captures) {
     return (
       <ul>
@@ -52,7 +57,8 @@ export default function SquadLimitSection({ embedded = false }) {
   const load = useCallback(async () => {
     const [overview, register] = await Promise.all([
       supabase.rpc('squad_cap_overview', { p_world_slug: 'top-100' }),
-      supabase.from('squad_cap_breaches').select('*').order('first_detected_at', { ascending: false }),
+      // Between-sync estimates from before October 2026 stay in the table but are not breaches.
+      supabase.from('squad_cap_breaches').select('*').or('confidence.eq.confirmed,source.neq.sync').order('first_detected_at', { ascending: false }),
     ]);
     if (overview.error || register.error) {
       setStatus((overview.error || register.error).message);
@@ -87,8 +93,8 @@ export default function SquadLimitSection({ embedded = false }) {
           <p className="eyebrow">Top 100 · Rule 4.1</p>
           <h1>Squad limit compliance</h1>
           <p>
-            Every Top 100 squad against the 50-player limit, from the latest sync, and every breach found between syncs.
-            Uphold a breach to notify the manager (confirmed breaches already notify them); dismiss one that the evidence does not support.
+            Every Top 100 squad against the 50-player limit, from the latest sync. A breach is a sync that counted more than 50
+            players, or a report from a manager or an admin. Uphold a manager's report to notify the club; dismiss one the evidence does not support.
           </p>
         </section>
       )}
@@ -101,9 +107,9 @@ export default function SquadLimitSection({ embedded = false }) {
           <article key={breach.id} className="card">
             <h3>{breach.club_name}: {breach.peak_count} players</h3>
             <p>
-              <strong>{CONFIDENCE[breach.confidence]}</strong> · {breach.manager_name || 'No manager on record'}
+              <strong>{SOURCE[breach.source] || SOURCE.sync}</strong> · {breach.manager_name || 'No manager on record'}
               {breach.inherited ? ' (began before this manager was appointed)' : ''} ·{' '}
-              {breach.status === 'resolved' ? `back within the limit since ${date(breach.resolved_at)}` : breach.confidence === 'confirmed' ? `still ${breach.current_count}` : `${date(breach.key_date || breach.started_on)}`}
+              {breach.status === 'resolved' ? `back within the limit since ${date(breach.resolved_at)}` : breach.source === 'sync' ? `still ${breach.current_count}` : `${date(breach.started_on)}`}
               {breach.manager_notified_at && ` · manager notified ${date(breach.manager_notified_at)}`}
             </p>
             <Evidence breach={breach} />
@@ -117,6 +123,12 @@ export default function SquadLimitSection({ embedded = false }) {
             <button type="button" onClick={() => review(breach, 'dismissed')}>Dismiss</button>
           </article>
         ))}
+      </section>
+
+      <section className="card">
+        <h2>Report a breach</h2>
+        <p>For a squad seen over 50 between syncs. Your report counts as confirmed: the club's manager is notified.</p>
+        <SquadBreachReportForm official clubs={squads.map((squad) => squad.club_name)} onReported={load} />
       </section>
 
       <section className="card">
