@@ -3,6 +3,7 @@ import AdminGate from './components/AdminGate.jsx';
 import AdminControlRoom from './components/AdminControlRoom.jsx';
 import AuthSessionBridge from './components/AuthSessionBridge.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
+import ComplianceAlertsPage from './components/ComplianceAlertsPage.jsx';
 import ManagerEntry from './components/ManagerEntry.jsx';
 import ManagerSquadDashboard from './components/ManagerSquadDashboard.jsx';
 import ManagerLabPage from './components/ManagerLabPage.jsx';
@@ -26,6 +27,7 @@ function isManagerHostChatPath() { return /^\/(?:manager\/)?chat\/?$/.test(windo
 function isManagerHostSquadPath() { return /^\/(?:manager\/)?squad\/?$/.test(window.location.pathname); }
 function isManagerHostPortalPath() { return /^\/(?:manager\/?)?$/.test(window.location.pathname); }
 function isManagerAccountsPath() { return /^\/admin\/manager-accounts\/?$/.test(window.location.pathname); }
+function isComplianceAlertsPath() { return /^\/admin\/alerts\/?$/.test(window.location.pathname); }
 function isResultSubmissionsPath() { return /^\/admin\/result-submissions\/?$/.test(window.location.pathname); }
 function isSoccerManagerSyncPath() { return /^\/admin\/soccer-manager-sync\/?$/.test(window.location.pathname); }
 function isManagerLabPath() { return /^\/admin\/manager-lab\/?$/.test(window.location.pathname); }
@@ -72,6 +74,7 @@ export default function App() {
   if (isManagerPath()) { window.location.replace('https://manager.smtop100.blog/'); return null; }
   if (isManagerRegistrationPath()) { window.location.replace('https://manager.smtop100.blog/registrations'); return null; }
   if (isVotingPath()) { window.location.replace('https://vote.smtop100.blog/vote'); return null; }
+  if (isComplianceAlertsPath()) return <AdminGate requireOfficial><ComplianceAlertsPage /></AdminGate>;
   if (isManagerAccountsPath()) return <AdminGate requireGlobal><ManagerAccountsPage /></AdminGate>;
   if (isResultSubmissionsPath()) return <AdminGate requireGlobal><ResultSubmissionsPage /></AdminGate>;
   if (isSoccerManagerSyncPath()) return <AdminGate requireGlobal><SoccerManagerSyncPage /></AdminGate>;

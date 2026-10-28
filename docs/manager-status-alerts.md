@@ -6,7 +6,7 @@ Managers without Gold cannot complete transfers with other managers and have few
 
 1. **Sync everything** reads the competition response and every club's `clubinitdata2` response. In the Sync tab, `src/lib/managerSignals.js` (top100-manager-lab) picks out every field whose name looks like membership (`gold`, `premium`, `vip`, `member`, `subscri…`) or last login (`lastLogin`, `lastOnline`, `inactiveDays`…), with its value and a reading: Gold yes/no, or a login time. It also lists every field name seen. Nothing else from the raw responses is kept. These readings are kept apart from `payload.managers`, because a changed manager assignment is held for manual review.
 2. `record_soccer_manager_manager_signals()` stores one snapshot per club per sync (`manager_signal_snapshots`), the candidate fields (`manager_signal_fields`) and the field names (`manager_signal_inventory`).
-3. **An administrator confirms which field is which** on lab.smtop100.blog/alerts. Until then nothing is read or alerted on: a field called, say, `memberSince` must not be mistaken for Gold. Confirming re-reads every stored snapshot.
+3. **A member of the admin team confirms which field is which** on tournaments.smtop100.blog/admin/alerts. Until then nothing is read or alerted on: a field called, say, `memberSince` must not be mistaken for Gold. Confirming re-reads every stored snapshot.
 4. `enqueue_manager_status_alerts()` runs every five minutes from `push-dispatch-scheduled`. Each alert fires once and is kept in `admin_alert_log`:
    - **Gold lapsed or restored:** the manager and the administrators.
    - **No login for 7 days:** the manager (a warning) and the administrators.
