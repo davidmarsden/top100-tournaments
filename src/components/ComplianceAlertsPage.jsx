@@ -29,7 +29,8 @@ function RecentAlerts({ alerts, onAcknowledge }) {
 }
 
 function ManagerStatus({ rows }) {
-  const flagged = rows.filter((row) => row.gold === false || Number(row.days_since_login) >= 7);
+  const goldEndingSoon = (row) => row.gold_days_left !== null && row.gold_days_left !== undefined && Number(row.gold_days_left) <= 14;
+  const flagged = rows.filter((row) => row.gold === false || Number(row.days_since_login) >= 7 || goldEndingSoon(row));
   const shown = flagged.length ? flagged : rows;
   return (
     <section className="card">
@@ -38,17 +39,21 @@ function ManagerStatus({ rows }) {
         <p>No readings yet: run Sync everything, then confirm the fields below.</p>
       ) : (
         <>
-          <p>{flagged.length ? `${flagged.length} manager(s) without Gold or away for 7+ days.` : 'Every manager is Gold and logged in within the last 7 days.'}</p>
+          <p>{flagged.length ? `${flagged.length} manager(s) without Gold, with Gold ending within 14 days, or away for 7+ days.` : 'Every manager is Gold, with more than 14 days left, and logged in within the last 7 days.'}</p>
           <table>
-            <thead><tr><th>Club</th><th>Manager</th><th>Gold</th><th>Last login</th><th>Days</th><th>Synced</th></tr></thead>
+            <thead><tr><th>Club</th><th>Manager</th><th>Gold</th><th>Gold left</th><th>Last login</th><th>Days</th><th>Worlds</th><th>Synced</th></tr></thead>
             <tbody>
               {shown.map((row) => (
                 <tr key={`${row.club_name}-${row.sm_manager_id}`}>
                   <td>{row.club_name}</td>
                   <td>{row.manager_name || row.sm_manager_id}</td>
                   <td>{row.gold === null ? '?' : row.gold ? 'Yes' : <strong>No</strong>}{row.gold_changed_at ? ` (since ${date(row.gold_changed_at)})` : ''}</td>
+                  <td>{row.gold_days_left === null || row.gold_days_left === undefined ? '?' : goldEndingSoon(row)
+                    ? <strong>{row.gold_days_left} days ({date(row.gold_expires_on)})</strong>
+                    : `${row.gold_days_left} days`}</td>
                   <td>{date(row.last_login_at)}</td>
                   <td>{row.days_since_login === null ? '?' : Number(row.days_since_login) >= 10 ? <strong>{row.days_since_login} ⚠</strong> : row.days_since_login}</td>
+                  <td>{row.game_worlds ?? '?'}</td>
                   <td>{date(row.captured_at)}</td>
                 </tr>
               ))}
@@ -116,7 +121,11 @@ export default function ComplianceAlertsPage() {
     const error = log.error || overview.error || candidates.error || names.error;
     if (error) { setMessage(error.message); return; }
     setAlerts(log.data || []);
-    setStatusRows(overview.data || []);
+    // Days of Gold left and game worlds, from the managers' profiles; optional, so the page
+    // still loads before that function exists.
+    const profiles = await supabase.rpc('manager_profile_overview', { p_world_slug: 'top-100' });
+    const byClub = new Map((profiles.error ? [] : profiles.data || []).map((row) => [row.club_name, row]));
+    setStatusRows((overview.data || []).map((row) => ({ ...row, ...(byClub.get(row.club_name) || {}), captured_at: row.captured_at })));
     setFields(candidates.data || []);
     setInventory(names.data || []);
     setMessage('');
