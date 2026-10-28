@@ -1,7 +1,8 @@
 // Every five minutes: queue day-before / fixture-day reminders (from 08:00 UK
 // time, idempotent per fixture and day), the daily "sync due" admin reminder
 // (from 09:00 UK time when the last sync is over a day old), squad-limit alerts
-// (once per breach) and retry anything still pending.
+// (once per breach), Gold membership and login alerts (once per change or
+// threshold) and retry anything still pending.
 import { dispatchPending, missingConfig, pushConfig, rpc } from './lib/pushDispatch.mjs';
 
 const json = (body, status = 200) => Response.json(body, { status });
@@ -19,8 +20,10 @@ export default async () => {
     // Optional: never let the admin reminder block fixture reminders or retries.
     const syncReminders = await rpc(config, 'enqueue_sync_due_reminders').catch((error) => ({ error: error.message }));
     const squadCapAlerts = await rpc(config, 'enqueue_squad_cap_alerts').catch((error) => ({ error: error.message }));
-    if (missing.length) return json({ ok: true, reminders, syncReminders, squadCapAlerts, push: `not configured (${missing.join(', ')})` });
-    return json({ ok: true, reminders, syncReminders, squadCapAlerts, ...(await dispatchPending(config)) });
+    const managerStatusAlerts = await rpc(config, 'enqueue_manager_status_alerts').catch((error) => ({ error: error.message }));
+    const alerts = { reminders, syncReminders, squadCapAlerts, managerStatusAlerts };
+    if (missing.length) return json({ ok: true, ...alerts, push: `not configured (${missing.join(', ')})` });
+    return json({ ok: true, ...alerts, ...(await dispatchPending(config)) });
   } catch (error) {
     return json({ error: error.message || 'Scheduled push dispatch failed.' }, 500);
   }
