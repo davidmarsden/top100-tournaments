@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import SquadBreachReportForm from './SquadBreachReportForm.jsx';
 
 function money(value) {
   if (!hasNumber(value)) return '—';
@@ -288,6 +289,12 @@ export default function ManagerSquadDashboard() {
     <section className="card portal-panel">
       <div className="card-header"><p className="eyebrow">Market</p><h2>Transfers involving {dashboard.teamName}</h2></div>
       {transfers.length ? <div className="squad-list">{transfers.map((transfer) => <div className="squad-list-row transfer-row" key={transfer.id}><div><strong><span className={`transfer-direction ${transfer.direction}`}>{transfer.direction === 'in' ? 'IN' : 'OUT'}</span> {transfer.playerName}</strong><span>{transfer.rating ?? '—'} · {transfer.position || '—'} · {transfer.counterpartyClubName || 'Unknown club'}{transfer.counterpartyIsTop100 ? ' · Top 100' : ' · external club'}</span></div><div className="transfer-money"><b>{money(transfer.amount)}</b><span>{transfer.acceptedDate || 'Date unknown'}{transfer.turn ? ` · turn ${transfer.turn}` : ''}</span></div></div>)}</div> : <p className="muted">No archived transfers involving this club yet.</p>}
+    </section>
+
+    <section className="card portal-panel">
+      <div className="card-header"><p className="eyebrow">Rule 4.1</p><h2>Report a squad over 50</h2></div>
+      <p className="muted">Seen a Top 100 club with more than 50 players? Tell the admin team here. They check every report, and the club's manager hears about it only if they uphold it.</p>
+      <SquadBreachReportForm />
     </section>
   </main>;
 }
