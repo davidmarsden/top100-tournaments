@@ -18,6 +18,10 @@
 --                        manager, free or on loan);
 --   rebid                the club signs a player it was told never to bid for again.
 
+-- Function bodies read Soccer Manager Sync tables that Manager Lab's migrations create,
+-- so they are not checked here (as in the baseline).
+SET check_function_bodies = false;
+
 create table public.club_transfer_bans (
   id bigint generated always as identity primary key,
   source_world_id bigint not null,
@@ -350,3 +354,5 @@ $$;
 
 revoke all on function public.acknowledge_compliance_event(bigint) from public, anon;
 grant execute on function public.acknowledge_compliance_event(bigint) to authenticated;
+
+RESET check_function_bodies;

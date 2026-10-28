@@ -29,6 +29,10 @@
 -- upheld. It is called every five minutes by push-dispatch-scheduled and is
 -- idempotent.
 
+-- Function bodies read Soccer Manager Sync tables that Manager Lab's migrations create,
+-- so they are not checked here (as in the baseline).
+SET check_function_bodies = false;
+
 create table public.squad_cap_breaches (
   id bigint generated always as identity primary key,
   game_world_id bigint not null references public.game_worlds(id),
@@ -574,3 +578,5 @@ $$;
 
 revoke all on function public.squad_cap_overview(text) from public, anon;
 grant execute on function public.squad_cap_overview(text) to authenticated;
+
+RESET check_function_bodies;

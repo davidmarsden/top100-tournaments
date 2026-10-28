@@ -15,6 +15,10 @@
 -- week after a deal with a club outside Top 100, a month after one with a Top 100
 -- club), read from the synced squad (sourceFields.tbraw).
 
+-- Function bodies read Soccer Manager Sync tables that Manager Lab's migrations create,
+-- so they are not checked here (as in the baseline).
+SET check_function_bodies = false;
+
 create table public.top100_officials (
   manager_id bigint primary key references public.managers(id),
   role text not null default 'Admin team',
@@ -549,3 +553,5 @@ grant execute on function public.compliance_obligation_overview(text) to authent
 insert into public.top100_officials (manager_id)
 select id from public.managers where id in (108, 125, 88, 74)
 on conflict do nothing;
+
+RESET check_function_bodies;

@@ -13,6 +13,10 @@
 -- ranks it within the division. It is the current squad, not the squad at the
 -- start of the season, so read value added (predicted - actual) with that in mind.
 
+-- Function bodies read Soccer Manager Sync tables that Manager Lab's migrations create,
+-- so they are not checked here (as in the baseline).
+SET check_function_bodies = false;
+
 create or replace function public.public_league_season_rows(p_world_slug text default 'top-100')
 returns table (
   season integer,
@@ -117,3 +121,5 @@ $$;
 
 revoke all on function public.public_league_season_rows(text) from public;
 grant execute on function public.public_league_season_rows(text) to anon, authenticated, service_role;
+
+RESET check_function_bodies;

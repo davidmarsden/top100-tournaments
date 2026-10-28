@@ -111,4 +111,11 @@ $$;
 revoke all on function public.enqueue_squad_cap_alerts() from public, anon, authenticated;
 grant execute on function public.enqueue_squad_cap_alerts() to service_role;
 
-select public.refresh_squad_cap_breaches('top-100', 50);
+-- Only where Soccer Manager Sync's tables exist (not in a bare migration replay).
+do $$
+begin
+  if to_regclass('public.soccer_manager_club_crosswalk') is not null then
+    perform public.refresh_squad_cap_breaches('top-100', 50);
+  end if;
+end;
+$$;
