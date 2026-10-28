@@ -44,3 +44,18 @@ Administrators decide with `review_squad_cap_breach(id, 'upheld' | 'dismissed' |
 Detection is not a sanction. Rule 4.1 records the S28 precedent (Olympique Lyonnais, 19 October 2026). The club received a one-month transfer ban, with cash sales to clubs outside Top 100 still allowed. The signing that took it over 50 must also be sold to a club outside Top 100 when that player's own transfer ban ends, and the club may not bid for them again. Rule 7 still lets administrators weigh intent, impact and how promptly a breach was corrected.
 
 Soccer Manager's own squad-limit setting is not a safeguard: it effectively caps squads at 49 and does not stop a club going over 50.
+
+## Follow-up on rulings
+
+A ruling is recorded once, then checked against every sync (`enqueue_compliance_events()`, every five minutes, administrators only):
+
+| Recorded | Checked | Alert |
+|---|---|---|
+| a confirmed breach | the next sync at 50 or fewer | **Back within the squad limit** |
+| a transfer ban (`club_transfer_bans`: dates, terms) | every deal the club makes during it; with "cash sales to clubs outside Top 100 only", any signing, any sale to a Top 100 manager and any free or loan deal | **Deal during a transfer ban** |
+| a required sale (`compliance_obligations`) | the club's first sale of the player afterwards: to a club outside Top 100 for cash, or any sale when the ruling just says "sell" | **Required sale made**, or **made the wrong way** |
+| "no re-bid" on a required sale | the club signing the player again | **Banned player signed again** |
+
+Recorded so far: Olympique Lyonnais' ban (20 Oct to 20 Nov 2026, cash sales to clubs outside Top 100 only) and the required cash sale of Idder to a club outside Top 100, with no re-bid; and Dinamo Zagreb's six manager-less signings, to be sold once their bans end. New ones are added on the alerts page (`set_club_transfer_ban`, `add_compliance_obligation`).
+
+A deal is matched to a ban by the day Soccer Manager records it, and only completed or accepted deals count.
