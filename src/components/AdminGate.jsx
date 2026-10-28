@@ -11,12 +11,14 @@ export function useAdminAuth() {
   return useContext(AdminAuthContext);
 }
 
-export default function AdminGate({ children, requireGlobal = false }) {
+// requireOfficial: the Top 100 admin team (is_top100_official): officials and platform administrators.
+export default function AdminGate({ children, requireGlobal = false, requireOfficial = false }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [checking, setChecking] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
+  const [isOfficial, setIsOfficial] = useState(false);
   const [organiserAssignments, setOrganiserAssignments] = useState([]);
   const [userEmail, setUserEmail] = useState('');
   const [accessError, setAccessError] = useState('');
@@ -110,15 +112,16 @@ export default function AdminGate({ children, requireGlobal = false }) {
   async function checkAccess(user, background = false, preserveAccessError = false) {
     const generation = ++accessCheckGeneration.current;
     if (!user) {
-      setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail('');
+      setHasAccess(false); setIsGlobalAdmin(false); setIsOfficial(false); setOrganiserAssignments([]); setUserEmail('');
       if (!preserveAccessError) setAccessError('');
       setChecking(false); return;
     }
     if (!background) setChecking(true);
-    const [adminResult, accessResult, assignmentsResult] = await Promise.all([
+    const [adminResult, accessResult, assignmentsResult, officialResult] = await Promise.all([
       supabase.rpc('is_admin'),
       supabase.rpc('has_tournament_admin_access'),
       supabase.from('tournament_organisers').select('tournament_id, role, active').eq('auth_user_id', user.id).eq('active', true),
+      requireOfficial ? supabase.rpc('is_top100_official') : Promise.resolve({ data: false, error: null }),
     ]);
     // Ignore older permission checks that complete after a newer session event.
     if (generation !== accessCheckGeneration.current) return;
@@ -126,6 +129,7 @@ export default function AdminGate({ children, requireGlobal = false }) {
     const assignments = assignmentsResult.error ? [] : assignmentsResult.data || [];
     setUserEmail(user.email || 'signed-in user');
     setIsGlobalAdmin(global);
+    setIsOfficial(global || (Boolean(officialResult.data) && !officialResult.error));
     setOrganiserAssignments(assignments);
     setHasAccess((Boolean(accessResult.data) && !accessResult.error) || global || assignments.some((row) => row.active));
     const permissionError = adminResult.error || accessResult.error || assignmentsResult.error;
@@ -147,17 +151,18 @@ export default function AdminGate({ children, requireGlobal = false }) {
 
   async function logout() {
     await supabase.auth.signOut();
-    setHasAccess(false); setIsGlobalAdmin(false); setOrganiserAssignments([]); setUserEmail(''); setAccessError(''); setLoginError('');
+    setHasAccess(false); setIsGlobalAdmin(false); setIsOfficial(false); setOrganiserAssignments([]); setUserEmail(''); setAccessError(''); setLoginError('');
     window.location.replace('/admin?platform=1');
   }
 
   const managedTournamentIds = organiserAssignments.map((row) => row.tournament_id);
-  const allowed = hasAccess && (!requireGlobal || isGlobalAdmin);
+  const allowed = requireOfficial ? isOfficial : hasAccess && (!requireGlobal || isGlobalAdmin);
 
   if (!hasSupabaseConfig || !supabase) return <main className="app-shell"><section className="warning-card"><strong>Supabase is not connected.</strong><span>Administration needs VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.</span></section></main>;
   if (checking) return <main className="app-shell"><section className="card"><h1>Checking tournament access...</h1></section></main>;
   if (allowed) return <AdminAuthContext.Provider value={{ logout, userEmail, isGlobalAdmin, managedTournamentIds, organiserAssignments }}>{children}</AdminAuthContext.Provider>;
 
+  if (requireOfficial && userEmail && !checking) return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100</p><h1>Admin team only</h1><p>Signed in as {userEmail}. This page is for the Top 100 admin team. If you should have access, ask David to add you.</p></section></main>;
   if (hasAccess && requireGlobal) return <main className="app-shell"><section className="hero"><p className="eyebrow">Top 100 Tournament Manager</p><h1>Platform admin only</h1><p>Your organiser account is deliberately restricted to its assigned tournament. Manager-account administration remains available only to the platform administrator.</p></section><section className="card"><a className="button" href="/admin">Return to tournament admin</a></section></main>;
 
   return <main className="app-shell">
