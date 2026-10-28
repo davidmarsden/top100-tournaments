@@ -23,7 +23,11 @@ Daily syncs keep the intervals short and make between-sync results sharper. The 
 
 ### Loans
 
-Rule 4.1 counts loans both ways. No loans had been seen in Top 100 sync data when this was built (`soccer_manager_players.loaned` is false throughout), so it is not yet verified that Soccer Manager lists a loaned-out player in the parent club's squad. Check this the first time a loan happens. If the parent club's squad omits the player, add active loans out to the count.
+Rule 4.1 counts loans both ways. Loaned-in players are included in Soccer Manager's squad count (Dinamo Zagreb's 56 in October 2026 included two loans). It is not yet verified that a loaned-out player stays in the parent club's squad. Check this the first time a Top 100 club loans a player out. If the parent club's squad omits the player, add active loans out to the count.
+
+### Exclusions
+
+Players an administrator rules out of the count are listed in `squad_cap_exclusions` and left out of both the sync counts and the replay. The first case: the six players Dinamo Zagreb signed in October 2026 while the club had no manager, frozen by transfer bans until they are sold. Add or lift one with `set_squad_cap_exclusion(club_id, player_id, reason, exclude)`. Soccer Manager's squad roster and transfers both use the world `playerId`.
 
 ## Notifications
 
@@ -37,4 +41,6 @@ Administrators decide with `review_squad_cap_breach(id, 'upheld' | 'dismissed' |
 
 ## Sanctions
 
-Detection is not a sanction. Rule 7 leaves the sanction to the administrators, weighing intent, impact, previous breaches and how promptly an honest mistake was corrected. The August 2025 rulebook set a one-month transfer ban for a first squad-cap offence. A breach corrected within the same turn, like Lyon's, fits a warning better than a ban.
+Detection is not a sanction. Rule 4.1 records the S28 precedent (Olympique Lyonnais, 19 October 2026). The club received a one-month transfer ban, with cash sales to clubs outside Top 100 still allowed. The signing that took it over 50 must also be sold to a club outside Top 100 when that player's own transfer ban ends, and the club may not bid for them again. Rule 7 still lets administrators weigh intent, impact and how promptly a breach was corrected.
+
+Soccer Manager's own squad-limit setting is not a safeguard: it effectively caps squads at 49 and does not stop a club going over 50.

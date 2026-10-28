@@ -16,6 +16,12 @@
 --    if only the worst case does it is "possible". Neither is a finding until
 --    an administrator upholds it.
 --
+-- Players an administrator rules out of the count, such as signings frozen by a
+-- transfer ban (Dinamo Zagreb's six S28 signings made while the club had no
+-- manager), are listed in squad_cap_exclusions and left out of both the
+-- capture counts and the replay. Loaned-in players are in Soccer Manager's
+-- squad count (confirmed with Dinamo Zagreb, October 2026).
+--
 -- enqueue_squad_cap_alerts() refreshes the register and queues notifications:
 -- confirmed breaches go to the club's manager and the administrators at once;
 -- likely/possible ones go to administrators, and to the manager only once
@@ -60,6 +66,28 @@ create table public.squad_cap_breaches (
 comment on table public.squad_cap_breaches is
   'Register of Top 100 squad-limit breaches detected from Soccer Manager Sync. Written only by refresh_squad_cap_breaches() and review_squad_cap_breach().';
 
+create table public.squad_cap_exclusions (
+  id bigint generated always as identity primary key,
+  source_world_id bigint not null,
+  source_club_id text not null,
+  source_player_id text not null,
+  player_name text,
+  reason text not null,
+  excluded_from date,
+  excluded_until date,
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  unique (source_world_id, source_club_id, source_player_id)
+);
+
+comment on table public.squad_cap_exclusions is
+  'Players an administrator has ruled out of a club''s squad-limit count (for example signings frozen by a transfer ban). Written through set_squad_cap_exclusion().';
+
+alter table public.squad_cap_exclusions enable row level security;
+create policy "Admins read squad cap exclusions" on public.squad_cap_exclusions
+  for select to authenticated using (public.is_admin());
+grant select on public.squad_cap_exclusions to authenticated;
+
 alter table public.squad_cap_breaches enable row level security;
 create policy "Admins read squad cap breaches" on public.squad_cap_breaches
   for select to authenticated using (public.is_admin());
@@ -90,7 +118,15 @@ begin
   create temporary table squad_cap_captures on commit drop as
   select distinct on (change.after_data->>'clubId', run.captured_at)
     change.after_data->>'clubId' as club,
-    (change.after_data->>'playerCount')::integer as n,
+    (change.after_data->>'playerCount')::integer
+      - (select count(*)::integer
+         from jsonb_array_elements_text(coalesce(change.after_data->'rosterPlayerIds', '[]'::jsonb)) roster(player_id)
+         join public.squad_cap_exclusions exclusion
+           on exclusion.source_world_id = v_source_world
+          and exclusion.source_club_id = change.after_data->>'clubId'
+          and exclusion.source_player_id = roster.player_id
+          and (exclusion.excluded_from is null or run.captured_at::date >= exclusion.excluded_from)
+          and (exclusion.excluded_until is null or run.captured_at::date <= exclusion.excluded_until)) as n,
     run.captured_at
   from public.soccer_manager_sync_changes change
   join public.soccer_manager_sync_runs run on run.id = change.run_id
@@ -109,16 +145,27 @@ begin
     from squad_cap_captures
     window w as (partition by club order by captured_at)
   ),
-  moves as (
+  all_moves as (
     select transfer.to_source_club_id as club, 1 as delta, transfer.source_turn, transfer.player_name,
-      transfer.from_club_name, transfer.to_club_name, transfer.accepted_date, transfer.first_seen_at
+      transfer.from_club_name, transfer.to_club_name, transfer.accepted_date, transfer.first_seen_at,
+      transfer.source_data->>'playerId' as player_id
     from public.soccer_manager_transfers transfer
     where transfer.game_world_id = v_world_id and transfer.status = 9
     union all
     select transfer.from_source_club_id, -1, transfer.source_turn, transfer.player_name,
-      transfer.from_club_name, transfer.to_club_name, transfer.accepted_date, transfer.first_seen_at
+      transfer.from_club_name, transfer.to_club_name, transfer.accepted_date, transfer.first_seen_at,
+      transfer.source_data->>'playerId'
     from public.soccer_manager_transfers transfer
     where transfer.game_world_id = v_world_id and transfer.status = 9
+  ),
+  moves as (
+    -- Excluded players never count, so their moves do not change the count either.
+    select move.* from all_moves move
+    where not exists (
+      select 1 from public.squad_cap_exclusions exclusion
+      where exclusion.source_world_id = v_source_world
+        and exclusion.source_club_id = move.club
+        and exclusion.source_player_id = move.player_id)
   ),
   dated as (
     -- accepted_date has no year ("Oct 19"): take the year it was first seen,
@@ -407,7 +454,46 @@ $$;
 revoke all on function public.review_squad_cap_breach(bigint, text, text) from public, anon;
 grant execute on function public.review_squad_cap_breach(bigint, text, text) to authenticated;
 
--- Current squad size of every club in a world, from the latest reviewed squad capture.
+-- Administrator: rule a player out of (p_exclude) or back into a club's count.
+create or replace function public.set_squad_cap_exclusion(
+  p_source_club_id text,
+  p_source_player_id text,
+  p_reason text,
+  p_exclude boolean default true,
+  p_world_slug text default 'top-100'
+) returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_source_world bigint;
+begin
+  if not public.is_admin() then raise exception 'Only administrators can change squad limit exclusions.'; end if;
+  select external_world_id into v_source_world from public.game_worlds where slug = p_world_slug;
+  if v_source_world is null then raise exception 'Unknown game world %', p_world_slug; end if;
+
+  if p_exclude then
+    if nullif(trim(coalesce(p_reason, '')), '') is null then raise exception 'Give a reason for the exclusion.'; end if;
+    insert into public.squad_cap_exclusions (source_world_id, source_club_id, source_player_id, player_name, reason, created_by)
+    select v_source_world, p_source_club_id, p_source_player_id,
+      (select player.name || coalesce(' ' || player.surname, '') from public.soccer_manager_players player
+        where player.source_player_id = p_source_player_id limit 1),
+      trim(p_reason), auth.uid()
+    on conflict (source_world_id, source_club_id, source_player_id)
+      do update set reason = excluded.reason, excluded_until = null;
+  else
+    update public.squad_cap_exclusions set excluded_until = current_date
+    where source_world_id = v_source_world and source_club_id = p_source_club_id and source_player_id = p_source_player_id;
+  end if;
+end;
+$$;
+
+revoke all on function public.set_squad_cap_exclusion(text, text, text, boolean, text) from public, anon;
+grant execute on function public.set_squad_cap_exclusion(text, text, text, boolean, text) to authenticated;
+
+-- Current squad size of every club in a world, from the latest reviewed squad capture,
+-- less any players excluded from the count.
 create or replace function public.squad_cap_overview(p_world_slug text default 'top-100')
 returns table (
   club_name text,
@@ -433,7 +519,14 @@ begin
   latest as (
     select distinct on (change.after_data->>'clubId')
       change.after_data->>'clubId' as club,
-      (change.after_data->>'playerCount')::integer as n,
+      (change.after_data->>'playerCount')::integer
+        - (select count(*)::integer
+           from jsonb_array_elements_text(coalesce(change.after_data->'rosterPlayerIds', '[]'::jsonb)) roster(player_id)
+           join public.squad_cap_exclusions exclusion
+             on exclusion.source_world_id = world.external_world_id
+            and exclusion.source_club_id = change.after_data->>'clubId'
+            and exclusion.source_player_id = roster.player_id
+            and (exclusion.excluded_until is null or exclusion.excluded_until >= current_date)) as n,
       run.captured_at
     from public.soccer_manager_sync_changes change
     join public.soccer_manager_sync_runs run on run.id = change.run_id
