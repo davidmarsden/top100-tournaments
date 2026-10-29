@@ -4,6 +4,9 @@ import AdminControlRoom from './components/AdminControlRoom.jsx';
 import AuthSessionBridge from './components/AuthSessionBridge.jsx';
 import ManagerAccountsPage from './components/ManagerAccountsPage.jsx';
 import ComplianceAlertsPage from './components/ComplianceAlertsPage.jsx';
+import AdminAppointmentsPage from './components/AdminAppointmentsPage.jsx';
+import ManagerAppointments from './components/ManagerAppointments.jsx';
+import PublicAppointments from './components/PublicAppointments.jsx';
 import ManagerEntry from './components/ManagerEntry.jsx';
 import ManagerSquadDashboard from './components/ManagerSquadDashboard.jsx';
 import ManagerLabPage from './components/ManagerLabPage.jsx';
@@ -27,6 +30,10 @@ function isManagerHostChatPath() { return /^\/(?:manager\/)?chat\/?$/.test(windo
 function isManagerHostSquadPath() { return /^\/(?:manager\/)?squad\/?$/.test(window.location.pathname); }
 function isManagerHostPortalPath() { return /^\/(?:manager\/?)?$/.test(window.location.pathname); }
 function isManagerAccountsPath() { return /^\/admin\/manager-accounts\/?$/.test(window.location.pathname); }
+function isAppointmentsAdminPath() { return /^\/admin\/appointments\/?$/.test(window.location.pathname); }
+function isPublicAppointmentsPath() { return /^\/appointments\/?$/.test(window.location.pathname); }
+function isManagerAppointmentsPath() { return /^\/manager\/appointments\/?$/.test(window.location.pathname); }
+function isManagerHostAppointmentsPath() { return /^\/(?:manager\/)?appointments\/?$/.test(window.location.pathname); }
 function isComplianceAlertsPath() { return /^\/admin\/alerts\/?$/.test(window.location.pathname); }
 function isResultSubmissionsPath() { return /^\/admin\/result-submissions\/?$/.test(window.location.pathname); }
 function isSoccerManagerSyncPath() { return /^\/admin\/soccer-manager-sync\/?$/.test(window.location.pathname); }
@@ -62,6 +69,7 @@ export default function App() {
     if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
     if (isManagerHostChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
     if (isManagerHostSquadPath()) return <ManagerShell product="Squad & Transfers"><ManagerSquadDashboard /></ManagerShell>;
+    if (isManagerHostAppointmentsPath()) return <ManagerShell product="Appointments"><ManagerAppointments /></ManagerShell>;
     if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerEntry registrationMode /></ManagerShell>;
     if (isManagerHostPortalPath()) return <ManagerShell><ManagerEntry /></ManagerShell>;
     forwardManagerHostPathToTournaments(); return null;
@@ -71,10 +79,13 @@ export default function App() {
   if (isChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
   if (isManagerChatPath()) { window.location.replace(`https://manager.smtop100.blog/chat${window.location.search}`); return null; }
   if (isManagerSquadPath()) { window.location.replace(`https://manager.smtop100.blog/squad${window.location.search}`); return null; }
+  if (isManagerAppointmentsPath()) { window.location.replace('https://manager.smtop100.blog/appointments'); return null; }
   if (isManagerPath()) { window.location.replace('https://manager.smtop100.blog/'); return null; }
   if (isManagerRegistrationPath()) { window.location.replace('https://manager.smtop100.blog/registrations'); return null; }
   if (isVotingPath()) { window.location.replace('https://vote.smtop100.blog/vote'); return null; }
   if (isComplianceAlertsPath()) return <AdminGate requireOfficial><ComplianceAlertsPage /></AdminGate>;
+  if (isAppointmentsAdminPath()) return <AdminGate requireOfficial><AdminAppointmentsPage /></AdminGate>;
+  if (isPublicAppointmentsPath()) return <Top100BrandShell product="Appointments"><PublicAppointments /></Top100BrandShell>;
   if (isManagerAccountsPath()) return <AdminGate requireGlobal><ManagerAccountsPage /></AdminGate>;
   if (isResultSubmissionsPath()) return <AdminGate requireGlobal><ResultSubmissionsPage /></AdminGate>;
   if (isSoccerManagerSyncPath()) return <AdminGate requireGlobal><SoccerManagerSyncPage /></AdminGate>;
