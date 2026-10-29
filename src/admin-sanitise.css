@@ -25,11 +25,11 @@
 .admin-sanitised .sidebar .nav-pill.admin-group-start { margin-top: 18px; }
 .admin-sanitised .sidebar .nav-pill.admin-group-start:first-of-type { margin-top: 20px; }
 .admin-sanitised .sidebar .nav-pill.admin-group-start::before { content: attr(data-admin-group-label); position: absolute; left: 3px; bottom: calc(100% + 5px); color: #71809a; font-size: .63rem; line-height: 1; font-weight: 950; letter-spacing: .11em; text-transform: uppercase; pointer-events: none; }
-.admin-sanitised .sidebar .nav-pill[data-admin-group="Matchday"] { background: #eefbf5; color: #135c46; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Matchday"] { background: #0f3a2e; color: #6ee7b7; }
 .admin-sanitised .sidebar .nav-pill[data-admin-group="Matchday"].active { background: #0f8a68; color: #fff; }
-.admin-sanitised .sidebar .nav-pill[data-admin-group="Setup"] { background: #f7f5ff; }
-.admin-sanitised .sidebar .nav-pill[data-admin-group="Publish"] { background: #fff8ec; }
-.admin-sanitised .sidebar .nav-pill[data-admin-group="Platform"] { background: #f5f6f8; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Setup"] { background: #2a2550; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Publish"] { background: #3d2e12; }
+.admin-sanitised .sidebar .nav-pill[data-admin-group="Platform"] { background: #18335c; }
 .admin-sanitised .sidebar .nav-pill.active { box-shadow: 0 6px 14px rgba(29,78,216,.16); }
 
 /* Creation, workflow status and builder belong on Overview, not above every task. */
@@ -77,11 +77,11 @@
 
 /* Inside live knockout work, Cup and Shield get their own clearly separated columns. */
 .admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-sections { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; align-items: start; }
-.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup { grid-column: 1; border: 1px solid #b9d7ff; border-top: 4px solid #2563eb; background: #f7fbff; }
-.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield { grid-column: 2; border: 1px solid #f2d59a; border-top: 4px solid #d69e2e; background: #fffaf0; }
-.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup > .fixture-section-header { background: #eef6ff; }
-.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield > .fixture-section-header { background: #fff3d6; }
-.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup > .fixture-section-header h3 { color: #1d4ed8; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup { grid-column: 1; border: 1px solid #b9d7ff; border-top: 4px solid #2563eb; background: #132b50; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield { grid-column: 2; border: 1px solid #f2d59a; border-top: 4px solid #d69e2e; background: #3d2e12; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup > .fixture-section-header { background: #1b3a68; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield > .fixture-section-header { background: #4a3512; }
+.admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-cup > .fixture-section-header h3 { color: #8db4ff; }
 .admin-sanitised.admin-module-knockout .knockout-desk-card .fixture-section.admin-bracket-shield > .fixture-section-header h3 { color: #9a6700; }
 
 /* Schedule editing and saved bracket history are secondary during live knockout play. */

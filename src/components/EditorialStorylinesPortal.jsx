@@ -172,10 +172,10 @@ function EditorialCard({ story }) {
     <span>{story.tag}</span>
     <strong style={headlineStyle}>{story.title}</strong>
     {story.meta && <small>{story.meta}</small>}
-    {story.results && <ul style={listStyle}>{story.results.map((result) => <li key={result} style={{ fontSize: '1.12rem', fontWeight: 850, color: '#334155' }}>{result}</li>)}</ul>}
-    {story.quotes && <div style={{ display: 'grid', gap: '12px', marginTop: '8px' }}>{story.quotes.map((quote) => <blockquote key={quote.id} style={{ margin: 0, padding: '10px 0', borderBottom: '1px solid #e4ebf7' }}><p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#334155' }}>“{quote.text}”</p><small>{quote.byline}</small></blockquote>)}</div>}
-    {story.forfeits && <ul style={listStyle}>{story.forfeits.map((item) => <li key={item.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '12px', paddingBottom: '8px', borderBottom: '1px solid #e4ebf7' }}><strong>{item.club}</strong><span style={{ color: '#5f6f8e', fontWeight: 750 }}>{item.manager}</span></li>)}</ul>}
-    {story.note && <p style={{ marginTop: '10px', color: '#5f6f8e', fontWeight: 750 }}>{story.note}</p>}
+    {story.results && <ul style={listStyle}>{story.results.map((result) => <li key={result} style={{ fontSize: '1.12rem', fontWeight: 850, color: '#d3dcea' }}>{result}</li>)}</ul>}
+    {story.quotes && <div style={{ display: 'grid', gap: '12px', marginTop: '8px' }}>{story.quotes.map((quote) => <blockquote key={quote.id} style={{ margin: 0, padding: '10px 0', borderBottom: '1px solid #24406b' }}><p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#d3dcea' }}>“{quote.text}”</p><small>{quote.byline}</small></blockquote>)}</div>}
+    {story.forfeits && <ul style={listStyle}>{story.forfeits.map((item) => <li key={item.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '12px', paddingBottom: '8px', borderBottom: '1px solid #24406b' }}><strong>{item.club}</strong><span style={{ color: '#a9b8d0', fontWeight: 750 }}>{item.manager}</span></li>)}</ul>}
+    {story.note && <p style={{ marginTop: '10px', color: '#a9b8d0', fontWeight: 750 }}>{story.note}</p>}
   </article>;
 }
 

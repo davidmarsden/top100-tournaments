@@ -1,10 +1,10 @@
 /* Shared fixture presentation for the admin and public tournament pages. */
 
 .fixture-section {
-  border: 1px solid #dce5f5;
+  border: 1px solid #24406b;
   border-radius: 22px;
   overflow: hidden;
-  background: #fff;
+  background: #0f2443;
   box-shadow: 0 10px 26px rgba(21, 39, 75, 0.06);
 }
 
@@ -14,7 +14,7 @@
 
 .fixture-section-header {
   border-left: 5px solid #2563eb;
-  background: linear-gradient(135deg, #f6f9ff, #eef3fb);
+  background: linear-gradient(135deg, #132b50, #18335c);
 }
 
 .fixture-section-header h3 {
