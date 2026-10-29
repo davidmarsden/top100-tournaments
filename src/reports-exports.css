@@ -7,9 +7,9 @@
   display: grid;
   gap: 18px;
   padding: 22px;
-  border: 1px solid #dce5f5;
+  border: 1px solid #24406b;
   border-radius: 20px;
-  background: linear-gradient(135deg, #fbfdff, #f4f7fc);
+  background: linear-gradient(135deg, #132b50, #132b50);
 }
 
 .report-panel h3 {
@@ -41,8 +41,8 @@
   padding: 18px;
   border: 1px solid #cfd9eb;
   border-radius: 16px;
-  background: #fff;
-  color: #172033;
+  background: #0f2443;
+  color: #e8eef8;
   font: 0.94rem/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 

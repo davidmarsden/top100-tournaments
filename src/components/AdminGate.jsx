@@ -178,7 +178,9 @@ export default function AdminGate({ children, requireGlobal = false, requireOffi
       {accessError && <p className="status error-text">{accessError}</p>}
       {userEmail && !accessError && <p className="muted">Signed in as {userEmail}, but this account has not been assigned tournament administration.</p>}
       <div className="button-row">
-        <a className="button" href="https://manager.smtop100.blog/">Sign in through Manager Portal</a>
+        <a className="button" href={window.location.hostname === 'admin.smtop100.blog'
+          ? `${MANAGER_ORIGIN}/?returnTo=${encodeURIComponent(window.location.origin + window.location.pathname)}`
+          : `${MANAGER_ORIGIN}/`}>Sign in through Manager Portal</a>
       </div>
     </section>
 

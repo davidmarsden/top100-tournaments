@@ -81,7 +81,8 @@ export default function VotingPortal() {
     setLoading(true); setMessage('Loading votes…');
     const [accountResult, adminResult, eventResult] = await Promise.all([
       supabase.from('manager_portal_accounts').select('id, manager_id, active, managers(id, name, display_name)').eq('auth_user_id', session.user.id).eq('active', true).maybeSingle(),
-      supabase.rpc('is_admin'),
+      // Platform administrator or Top 100 official: both manage community polls.
+      supabase.rpc('can_manage_polls'),
       supabase.from('voting_events').select('*').order('created_at', { ascending: false }),
     ]);
     if (accountResult.error) { setMessage(accountResult.error.message); setLoading(false); return; }

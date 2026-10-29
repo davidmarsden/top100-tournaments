@@ -723,7 +723,7 @@ export default function AdminAppointmentsPage() {
         <p>
           Bottom-three reviews (rule 3.1) and vacancies (rule 3.2). Managers state their wishes and apply in{' '}
           <a href="https://manager.smtop100.blog/appointments" style={HERO_LINK}>Manager Portal</a>; published decisions appear at{' '}
-          <a href="/appointments" style={HERO_LINK}>tournaments.smtop100.blog/appointments</a>.
+          <a href="https://tournaments.smtop100.blog/appointments" style={HERO_LINK}>tournaments.smtop100.blog/appointments</a>.
         </p>
         <div className="button-row">
           <button type="button" className={tab === 'reviews' ? '' : 'secondary'} onClick={() => setTab('reviews')}>Reviews</button>

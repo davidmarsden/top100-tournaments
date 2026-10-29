@@ -4,19 +4,19 @@
 .top100-app-top:empty { display: none; }
 .top100-app-bottom { padding-bottom: 8px; }
 
-.top100-install-prompt { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid #b7e4d3; border-radius: 18px; background: #ecfdf5; color: #0f172a; }
+.top100-install-prompt { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid #b7e4d3; border-radius: 18px; background: #0f3a2e; color: #e8eef8; }
 .top100-install-prompt img { flex: none; border-radius: 12px; }
 .top100-install-prompt > div:nth-child(2) { display: grid; gap: 2px; min-width: 0; flex: 1; }
-.top100-install-prompt span { color: #475569; font-size: 0.9rem; }
+.top100-install-prompt span { color: #a9b8d0; font-size: 0.9rem; }
 .top100-install-prompt__actions { display: flex; gap: 8px; flex: none; }
 
-.top100-app-guide { padding: 20px; border: 1px solid #dce5f5; border-radius: 24px; background: #fff; box-shadow: 0 12px 30px rgba(21, 39, 75, 0.06); }
+.top100-app-guide { padding: 20px; border: 1px solid #24406b; border-radius: 24px; background: #0f2443; box-shadow: 0 12px 30px rgba(21, 39, 75, 0.06); }
 .top100-app-guide h2 { margin: 2px 0 12px; font-size: clamp(1.25rem, 3vw, 1.6rem); }
 .top100-app-guide > ol { display: grid; gap: 12px; margin: 0; padding-left: 1.4rem; }
 .top100-app-guide > ol > li > strong, .top100-app-guide > ol > li > span { display: block; }
-.top100-app-guide > ol > li > span, .top100-app-guide ul { margin-top: 4px; color: #475569; font-size: 0.92rem; }
+.top100-app-guide > ol > li > span, .top100-app-guide ul { margin-top: 4px; color: #a9b8d0; font-size: 0.92rem; }
 .top100-app-guide ul { display: grid; gap: 4px; padding-left: 1.1rem; }
-.top100-app-guide ul span { font-weight: 800; color: #0f172a; }
+.top100-app-guide ul span { font-weight: 800; color: #e8eef8; }
 .top100-app-home { display: grid; gap: 14px; }
 .top100-sm-shortcuts { display: grid; gap: 12px; padding: 20px; border-radius: 24px; background: linear-gradient(135deg, #0b1f3b, #134e4a); color: #fff; }
 .top100-sm-shortcuts h2 { margin: 2px 0 0; color: #fff; font-size: clamp(1.4rem, 3.5vw, 2rem); }
@@ -27,16 +27,16 @@
 .top100-sm-shortcuts__note { margin: 0; color: #cbd5e1; font-size: 0.82rem; }
 
 .top100-app-home__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.top100-app-card { min-width: 0; padding: 16px; border: 1px solid #dce5f5; border-radius: 20px; background: #fff; box-shadow: 0 12px 30px rgba(21, 39, 75, 0.06); }
+.top100-app-card { min-width: 0; padding: 16px; border: 1px solid #24406b; border-radius: 20px; background: #0f2443; box-shadow: 0 12px 30px rgba(21, 39, 75, 0.06); }
 .top100-app-card .eyebrow { margin: 0 0 6px; }
 .top100-app-card__headline { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
 .top100-app-card__headline strong { font-size: 1.6rem; line-height: 1.1; overflow-wrap: anywhere; }
-.top100-app-card__headline span { color: #475569; font-weight: 800; }
+.top100-app-card__headline span { color: #a9b8d0; font-weight: 800; }
 .top100-app-card__meta { margin: 8px 0 0; font-size: 0.84rem; }
 .top100-form { display: flex; gap: 4px; margin-top: 10px; }
 .top100-form .portal-outcome { margin: 0 !important; }
 
-.top100-division-table { padding: 4px 16px; border: 1px solid #dce5f5; border-radius: 20px; background: #fff; }
+.top100-division-table { padding: 4px 16px; border: 1px solid #24406b; border-radius: 20px; background: #0f2443; }
 .top100-division-table summary { padding: 10px 0; font-weight: 800; cursor: pointer; }
 .top100-app-home > * { min-width: 0; }
 .top100-division-table .table-wrap { overflow-x: auto; padding-bottom: 12px; }
@@ -51,20 +51,20 @@
 .top100-notification-prefs { margin-bottom: 16px; }
 .top100-notification-prefs summary { font-weight: 800; cursor: pointer; }
 .top100-notification-prefs__list { display: grid; gap: 8px; margin: 12px 0; }
-.top100-toggle { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 12px; border: 1px solid #e4ebf7; border-radius: 14px; background: #fbfdff; }
+.top100-toggle { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 12px; border: 1px solid #24406b; border-radius: 14px; background: #132b50; }
 .top100-toggle input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
 .top100-toggle span { display: grid; gap: 2px; }
-.top100-toggle small { color: #64748b; font-size: 0.82rem; }
+.top100-toggle small { color: #a9b8d0; font-size: 0.82rem; }
 
 .top100-inbox__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .top100-inbox h3 { margin: 0; }
 .top100-inbox ul { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
-.top100-inbox li a { display: grid; gap: 3px; padding: 12px 14px; border: 1px solid #e4ebf7; border-radius: 14px; background: #fbfdff; color: #0f172a; text-decoration: none; }
-.top100-inbox li.is-unread a { border-color: #10b981; background: #f0fdf8; box-shadow: inset 4px 0 0 #10b981; }
-.top100-inbox li span { color: #475569; font-size: 0.88rem; overflow-wrap: anywhere; }
-.top100-inbox li time { color: #64748b; font-size: 0.76rem; font-weight: 800; }
+.top100-inbox li a { display: grid; gap: 3px; padding: 12px 14px; border: 1px solid #24406b; border-radius: 14px; background: #132b50; color: #e8eef8; text-decoration: none; }
+.top100-inbox li.is-unread a { border-color: #10b981; background: #0f3a2e; box-shadow: inset 4px 0 0 #10b981; }
+.top100-inbox li span { color: #a9b8d0; font-size: 0.88rem; overflow-wrap: anywhere; }
+.top100-inbox li time { color: #a9b8d0; font-size: 0.76rem; font-weight: 800; }
 
-.sign-in-code-form { display: grid; gap: 10px; margin: 16px 0; padding-top: 16px; border-top: 1px solid #e4ebf7; }
+.sign-in-code-form { display: grid; gap: 10px; margin: 16px 0; padding-top: 16px; border-top: 1px solid #24406b; }
 .sign-in-code-form input { letter-spacing: 0.2em; font-size: 1.2rem; text-align: center; }
 .sign-in-code-form .muted { margin: 0; font-size: 0.86rem; }
 .admin-broadcast { margin-top: 20px; }
@@ -88,7 +88,7 @@
 
 /* Game-world switcher at the top of My Matches. */
 .top100-world-switcher { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
-.top100-world-switcher button { display: grid; gap: 2px; min-width: 0; min-height: 52px; padding: 8px 12px; border: 1px solid var(--line, #d7deea); border-radius: 12px; background: var(--card, #fff); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.top100-world-switcher button { display: grid; gap: 2px; min-width: 0; min-height: 52px; padding: 8px 12px; border: 1px solid var(--line, #d7deea); border-radius: 12px; background: var(--card, #0f2443); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .top100-world-switcher button strong { font-size: 0.95rem; }
 .top100-world-switcher button span { overflow: hidden; color: var(--muted, #5b6b82); font-size: 0.85rem; text-overflow: ellipsis; white-space: nowrap; }
 .top100-world-switcher button.is-active { border-color: #10b981; box-shadow: inset 0 0 0 1px #10b981; }
