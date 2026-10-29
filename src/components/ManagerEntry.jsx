@@ -114,11 +114,15 @@ function timeout(promise, label) {
   ]).finally(() => window.clearTimeout(timer));
 }
 
+// Where to go back to after signing in: Community Polls, or the admin team's pages on
+// admin.smtop100.blog, which pick up the Manager Portal sign-in themselves.
+const ADMIN_ORIGIN = 'https://admin.smtop100.blog';
+const isAdminReturn = (url) => url.origin === ADMIN_ORIGIN && /^\/(?:appointments\/?|alerts\/?)?$/.test(url.pathname);
 function safeReturnTo() {
   const value = new URLSearchParams(window.location.search).get('returnTo');
   try {
     const url = new URL(value || '');
-    return url.origin === 'https://vote.smtop100.blog' && /^\/vote\/?$/.test(url.pathname)
+    return (url.origin === 'https://vote.smtop100.blog' && /^\/vote\/?$/.test(url.pathname)) || isAdminReturn(url)
       ? url.toString()
       : '';
   } catch {
@@ -240,7 +244,7 @@ function ReturnHandoff({ session, returnTo }) {
   const [message, setMessage] = useState('Preparing secure handoff…');
   useEffect(() => {
     let active = true;
-    (async () => { try { const target = new URL(returnTo); if (target.origin !== 'https://vote.smtop100.blog' || !/^\/vote\/?$/.test(target.pathname)) throw new Error('Invalid voting destination.'); const { data, error } = await supabase.rpc('create_manager_auth_handoff'); if (error) throw error; if (!active) return; target.search = ''; target.searchParams.set('handoff', data); window.location.replace(target.toString()); } catch (error) { if (active) setMessage(error?.message || 'Could not continue to Community Polls.'); } })();
+    (async () => { try { const target = new URL(returnTo); if (isAdminReturn(target)) { window.location.replace(target.origin + target.pathname); return; } if (target.origin !== 'https://vote.smtop100.blog' || !/^\/vote\/?$/.test(target.pathname)) throw new Error('Invalid voting destination.'); const { data, error } = await supabase.rpc('create_manager_auth_handoff'); if (error) throw error; if (!active) return; target.search = ''; target.searchParams.set('handoff', data); window.location.replace(target.toString()); } catch (error) { if (active) setMessage(error?.message || 'Could not continue to Community Polls.'); } })();
     return () => { active = false; };
   }, [session?.user?.id, returnTo]);
   return <main className="manager-portal-shell"><section className="card"><h1>Sign-in complete ✓</h1><p>{message}</p></section></main>;
