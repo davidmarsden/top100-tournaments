@@ -18,6 +18,12 @@ const PROFILES: Record<string, SocialProfile> = {
     image: 'https://manager.smtop100.blog/top100-social-manager.png',
     imageAlt: 'Top 100 My Matches — fixtures, opponents and results.',
   },
+  'admin.smtop100.blog': {
+    title: 'Top 100 Admin',
+    description: 'The Top 100 admin team: end-of-season reviews and appointments, squad, Gold and login alerts, and community polls.',
+    image: 'https://admin.smtop100.blog/top100-social-admin.png',
+    imageAlt: 'Top 100 Admin — reviews, alerts and polls.',
+  },
   'vote.smtop100.blog': {
     title: 'Top 100 Voting',
     description: 'Secure Top 100 community polls and manager voting, with one-manager-one-vote ballots and published results.',
