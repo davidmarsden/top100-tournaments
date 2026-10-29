@@ -43,12 +43,12 @@ function ManagerStatus({ rows }) {
     <section className="card">
       <h2>Gold and logins</h2>
       {rows.length === 0 ? (
-        <p>No readings yet: run Sync everything.</p>
+        <p>No readings yet.</p>
       ) : (
         <>
           <p>{flagged.length ? `${flagged.length} manager(s) without Gold (or whose Gold is unclear), with Gold ending within 14 days, or away for 7+ days.` : 'Every manager is Gold, with more than 14 days left, and logged in within the last 7 days.'}</p>
           <table>
-            <thead><tr><th>Club</th><th>Manager</th><th>Gold</th><th>Gold left</th><th>Last login</th><th>Days</th><th>Worlds</th><th>Synced</th></tr></thead>
+            <thead><tr><th>Club</th><th>Manager</th><th>Gold</th><th>Gold left</th><th>Last login</th><th>Days</th><th>Worlds</th><th>Updated</th></tr></thead>
             <tbody>
               {shown.map((row) => (
                 <tr key={`${row.club_name}-${row.sm_manager_id}`}>
