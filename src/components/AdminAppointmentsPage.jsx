@@ -194,10 +194,12 @@ function ReviewFacts({ review, onSave }) {
 }
 
 // Routine reviews: in Divisions 3–5, and for managers who took over mid-season, the manager is
-// reappointed unless they ask to move or take a break, so the admin team doesn't score or vote.
-// The rule's hard bars (not Gold, misconduct, inactivity) still need a decision.
+// usually reappointed unless they ask to move or take a break, so the admin team doesn't score or
+// vote. The team can make an exception (full_review) and review any club fully. The rule's hard
+// bars (not Gold, misconduct, inactivity) always need a decision.
 const ROUTINE_FROM_DIVISION = 3;
-const isRoutine = (review) => review.took_over_mid_season || review.division >= ROUTINE_FROM_DIVISION;
+const routineByDefault = (review) => review.took_over_mid_season || review.division >= ROUTINE_FROM_DIVISION;
+const isRoutine = (review) => routineByDefault(review) && !review.full_review;
 const routineLabel = (review) => (review.took_over_mid_season ? 'took over mid-season' : `Division ${review.division}`);
 // Why a routine review can't simply be reappointed, or '' when it can.
 const routineBlock = (review, records = {}) => {
@@ -244,7 +246,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
   const [autoFailed, setAutoFailed] = useState(false);
   // Rescore when anything the scoring reads changes: the clubs, or a review's facts.
   const toScoreKey = JSON.stringify(data.reviews.map((review) => [review.id, review.took_over_mid_season, review.last_chance,
-    review.standing, review.misconduct, review.inactive, review.wish, review.division]));
+    review.standing, review.misconduct, review.inactive, review.wish, review.division, review.full_review]));
   useEffect(() => {
     if (!toScore.length) return undefined;
     let active = true;
@@ -308,7 +310,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
         <p className="muted">
           <strong>Routine reviews</strong> (Divisions {ROUTINE_FROM_DIVISION}–5, and managers who took over mid-season) skip
           steps 2–4: the manager is reappointed unless they ask to move or take a break, or a hard bar applies (not Gold,
-          misconduct, inactivity). <strong>Reappoint routine reviews</strong> records those decisions in one go.
+          misconduct, inactivity). <strong>Reappoint routine reviews</strong> records those decisions in one go. Any
+          club can be an exception: <strong>Review fully</strong> on its card gives it scores, votes and a team decision.
         </p>
         <p className="muted">Decisions stay private until <strong>Publish decided reviews</strong>, which publishes them with the scores, votes and reasons and tells each manager.</p>
         <div className="button-row">
@@ -363,7 +366,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                         <td>{review.wish || '–'}</td>
                         <td>{isRoutine(review)
                           ? (routineBlock(review, data.inputs[String(review.manager_id)]) ? <strong>Decide: {routineBlock(review, data.inputs[String(review.manager_id)])}</strong> : 'Routine')
-                          : 'Full'}</td>
+                          : routineByDefault(review) ? <strong>Full (exception)</strong> : 'Full'}</td>
                         <td>{isRoutine(review) ? '–' : result ? <>{result.total}{isAuto(review.id) ? <span className="muted"> auto</span> : ''}{result.vote ? ' (vote)' : ''}</> : autoFailed ? '–' : '…'}</td>
                         <td>{votesFor(review.id).length || '–'}</td>
                         <td>{review.published_at ? `${OUTCOMES[review.decision]} (published)` : review.decision ? OUTCOMES[review.decision] : '–'}</td>
@@ -399,6 +402,13 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
             {isRoutine(review) ? (
               <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
                 <h4 style={STEP_TITLE}>Routine review: {routineLabel(review)}</h4>
+                {!review.published_at && !review.decision && (
+                  <p style={{ marginTop: 0 }}>
+                    <button type="button" className="secondary" onClick={() => call('update_appointment_review', { p_id: review.id, p_fields: { fullReview: true } }, 'This club now has a full review.')}>
+                      Review fully (exception)
+                    </button>
+                  </p>
+                )}
                 {routineBlock(review, data.inputs[String(review.manager_id)])
                   ? <p><strong>Needs a decision: {routineBlock(review, data.inputs[String(review.manager_id)])}.</strong> No scoring or votes needed unless the team wants them.</p>
                   : <p className="muted" style={{ marginTop: 0 }}>Reappointed unless the manager asks to move or take a break. No scoring or votes needed: record it here, or use Reappoint routine reviews at the top for all of them.</p>}
@@ -409,6 +419,12 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                   onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
               </div>
             ) : (<>
+            {routineByDefault(review) && !review.published_at && (
+              <p className="status" style={{ ...STEP }}>
+                Full review by exception ({routineLabel(review)} would usually be routine).{' '}
+                <button type="button" className="secondary" onClick={() => call('update_appointment_review', { p_id: review.id, p_fields: { fullReview: false } }, 'Back to a routine review.')}>Make routine again</button>
+              </p>
+            )}
             <div style={STEP}>
               <h4 style={STEP_TITLE}>2 · Scoring inputs</h4>
               <InputsEditor values={inputs[key] || {}} records={data.inputs[String(review.manager_id)] || {}} disabled={Boolean(review.published_at)}
