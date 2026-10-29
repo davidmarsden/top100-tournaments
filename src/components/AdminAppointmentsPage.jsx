@@ -129,14 +129,15 @@ function Votes({ votes, choices, onVote, disabled }) {
 
 // Step: the team's decision, recorded once the votes are in. It is saved, not published:
 // "Publish decided…" at the top publishes every decided one and tells the managers.
-function Decision({ current, reason: currentReason, choices, votes, onDecide, published, majorityFor = [] }) {
+function Decision({ current, reason: currentReason, choices, votes, onDecide, published, majorityFor = [], requireVotes = true, defaultChoice = '', defaultReason = '' }) {
   const tally = tallyOf(votes);
   const leading = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
-  const [choice, setChoice] = useState(current || leading);
-  const [reason, setReason] = useState(currentReason || '');
+  const [choice, setChoice] = useState(current || leading || defaultChoice);
+  const [reason, setReason] = useState(currentReason || defaultReason);
+  const waiting = requireVotes && !votes.length;
   if (published) return <p><strong>Published: {choices[current] || 'no appointment'}.</strong> {currentReason}</p>;
   const hasMajority = (value) => (tally[value] || 0) * 2 > votes.length;
-  const blocked = !votes.length
+  const blocked = waiting
     ? 'Record the decision once the admin team has voted.'
     : majorityFor.includes(choice) && !hasMajority(choice)
       ? `${choices[choice]} needs a majority of the votes (${tally[choice] || 0} of ${votes.length} so far).`
@@ -149,13 +150,13 @@ function Decision({ current, reason: currentReason, choices, votes, onDecide, pu
       {current && <p><strong>Decided: {choices[current]}</strong>{currentReason ? `. ${currentReason}` : ''} <span className="muted">(not published yet)</span></p>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ fontSize: 13 }}>Team decision
-          <select value={choice} disabled={!votes.length} onChange={(event) => setChoice(event.target.value)} style={{ display: 'block' }}>
+          <select value={choice} disabled={waiting} onChange={(event) => setChoice(event.target.value)} style={{ display: 'block' }}>
             <option value="">Choose…</option>
             {Object.entries(choices).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
         <label style={{ flex: 1, minWidth: 200, fontSize: 13 }}>The team's reason (published)
-          <input value={reason} disabled={!votes.length} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
+          <input value={reason} disabled={waiting} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
         </label>
         <button type="button" disabled={!choice || Boolean(blocked)} onClick={() => onDecide(choice, reason)}>{current ? 'Change decision' : 'Record decision'}</button>
       </div>
@@ -192,10 +193,84 @@ function ReviewFacts({ review, onSave }) {
   );
 }
 
-function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
+// Routine reviews: in Divisions 3–5, and for managers who took over mid-season, the manager is
+// usually reappointed unless they ask to move or take a break, so the admin team doesn't score or
+// vote. The team can make an exception (full_review) and review any club fully. The rule's hard
+// bars (not Gold, misconduct, inactivity) always need a decision.
+const ROUTINE_FROM_DIVISION = 3;
+const routineByDefault = (review) => review.took_over_mid_season || review.division >= ROUTINE_FROM_DIVISION;
+const isRoutine = (review) => routineByDefault(review) && !review.full_review;
+const routineLabel = (review) => (review.took_over_mid_season ? 'took over mid-season' : `Division ${review.division}`);
+// Why a routine review can't simply be reappointed, or '' when it can.
+const routineBlock = (review, records = {}) => {
+  if (records.gold === false) return 'not a Gold member';
+  if (review.misconduct) return 'misconduct recorded';
+  if (review.inactive) return 'inactivity recorded';
+  if (review.wish === 'move') return 'asks to move to another club';
+  if (review.wish === 'break') return 'asks to take a break';
+  return '';
+};
+
+// The scoring request for the reviews that need scoring, from the inputs on the page.
+const reviewScoringConfig = (data, reviews, inputs, newcomers) => ({
+  mode: 'review',
+  currentSeason: data.season,
+  managers: reviews.map((review) => {
+    const values = inputs[`r${review.id}`] || {};
+    const base = data.inputs[String(review.manager_id)] || {};
+    return {
+      key: String(review.id), name: review.manager_name, club: review.club_name, display: review.manager_name,
+      tookOverMidSeason: review.took_over_mid_season, gold: base.gold, loginGaps: fieldValue(values, 'loginGaps'),
+      inactive: review.inactive || undefined, misconduct: review.misconduct || undefined, standing: review.standing || undefined,
+      lastChance: review.last_chance ? 'recorded at an earlier review' : undefined, wish: review.wish || undefined,
+    };
+  }),
+  supply: { newcomers: newcomers.split(',').map((name) => name.trim()).filter(Boolean), leavers: [] },
+  discipline: Object.fromEntries(reviews.map((review) => [String(review.id), { sanctions: fieldValue(inputs[`r${review.id}`], 'sanctions') || 0 }])),
+  activity: Object.fromEntries(reviews.map((review) => {
+    const values = inputs[`r${review.id}`] || {};
+    return [String(review.id), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds', 'forfeits']
+      .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
+  })),
+});
+
+function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
   const round = data.rounds.review;
   const [newcomers, setNewcomers] = useState((round?.inputs?.supply?.newcomers || []).join(', '));
-  const results = useMemo(() => Object.fromEntries((round?.result?.reviews || []).map((review) => [review.key, review])), [round]);
+  const saved = useMemo(() => Object.fromEntries((round?.result?.reviews || []).map((review) => [review.key, review])), [round]);
+  const toScore = data.reviews.filter((review) => review.manager_name && !isRoutine(review));
+  // Automatic scores from Top 100's records, worked out when the page opens and not saved, so
+  // the list shows a score straight away. Score reviews saves the admin team's (with any
+  // corrected inputs), and those replace the automatic ones.
+  const [auto, setAuto] = useState({});
+  const [autoFailed, setAutoFailed] = useState(false);
+  // Rescore when anything the scoring reads changes: the clubs, or a review's facts.
+  const toScoreKey = JSON.stringify(data.reviews.map((review) => [review.id, review.took_over_mid_season, review.last_chance,
+    review.standing, review.misconduct, review.inactive, review.wish, review.division, review.full_review]));
+  useEffect(() => {
+    if (!toScore.length) return undefined;
+    let active = true;
+    score(reviewScoringConfig(data, toScore, initialInputs(data), ''))
+      .then((result) => { if (active) setAuto(Object.fromEntries((result.reviews || []).map((review) => [review.key, review]))); })
+      .catch(() => { if (active) setAutoFailed(true); });
+    return () => { active = false; };
+  }, [toScoreKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const results = { ...auto, ...saved };
+  const isAuto = (id) => !saved[String(id)] && Boolean(auto[String(id)]);
+  const routineReady = data.reviews.filter((review) => review.manager_id && isRoutine(review) && !review.decision && !review.published_at
+    && !routineBlock(review, data.inputs[String(review.manager_id)]));
+  const reappointRoutine = async () => {
+    if (!window.confirm(`Record "Reappoint" for ${routineReady.length} routine review(s)? Nothing is published until you publish the decided reviews.`)) return;
+    setMessage('Saving…');
+    for (const review of routineReady) {
+      const { error } = await supabase.rpc('decide_appointment_review', {
+        p_id: review.id, p_decision: 'reappoint', p_reason: `Reappointed: ${routineLabel(review)}, and no request to move or take a break.`,
+      });
+      if (error) { setMessage(error.message); await reload(); return; }
+    }
+    await reload();
+    setMessage(`${routineReady.length} routine review(s) decided: reappoint (not yet published).`);
+  };
   const balance = round?.result?.balance;
   const votesFor = (id) => data.votes.filter((vote) => vote.subject_kind === 'review' && vote.subject_id === id);
   // With every club that can still finish in the bottom three loaded, there are many cards:
@@ -206,28 +281,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
   const shown = (review) => division === 'all' || review.division === division;
 
   const runScoring = async () => {
-    const reviews = data.reviews.filter((review) => review.manager_name);
-    const config = {
-      mode: 'review',
-      currentSeason: data.season,
-      managers: reviews.map((review) => {
-        const values = inputs[`r${review.id}`] || {};
-        const base = data.inputs[String(review.manager_id)] || {};
-        return {
-          key: String(review.id), name: review.manager_name, club: review.club_name, display: review.manager_name,
-          tookOverMidSeason: review.took_over_mid_season, gold: base.gold, loginGaps: fieldValue(values, 'loginGaps'),
-          inactive: review.inactive || undefined, misconduct: review.misconduct || undefined, standing: review.standing || undefined,
-          lastChance: review.last_chance ? 'recorded at an earlier review' : undefined, wish: review.wish || undefined,
-        };
-      }),
-      supply: { newcomers: newcomers.split(',').map((name) => name.trim()).filter(Boolean), leavers: [] },
-      discipline: Object.fromEntries(reviews.map((review) => [String(review.id), { sanctions: fieldValue(inputs[`r${review.id}`], 'sanctions') || 0 }])),
-      activity: Object.fromEntries(reviews.map((review) => {
-        const values = inputs[`r${review.id}`] || {};
-        return [String(review.id), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds', 'forfeits']
-          .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
-      })),
-    };
+    const config = reviewScoringConfig(data, toScore, inputs, newcomers);
     setMessage('Scoring…');
     try {
       const result = await score(config);
@@ -247,17 +301,24 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
           and drops clubs that have finished clear (unless already decided). Then, for each club:
         </p>
         <ol className="muted">
-          <li>Add the facts the scores can't know: mid-season takeovers, standing reappointments, earlier last chances, misconduct, inactivity.</li>
+          <li>Add the facts the scores can't know: mid-season takeovers (ticked automatically where Top 100's records show one), standing reappointments, earlier last chances, misconduct, inactivity.</li>
           <li>Check the scoring inputs. Most come from Top 100's records; fill in the ones marked for the admin team, and correct any that are wrong.</li>
           <li><strong>Score reviews</strong> (all clubs at once) for each manager's review score and a suggested outcome.</li>
           <li>Every admin votes, with a reason.</li>
           <li>Record the team's decision once the votes are in. A second chance needs a majority.</li>
         </ol>
+        <p className="muted">
+          <strong>Routine reviews</strong> (Divisions {ROUTINE_FROM_DIVISION}–5, and managers who took over mid-season) skip
+          steps 2–4: the manager is reappointed unless they ask to move or take a break, or a hard bar applies (not Gold,
+          misconduct, inactivity). <strong>Reappoint routine reviews</strong> records those decisions in one go. Any
+          club can be an exception: <strong>Review fully</strong> on its card gives it scores, votes and a team decision.
+        </p>
         <p className="muted">Decisions stay private until <strong>Publish decided reviews</strong>, which publishes them with the scores, votes and reasons and tells each manager.</p>
         <div className="button-row">
           <button type="button" onClick={() => call('load_appointment_reviews', { p_season: data.season }, 'Bottom three loaded.')}>{data.reviews.length ? 'Refresh the clubs' : 'Load the clubs'}</button>
           <label>Newcomers waiting <input value={newcomers} onChange={(event) => setNewcomers(event.target.value)} placeholder="Names, comma separated" /></label>
-          <button type="button" disabled={!data.reviews.length || Boolean(round?.published_at)} onClick={runScoring}>Score reviews</button>
+          <button type="button" disabled={!toScore.length || Boolean(round?.published_at)} onClick={runScoring}>Score reviews ({toScore.length})</button>
+          <button type="button" disabled={!routineReady.length} onClick={reappointRoutine}>Reappoint routine reviews ({routineReady.length})</button>
           <button type="button" className="secondary" disabled={!data.reviews.some((review) => review.decision && !review.published_at)}
             onClick={() => window.confirm('Publish every decided review and tell each manager?') && call('publish_appointments', { p_kind: 'review', p_season: data.season }, 'Published.')}>
             Publish decided reviews
@@ -286,7 +347,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
             <div key={value} style={{ overflowX: 'auto' }}>
               <h3 id={`division-${value}`}>Division {value}</h3>
               <table style={{ fontSize: 13, width: '100%' }}>
-                <thead><tr><th>Pos</th><th style={{ textAlign: 'left' }}>Club</th><th style={{ textAlign: 'left' }}>Manager</th><th>Pts</th><th>Bottom three</th><th>Wants</th><th>Score</th><th>Votes</th><th>Decision</th></tr></thead>
+                <thead><tr><th>Pos</th><th style={{ textAlign: 'left' }}>Club</th><th style={{ textAlign: 'left' }}>Manager</th><th>Pts</th><th>Bottom three</th><th>Mid-season</th><th>Wants</th><th>Review</th><th>Score</th><th>Votes</th><th>Decision</th></tr></thead>
                 <tbody>
                   {data.reviews.filter((review) => review.division === value).map((review) => {
                     const result = results[String(review.id)];
@@ -297,8 +358,16 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
                         <td style={{ textAlign: 'left' }}>{review.manager_name || '–'}</td>
                         <td>{review.points ?? '–'}</td>
                         <td>{review.certain === false ? 'Could' : review.certain === true ? <strong>Certain</strong> : '–'}</td>
+                        <td>
+                          <input type="checkbox" style={BOX} disabled={Boolean(review.published_at)} checked={review.took_over_mid_season}
+                            aria-label={`${review.club_name}: took over mid-season`}
+                            onChange={(event) => call('update_appointment_review', { p_id: review.id, p_fields: { tookOverMidSeason: event.target.checked } }, 'Saved.')} />
+                        </td>
                         <td>{review.wish || '–'}</td>
-                        <td>{result ? `${result.total}${result.vote ? ' (vote)' : ''}` : '–'}</td>
+                        <td>{isRoutine(review)
+                          ? (routineBlock(review, data.inputs[String(review.manager_id)]) ? <strong>Decide: {routineBlock(review, data.inputs[String(review.manager_id)])}</strong> : 'Routine')
+                          : routineByDefault(review) ? <strong>Full (exception)</strong> : 'Full'}</td>
+                        <td>{isRoutine(review) ? '–' : result ? <>{result.total}{isAuto(review.id) ? <span className="muted"> auto</span> : ''}{result.vote ? ' (vote)' : ''}</> : autoFailed ? '–' : '…'}</td>
                         <td>{votesFor(review.id).length || '–'}</td>
                         <td>{review.published_at ? `${OUTCOMES[review.decision]} (published)` : review.decision ? OUTCOMES[review.decision] : '–'}</td>
                       </tr>
@@ -330,6 +399,32 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
               <ReviewFacts review={review} onSave={(fields) => call('update_appointment_review', { p_id: review.id, p_fields: fields }, 'Saved.')} />
             </div>
 
+            {isRoutine(review) ? (
+              <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
+                <h4 style={STEP_TITLE}>Routine review: {routineLabel(review)}</h4>
+                {!review.published_at && !review.decision && (
+                  <p style={{ marginTop: 0 }}>
+                    <button type="button" className="secondary" onClick={() => call('update_appointment_review', { p_id: review.id, p_fields: { fullReview: true } }, 'This club now has a full review.')}>
+                      Review fully (exception)
+                    </button>
+                  </p>
+                )}
+                {routineBlock(review, data.inputs[String(review.manager_id)])
+                  ? <p><strong>Needs a decision: {routineBlock(review, data.inputs[String(review.manager_id)])}.</strong> No scoring or votes needed unless the team wants them.</p>
+                  : <p className="muted" style={{ marginTop: 0 }}>Reappointed unless the manager asks to move or take a break. No scoring or votes needed: record it here, or use Reappoint routine reviews at the top for all of them.</p>}
+                <Decision current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} requireVotes={false}
+                  defaultChoice={review.wish === 'move' ? 'anotherClub' : review.wish === 'break' ? 'leave' : 'reappoint'}
+                  defaultReason={`${routineLabel(review)[0].toUpperCase()}${routineLabel(review).slice(1)}.`}
+                  published={Boolean(review.published_at)}
+                  onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
+              </div>
+            ) : (<>
+            {routineByDefault(review) && !review.published_at && (
+              <p className="status" style={{ ...STEP }}>
+                Full review by exception ({routineLabel(review)} would usually be routine).{' '}
+                <button type="button" className="secondary" onClick={() => call('update_appointment_review', { p_id: review.id, p_fields: { fullReview: false } }, 'Back to a routine review.')}>Make routine again</button>
+              </p>
+            )}
             <div style={STEP}>
               <h4 style={STEP_TITLE}>2 · Scoring inputs</h4>
               <InputsEditor values={inputs[key] || {}} records={data.inputs[String(review.manager_id)] || {}} disabled={Boolean(review.published_at)}
@@ -340,13 +435,14 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
               <h4 style={STEP_TITLE}>3 · Review score</h4>
               {result ? (
                 <>
+                  {isAuto(review.id) && <p className="muted" style={{ marginTop: 0 }}>Automatic, from Top 100's records. Score reviews saves the admin team's score with any corrected inputs.</p>}
                   <p>
                     <strong>{result.total}</strong> out of 100 (result {result.breakdown.result} · record {result.breakdown.record} · activity {result.breakdown.activity} · conduct {result.breakdown.conduct}).
                     Suggested: <strong>{OUTCOMES[result.outcome]}</strong>{result.vote ? ' · close: the admin team should vote' : ''}.
                   </p>
                   <p className="muted">{result.reason}</p>
                 </>
-              ) : <p className="muted">Not scored yet: use Score reviews at the top once the inputs are right.</p>}
+              ) : <p className="muted">{autoFailed ? 'The automatic score could not be worked out: use Score reviews at the top.' : 'Working out the automatic score…'}</p>}
             </div>
 
             <div style={STEP}>
@@ -363,6 +459,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
                 published={Boolean(review.published_at)}
                 onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
             </div>
+            </>)}
           </section>
         );
       })}
@@ -592,7 +689,7 @@ export default function AdminAppointmentsPage() {
         </div>
       </section>
       {message && <p role="status">{message}</p>}
-      {data && tab === 'reviews' && <ReviewsTab data={data} inputs={inputs} setInputs={setInputs} call={call} setMessage={setMessage} />}
+      {data && tab === 'reviews' && <ReviewsTab data={data} inputs={inputs} setInputs={setInputs} call={call} setMessage={setMessage} reload={load} />}
       {data && tab === 'vacancies' && <VacanciesTab data={data} inputs={inputs} setInputs={setInputs} call={call} setMessage={setMessage} />}
     </main>
   );
