@@ -242,7 +242,9 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
   // corrected inputs), and those replace the automatic ones.
   const [auto, setAuto] = useState({});
   const [autoFailed, setAutoFailed] = useState(false);
-  const toScoreKey = toScore.map((review) => `${review.id}:${review.took_over_mid_season}`).join(',');
+  // Rescore when anything the scoring reads changes: the clubs, or a review's facts.
+  const toScoreKey = JSON.stringify(data.reviews.map((review) => [review.id, review.took_over_mid_season, review.last_chance,
+    review.standing, review.misconduct, review.inactive, review.wish, review.division]));
   useEffect(() => {
     if (!toScore.length) return undefined;
     let active = true;
@@ -253,7 +255,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
   }, [toScoreKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const results = { ...auto, ...saved };
   const isAuto = (id) => !saved[String(id)] && Boolean(auto[String(id)]);
-  const routineReady = data.reviews.filter((review) => isRoutine(review) && !review.decision && !review.published_at
+  const routineReady = data.reviews.filter((review) => review.manager_id && isRoutine(review) && !review.decision && !review.published_at
     && !routineBlock(review, data.inputs[String(review.manager_id)]));
   const reappointRoutine = async () => {
     if (!window.confirm(`Record "Reappoint" for ${routineReady.length} routine review(s)? Nothing is published until you publish the decided reviews.`)) return;
