@@ -131,7 +131,9 @@ th { color: #a9b8d0; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .standing-qual { display: inline-grid !important; place-items: center; min-width: 62px; border-radius: 999px; padding: 0.32rem 0.55rem; color: white !important; font-size: 0.68rem !important; font-weight: 950; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 !important; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2); }
 .standing-qual.cup, .standing-qual.shield { color: #e8eef8 !important; }
 .standing-qual.out { background: #475569; }
-.form-cell { display: flex; justify-content: center; gap: 4px; }
+/* A table cell: flex here would lift it out of the row, so the badges sit inline instead. */
+.form-cell { text-align: center; vertical-align: middle; white-space: nowrap; }
+.form-cell .form-badge + .form-badge { margin-left: 4px !important; }
 .form-badge { display: inline-grid !important; place-items: center; width: 24px; height: 24px; border-radius: 999px; color: white !important; font-weight: 900; margin: 0 !important; }
 .form-badge.W { background: #16a34a; }
 .form-badge.D { background: #94a3b8; }
