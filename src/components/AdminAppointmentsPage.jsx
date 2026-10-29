@@ -202,7 +202,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
   // division tabs filter the summary and the cards, and the summary links to each card.
   const [division, setDivision] = useState('all');
   const divisions = [...new Set(data.reviews.map((review) => review.division))].sort((a, b) => a - b);
-  const shown = data.reviews.filter((review) => division === 'all' || review.division === division);
+  // Cards outside the chosen division are hidden, not unmounted, so unsaved votes and reasons survive.
+  const shown = (review) => division === 'all' || review.division === division;
 
   const runScoring = async () => {
     const reviews = data.reviews.filter((review) => review.manager_name);
@@ -309,11 +310,11 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
           ))}
         </section>
       )}
-      {shown.map((review) => {
+      {data.reviews.map((review) => {
         const result = results[String(review.id)];
         const key = `r${review.id}`;
         return (
-          <section className="card" key={review.id} id={`review-${review.id}`} style={{ scrollMarginTop: 16 }}>
+          <section className="card" key={review.id} id={`review-${review.id}`} hidden={!shown(review)} style={{ scrollMarginTop: 16, display: shown(review) ? undefined : 'none' }}>
             <p style={{ margin: 0, textAlign: 'right' }}><a href="#review-summary">Back to the list</a></p>
             <h3>D{review.division} {ordinal(review.position)} · {review.club_name} · {review.manager_name || 'no manager'}</h3>
             <p className="muted">
