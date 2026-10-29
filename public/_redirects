@@ -3,4 +3,8 @@
 /admin/manager-lab          https://lab.smtop100.blog/lab   302!
 /admin/soccer-manager-sync  https://lab.smtop100.blog/sync  302!
 
+# The admin team's pages live on admin.smtop100.blog; old links and alerts still arrive.
+https://tournaments.smtop100.blog/admin/alerts        https://admin.smtop100.blog/alerts        301!
+https://tournaments.smtop100.blog/admin/appointments  https://admin.smtop100.blog/appointments  301!
+
 /* /index.html 200

@@ -57,7 +57,14 @@ function forwardManagerHostPathToTournaments() {
 
 export default function App() {
   if (isAdminHost() && isAuthSessionBridgePath()) return <AuthSessionBridge />;
-  if (isAdminHost()) return <AdminGate requireGlobal><Top100BrandShell product="Control Room" current="admin"><AdminControlRoom /></Top100BrandShell></AdminGate>;
+  // admin.smtop100.blog: the admin team's front door. Officials see their tools; Lab, Sync and the
+  // other platform tools stay with the platform administrator (the Control Room hides them, and
+  // each checks is_admin itself).
+  if (isAdminHost()) {
+    if (/^\/alerts\/?$/.test(window.location.pathname)) return <AdminGate requireOfficial><ComplianceAlertsPage /></AdminGate>;
+    if (/^\/appointments\/?$/.test(window.location.pathname)) return <AdminGate requireOfficial><AdminAppointmentsPage /></AdminGate>;
+    return <AdminGate requireOfficial><Top100BrandShell product="Control Room" current="admin"><AdminControlRoom /></Top100BrandShell></AdminGate>;
+  }
 
   if (isVotingHost()) {
     if (isVotingPath()) return <Top100BrandShell product="Community Polls" current="vote"><VotingEntry /></Top100BrandShell>;
