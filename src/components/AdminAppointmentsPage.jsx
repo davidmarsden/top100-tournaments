@@ -275,7 +275,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
             <p className="muted">
               {review.points ?? '–'} points
               {review.games_left ? ` · ${review.games_left} game${review.games_left === 1 ? '' : 's'} left · ` : ' · '}
-              {review.certain === false ? <strong>could still finish in the bottom three</strong> : <strong>finishes in the bottom three</strong>}
+              {review.certain === false ? <strong>could still finish in the bottom three</strong>
+                : review.certain === true ? <strong>finishes in the bottom three</strong> : `${ordinal(review.position)} when loaded`}
             </p>
 
             <div style={STEP}>

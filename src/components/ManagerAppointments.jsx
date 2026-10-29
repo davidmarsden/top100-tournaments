@@ -50,8 +50,10 @@ function ReviewCard({ review, season, onSave, busy }) {
           With {review.gamesLeft} game{review.gamesLeft === 1 ? '' : 's'} left, {review.club} could still finish in the bottom three, so
           the admin team is preparing a review now. If you finish clear of the bottom three, it is dropped.
         </p>
-      ) : (
+      ) : review.certain === true ? (
         <p>{review.club} will finish in the bottom three, so the admin team will review your position.</p>
+      ) : (
+        <p>{review.club} is in the admin team's bottom-three reviews this season.</p>
       )}
       <p className="muted">
         Every bottom-three manager is reviewed, and the rule is to reappoint unless reappointing would be a clear and obvious
