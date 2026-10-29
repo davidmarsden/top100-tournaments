@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { signInFromOtherTop100Sites } from './ManagerEntry.jsx';
 
 // Manager Portal: apply for vacant clubs (rulebook 3.2) and, after a bottom-three
 // finish, say whether you want to stay, move or take a break (3.1).
@@ -28,6 +29,8 @@ function Shell({ children }) {
 function ReviewCard({ review, season, onSave, busy }) {
   const [wish, setWish] = useState(review.wish || '');
   const [note, setNote] = useState(review.wishNote || '');
+  const saved = WISHES.find(([value]) => value === review.wish)?.[1];
+  const changed = wish !== (review.wish || '') || note !== (review.wishNote || '');
   if (review.decision) {
     return (
       <section className="card">
@@ -42,10 +45,25 @@ function ReviewCard({ review, season, onSave, busy }) {
     <section className="card">
       <p className="eyebrow">Bottom-three review</p>
       <h2>{review.club}: {ordinal(review.position)} in Division {review.division}</h2>
+      {review.certain === false ? (
+        <p>
+          With {review.gamesLeft} game{review.gamesLeft === 1 ? '' : 's'} left, {review.club} could still finish in the bottom three, so
+          the admin team is preparing a review now. If you finish clear of the bottom three, it is dropped.
+        </p>
+      ) : review.certain === true ? (
+        <p>{review.club} will finish in the bottom three, so the admin team will review your position.</p>
+      ) : (
+        <p>{review.club} is in the admin team's bottom-three reviews this season.</p>
+      )}
       <p className="muted">
         Every bottom-three manager is reviewed, and the rule is to reappoint unless reappointing would be a clear and obvious
         error. Tell the admin team what you would like; it is recorded with the decision.
       </p>
+      {saved && (
+        <p className="status" role="status" style={{ fontWeight: 600 }}>
+          ✓ Saved{review.wishAt ? ` ${when(review.wishAt)}` : ''}: {saved.toLowerCase()}. The admin team can see your answer. You can change it until the decision is made.
+        </p>
+      )}
       <fieldset disabled={busy}>
         {WISHES.map(([value, label]) => (
           <label key={value} style={INLINE}>
@@ -56,7 +74,8 @@ function ReviewCard({ review, season, onSave, busy }) {
           Anything the admin team should know (optional)
           <textarea rows={3} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} style={{ width: '100%' }} />
         </label>
-        <button type="button" disabled={!wish} onClick={() => onSave(wish, note)}>Save</button>
+        <button type="button" disabled={!wish || !changed} onClick={() => onSave(wish, note)}>{saved ? 'Save changes' : 'Save my answer'}</button>
+        {!saved && <span className="muted" style={{ marginLeft: 8 }}>Not saved yet.</span>}
       </fieldset>
     </section>
   );
@@ -147,7 +166,9 @@ export default function ManagerAppointments() {
   const load = useCallback(async () => {
     if (!hasSupabaseConfig || !supabase) { setMessage('Supabase is not connected.'); return; }
     const { data: session } = await supabase.auth.getSession();
-    if (!session.session) { setSignedIn(false); return; }
+    // Signed in on another Top 100 site (e.g. tournaments or admin)? Bring that sign-in here,
+    // as the portal home page does, rather than sending the manager away to sign in.
+    if (!session.session && !(await signInFromOtherTop100Sites().catch(() => null))) { setSignedIn(false); return; }
     setSignedIn(true);
     const { data: result, error } = await supabase.rpc('my_appointments', { p_world_slug: 'top-100' });
     if (error) setMessage(error.message);
@@ -167,7 +188,7 @@ export default function ManagerAppointments() {
   };
 
   if (!signedIn) {
-    return <Shell><section className="card manager-login-card"><h1>Sign in first</h1><p className="muted">Use your Manager Portal sign-in, then come back to Appointments.</p><a className="button" href="/">Go to Manager Portal</a></section></Shell>;
+    return <Shell><section className="card manager-login-card"><h1>Sign in first</h1><p className="muted">Use your Manager Portal sign-in. You'll come straight back here.</p><a className="button" href="/?next=/appointments">Sign in</a></section></Shell>;
   }
   if (!data) return <Shell><section className="card"><h1>{message || 'Loading…'}</h1></section></Shell>;
   if (!data.manager) {
