@@ -42,7 +42,7 @@ export default function PublicAppointments() {
         <p className="eyebrow">Top 100 · Appointments</p>
         <h1>S{data?.season ?? ''} reviews and appointments</h1>
         <p>
-          Every bottom-three manager is reviewed under <a href="https://smtop100.blog/rules/">rule 3.1</a>: reappoint unless
+          Every bottom-three manager is reviewed under <a href="https://smtop100.blog/rules/" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 600 }}>rule 3.1</a>: reappoint unless
           reappointing would be a clear and obvious error. Vacant clubs are filled under rule 3.2. Each decision is published
           with its score and the admin team's votes and reasons.
         </p>

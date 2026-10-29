@@ -65,7 +65,7 @@ function requestHandoffCode(origin, suppressSessionId) {
   });
 }
 
-async function signInFromOtherTop100Sites() {
+export async function signInFromOtherTop100Sites() {
   if (window.location.hostname !== 'manager.smtop100.blog') return null;
   if (isReturningFromEmailLink()) return null;
   const suppressSessionId = readKey(SIGNED_OUT_SESSION_KEY);
@@ -126,6 +126,14 @@ function safeReturnTo() {
   }
 }
 
+// A Manager Portal page to open after signing in (?next=/appointments), so a manager sent here
+// to sign in from one of those pages is taken back to it.
+const NEXT_PATHS = new Set(['/appointments', '/squad']);
+function safeNextPath() {
+  const value = new URLSearchParams(window.location.search).get('next');
+  return NEXT_PATHS.has(value) ? value : '';
+}
+
 function SignIn({ returnTo, registrationMode }) {
   const [email, setEmail] = useState('');
   const [state, setState] = useState('idle');
@@ -157,7 +165,10 @@ function SignIn({ returnTo, registrationMode }) {
     setMessage('');
     try {
       const path = registrationMode ? '/registrations' : '/';
-      const suffix = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : '';
+      const params = new URLSearchParams();
+      if (returnTo) params.set('returnTo', returnTo);
+      if (safeNextPath()) params.set('next', safeNextPath());
+      const suffix = params.toString() ? `?${params}` : '';
       const { error } = await timeout(
         supabase.auth.signInWithOtp({
           email: address,
@@ -237,6 +248,7 @@ function ReturnHandoff({ session, returnTo }) {
 
 export default function ManagerEntry({ registrationMode = false }) {
   const returnTo = safeReturnTo();
+  const nextPath = safeNextPath();
   const [session, setSession] = useState(undefined);
   const [identity, setIdentity] = useState({ state: 'idle', account: null, claim: null, error: '' });
   // The game world My Matches is showing: the one this account last picked in the switcher,
@@ -319,6 +331,7 @@ export default function ManagerEntry({ registrationMode = false }) {
   if (identity.state === 'error') return <main className="manager-portal-shell"><section className="card"><h1>We couldn't check your manager link</h1><p className="status">{identity.error}</p><button type="button" className="secondary" onClick={() => supabase.auth.signOut()}>Sign out</button></section></main>;
   if (identity.state === 'setup') return <Setup session={session} claim={identity.claim} onClaimChanged={(claim) => setIdentity({ state: 'setup', account: null, claim, error: '' })} />;
   if (identity.state === 'linked' && returnTo) return <ReturnHandoff session={session} returnTo={returnTo} />;
+  if (identity.state === 'linked' && nextPath) { window.location.replace(nextPath); return <main className="manager-portal-shell"><section className="card"><h1>Manager sign-in</h1><p>Signed in ✓ · Opening…</p></section></main>; }
   if (registrationMode) return <ManagerPortal registrationMode returnTo={returnTo} session={session} />;
   return <>
     <div className="top100-app-top"><Top100InstallPrompt /><Top100AppHome session={session} gameWorldId={portalWorldId} onSelectWorld={chooseWorld} /><Top100AppGuide signedIn /></div>

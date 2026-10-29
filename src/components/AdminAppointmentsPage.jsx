@@ -14,18 +14,29 @@ const OUTCOMES = {
   anotherClub: 'Not reappointed: another club',
   leave: 'Not reappointed: no club',
 };
-// Activity and discipline inputs officials can adjust before scoring. Gold, game worlds,
-// running Top 100, competitions, deals and forfeits are filled from Top 100's records.
+// Activity and discipline inputs. Most are filled from Top 100's records (Manager Lab sync and
+// this site); the rest are the admin team's to fill in. Any of them can be corrected before
+// scoring: the value used is saved and published with the scores. min/max are what the
+// scoring can use; values outside them are clamped.
 const INPUT_FIELDS = [
-  ['competitions', 'Competitions (this and last season)'],
-  ['topManagerDeals', 'Deals with Top 100 managers'],
-  ['running', 'Running Top 100 (0–3)'],
-  ['community', 'Community (0–3)'],
-  ['gameWorlds', 'Game worlds'],
-  ['forfeits', 'Forfeits this season'],
-  ['sanctions', 'Sanctions this season'],
-  ['loginGaps', '7-day login gaps'],
+  { key: 'competitions', label: 'Top 100 competitions entered', source: 'records', min: 0, max: 20,
+    help: 'This season and last. 2 points each, up to 4 (2 or more is full marks).' },
+  { key: 'topManagerDeals', label: 'Transfers with Top 100 managers', source: 'records', min: 0, max: 50,
+    help: 'Last 120 days. 0.4 points each, up to 4 (10 or more is full marks).' },
+  { key: 'running', label: 'Helps run Top 100 (0–3)', source: 'records', min: 0, max: 3,
+    help: '3 for admins (from records). Otherwise your judgement: 1–2 for regular helpers. Blank counts as 0.' },
+  { key: 'community', label: 'Community and social (0–3)', source: 'admin', min: 0, max: 3,
+    help: 'Your judgement: chat, polls, helping other managers. Blank leaves it out of the score.' },
+  { key: 'gameWorlds', label: 'Soccer Manager game worlds', source: 'records', min: 1, max: 50,
+    help: 'From their Soccer Manager profile, Top 100 included. Full marks (2) at 3 or fewer, 0.25 less for each extra.' },
+  { key: 'forfeits', label: 'Forfeits this season', source: 'records', min: 0, max: 50,
+    help: 'Top 100 competitions. 3 or more is a clear and obvious error.' },
+  { key: 'sanctions', label: 'Sanctions this season', source: 'admin', min: 0, max: 5,
+    help: 'Each costs 2.5 of the 5 discipline points; any sanction is a clear and obvious error.' },
+  { key: 'loginGaps', label: 'Spells of 7+ days without logging in', source: 'admin', min: 0, max: 20,
+    help: 'This season. 2 or more means inactive: never reappointed (rule 3.1).' },
 ];
+const FIELD = Object.fromEntries(INPUT_FIELDS.map((field) => [field.key, field]));
 // The functions that take the game world (the others act on one row by id).
 const WORLD_FUNCTIONS = new Set(['load_appointment_reviews', 'save_appointment_round', 'publish_appointments', 'upsert_appointment_vacancy', 'announce_appointment_vacancies']);
 const INLINE = { display: 'flex', alignItems: 'center', gap: 6 };
@@ -33,55 +44,122 @@ const BOX = { width: 'auto', margin: 0, flex: 'none' };
 const ordinal = (n) => { const v = Number(n) % 100; return `${n}${v >= 11 && v <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[v % 10] || 'th'}`; };
 const when = (value) => (value ? new Date(value).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–');
 const numberOrNull = (value) => (value === '' || value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value));
+// An input as the scoring will use it: a number within the field's limits, or null when blank.
+const fieldValue = (values, key) => {
+  const value = numberOrNull(values?.[key]);
+  const field = FIELD[key];
+  return value === null || !field ? value : Math.min(field.max, Math.max(field.min, value));
+};
+const HERO_LINK = { color: '#fff', textDecoration: 'underline', fontWeight: 600 };
+const STEP = { borderTop: '1px solid var(--line, #e2e8f0)', marginTop: 16, paddingTop: 12 };
+const STEP_TITLE = { margin: '0 0 4px', fontSize: 16 };
 
-function InputsEditor({ values, onChange, fields = INPUT_FIELDS, disabled }) {
+// The scoring inputs as a table: what each one is, what Top 100's records say, and the
+// value that will be used (editable, within its limits).
+function InputsEditor({ values, records = {}, onChange, fields = INPUT_FIELDS, disabled }) {
+  const recorded = (key) => (records[key] === null || records[key] === undefined || records[key] === '' ? null : records[key]);
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {fields.map(([key, label]) => (
-        <label key={key} style={{ fontSize: 13 }}>
-          {label}
-          <input type="number" step="any" style={{ width: 70, display: 'block' }} disabled={disabled}
-            value={values[key] ?? ''} onChange={(event) => onChange({ ...values, [key]: event.target.value })} />
-        </label>
-      ))}
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ fontSize: 13, width: '100%' }}>
+        <thead><tr><th style={{ textAlign: 'left' }}>Input</th><th>From records</th><th>Used for scoring</th></tr></thead>
+        <tbody>
+          {fields.map((field) => {
+            const record = recorded(field.key);
+            const value = values[field.key] ?? '';
+            const edited = field.source === 'records' && record !== null && String(value) !== String(record);
+            const outOfRange = value !== '' && numberOrNull(value) !== null && (Number(value) < field.min || Number(value) > field.max);
+            return (
+              <tr key={field.key}>
+                <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
+                  <strong>{field.label}</strong>
+                  <div className="muted">{field.help}</div>
+                </td>
+                <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                  {field.source === 'admin' ? <span className="muted">Admin team fills in</span> : record ?? <span className="muted">Not recorded</span>}
+                </td>
+                <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                  <input type="number" min={field.min} max={field.max} step="1" style={{ width: 80 }} disabled={disabled}
+                    aria-label={field.label} value={value} onChange={(event) => onChange({ ...values, [field.key]: event.target.value })} />
+                  {edited && !disabled && (
+                    <div className="muted">
+                      Changed from {record}{' '}
+                      <button type="button" className="secondary" style={{ padding: '2px 8px' }} onClick={() => onChange({ ...values, [field.key]: record })}>Reset</button>
+                    </div>
+                  )}
+                  {outOfRange && <div className="status">Counts as {fieldValue(values, field.key)} ({field.min}–{field.max}).</div>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
 
+const tallyOf = (votes) => votes.reduce((tally, vote) => ({ ...tally, [vote.choice]: (tally[vote.choice] || 0) + 1 }), {});
+
+// Step: every admin votes, with a reason. Votes and reasons are published with the decision.
 function Votes({ votes, choices, onVote, disabled }) {
   const mine = votes.find((vote) => vote.mine);
   const [choice, setChoice] = useState(mine?.choice || '');
   const [reason, setReason] = useState(mine?.reason || '');
   return (
     <div>
-      <strong>Votes ({votes.length})</strong>
-      <ul>{votes.map((vote) => <li key={vote.id}>{vote.voter_name || 'Official'}: {choices[vote.choice] || vote.choice}. {vote.reason}</li>)}</ul>
+      {votes.length ? (
+        <ul>{votes.map((vote) => <li key={vote.id}><strong>{vote.voter_name || 'Official'}</strong>: {choices[vote.choice] || vote.choice}. {vote.reason}</li>)}</ul>
+      ) : <p className="muted">No votes yet.</p>}
       {!disabled && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <select value={choice} onChange={(event) => setChoice(event.target.value)}>
-            <option value="">My vote…</option>
-            {Object.entries(choices).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <input placeholder="Reason (published)" value={reason} onChange={(event) => setReason(event.target.value)} style={{ flex: 1, minWidth: 200 }} />
-          <button type="button" disabled={!choice || !reason.trim()} onClick={() => onVote(choice, reason)}>{mine ? 'Change vote' : 'Vote'}</button>
+          <label style={{ fontSize: 13 }}>Your vote
+            <select value={choice} onChange={(event) => setChoice(event.target.value)} style={{ display: 'block' }}>
+              <option value="">Choose…</option>
+              {Object.entries(choices).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label style={{ flex: 1, minWidth: 200, fontSize: 13 }}>Your reason (published)
+            <input value={reason} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
+          </label>
+          <button type="button" disabled={!choice || !reason.trim()} onClick={() => onVote(choice, reason)}>{mine ? 'Change my vote' : 'Cast my vote'}</button>
         </div>
       )}
     </div>
   );
 }
 
-function Decision({ current, reason: currentReason, choices, onDecide, published }) {
-  const [choice, setChoice] = useState(current || '');
+// Step: the team's decision, recorded once the votes are in. It is saved, not published:
+// "Publish decided…" at the top publishes every decided one and tells the managers.
+function Decision({ current, reason: currentReason, choices, votes, onDecide, published, majorityFor = [] }) {
+  const tally = tallyOf(votes);
+  const leading = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  const [choice, setChoice] = useState(current || leading);
   const [reason, setReason] = useState(currentReason || '');
   if (published) return <p><strong>Published: {choices[current] || 'no appointment'}.</strong> {currentReason}</p>;
+  const hasMajority = (value) => (tally[value] || 0) * 2 > votes.length;
+  const blocked = !votes.length
+    ? 'Record the decision once the admin team has voted.'
+    : majorityFor.includes(choice) && !hasMajority(choice)
+      ? `${choices[choice]} needs a majority of the votes (${tally[choice] || 0} of ${votes.length} so far).`
+      : '';
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 }}>
-      <select value={choice} onChange={(event) => setChoice(event.target.value)}>
-        <option value="">Decision…</option>
-        {Object.entries(choices).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select>
-      <input placeholder="Reason (published)" value={reason} onChange={(event) => setReason(event.target.value)} style={{ flex: 1, minWidth: 200 }} />
-      <button type="button" disabled={!choice} onClick={() => onDecide(choice, reason)}>{current ? 'Change decision' : 'Decide'}</button>
+    <div>
+      {votes.length > 0 && (
+        <p className="muted">Votes so far: {Object.entries(tally).map(([value, count]) => `${choices[value] || value} ${count}`).join(' · ')}.</p>
+      )}
+      {current && <p><strong>Decided: {choices[current]}</strong>{currentReason ? `. ${currentReason}` : ''} <span className="muted">(not published yet)</span></p>}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ fontSize: 13 }}>Team decision
+          <select value={choice} disabled={!votes.length} onChange={(event) => setChoice(event.target.value)} style={{ display: 'block' }}>
+            <option value="">Choose…</option>
+            {Object.entries(choices).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label style={{ flex: 1, minWidth: 200, fontSize: 13 }}>The team's reason (published)
+          <input value={reason} disabled={!votes.length} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
+        </label>
+        <button type="button" disabled={!choice || Boolean(blocked)} onClick={() => onDecide(choice, reason)}>{current ? 'Change decision' : 'Record decision'}</button>
+      </div>
+      {blocked && <p className="muted">{blocked}</p>}
     </div>
   );
 }
@@ -131,17 +209,17 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
         const base = data.inputs[String(review.manager_id)] || {};
         return {
           key: String(review.id), name: review.manager_name, club: review.club_name, display: review.manager_name,
-          tookOverMidSeason: review.took_over_mid_season, gold: base.gold, loginGaps: numberOrNull(values.loginGaps),
+          tookOverMidSeason: review.took_over_mid_season, gold: base.gold, loginGaps: fieldValue(values, 'loginGaps'),
           inactive: review.inactive || undefined, misconduct: review.misconduct || undefined, standing: review.standing || undefined,
           lastChance: review.last_chance ? 'recorded at an earlier review' : undefined, wish: review.wish || undefined,
         };
       }),
       supply: { newcomers: newcomers.split(',').map((name) => name.trim()).filter(Boolean), leavers: [] },
-      discipline: Object.fromEntries(reviews.map((review) => [String(review.id), { sanctions: numberOrNull(inputs[`r${review.id}`]?.sanctions) || 0 }])),
+      discipline: Object.fromEntries(reviews.map((review) => [String(review.id), { sanctions: fieldValue(inputs[`r${review.id}`], 'sanctions') || 0 }])),
       activity: Object.fromEntries(reviews.map((review) => {
         const values = inputs[`r${review.id}`] || {};
         return [String(review.id), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds', 'forfeits']
-          .map((key) => [key, numberOrNull(values[key])]).filter(([, value]) => value !== null))];
+          .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
       })),
     };
     setMessage('Scoring…');
@@ -158,12 +236,20 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
       <section className="card">
         <h2>S{data.season} bottom-three reviews</h2>
         <p className="muted">
-          Load the bottom three of every division, add what the scores can't know (mid-season takeovers, standing
-          reappointments, earlier last chances, misconduct, inactivity, community), then score. Every decision is the
-          admin team's: a second chance needs a majority, and close scores go to a vote, each with a reason.
+          Start three games before the end of the season. <strong>Load the clubs</strong> brings in every club that can
+          still finish in the bottom three, not just the current bottom three, and reloading later refreshes positions
+          and drops clubs that have finished clear (unless already decided). Then, for each club:
         </p>
+        <ol className="muted">
+          <li>Add the facts the scores can't know: mid-season takeovers, standing reappointments, earlier last chances, misconduct, inactivity.</li>
+          <li>Check the scoring inputs. Most come from Top 100's records; fill in the ones marked for the admin team, and correct any that are wrong.</li>
+          <li><strong>Score reviews</strong> (all clubs at once) for each manager's review score and a suggested outcome.</li>
+          <li>Every admin votes, with a reason.</li>
+          <li>Record the team's decision once the votes are in. A second chance needs a majority.</li>
+        </ol>
+        <p className="muted">Decisions stay private until <strong>Publish decided reviews</strong>, which publishes them with the scores, votes and reasons and tells each manager.</p>
         <div className="button-row">
-          <button type="button" onClick={() => call('load_appointment_reviews', { p_season: data.season }, 'Bottom three loaded.')}>Load the bottom three</button>
+          <button type="button" onClick={() => call('load_appointment_reviews', { p_season: data.season }, 'Bottom three loaded.')}>{data.reviews.length ? 'Refresh the clubs' : 'Load the clubs'}</button>
           <label>Newcomers waiting <input value={newcomers} onChange={(event) => setNewcomers(event.target.value)} placeholder="Names, comma separated" /></label>
           <button type="button" disabled={!data.reviews.length || Boolean(round?.published_at)} onClick={runScoring}>Score reviews</button>
           <button type="button" className="secondary" disabled={!data.reviews.some((review) => review.decision && !review.published_at)}
@@ -186,25 +272,51 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
         return (
           <section className="card" key={review.id}>
             <h3>D{review.division} {ordinal(review.position)} · {review.club_name} · {review.manager_name || 'no manager'}</h3>
-            {review.wish && <p>Wants to <strong>{review.wish}</strong>{review.wish_note ? `: ${review.wish_note}` : ''}</p>}
-            <ReviewFacts review={review} onSave={(fields) => call('update_appointment_review', { p_id: review.id, p_fields: fields }, 'Saved.')} />
-            <details style={{ marginTop: 8 }}>
-              <summary>Scoring inputs</summary>
-              <InputsEditor values={inputs[key] || {}} disabled={Boolean(review.published_at)} onChange={(values) => setInputs({ ...inputs, [key]: values })} />
-            </details>
-            {result && (
-              <div style={{ marginTop: 8 }}>
-                <p>
-                  <strong>{result.total}</strong> (result {result.breakdown.result} · record {result.breakdown.record} · activity {result.breakdown.activity} · conduct {result.breakdown.conduct}).
-                  Suggested: <strong>{OUTCOMES[result.outcome]}</strong>{result.vote ? ' · needs an admin vote' : ''}.
-                </p>
-                <p className="muted">{result.reason}</p>
-              </div>
-            )}
-            <Votes votes={votesFor(review.id)} choices={OUTCOMES} disabled={Boolean(review.published_at)}
-              onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'review', p_subject_id: review.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')} />
-            <Decision current={review.decision} reason={review.decision_reason} choices={OUTCOMES} published={Boolean(review.published_at)}
-              onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
+            <p className="muted">
+              {review.points ?? '–'} points
+              {review.games_left ? ` · ${review.games_left} game${review.games_left === 1 ? '' : 's'} left · ` : ' · '}
+              {review.certain === false ? <strong>could still finish in the bottom three</strong> : <strong>finishes in the bottom three</strong>}
+            </p>
+
+            <div style={STEP}>
+              <h4 style={STEP_TITLE}>1 · The manager and the facts</h4>
+              <p>{review.wish ? <>The manager wants to <strong>{review.wish}</strong>{review.wish_note ? `: “${review.wish_note}”` : '.'}</> : <span className="muted">The manager hasn't said what they want yet.</span>}</p>
+              <ReviewFacts review={review} onSave={(fields) => call('update_appointment_review', { p_id: review.id, p_fields: fields }, 'Saved.')} />
+            </div>
+
+            <div style={STEP}>
+              <h4 style={STEP_TITLE}>2 · Scoring inputs</h4>
+              <InputsEditor values={inputs[key] || {}} records={data.inputs[String(review.manager_id)] || {}} disabled={Boolean(review.published_at)}
+                onChange={(values) => setInputs({ ...inputs, [key]: values })} />
+            </div>
+
+            <div style={STEP}>
+              <h4 style={STEP_TITLE}>3 · Review score</h4>
+              {result ? (
+                <>
+                  <p>
+                    <strong>{result.total}</strong> out of 100 (result {result.breakdown.result} · record {result.breakdown.record} · activity {result.breakdown.activity} · conduct {result.breakdown.conduct}).
+                    Suggested: <strong>{OUTCOMES[result.outcome]}</strong>{result.vote ? ' · close: the admin team should vote' : ''}.
+                  </p>
+                  <p className="muted">{result.reason}</p>
+                </>
+              ) : <p className="muted">Not scored yet: use Score reviews at the top once the inputs are right.</p>}
+            </div>
+
+            <div style={STEP}>
+              <h4 style={STEP_TITLE}>4 · Votes</h4>
+              <p className="muted" style={{ marginTop: 0 }}>Every admin votes, with a reason. Votes and reasons are published with the decision.</p>
+              <Votes votes={votesFor(review.id)} choices={OUTCOMES} disabled={Boolean(review.published_at)}
+                onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'review', p_subject_id: review.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')} />
+            </div>
+
+            <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
+              <h4 style={STEP_TITLE}>5 · Team decision</h4>
+              <p className="muted" style={{ marginTop: 0 }}>Once the votes are in, one admin records what the team decided. It isn't published until you publish the decided reviews.</p>
+              <Decision current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} majorityFor={['secondChance']}
+                published={Boolean(review.published_at)}
+                onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
+            </div>
           </section>
         );
       })}
@@ -258,12 +370,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
       preferences: Object.fromEntries(applications.map((application) => [keyOf(application), application.preferences.map(clubName)])),
       discipline: Object.fromEntries(applications.map((application) => {
         const base = data.inputs[keyOf(application)] || {};
-        return [keyOf(application), { gold: base.gold, openSanction: base.openSanction, sanctions: numberOrNull(inputs[`a${application.manager_id}`]?.sanctions) || 0 }];
+        return [keyOf(application), { gold: base.gold, openSanction: base.openSanction, sanctions: fieldValue(inputs[`a${application.manager_id}`], 'sanctions') || 0 }];
       })),
       activity: Object.fromEntries(applications.map((application) => {
         const values = inputs[`a${application.manager_id}`] || {};
         return [keyOf(application), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds']
-          .map((key) => [key, numberOrNull(values[key])]).filter(([, value]) => value !== null))];
+          .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
       })),
     };
     setMessage('Scoring…');
@@ -314,8 +426,9 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             {application.note && <div className="muted">“{application.note}”</div>}
             {data.inputs[String(application.manager_id)]?.gold === false && <div className="status">Not a Gold member.</div>}
             <details>
-              <summary>Scoring inputs</summary>
-              <InputsEditor fields={INPUT_FIELDS.filter(([key]) => !['forfeits', 'loginGaps'].includes(key))} values={inputs[`a${application.manager_id}`] || {}}
+              <summary>Scoring inputs (from Top 100's records; check and fill in before scoring)</summary>
+              <InputsEditor fields={INPUT_FIELDS.filter(({ key }) => !['forfeits', 'loginGaps'].includes(key))} values={inputs[`a${application.manager_id}`] || {}}
+                records={data.inputs[String(application.manager_id)] || {}}
                 onChange={(values) => setInputs({ ...inputs, [`a${application.manager_id}`]: values })} />
             </details>
           </div>
@@ -337,6 +450,10 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
           .filter(({ applicant, scored }) => scored && applications.find((application) => String(application.manager_id) === applicant.key)?.preferences.includes(vacancy.id))
           .sort((a, b) => b.scored.total - a.scored.total);
         const choices = Object.fromEntries(applications.filter((application) => application.preferences.includes(vacancy.id)).map((application) => [String(application.manager_id), application.managerName]));
+        // Vacancy votes are stored by applicant name; the decision is by manager id.
+        const voteChoices = Object.fromEntries(Object.values(choices).map((name) => [name, name]));
+        const idByName = Object.fromEntries(Object.entries(choices).map(([id, name]) => [name, id]));
+        const vacancyVotes = data.votes.filter((vote) => vote.subject_kind === 'vacancy' && vote.subject_id === vacancy.id);
         return (
           <section className="card" key={vacancy.id}>
             <h3>{vacancy.club_name} (D{vacancy.division})</h3>
@@ -352,12 +469,20 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
                 ))}</tbody>
               </table>
             ) : <p className="muted">{result ? 'No applicants scored for this club.' : 'Not scored yet.'}</p>}
-            <Votes votes={data.votes.filter((vote) => vote.subject_kind === 'vacancy' && vote.subject_id === vacancy.id)} disabled={Boolean(vacancy.published_at)}
-              choices={Object.fromEntries(Object.values(choices).map((name) => [name, name]))}
-              onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')} />
-            <Decision current={vacancy.appointed_manager_id ? String(vacancy.appointed_manager_id) : ''} reason={vacancy.decision_reason} published={Boolean(vacancy.published_at)}
-              choices={{ ...choices, ...(vacancy.appointed_manager_id ? { [String(vacancy.appointed_manager_id)]: vacancy.appointedManager } : {}) }}
-              onDecide={(manager, reason) => call('decide_appointment_vacancy', { p_id: vacancy.id, p_manager_id: Number(manager), p_reason: reason }, 'Decision saved (not yet published).')} />
+            <div style={STEP}>
+              <h4 style={STEP_TITLE}>Votes</h4>
+              <p className="muted" style={{ marginTop: 0 }}>Every admin votes for an applicant, with a reason. Votes and reasons are published with the appointment.</p>
+              <Votes votes={vacancyVotes} disabled={Boolean(vacancy.published_at)} choices={voteChoices}
+                onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')} />
+            </div>
+            <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
+              <h4 style={STEP_TITLE}>Team decision</h4>
+              <p className="muted" style={{ marginTop: 0 }}>Once the votes are in, one admin records who the team appoints. It isn't published until you publish the decided vacancies.</p>
+              <Decision current={vacancy.appointed_manager_id ? String(vacancy.appointed_manager_id) : ''} reason={vacancy.decision_reason} published={Boolean(vacancy.published_at)}
+                votes={vacancyVotes.map((vote) => ({ ...vote, choice: idByName[vote.choice] || vote.choice }))}
+                choices={{ ...choices, ...(vacancy.appointed_manager_id ? { [String(vacancy.appointed_manager_id)]: vacancy.appointedManager } : {}) }}
+                onDecide={(manager, reason) => call('decide_appointment_vacancy', { p_id: vacancy.id, p_manager_id: Number(manager), p_reason: reason }, 'Decision saved (not yet published).')} />
+            </div>
           </section>
         );
       })}
@@ -373,7 +498,7 @@ const initialInputs = (data) => {
   const saved = { ...own(data.rounds.review?.inputs?.edited || {}, 'r'), ...own(data.rounds.vacancies?.inputs?.edited || {}, 'a') };
   const fill = (key, managerId) => {
     const base = data.inputs[String(managerId)] || {};
-    return saved[key] || Object.fromEntries(INPUT_FIELDS.map(([field]) => [field, base[field] ?? '']));
+    return saved[key] || Object.fromEntries(INPUT_FIELDS.map(({ key: field }) => [field, base[field] ?? '']));
   };
   return {
     ...Object.fromEntries(data.reviews.filter((review) => review.manager_id).map((review) => [`r${review.id}`, fill(`r${review.id}`, review.manager_id)])),
@@ -412,8 +537,8 @@ export default function AdminAppointmentsPage() {
         <h1>Appointments</h1>
         <p>
           Bottom-three reviews (rule 3.1) and vacancies (rule 3.2). Managers state their wishes and apply in{' '}
-          <a href="https://manager.smtop100.blog/appointments">Manager Portal</a>; published decisions appear at{' '}
-          <a href="/appointments">/appointments</a>.
+          <a href="https://manager.smtop100.blog/appointments" style={HERO_LINK}>Manager Portal</a>; published decisions appear at{' '}
+          <a href="/appointments" style={HERO_LINK}>tournaments.smtop100.blog/appointments</a>.
         </p>
         <div className="button-row">
           <button type="button" className={tab === 'reviews' ? '' : 'secondary'} onClick={() => setTab('reviews')}>Reviews</button>
