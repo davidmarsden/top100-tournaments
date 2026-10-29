@@ -198,6 +198,11 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
   const results = useMemo(() => Object.fromEntries((round?.result?.reviews || []).map((review) => [review.key, review])), [round]);
   const balance = round?.result?.balance;
   const votesFor = (id) => data.votes.filter((vote) => vote.subject_kind === 'review' && vote.subject_id === id);
+  // With every club that can still finish in the bottom three loaded, there are many cards:
+  // division tabs filter the summary and the cards, and the summary links to each card.
+  const [division, setDivision] = useState('all');
+  const divisions = [...new Set(data.reviews.map((review) => review.division))].sort((a, b) => a - b);
+  const shown = data.reviews.filter((review) => division === 'all' || review.division === division);
 
   const runScoring = async () => {
     const reviews = data.reviews.filter((review) => review.manager_name);
@@ -266,11 +271,50 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
           </p>
         )}
       </section>
-      {data.reviews.map((review) => {
+      {data.reviews.length > 0 && (
+        <section className="card" id="review-summary">
+          <div className="button-row" style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--surface, #fff)', padding: '8px 0' }}>
+            <button type="button" className={division === 'all' ? '' : 'secondary'} onClick={() => setDivision('all')}>All ({data.reviews.length})</button>
+            {divisions.map((value) => (
+              <button type="button" key={value} className={division === value ? '' : 'secondary'} onClick={() => setDivision(value)}>
+                D{value} ({data.reviews.filter((review) => review.division === value).length})
+              </button>
+            ))}
+          </div>
+          {divisions.filter((value) => division === 'all' || value === division).map((value) => (
+            <div key={value} style={{ overflowX: 'auto' }}>
+              <h3 id={`division-${value}`}>Division {value}</h3>
+              <table style={{ fontSize: 13, width: '100%' }}>
+                <thead><tr><th>Pos</th><th style={{ textAlign: 'left' }}>Club</th><th style={{ textAlign: 'left' }}>Manager</th><th>Pts</th><th>Bottom three</th><th>Wants</th><th>Score</th><th>Votes</th><th>Decision</th></tr></thead>
+                <tbody>
+                  {data.reviews.filter((review) => review.division === value).map((review) => {
+                    const result = results[String(review.id)];
+                    return (
+                      <tr key={review.id}>
+                        <td>{ordinal(review.position)}</td>
+                        <td style={{ textAlign: 'left' }}><a href={`#review-${review.id}`}>{review.club_name}</a></td>
+                        <td style={{ textAlign: 'left' }}>{review.manager_name || '–'}</td>
+                        <td>{review.points ?? '–'}</td>
+                        <td>{review.certain === false ? 'Could' : review.certain === true ? <strong>Certain</strong> : '–'}</td>
+                        <td>{review.wish || '–'}</td>
+                        <td>{result ? `${result.total}${result.vote ? ' (vote)' : ''}` : '–'}</td>
+                        <td>{votesFor(review.id).length || '–'}</td>
+                        <td>{review.published_at ? `${OUTCOMES[review.decision]} (published)` : review.decision ? OUTCOMES[review.decision] : '–'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </section>
+      )}
+      {shown.map((review) => {
         const result = results[String(review.id)];
         const key = `r${review.id}`;
         return (
-          <section className="card" key={review.id}>
+          <section className="card" key={review.id} id={`review-${review.id}`} style={{ scrollMarginTop: 16 }}>
+            <p style={{ margin: 0, textAlign: 'right' }}><a href="#review-summary">Back to the list</a></p>
             <h3>D{review.division} {ordinal(review.position)} · {review.club_name} · {review.manager_name || 'no manager'}</h3>
             <p className="muted">
               {review.points ?? '–'} points
