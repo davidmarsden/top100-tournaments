@@ -65,7 +65,8 @@ function ReviewCard({ review, season, onSave, busy }) {
 function VacanciesCard({ data, onSubmit, onWithdraw, busy }) {
   const open = data.vacancies.filter((vacancy) => vacancy.open);
   const application = data.application?.status === 'active' ? data.application : null;
-  const [chosen, setChosen] = useState(application?.preferences || []);
+  // Clubs that have since closed, been withdrawn or been decided drop out of the editable list.
+  const [chosen, setChosen] = useState((application?.preferences || []).filter((id) => open.some((vacancy) => vacancy.id === id)));
   const [note, setNote] = useState(application?.note || '');
   const notGold = data.gold?.gold === false;
   const name = (id) => data.vacancies.find((vacancy) => vacancy.id === id)?.club || `#${id}`;

@@ -147,7 +147,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
     setMessage('Scoring…');
     try {
       const result = await score(config);
-      await call('save_appointment_round', { p_kind: 'review', p_inputs: { ...config, edited: inputs }, p_result: result, p_season: data.season }, 'Scored.');
+      await call('save_appointment_round', { p_kind: 'review', p_inputs: { ...config, edited: own(inputs, 'r') }, p_result: result, p_season: data.season }, 'Scored.');
     } catch (error) {
       setMessage(error.message);
     }
@@ -165,7 +165,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage }) {
         <div className="button-row">
           <button type="button" onClick={() => call('load_appointment_reviews', { p_season: data.season }, 'Bottom three loaded.')}>Load the bottom three</button>
           <label>Newcomers waiting <input value={newcomers} onChange={(event) => setNewcomers(event.target.value)} placeholder="Names, comma separated" /></label>
-          <button type="button" disabled={!data.reviews.length} onClick={runScoring}>Score reviews</button>
+          <button type="button" disabled={!data.reviews.length || Boolean(round?.published_at)} onClick={runScoring}>Score reviews</button>
           <button type="button" className="secondary" disabled={!data.reviews.some((review) => review.decision && !review.published_at)}
             onClick={() => window.confirm('Publish every decided review and tell each manager?') && call('publish_appointments', { p_kind: 'review', p_season: data.season }, 'Published.')}>
             Publish decided reviews
@@ -269,7 +269,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     setMessage('Scoring…');
     try {
       const scored = await score(config);
-      await call('save_appointment_round', { p_kind: 'vacancies', p_inputs: { ...config, edited: inputs }, p_result: scored, p_season: data.season }, 'Scored.');
+      await call('save_appointment_round', { p_kind: 'vacancies', p_inputs: { ...config, edited: own(inputs, 'a') }, p_result: scored, p_season: data.season }, 'Scored.');
     } catch (error) {
       setMessage(error.message);
     }
@@ -297,7 +297,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             onClick={() => window.confirm('Notify every manager that these vacancies are open?') && call('announce_appointment_vacancies', { p_season: data.season }, 'Managers notified.')}>
             Announce to managers
           </button>
-          <button type="button" disabled={!applications.length || !vacancies.length} onClick={runScoring}>Score applicants</button>
+          <button type="button" disabled={!applications.length || !vacancies.length || Boolean(round?.published_at)} onClick={runScoring}>Score applicants</button>
           <button type="button" className="secondary" disabled={!data.vacancies.some((vacancy) => vacancy.decided_at && !vacancy.published_at)}
             onClick={() => window.confirm('Publish every decided vacancy, with the scores, and tell the managers appointed?') && call('publish_appointments', { p_kind: 'vacancies', p_season: data.season }, 'Published.')}>
             Publish decided vacancies
@@ -365,9 +365,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   );
 }
 
+// Each round keeps only its own inputs: r<review id> for reviews, a<manager id> for applicants.
+const own = (inputs, prefix) => Object.fromEntries(Object.entries(inputs).filter(([key]) => key.startsWith(prefix)));
+
 // Scoring inputs: what was used last time, otherwise Top 100's records.
 const initialInputs = (data) => {
-  const saved = { ...(data.rounds.review?.inputs?.edited || {}), ...(data.rounds.vacancies?.inputs?.edited || {}) };
+  const saved = { ...own(data.rounds.review?.inputs?.edited || {}, 'r'), ...own(data.rounds.vacancies?.inputs?.edited || {}, 'a') };
   const fill = (key, managerId) => {
     const base = data.inputs[String(managerId)] || {};
     return saved[key] || Object.fromEntries(INPUT_FIELDS.map(([field]) => [field, base[field] ?? '']));
