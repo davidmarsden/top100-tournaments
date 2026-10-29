@@ -247,7 +247,7 @@ export default function ManagerSquadDashboard() {
 
     <section className="card portal-panel">
       <div className="card-header"><p className="eyebrow">Player Lab · v1</p><h2>Player Intelligence</h2></div>
-      <p className="muted">This season's average performance compared with each player's previous club seasons in this game world (weighted by appearances). Club history is collected by Sync everything, so a player shows up here once theirs is in. These are descriptive signals, not automatic selection recommendations.</p>
+      <p className="muted">This season's average performance compared with each player's previous club seasons in this game world (weighted by appearances). A player shows up here once their club history is in Top 100's records. These are descriptive signals, not automatic selection recommendations.</p>
       <div className="squad-standing-grid">
         <span><strong>{intelligence.withCareer}</strong> club history baselines</span>
         <span><strong>{intelligence.outperforming.length}</strong> strongest positive deltas</span>

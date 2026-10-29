@@ -7,7 +7,7 @@ import SquadBreachReportForm from './SquadBreachReportForm.jsx';
 
 // A breach is a sync that captured more than 50 players, or a report.
 const SOURCE = {
-  sync: 'Counted on a sync',
+  sync: 'Counted at an update',
   admin_report: 'Reported by an admin',
   manager_report: 'Reported by a manager: uphold to notify the club',
 };
@@ -23,7 +23,7 @@ function Evidence({ breach }) {
     return (
       <ul>
         {evidence.captures.map((capture) => (
-          <li key={capture.captured_at}>Sync {date(capture.captured_at)}: {capture.players} players</li>
+          <li key={capture.captured_at}>Update {date(capture.captured_at)}: {capture.players} players</li>
         ))}
         {evidence.estimated_start_from_transfers && <li>Transfers suggest it first went over on {date(evidence.estimated_start_from_transfers)}.</li>}
       </ul>
