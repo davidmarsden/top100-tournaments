@@ -196,7 +196,8 @@ function ReviewFacts({ review, onSave }) {
 // Routine reviews: in Divisions 3–5, and for managers who took over mid-season, the manager is
 // usually reappointed unless they ask to move or take a break, so the admin team doesn't score or
 // vote. The team can make an exception (full_review) and review any club fully. The rule's hard
-// bars (not Gold, misconduct, inactivity) always need a decision.
+// bars (not Gold, misconduct, inactivity) always need a decision, and so does Gold that may have
+// run out (goldUnclear below): without Gold the manager can't be reappointed.
 const ROUTINE_FROM_DIVISION = 3;
 const routineByDefault = (review) => review.took_over_mid_season || review.division >= ROUTINE_FROM_DIVISION;
 const isRoutine = (review) => routineByDefault(review) && !review.full_review;
@@ -204,6 +205,7 @@ const routineLabel = (review) => (review.took_over_mid_season ? 'took over mid-s
 // Why a routine review can't simply be reappointed, or '' when it can.
 const routineBlock = (review, records = {}) => {
   if (records.gold === false) return 'not a Gold member';
+  if (records.goldUnclearSince) return 'Gold unclear: reappointed only if the manager renews Gold';
   if (review.misconduct) return 'misconduct recorded';
   if (review.inactive) return 'inactivity recorded';
   if (review.wish === 'move') return 'asks to move to another club';
@@ -273,7 +275,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
     && !routineBlock(review, data.inputs[String(review.manager_id)]));
   // Clear reappointments go in the bulk action only once the admin team's scores are saved,
   // since those are the scores published with the decisions.
-  const clearReady = data.reviews.filter((review) => open(review) && isClear(review) && saved[String(review.id)]?.outcome === 'reappoint');
+  const clearReady = data.reviews.filter((review) => open(review) && isClear(review) && saved[String(review.id)]?.outcome === 'reappoint'
+    && !data.inputs[String(review.manager_id)]?.goldUnclearSince);
   const reappointReady = [...routineReady, ...clearReady];
   const reappointRoutine = async () => {
     if (!window.confirm(`Record "Reappoint" for ${reappointReady.length} review(s) (${routineReady.length} routine, ${clearReady.length} with no clear and obvious error)? Nothing is published until you publish the decided reviews.`)) return;
@@ -442,7 +445,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                   ? <p><strong>Needs a decision: {routineBlock(review, data.inputs[String(review.manager_id)])}.</strong> No scoring or votes needed unless the team wants them.</p>
                   : <p className="muted" style={{ marginTop: 0 }}>Reappointed unless the manager asks to move or take a break. No scoring or votes needed: record it here, or use Reappoint routine reviews at the top for all of them.</p>}
                 <Decision current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} requireVotes={false}
-                  defaultChoice={review.wish === 'move' ? 'anotherClub' : review.wish === 'break' ? 'leave' : 'reappoint'}
+                  defaultChoice={review.wish === 'move' ? 'anotherClub' : review.wish === 'break' ? 'leave'
+                    : routineBlock(review, data.inputs[String(review.manager_id)]) ? '' : 'reappoint'}
                   defaultReason={`${routineLabel(review)[0].toUpperCase()}${routineLabel(review).slice(1)}.`}
                   published={Boolean(review.published_at)}
                   onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
