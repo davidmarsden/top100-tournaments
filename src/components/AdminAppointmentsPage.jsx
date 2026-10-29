@@ -257,19 +257,30 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
   }, [toScoreKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const results = { ...auto, ...saved };
   const isAuto = (id) => !saved[String(id)] && Boolean(auto[String(id)]);
-  const routineReady = data.reviews.filter((review) => review.manager_id && isRoutine(review) && !review.decision && !review.published_at
+  // A full review needs the admin team's votes only when its result says so (rule 3.1): one clear
+  // and obvious error (a second chance needs a majority), or a score close to the line. Otherwise
+  // the outcome follows the rules: no error means reappointed, with no vote.
+  const needsVote = (review) => Boolean(results[String(review.id)]?.vote);
+  const isClear = (review) => !isRoutine(review) && Boolean(results[String(review.id)]) && !needsVote(review);
+  const open = (review) => review.manager_id && !review.decision && !review.published_at;
+  const routineReady = data.reviews.filter((review) => open(review) && isRoutine(review)
     && !routineBlock(review, data.inputs[String(review.manager_id)]));
+  // Clear reappointments go in the bulk action only once the admin team's scores are saved,
+  // since those are the scores published with the decisions.
+  const clearReady = data.reviews.filter((review) => open(review) && isClear(review) && saved[String(review.id)]?.outcome === 'reappoint');
+  const reappointReady = [...routineReady, ...clearReady];
   const reappointRoutine = async () => {
-    if (!window.confirm(`Record "Reappoint" for ${routineReady.length} routine review(s)? Nothing is published until you publish the decided reviews.`)) return;
+    if (!window.confirm(`Record "Reappoint" for ${reappointReady.length} review(s) (${routineReady.length} routine, ${clearReady.length} with no clear and obvious error)? Nothing is published until you publish the decided reviews.`)) return;
     setMessage('Saving…');
-    for (const review of routineReady) {
+    for (const review of reappointReady) {
       const { error } = await supabase.rpc('decide_appointment_review', {
-        p_id: review.id, p_decision: 'reappoint', p_reason: `Reappointed: ${routineLabel(review)}, and no request to move or take a break.`,
+        p_id: review.id, p_decision: 'reappoint',
+        p_reason: isRoutine(review) ? `Reappointed: ${routineLabel(review)}, and no request to move or take a break.` : 'No clear and obvious error: reappointed.',
       });
       if (error) { setMessage(error.message); await reload(); return; }
     }
     await reload();
-    setMessage(`${routineReady.length} routine review(s) decided: reappoint (not yet published).`);
+    setMessage(`${reappointReady.length} review(s) decided: reappoint (not yet published).`);
   };
   const balance = round?.result?.balance;
   const votesFor = (id) => data.votes.filter((vote) => vote.subject_kind === 'review' && vote.subject_id === id);
@@ -277,6 +288,12 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
   // division tabs filter the summary and the cards, and the summary links to each card.
   const [division, setDivision] = useState('all');
   const divisions = [...new Set(data.reviews.map((review) => review.division))].sort((a, b) => a - b);
+  // Most at risk first: certain to finish in the bottom three, then in it now, then the clubs
+  // that could still drop into it (most of which will finish clear).
+  const clubsIn = (value) => data.clubs.filter((club) => club.division === value).length || 20;
+  const risk = (review) => (review.certain === true ? 0 : review.position > clubsIn(review.division) - 3 ? 1 : 2);
+  const RISK_LABEL = ['Certain', 'In it now', 'Could'];
+  const ordered = [...data.reviews].sort((a, b) => a.division - b.division || risk(a) - risk(b) || b.position - a.position);
   // Cards outside the chosen division are hidden, not unmounted, so unsaved votes and reasons survive.
   const shown = (review) => division === 'all' || review.division === division;
 
@@ -310,7 +327,10 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
         <p className="muted">
           <strong>Routine reviews</strong> (Divisions {ROUTINE_FROM_DIVISION}–5, and managers who took over mid-season) skip
           steps 2–4: the manager is reappointed unless they ask to move or take a break, or a hard bar applies (not Gold,
-          misconduct, inactivity). <strong>Reappoint routine reviews</strong> records those decisions in one go. Any
+          misconduct, inactivity). Full reviews with no clear and obvious error are reappointed with no vote either: the
+          admin team votes only where the score shows one error (a second chance, which needs a majority) or a score
+          close to the line. Lists run most at risk first. <strong>Reappoint routine and clear reviews</strong> records
+          those decisions in one go (clear ones once the scores are saved). Any
           club can be an exception: <strong>Review fully</strong> on its card gives it scores, votes and a team decision.
         </p>
         <p className="muted">Decisions stay private until <strong>Publish decided reviews</strong>, which publishes them with the scores, votes and reasons and tells each manager.</p>
@@ -318,7 +338,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
           <button type="button" onClick={() => call('load_appointment_reviews', { p_season: data.season }, 'Bottom three loaded.')}>{data.reviews.length ? 'Refresh the clubs' : 'Load the clubs'}</button>
           <label>Newcomers waiting <input value={newcomers} onChange={(event) => setNewcomers(event.target.value)} placeholder="Names, comma separated" /></label>
           <button type="button" disabled={!toScore.length || Boolean(round?.published_at)} onClick={runScoring}>Score reviews ({toScore.length})</button>
-          <button type="button" disabled={!routineReady.length} onClick={reappointRoutine}>Reappoint routine reviews ({routineReady.length})</button>
+          <button type="button" disabled={!routineReady.length} onClick={reappointRoutine}>Reappoint routine and clear reviews ({reappointReady.length})</button>
           <button type="button" className="secondary" disabled={!data.reviews.some((review) => review.decision && !review.published_at)}
             onClick={() => window.confirm('Publish every decided review and tell each manager?') && call('publish_appointments', { p_kind: 'review', p_season: data.season }, 'Published.')}>
             Publish decided reviews
@@ -349,15 +369,15 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
               <table style={{ fontSize: 13, width: '100%' }}>
                 <thead><tr><th>Pos</th><th style={{ textAlign: 'left' }}>Club</th><th style={{ textAlign: 'left' }}>Manager</th><th>Pts</th><th>Bottom three</th><th>Mid-season</th><th>Wants</th><th>Review</th><th>Score</th><th>Votes</th><th>Decision</th></tr></thead>
                 <tbody>
-                  {data.reviews.filter((review) => review.division === value).map((review) => {
+                  {ordered.filter((review) => review.division === value).map((review) => {
                     const result = results[String(review.id)];
                     return (
-                      <tr key={review.id}>
+                      <tr key={review.id} style={risk(review) === 2 ? { opacity: 0.6 } : undefined}>
                         <td>{ordinal(review.position)}</td>
                         <td style={{ textAlign: 'left' }}><a href={`#review-${review.id}`}>{review.club_name}</a></td>
                         <td style={{ textAlign: 'left' }}>{review.manager_name || '–'}</td>
                         <td>{review.points ?? '–'}</td>
-                        <td>{review.certain === false ? 'Could' : review.certain === true ? <strong>Certain</strong> : '–'}</td>
+                        <td>{risk(review) < 2 ? <strong>{RISK_LABEL[risk(review)]}</strong> : RISK_LABEL[2]}</td>
                         <td>
                           <input type="checkbox" style={BOX} disabled={Boolean(review.published_at)} checked={review.took_over_mid_season}
                             aria-label={`${review.club_name}: took over mid-season`}
@@ -366,7 +386,9 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                         <td>{review.wish || '–'}</td>
                         <td>{isRoutine(review)
                           ? (routineBlock(review, data.inputs[String(review.manager_id)]) ? <strong>Decide: {routineBlock(review, data.inputs[String(review.manager_id)])}</strong> : 'Routine')
-                          : routineByDefault(review) ? <strong>Full (exception)</strong> : 'Full'}</td>
+                          : !results[String(review.id)] ? (routineByDefault(review) ? 'Full (exception)' : 'Full')
+                            : needsVote(review) ? <strong>Vote: {results[String(review.id)].outcome === 'secondChance' ? 'second chance' : 'close score'}</strong>
+                              : `Clear: ${OUTCOMES[results[String(review.id)].outcome].toLowerCase()}`}</td>
                         <td>{isRoutine(review) ? '–' : result ? <>{result.total}{isAuto(review.id) ? <span className="muted"> auto</span> : ''}{result.vote ? ' (vote)' : ''}</> : autoFailed ? '–' : '…'}</td>
                         <td>{votesFor(review.id).length || '–'}</td>
                         <td>{review.published_at ? `${OUTCOMES[review.decision]} (published)` : review.decision ? OUTCOMES[review.decision] : '–'}</td>
@@ -379,7 +401,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
           ))}
         </section>
       )}
-      {data.reviews.map((review) => {
+      {ordered.map((review) => {
         const result = results[String(review.id)];
         const key = `r${review.id}`;
         return (
@@ -445,7 +467,13 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
               ) : <p className="muted">{autoFailed ? 'The automatic score could not be worked out: use Score reviews at the top.' : 'Working out the automatic score…'}</p>}
             </div>
 
-            <div style={STEP}>
+            {isClear(review) && !review.published_at && (
+              <p style={{ ...STEP }}>
+                <strong>No vote needed.</strong> {result.outcome === 'reappoint' ? 'No clear and obvious error, so the manager is reappointed (rule 3.1).' : 'The rules decide this outcome (rule 3.1).'}
+                {' '}Record the decision below{result.outcome === 'reappoint' ? ', or use Reappoint routine and clear reviews at the top once the scores are saved' : ''}.
+              </p>
+            )}
+            <div style={STEP} hidden={isClear(review)}>
               <h4 style={STEP_TITLE}>4 · Votes</h4>
               <p className="muted" style={{ marginTop: 0 }}>Every admin votes, with a reason. Votes and reasons are published with the decision.</p>
               <Votes votes={votesFor(review.id)} choices={OUTCOMES} disabled={Boolean(review.published_at)}
@@ -454,8 +482,10 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
 
             <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
               <h4 style={STEP_TITLE}>5 · Team decision</h4>
-              <p className="muted" style={{ marginTop: 0 }}>Once the votes are in, one admin records what the team decided. It isn't published until you publish the decided reviews.</p>
-              <Decision current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} majorityFor={['secondChance']}
+              <p className="muted" style={{ marginTop: 0 }}>{isClear(review) ? 'One admin records the outcome the rules give.' : 'Once the votes are in, one admin records what the team decided.'} It isn't published until you publish the decided reviews.</p>
+              <Decision key={isClear(review) ? 'clear' : 'vote'} current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} majorityFor={['secondChance']}
+                requireVotes={!isClear(review)} defaultChoice={isClear(review) ? result.outcome : ''}
+                defaultReason={isClear(review) && result.outcome === 'reappoint' ? 'No clear and obvious error: reappointed.' : ''}
                 published={Boolean(review.published_at)}
                 onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
             </div>
