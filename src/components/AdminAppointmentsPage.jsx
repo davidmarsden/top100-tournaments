@@ -338,7 +338,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
           <button type="button" onClick={() => call('load_appointment_reviews', { p_season: data.season }, 'Bottom three loaded.')}>{data.reviews.length ? 'Refresh the clubs' : 'Load the clubs'}</button>
           <label>Newcomers waiting <input value={newcomers} onChange={(event) => setNewcomers(event.target.value)} placeholder="Names, comma separated" /></label>
           <button type="button" disabled={!toScore.length || Boolean(round?.published_at)} onClick={runScoring}>Score reviews ({toScore.length})</button>
-          <button type="button" disabled={!routineReady.length} onClick={reappointRoutine}>Reappoint routine and clear reviews ({reappointReady.length})</button>
+          <button type="button" disabled={!reappointReady.length} onClick={reappointRoutine}>Reappoint routine and clear reviews ({reappointReady.length})</button>
           <button type="button" className="secondary" disabled={!data.reviews.some((review) => review.decision && !review.published_at)}
             onClick={() => window.confirm('Publish every decided review and tell each manager?') && call('publish_appointments', { p_kind: 'review', p_season: data.season }, 'Published.')}>
             Publish decided reviews
@@ -483,7 +483,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
             <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
               <h4 style={STEP_TITLE}>5 · Team decision</h4>
               <p className="muted" style={{ marginTop: 0 }}>{isClear(review) ? 'One admin records the outcome the rules give.' : 'Once the votes are in, one admin records what the team decided.'} It isn't published until you publish the decided reviews.</p>
-              <Decision key={isClear(review) ? 'clear' : 'vote'} current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} majorityFor={['secondChance']}
+              <Decision key={isClear(review) ? `clear:${result.outcome}` : 'vote'} current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} majorityFor={['secondChance']}
                 requireVotes={!isClear(review)} defaultChoice={isClear(review) ? result.outcome : ''}
                 defaultReason={isClear(review) && result.outcome === 'reappoint' ? 'No clear and obvious error: reappointed.' : ''}
                 published={Boolean(review.published_at)}
