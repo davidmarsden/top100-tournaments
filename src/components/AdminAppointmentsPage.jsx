@@ -210,6 +210,12 @@ const routineBlock = (review, records = {}) => {
   if (review.wish === 'break') return 'asks to take a break';
   return '';
 };
+// Soccer Manager's profile shows 0 days of Gold left both once Gold has run out and during the
+// up to 2 days' grace it allows for renewals, while the Manager List keeps the Gold badge. Until
+// one or the other changes, an administrator checks; it doesn't count against the manager.
+const goldUnclear = (records = {}) => (records.goldUnclearSince
+  ? `Gold unclear – check: no days left on the profile since ${new Date(records.goldUnclearSince).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, though the Manager List still shows the badge`
+  : '');
 
 // The scoring request for the reviews that need scoring, from the inputs on the page.
 const reviewScoringConfig = (data, reviews, inputs, newcomers) => ({
@@ -418,6 +424,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
             <div style={STEP}>
               <h4 style={STEP_TITLE}>1 · The manager and the facts</h4>
               <p>{review.wish ? <>The manager wants to <strong>{review.wish}</strong>{review.wish_note ? `: “${review.wish_note}”` : '.'}</> : <span className="muted">The manager hasn't said what they want yet.</span>}</p>
+              {goldUnclear(data.inputs[String(review.manager_id)]) && <p className="status">{goldUnclear(data.inputs[String(review.manager_id)])}.</p>}
               <ReviewFacts review={review} onSave={(fields) => call('update_appointment_review', { p_id: review.id, p_fields: fields }, 'Saved.')} />
             </div>
 
@@ -598,6 +605,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             <strong>{application.managerName}</strong> ({application.club}, D{application.clubDivision} {ordinal(application.clubPosition)}): {application.preferences.map(clubName).join(' → ')}
             {application.note && <div className="muted">“{application.note}”</div>}
             {data.inputs[String(application.manager_id)]?.gold === false && <div className="status">Not a Gold member.</div>}
+            {goldUnclear(data.inputs[String(application.manager_id)]) && <div className="status">{goldUnclear(data.inputs[String(application.manager_id)])}.</div>}
             <details>
               <summary>Scoring inputs (from Top 100's records; check and fill in before scoring)</summary>
               <InputsEditor fields={INPUT_FIELDS.filter(({ key }) => !['forfeits', 'loginGaps'].includes(key))} values={inputs[`a${application.manager_id}`] || {}}

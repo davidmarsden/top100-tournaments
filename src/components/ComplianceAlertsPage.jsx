@@ -31,11 +31,13 @@ function RecentAlerts({ alerts, onAcknowledge }) {
 function ManagerStatus({ rows }) {
   // Days left only mean something for a Gold member; Soccer Manager gives 0 for everyone else.
   const hasGoldDays = (row) => row.gold !== false && row.gold_days_left !== null && row.gold_days_left !== undefined;
-  // Gold that has run out: its end date has passed, though the Manager List can still show the badge.
+  // The profile has shown 0 days left since a date now past while the Manager List still shows the
+  // badge: Gold has run out, or is in the up to 2 days' grace Soccer Manager allows for renewals.
+  // Unclear until one or the other changes, so an administrator checks.
   const today = new Date().toISOString().slice(0, 10);
-  const goldEnded = (row) => hasGoldDays(row) && row.gold_expires_on && row.gold_expires_on < today;
-  const goldEndingSoon = (row) => hasGoldDays(row) && !goldEnded(row) && Number(row.gold_days_left) <= 14;
-  const flagged = rows.filter((row) => row.gold === false || goldEnded(row) || Number(row.days_since_login) >= 7 || goldEndingSoon(row));
+  const goldUnclear = (row) => hasGoldDays(row) && row.gold_expires_on && row.gold_expires_on < today;
+  const goldEndingSoon = (row) => hasGoldDays(row) && !goldUnclear(row) && Number(row.gold_days_left) <= 14;
+  const flagged = rows.filter((row) => row.gold === false || goldUnclear(row) || Number(row.days_since_login) >= 7 || goldEndingSoon(row));
   const shown = flagged.length ? flagged : rows;
   return (
     <section className="card">
@@ -44,7 +46,7 @@ function ManagerStatus({ rows }) {
         <p>No readings yet: run Sync everything.</p>
       ) : (
         <>
-          <p>{flagged.length ? `${flagged.length} manager(s) without Gold (or whose Gold has run out), with Gold ending within 14 days, or away for 7+ days.` : 'Every manager is Gold, with more than 14 days left, and logged in within the last 7 days.'}</p>
+          <p>{flagged.length ? `${flagged.length} manager(s) without Gold (or whose Gold is unclear), with Gold ending within 14 days, or away for 7+ days.` : 'Every manager is Gold, with more than 14 days left, and logged in within the last 7 days.'}</p>
           <table>
             <thead><tr><th>Club</th><th>Manager</th><th>Gold</th><th>Gold left</th><th>Last login</th><th>Days</th><th>Worlds</th><th>Synced</th></tr></thead>
             <tbody>
@@ -52,10 +54,10 @@ function ManagerStatus({ rows }) {
                 <tr key={`${row.club_name}-${row.sm_manager_id}`}>
                   <td>{row.club_name}</td>
                   <td>{row.manager_name || row.sm_manager_id}</td>
-                  <td>{goldEnded(row)
-                    ? <><strong>Ended {date(row.gold_expires_on)}</strong> <span className="muted">(badge still showing)</span></>
+                  <td>{goldUnclear(row)
+                    ? <><strong>Unclear – check</strong> <span className="muted">(0 days left since {date(row.gold_expires_on)}, badge still showing; Soccer Manager allows up to 2 days' grace for renewals)</span></>
                     : <>{row.gold === null ? '?' : row.gold ? 'Yes' : <strong>No</strong>}{row.gold_changed_at ? ` (since ${date(row.gold_changed_at)})` : ''}</>}</td>
-                  <td>{!hasGoldDays(row) || goldEnded(row) ? '–' : goldEndingSoon(row)
+                  <td>{!hasGoldDays(row) || goldUnclear(row) ? '–' : goldEndingSoon(row)
                     ? <strong>{row.gold_days_left} days ({date(row.gold_expires_on)})</strong>
                     : `${row.gold_days_left} days`}</td>
                   <td>{date(row.last_login_at)}</td>
