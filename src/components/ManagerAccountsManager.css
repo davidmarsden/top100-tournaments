@@ -3,8 +3,8 @@
 .registration-details { display: grid; gap: 8px; flex: 1 1 640px; min-width: 0; }
 .claim-suggestion-list { display: grid; gap: 8px; margin: 8px 0; }
 .claim-suggestion { width: 100%; display: grid; gap: 5px; text-align: left; border: 1px solid #24406b; border-radius: 15px; padding: 12px 14px; background: #132b50; color: #e8eef8; }
-.claim-suggestion:hover { border-color: #93b4f7; background: #f1f6ff; }
-.claim-suggestion.selected { border-color: #1d4ed8; background: #edf4ff; box-shadow: inset 0 0 0 2px rgba(29,78,216,.14); }
+.claim-suggestion:hover { border-color: #3b6fd6; background: #18335c; }
+.claim-suggestion.selected { border-color: #3b82f6; background: #1b3a68; box-shadow: inset 0 0 0 2px rgba(29,78,216,.14); }
 .claim-suggestion span,.claim-suggestion small { margin: 0; color: #a9b8d0; }
 .claim-suggestion-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .claim-confidence { display:inline-flex!important; align-items:center; width:fit-content; border-radius:999px; padding:.3rem .55rem; font-size:.72rem!important; font-weight:900; white-space:nowrap; }
