@@ -203,6 +203,12 @@ th { color: #a9b8d0; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .sm-sync-change-card.approved .sm-sync-change-status { background: #0f3a2e; color: #6ee7b7; }
 .sm-sync-change-card.rejected .sm-sync-change-status { background: #24406b; color: #a9b8d0; }
 .sm-sync-change-card details { margin: 12px 0; }
+.sm-sync-assignment { margin: 10px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sm-sync-gold { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.82rem; font-weight: 700; }
+.sm-sync-gold.missing { background: #5b1a1a; color: #fecaca; }
+.sm-sync-gold.unclear { background: #4a3512; color: #fcd34d; }
+.sm-sync-gold.ok { background: #0f3a2e; color: #6ee7b7; }
+.sm-sync-gold.unknown { background: #24406b; color: #a9b8d0; }
 .sm-sync-change-card summary { cursor: pointer; font-weight: 900; }
 .sm-sync-diff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
 .sm-sync-diff-grid pre { max-height: 340px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #24406b; border-radius: 12px; background: #132b50; padding: 10px; font-size: 0.76rem; }
