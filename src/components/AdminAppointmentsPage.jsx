@@ -26,19 +26,22 @@ const INPUT_FIELDS = [
   { key: 'running', label: 'Helps run Top 100 (0–3)', source: 'records', min: 0, max: 3,
     help: '3 for admins (from records). Otherwise your judgement: 1–2 for regular helpers. Blank counts as 0.' },
   { key: 'community', label: 'Community and social (0–3)', source: 'admin', min: 0, max: 3,
-    help: 'Your judgement: chat, polls, helping other managers. Blank leaves it out of the score.' },
+    help: 'Your judgement: chat, polls, helping other managers. Each admin scores separately and the team average is used; no scores at all leaves it out (half marks).' },
   { key: 'gameWorlds', label: 'Soccer Manager game worlds', source: 'records', min: 1, max: 50,
     help: 'From their Soccer Manager profile, Top 100 included. Full marks (2) at 3 or fewer, 0.25 less for each extra.' },
   { key: 'forfeits', label: 'Forfeits this season', source: 'records', min: 0, max: 50,
-    help: 'Top 100 competitions. 3 or more is a clear and obvious error.' },
+    help: 'Top 100 competitions such as the Youth Cup. In a review, 3 or more is a clear and obvious error; an applicant loses 2.5 from stability and conduct for each.' },
   { key: 'sanctions', label: 'Sanctions this season', source: 'admin', min: 0, max: 5,
-    help: 'Each costs 2.5 of the 5 discipline points; any sanction is a clear and obvious error.' },
+    help: 'Each costs 2.5 of the 5 discipline points; any sanction is a clear and obvious error. Each admin enters it separately and the team average is used.' },
   { key: 'loginGaps', label: 'Spells of 7+ days without logging in', source: 'admin', min: 0, max: 20,
     help: 'This season. 2 or more means inactive: never reappointed (rule 3.1).' },
 ];
 const FIELD = Object.fromEntries(INPUT_FIELDS.map((field) => [field.key, field]));
+// Assessed by each official separately (appointment_assessments); scoring uses the team average.
+const ASSESSED = new Set(['community', 'sanctions']);
+const teamValue = (data, managerId, key) => numberOrNull(data.assessments?.[String(managerId)]?.[key]);
 // The functions that take the game world (the others act on one row by id).
-const WORLD_FUNCTIONS = new Set(['load_appointment_reviews', 'save_appointment_round', 'publish_appointments', 'upsert_appointment_vacancy', 'announce_appointment_vacancies']);
+const WORLD_FUNCTIONS = new Set(['load_appointment_reviews', 'save_appointment_round', 'publish_appointments', 'upsert_appointment_vacancy', 'announce_appointment_vacancies', 'set_appointment_assessment']);
 const INLINE = { display: 'flex', alignItems: 'center', gap: 6 };
 const BOX = { width: 'auto', margin: 0, flex: 'none' };
 const ordinal = (n) => { const v = Number(n) % 100; return `${n}${v >= 11 && v <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[v % 10] || 'th'}`; };
@@ -62,21 +65,50 @@ const SCORE_HELP = {
   recent: ['Recent (out of 15)', 'The last two completed seasons: 9 × finish score (60% last season, 40% the season before), plus up to 6 for beating predictions (3, plus 0.3 for each place better on average).'],
   honours: ['Honours (out of 15)', 'Completed seasons: 6 for each Division 1 title, 3 for each other title and 2 for each promotion, up to 15.'],
   level: ['Level (out of 10)', "Record at the vacancy's division or higher: 1.5 for each season there (up to 6), plus 2 for each top-half finish there (up to 4)."],
-  stability: ['Stability (out of 20)', 'Up to 5 for consecutive seasons at their current club; 10, less 3 for each bottom-three finish in the last five seasons (not counting clubs taken over mid-season); and 5 for conduct, less 2.5 for each sanction this season.'],
-  activity: ['Activity (out of 20)', 'Top 100 competitions entered (2 each, up to 4); transfers with Top 100 managers in the last 120 days (0.4 each, up to 4); squad building, places climbed in the squad-strength ranking during their current spell (0–4); helps run Top 100 (0–3); community and social (0–3); and focus, 2 for 3 or fewer Soccer Manager game worlds, 0.25 less for each extra. Any input left blank gets half marks.'],
+  stability: ['Stability (out of 20)', 'Up to 5 for consecutive seasons at their current club; 10, less 3 for each bottom-three finish in the last five seasons (not counting clubs taken over mid-season); and 5 for conduct, less 2.5 for each sanction this season (the team average). Then 2.5 off for each forfeit in a Top 100 competition this season, such as the Youth Cup, down to 0.'],
+  activity: ['Activity (out of 20)', 'Top 100 competitions entered (2 each, up to 4); transfers with Top 100 managers in the last 120 days (0.4 each, up to 4); squad building, places climbed in the squad-strength ranking during their current spell (0–4); helps run Top 100 (0–3); community and social (0–3, the average of the admin team’s scores); and focus, 2 for 3 or fewer Soccer Manager game worlds, 0.25 less for each extra. Any input left blank gets half marks.'],
 };
 const STEP_TITLE = { margin: '0 0 4px', fontSize: 16 };
 
 // The scoring inputs as a table: what each one is, what Top 100's records say, and the
 // value that will be used (editable, within its limits).
-function InputsEditor({ values, records = {}, onChange, fields = INPUT_FIELDS, disabled }) {
+// assessment: the team's community and sanctions assessments of this manager ({ community, communityCount,
+// sanctions, sanctionsCount, mine }); onAssess saves the signed-in official's own.
+function InputsEditor({ values, records = {}, onChange, fields = INPUT_FIELDS, disabled, assessment, onAssess }) {
   const recorded = (key) => (records[key] === null || records[key] === undefined || records[key] === '' ? null : records[key]);
+  const [mine, setMine] = useState(() => ({ community: assessment?.mine?.community ?? '', sanctions: assessment?.mine?.sanctions ?? '' }));
+  const saveMine = () => {
+    const saved = assessment?.mine || {};
+    if (['community', 'sanctions'].every((key) => String(saved[key] ?? '') === String(mine[key] ?? ''))) return;
+    onAssess({ community: fieldValue(mine, 'community'), sanctions: fieldValue(mine, 'sanctions') });
+  };
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ fontSize: 13, width: '100%' }}>
         <thead><tr><th style={{ textAlign: 'left' }}>Input</th><th>From records</th><th>Used for scoring</th></tr></thead>
         <tbody>
           {fields.map((field) => {
+            if (onAssess && ASSESSED.has(field.key)) {
+              const average = numberOrNull(assessment?.[field.key]);
+              const count = assessment?.[`${field.key}Count`] || 0;
+              return (
+                <tr key={field.key}>
+                  <td style={{ textAlign: 'left', verticalAlign: 'top' }}>
+                    <strong>{field.label}</strong>
+                    <div className="muted">{field.help}</div>
+                  </td>
+                  <td style={{ verticalAlign: 'top' }}>
+                    {count ? <>Team average <strong>{average}</strong><div className="muted">{count} admin{count === 1 ? '' : 's'}</div></> : <span className="muted">No admin has scored this yet</span>}
+                  </td>
+                  <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                    <input type="number" min={field.min} max={field.max} step="0.5" style={{ width: 80 }} disabled={disabled}
+                      aria-label={`${field.label}: your score`} value={mine[field.key]}
+                      onChange={(event) => setMine({ ...mine, [field.key]: event.target.value })} onBlur={saveMine} />
+                    <div className="muted">Your score (saved when you leave the box)</div>
+                  </td>
+                </tr>
+              );
+            }
             const record = recorded(field.key);
             const value = values[field.key] ?? '';
             const edited = field.source === 'records' && record !== null && String(value) !== String(record);
@@ -247,15 +279,18 @@ const reviewScoringConfig = (data, reviews, inputs, newcomers) => ({
     };
   }),
   supply: { newcomers: newcomers.split(',').map((name) => name.trim()).filter(Boolean), leavers: [] },
-  discipline: Object.fromEntries(reviews.map((review) => [String(review.id), { sanctions: fieldValue(inputs[`r${review.id}`], 'sanctions') || 0 }])),
+  discipline: Object.fromEntries(reviews.map((review) => [String(review.id), { sanctions: teamValue(data, review.manager_id, 'sanctions') || 0 }])),
   activity: Object.fromEntries(reviews.map((review) => {
-    const values = inputs[`r${review.id}`] || {};
+    const values = { ...(inputs[`r${review.id}`] || {}), community: teamValue(data, review.manager_id, 'community') };
     return [String(review.id), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds', 'forfeits']
       .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
   })),
 });
 
 function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
+  // The signed-in official's own community and sanctions assessment of a manager.
+  const assess = (managerId, own) => call('set_appointment_assessment',
+    { p_manager_id: managerId, p_community: own.community, p_sanctions: own.sanctions, p_season: data.season }, 'Your assessment is saved.');
   const round = data.rounds.review;
   const [newcomers, setNewcomers] = useState((round?.inputs?.supply?.newcomers || []).join(', '));
   const saved = useMemo(() => Object.fromEntries((round?.result?.reviews || []).map((review) => [review.key, review])), [round]);
@@ -474,7 +509,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
             <div style={STEP}>
               <h4 style={STEP_TITLE}>2 · Scoring inputs</h4>
               <InputsEditor values={inputs[key] || {}} records={data.inputs[String(review.manager_id)] || {}} disabled={Boolean(review.published_at)}
-                onChange={(values) => setInputs({ ...inputs, [key]: values })} />
+                onChange={(values) => setInputs({ ...inputs, [key]: values })}
+                assessment={data.assessments?.[String(review.manager_id)]} onAssess={(own) => assess(review.manager_id, own)} />
             </div>
 
             <div style={STEP}>
@@ -550,6 +586,9 @@ function NewVacancy({ clubs, onCreate }) {
 }
 
 function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
+  // The signed-in official's own community and sanctions assessment of a manager.
+  const assess = (managerId, own) => call('set_appointment_assessment',
+    { p_manager_id: managerId, p_community: own.community, p_sanctions: own.sanctions, p_season: data.season }, 'Your assessment is saved.');
   const round = data.rounds.vacancies;
   const vacancies = data.vacancies.filter((vacancy) => vacancy.status !== 'withdrawn');
   const applications = data.applications.filter((application) => application.status === 'active');
@@ -567,6 +606,8 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     });
     // A comparison manager's inputs: as edited if they are also applying, otherwise Top 100's records.
     const comparisonInputs = (comparison) => (comparison.managerId ? inputs[`a${comparison.managerId}`] || data.inputs[String(comparison.managerId)] || {} : {});
+    // Community and sanctions: the team average of the officials' own assessments.
+    const scoringValues = (managerId, values) => ({ ...values, community: teamValue(data, managerId, 'community'), sanctions: teamValue(data, managerId, 'sanctions') });
     const config = {
       mode: 'vacancies',
       currentSeason: data.season,
@@ -582,17 +623,19 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
       ]),
       discipline: Object.fromEntries(applications.map((application) => {
         const base = data.inputs[keyOf(application)] || {};
-        return [keyOf(application), { gold: base.gold, openSanction: base.openSanction, sanctions: fieldValue(inputs[`a${application.manager_id}`], 'sanctions') || 0 }];
+        const values = scoringValues(application.manager_id, inputs[`a${application.manager_id}`] || base);
+        return [keyOf(application), { gold: base.gold, openSanction: base.openSanction, sanctions: fieldValue(values, 'sanctions') || 0, forfeits: fieldValue(values, 'forfeits') || 0 }];
       }).concat(comparisons.map((comparison) => {
         const base = data.inputs[String(comparison.managerId)] || {};
-        return [comparison.key, { gold: base.gold, openSanction: base.openSanction, sanctions: fieldValue(comparisonInputs(comparison), 'sanctions') || 0 }];
+        const values = scoringValues(comparison.managerId, comparisonInputs(comparison));
+        return [comparison.key, { gold: base.gold, openSanction: base.openSanction, sanctions: fieldValue(values, 'sanctions') || 0, forfeits: fieldValue(values, 'forfeits') || 0 }];
       }))),
       activity: Object.fromEntries(applications.map((application) => {
-        const values = inputs[`a${application.manager_id}`] || {};
+        const values = scoringValues(application.manager_id, inputs[`a${application.manager_id}`] || {});
         return [keyOf(application), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds']
           .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
       }).concat(comparisons.map((comparison) => [comparison.key, Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds']
-        .map((key) => [key, fieldValue(comparisonInputs(comparison), key)]).filter(([, value]) => value !== null))]))),
+        .map((key) => [key, fieldValue(scoringValues(comparison.managerId, comparisonInputs(comparison)), key)]).filter(([, value]) => value !== null))]))),
     };
     setMessage('Scoring…');
     try {
@@ -656,9 +699,10 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             {goldUnclear(data.inputs[String(application.manager_id)]) && <div className="status">{goldUnclear(data.inputs[String(application.manager_id)])}.</div>}
             <details>
               <summary>Scoring inputs (from Top 100's records; check and fill in before scoring)</summary>
-              <InputsEditor fields={INPUT_FIELDS.filter(({ key }) => !['forfeits', 'loginGaps'].includes(key))} values={inputs[`a${application.manager_id}`] || {}}
+              <InputsEditor fields={INPUT_FIELDS.filter(({ key }) => key !== 'loginGaps')} values={inputs[`a${application.manager_id}`] || {}}
                 records={data.inputs[String(application.manager_id)] || {}}
-                onChange={(values) => setInputs({ ...inputs, [`a${application.manager_id}`]: values })} />
+                onChange={(values) => setInputs({ ...inputs, [`a${application.manager_id}`]: values })}
+                assessment={data.assessments?.[String(application.manager_id)]} onAssess={(own) => assess(application.manager_id, own)} />
             </details>
           </div>
         ))}
