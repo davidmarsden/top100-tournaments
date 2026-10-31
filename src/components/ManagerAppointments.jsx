@@ -85,10 +85,10 @@ function VacanciesCard({ data, onSubmit, onWithdraw, busy }) {
   const open = data.vacancies.filter((vacancy) => vacancy.open);
   const application = data.application?.status === 'active' ? data.application : null;
   // Clubs that have since closed, been withdrawn or been decided drop out of the editable list.
-  const [chosen, setChosen] = useState((application?.preferences || []).filter((id) => open.some((vacancy) => vacancy.id === id)));
+  const [chosen, setChosen] = useState((application?.preferences || []).map(Number).filter((id) => open.some((vacancy) => Number(vacancy.id) === id)));
   const [note, setNote] = useState(application?.note || '');
   const notGold = data.gold?.gold === false;
-  const name = (id) => data.vacancies.find((vacancy) => vacancy.id === id)?.club || `#${id}`;
+  const name = (id) => data.vacancies.find((vacancy) => Number(vacancy.id) === Number(id))?.club || `#${id}`;
   const toggle = (id) => setChosen((list) => (list.includes(id) ? list.filter((item) => item !== id) : [...list, id]));
   const move = (index, step) =>
     setChosen((list) => {
@@ -115,6 +115,13 @@ function VacanciesCard({ data, onSubmit, onWithdraw, busy }) {
         Tick the clubs you want and put them in order: your first choice at the top. Applying for one club is fine. Every
         applicant is scored for every club they apply for, and the scores and decisions are published (rule 3.2).
       </p>
+      {application && (
+        <div className="status" role="status">
+          <strong>You have applied</strong> (saved {when(application.updatedAt)}):
+          <ol style={{ margin: '6px 0 0' }}>{application.preferences.map((id) => <li key={id}>{name(id)}</li>)}</ol>
+          You can change your clubs or their order below until the closing date.
+        </div>
+      )}
       {notGold && <p className="status">Applying needs Gold membership, which every Top 100 manager must have.</p>}
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {data.vacancies.map((vacancy) => (
@@ -152,7 +159,6 @@ function VacanciesCard({ data, onSubmit, onWithdraw, busy }) {
         </button>
         {application && <button type="button" className="secondary" disabled={busy} onClick={onWithdraw}>Withdraw</button>}
       </div>
-      {application && <p className="muted">Application saved {when(application.updatedAt)}: {application.preferences.map(name).join(', ')}.</p>}
     </section>
   );
 }

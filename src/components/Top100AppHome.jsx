@@ -38,6 +38,46 @@ function formList(form) {
   return Array.isArray(form) ? form.map((points) => FORM_RESULTS[Number(points)]).filter(Boolean) : [];
 }
 
+// Vacancies, the manager's application and any end-of-season review, so the home page shows
+// whether there is anything to apply for and what the manager has applied for.
+function AppointmentsCard({ session }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    if (!session?.user?.id || !supabase) return undefined;
+    let active = true;
+    supabase.rpc('my_appointments', { p_world_slug: 'top-100' }).then(({ data: result, error }) => {
+      if (active && !error) setData(result);
+    });
+    return () => { active = false; };
+  }, [session?.user?.id]);
+
+  if (!data?.manager) return null;
+  const vacancies = Array.isArray(data.vacancies) ? data.vacancies : [];
+  const application = data.application?.status === 'active' ? data.application : null;
+  const open = vacancies.filter((vacancy) => vacancy.open);
+  if (!application && !open.length && !data.review) return null;
+  const club = (id) => vacancies.find((vacancy) => Number(vacancy.id) === Number(id))?.club || 'A club no longer listed';
+  return (
+    <article className="top100-app-card">
+      <p className="eyebrow">Appointments · Top 100</p>
+      {application ? (
+        <>
+          <div className="top100-app-card__headline"><strong>Applied</strong><span>{application.preferences.length} {application.preferences.length === 1 ? 'club' : 'clubs'}</span></div>
+          <ol className="top100-app-card__meta" style={{ margin: '4px 0', paddingLeft: 20 }}>{application.preferences.map((id) => <li key={id}>{club(id)}</li>)}</ol>
+        </>
+      ) : open.length ? (
+        <div className="top100-app-card__headline"><strong>{open.length}</strong><span>{open.length === 1 ? 'vacancy' : 'vacancies'} open</span></div>
+      ) : (
+        <div className="top100-app-card__headline"><strong>Review</strong><span>{data.review.club}</span></div>
+      )}
+      <p className="muted top100-app-card__meta">
+        {data.review && !data.review.decision ? 'Your club is in the end-of-season review. ' : ''}
+        <a href="/appointments">{application ? 'View or change my application' : open.length ? 'See vacancies and apply' : 'Open appointments'}</a>
+      </p>
+    </article>
+  );
+}
+
 // gameWorldId follows the world the Manager Portal is showing: undefined while it is still loading,
 // null for the account's home world.
 export default function Top100AppHome({ session, gameWorldId, onSelectWorld = null }) {
@@ -109,6 +149,7 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
       </div>
 
       <div className="top100-app-home__grid">
+        <AppointmentsCard session={session} />
         {club?.position ? (
           <article className="top100-app-card">
             <p className="eyebrow">League · Division {club.division}</p>
