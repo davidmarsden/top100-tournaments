@@ -27,7 +27,8 @@ const incomingKey = (change) => (change.entity_type === 'manager_assignment' && 
 function GoldFlag({ signal }) {
   if (!signal) return <span className="sm-sync-gold unknown">Gold not captured yet</span>;
   if (signal.gold === false) return <span className="sm-sync-gold missing">Not a Gold member</span>;
-  if (signal.gold && !Number(signal.gold_days_left)) return <span className="sm-sync-gold unclear">Gold unclear – check (0 days left)</span>;
+  if (signal.gold !== true && signal.gold !== false) return <span className="sm-sync-gold unknown">Gold not captured yet</span>;
+  if (!Number(signal.gold_days_left)) return <span className="sm-sync-gold unclear">Gold unclear – check (0 days left)</span>;
   return <span className="sm-sync-gold ok">Gold · {signal.gold_days_left} days left</span>;
 }
 
