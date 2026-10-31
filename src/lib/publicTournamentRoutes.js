@@ -35,7 +35,12 @@ export function pickLiveTournament(rows = []) {
     const br = bRank === -1 ? 99 : bRank;
     return ar - br || Number(b.season_number || 0) - Number(a.season_number || 0) || Number(b.id || 0) - Number(a.id || 0);
   });
-  return ranked[0] || null;
+  if (ranked[0]) return ranked[0];
+  // Between seasons nothing is live: show the most recent (archived) season
+  // rather than "No public tournament found".
+  return [...rows]
+    .filter((row) => ['archived', 'completed'].includes(normalStatus(row)) && Number(row?.actual_entries || 0) > 0)
+    .sort((a, b) => Number(b.season_number || 0) - Number(a.season_number || 0) || Number(b.id || 0) - Number(a.id || 0))[0] || null;
 }
 
 export function routePath(row, { live = false } = {}) {

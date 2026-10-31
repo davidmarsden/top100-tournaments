@@ -16,6 +16,7 @@ import './reports-exports.css';
 import './fixture-first-navigation.css';
 import './competition-navigation.css';
 import './admin-sanitise.css';
+import './season-close.css';
 import './public-matchday-boundaries.js';
 import './public-double-forfeit-badges.js';
 import './fixture-first-navigation.js';

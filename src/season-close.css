@@ -1,0 +1,103 @@
+/* Season close (admin), grouped admin navigation, and the public champions /
+   prize draw sections. Uses the app's navy palette. */
+
+/* Grouped admin sidebar */
+.admin-module-nav { gap: 14px; }
+.admin-module-group { display: grid; gap: 6px; }
+.admin-module-group .eyebrow { margin: 0 0 2px 4px; font-size: 0.68rem; color: #8db4ff; }
+.admin-module-group .nav-pill { padding: 0.6rem 0.9rem; }
+@media (max-width: 900px) {
+  .admin-module-nav { position: static; display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px; padding: 14px; }
+  .admin-module-group { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .admin-module-group .eyebrow { display: none; }
+  .admin-module-group .nav-pill { width: auto; white-space: nowrap; }
+}
+
+/* Season close panels */
+.season-close { display: grid; gap: 18px; }
+.season-close-panel { border: 1px solid #24406b; border-radius: 20px; padding: 18px; background: #0b1d38; display: grid; gap: 14px; }
+.season-close-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.season-close-heading h3 { margin: 0 0 4px; font-size: 1.3rem; }
+.season-close-heading .muted { margin: 0; max-width: 760px; }
+.season-close-badge { flex: 0 0 auto; border-radius: 999px; padding: 0.4rem 0.8rem; font-weight: 900; font-size: 0.8rem; background: #18335c; color: #a9b8d0; white-space: nowrap; }
+.season-close-badge.is-ready { background: #0f3d2e; color: #6ee7b7; }
+.season-close-badge.is-done { background: #10b981; color: #052e1f; }
+.season-close-badge.is-blocked { background: #4a1d24; color: #fca5a5; }
+.season-check-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.season-check-list li { border-radius: 12px; padding: 0.6rem 0.8rem 0.6rem 2.1rem; position: relative; background: #0f2443; }
+.season-check-list li::before { position: absolute; left: 0.75rem; top: 0.55rem; font-weight: 900; }
+.season-check-list .check-ok { color: #6ee7b7; } .season-check-list .check-ok::before { content: '✓'; }
+.season-check-list .check-error { color: #fecaca; background: #2b1218; } .season-check-list .check-error::before { content: '✕'; color: #f87171; }
+.season-check-list .check-warning { color: #fde68a; background: #2a2210; } .season-check-list .check-warning::before { content: '!'; color: #fbbf24; }
+.season-check-list small { opacity: 0.7; }
+.season-honours { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.season-honours article { border-radius: 16px; padding: 12px 14px; background: #0f2443; border: 1px solid #24406b; display: grid; gap: 2px; }
+.season-honours article.is-winner { border-color: #b8913a; background: linear-gradient(135deg, #2a2210, #0f2443); }
+.season-honours span { font-size: 0.78rem; font-weight: 800; color: #cbd5e1; }
+.season-honours strong { font-size: 1.1rem; }
+.season-honours small { color: #a9b8d0; }
+.season-snapshots { display: grid; gap: 6px; }
+.season-snapshot-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 0.9rem; color: #cbd5e1; }
+button.compact { padding: 0.45rem 0.8rem; font-size: 0.82rem; }
+.link-button { background: none; color: #8db4ff; padding: 0.2rem 0; text-decoration: underline; font-weight: 700; justify-self: start; }
+
+/* Prize draw picker */
+.prize-draw-setup { display: grid; grid-template-columns: 2fr 2fr 110px; gap: 10px; }
+.prize-draw-setup label, .prize-draw-extra { display: grid; gap: 5px; font-size: 0.82rem; font-weight: 800; color: #cbd5e1; }
+.prize-draw-setup input, .prize-draw-extra textarea { width: 100%; border-radius: 12px; border: 1px solid #24406b; background: #08162d; color: #e8eef8; padding: 0.65rem 0.75rem; font-weight: 600; }
+.prize-draw-pool { display: grid; gap: 10px; }
+.prize-draw-pool-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.prize-draw-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.prize-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 0.35rem 0.75rem 0.35rem 0.5rem; background: #0f2443; border: 1px solid #24406b; cursor: pointer; font-size: 0.86rem; }
+.prize-chip input { accent-color: #10b981; margin: 0; }
+.prize-chip small { color: #8ea3c4; font-size: 0.74rem; }
+.prize-chip.is-on { border-color: #10b981; background: #0d2c2a; }
+.prize-chip.is-off { cursor: default; opacity: 0.75; border-style: dashed; padding-left: 0.75rem; }
+.prize-draw-button { background: linear-gradient(135deg, #10b981, #1d4ed8); font-size: 1.02rem; padding: 0.9rem 1.4rem; }
+.status.error { color: #fca5a5; }
+.prize-draw-reveal { border-radius: 20px; padding: 18px; background: radial-gradient(circle at 80% 0%, rgba(16,185,129,.25), transparent 50%), #071526; border: 1px solid #10b981; }
+.prize-draw-reveal ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.prize-draw-reveal li { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto; column-gap: 12px; align-items: center; padding: 10px 12px; border-radius: 14px; background: #0f2443; opacity: 0.55; transition: opacity 300ms ease, transform 300ms ease; }
+.prize-draw-reveal li.is-revealed { opacity: 1; transform: scale(1.01); background: #0d2c2a; }
+.prize-draw-reveal li strong { font-size: 1.2rem; }
+.prize-draw-reveal li small { grid-column: 2; color: #a9b8d0; }
+.reveal-rank { grid-row: span 2; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: #10b981; color: #052e1f; font-weight: 950; }
+.prize-draw-log { display: grid; gap: 8px; }
+.prize-draw-log-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-radius: 14px; padding: 12px 14px; background: #0f2443; border: 1px solid #24406b; }
+.prize-draw-log-row p { margin: 4px 0; }
+.prize-draw-log-row small { display: block; color: #a9b8d0; }
+.prize-draw-log-row.is-published { border-color: #10b981; }
+.prize-draw-log-row.is-voided { opacity: 0.55; }
+.prize-draw-log-row.is-voided p { text-decoration: line-through; }
+.verify-ok { color: #6ee7b7 !important; font-weight: 700; }
+.verify-fail { color: #fca5a5 !important; font-weight: 700; }
+@media (max-width: 720px) {
+  .prize-draw-setup { grid-template-columns: 1fr; }
+  .season-close-heading, .prize-draw-log-row { flex-direction: column; }
+}
+
+/* Public: champions banner */
+.champions-banner { border-radius: 28px; padding: 24px; margin-bottom: 18px; background: radial-gradient(circle at 12% 0%, rgba(234,179,8,.22), transparent 45%), radial-gradient(circle at 90% 100%, rgba(16,185,129,.18), transparent 45%), #0b1f3b; border: 1px solid #b8913a; }
+.champions-banner > .eyebrow { color: #facc15; opacity: 1; }
+.champions-banner h2 { margin: 0 0 14px; font-size: clamp(1.5rem, 3.5vw, 2.4rem); }
+.champions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.champion-card { border-radius: 20px; padding: 16px 18px; background: rgba(8, 22, 45, 0.75); border: 1px solid rgba(250, 204, 21, 0.35); display: grid; gap: 4px; }
+.champion-card .champion-label { font-size: 0.78rem; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #fde68a; }
+.champion-card strong { font-size: clamp(1.35rem, 3vw, 1.9rem); line-height: 1.05; }
+.champion-card .champion-manager { color: #cbd5e1; font-weight: 700; }
+.champion-card small { color: #a9b8d0; }
+
+/* Public: prize draw results */
+.public-prize-draw { display: grid; gap: 14px; }
+.public-prize-winners { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.public-prize-winners li { border-radius: 16px; padding: 14px; background: #0d2c2a; border: 1px solid #10b981; display: grid; gap: 2px; }
+.public-prize-winners span { font-size: 0.76rem; font-weight: 900; color: #6ee7b7; text-transform: uppercase; letter-spacing: 0.08em; }
+.public-prize-winners strong { font-size: 1.2rem; }
+.public-prize-winners small { color: #a9b8d0; }
+.public-prize-meta { font-size: 0.85rem; color: #a9b8d0; display: grid; gap: 6px; }
+.public-prize-meta code { word-break: break-all; font-size: 0.75rem; color: #cbd5e1; }
+.public-pool-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.public-pool-list li { border-radius: 999px; padding: 0.3rem 0.7rem; background: #0f2443; border: 1px solid #24406b; font-size: 0.82rem; }
+.public-pool-list li.is-out { border-style: dashed; color: #fca5a5; }
+.prize-chip span, .prize-chip small { white-space: nowrap; }
+.season-close-panel button:disabled { opacity: 0.4; filter: grayscale(0.6); }
