@@ -21,7 +21,11 @@ export default async () => {
     // Optional: never let the admin reminder block fixture reminders or retries.
     const syncReminders = await rpc(config, 'enqueue_sync_due_reminders').catch((error) => ({ error: error.message }));
     const squadCapAlerts = await rpc(config, 'enqueue_squad_cap_alerts').catch((error) => ({ error: error.message }));
-    const managerStatusAlerts = await rpc(config, 'enqueue_manager_status_alerts').catch((error) => ({ error: error.message }));
+    // Gold and login alerts for every Top 100 game world.
+    const managerStatusAlerts = {};
+    for (const world of ['top-100', 'regen']) {
+      managerStatusAlerts[world] = await rpc(config, 'enqueue_manager_status_alerts', { p_world_slug: world }).catch((error) => ({ error: error.message }));
+    }
     // After the squad cap refresh above: squads back within 50, deals during bans, required sales.
     const complianceEvents = await rpc(config, 'enqueue_compliance_events').catch((error) => ({ error: error.message }));
     const alerts = { reminders, syncReminders, squadCapAlerts, managerStatusAlerts, complianceEvents };

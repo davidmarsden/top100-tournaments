@@ -18,6 +18,20 @@ function reviewJson(value) {
 
 const CHANGE_PAGE_SIZE = 500;
 
+const managerName = (data) => data?.displayName || [data?.firstName, data?.surname].filter(Boolean).join(' ') || null;
+
+// A manager assignment's incoming manager, as setup:manager, for looking up their Gold status.
+const incomingKey = (change) => (change.entity_type === 'manager_assignment' && change.after_data?.managerId && change.after_data.managerId !== '0'
+  ? `${change.after_data.setupId}:${change.after_data.managerId}` : null);
+
+function GoldFlag({ signal }) {
+  if (!signal) return <span className="sm-sync-gold unknown">Gold not captured yet</span>;
+  if (signal.gold === false) return <span className="sm-sync-gold missing">Not a Gold member</span>;
+  if (signal.gold !== true && signal.gold !== false) return <span className="sm-sync-gold unknown">Gold not captured yet</span>;
+  if (!Number(signal.gold_days_left)) return <span className="sm-sync-gold unclear">Gold unclear – check (0 days left)</span>;
+  return <span className="sm-sync-gold ok">Gold · {signal.gold_days_left} days left</span>;
+}
+
 export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComplete = null }) {
   const [runs, setRuns] = useState([]);
   const [selectedRunId, setSelectedRunId] = useState(null);
@@ -26,6 +40,9 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
   const [loadingChanges, setLoadingChanges] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [status, setStatus] = useState('');
+  // Latest Manager List signals (Gold) and club names for incoming managers, keyed setup:manager / setup:club.
+  const [goldSignals, setGoldSignals] = useState({});
+  const [clubNames, setClubNames] = useState({});
   const changeRequestRef = useRef(0);
   const runRequestRef = useRef(0);
   const selectedRunIdRef = useRef(null);
@@ -60,6 +77,11 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
     && !loadingChanges
     && changes.length === selectedRun.change_count
     && changes.every((change) => change.run_id === selectedRunId);
+
+  const notGold = useMemo(
+    () => changes.filter((change) => change.status === 'pending' && incomingKey(change) && goldSignals[incomingKey(change)]?.gold === false),
+    [changes, goldSignals],
+  );
 
   const changeSummary = useMemo(() => {
     const summary = new Map();
@@ -180,6 +202,29 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
       return;
     }
     setChanges(allChanges);
+
+    // Gold is required in Top 100 and Regen: look up each incoming manager's latest Manager List signal.
+    const assignments = allChanges.filter((change) => change.entity_type === 'manager_assignment' && change.after_data);
+    if (!assignments.length) { setGoldSignals({}); setClubNames({}); return; }
+    const setups = [...new Set(assignments.map((change) => Number(change.after_data.setupId)).filter(Boolean))];
+    const managerIds = [...new Set(assignments.map((change) => String(change.after_data.managerId || '')).filter((id) => id && id !== '0'))];
+    const clubIds = [...new Set(assignments.map((change) => String(change.after_data.clubId || '')).filter(Boolean))];
+    const [signals, clubs] = await Promise.all([
+      managerIds.length
+        ? supabase.from('manager_signal_snapshots').select('source_world_id, sm_manager_id, gold, gold_days_left, captured_at')
+          .in('source_world_id', setups).in('sm_manager_id', managerIds).order('captured_at', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      supabase.from('soccer_manager_club_crosswalk').select('source_world_id, source_club_id, source_club_name')
+        .in('source_world_id', setups).in('source_club_id', clubIds),
+    ]);
+    if (changeRequestRef.current !== requestId) return;
+    const latest = {};
+    (signals.data || []).forEach((row) => {
+      const key = `${row.source_world_id}:${row.sm_manager_id}`;
+      if (!latest[key]) latest[key] = row;
+    });
+    setGoldSignals(latest);
+    setClubNames(Object.fromEntries((clubs.data || []).map((row) => [`${row.source_world_id}:${row.source_club_id}`, row.source_club_name])));
   }, []);
 
   useEffect(() => {
@@ -317,6 +362,10 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
             {changeSummary.map(([label, count]) => <span key={label}><strong>{count}</strong> {label}</span>)}
           </div>}
 
+          {notGold.length > 0 && <p className="status error-text">
+            {notGold.length} incoming manager{notGold.length === 1 ? ' is' : 's are'} not a Gold member: {notGold.map((change) => managerName(change.after_data)).join(', ')}. Gold is required to manage in Top 100 and Regen.
+          </p>}
+
           {loadingChanges && <p className="muted">Loading all {selectedRun.change_count} changes before review actions are enabled…</p>}
           {!loadingChanges && !allChangesLoaded && <p className="status error-text">The complete change set is not loaded for this run. Bulk review is disabled.</p>}
           {!loadingChanges && selectedRun.change_count === 0 && <div className="empty-state"><strong>No differences from the approved canonical source state.</strong><p className="muted">This sync is already up to date.</p></div>}
@@ -331,6 +380,11 @@ export default function SoccerManagerSyncReview({ refreshToken = 0, onReviewComp
                 </div>
                 <span className="sm-sync-change-status">{change.status}</span>
               </div>
+              {change.entity_type === 'manager_assignment' && change.after_data && <p className="sm-sync-assignment">
+                <strong>{clubNames[`${change.after_data.setupId}:${change.after_data.clubId}`] || `Club ${change.after_data.clubId}`}</strong>:{' '}
+                {managerName(change.before_data) || 'vacant'} → {managerName(change.after_data) || 'vacant'}{' '}
+                {incomingKey(change) && <GoldFlag signal={goldSignals[incomingKey(change)]} />}
+              </p>}
               {change.scope_key && <p className="muted">Scope: {change.scope_key}</p>}
               <details>
                 <summary>Compare normalized data</summary>
