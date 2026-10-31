@@ -63,44 +63,7 @@ The legacy `https://youth-cup.smtop100.blog/.netlify/functions/notify-manager-cl
 
 A pending claim is emailed once per review cycle. If a claim is rejected, corrected and resubmitted, its notification state is reset so the administrator receives a fresh alert.
 
-The Reports & Exports module can also create reviewable drafts on WordPress.com. WordPress.com does not expose the normal `/wp-json/wp/v2` route on a custom domain, so the server function calls the WordPress.com public REST API using a pre-generated OAuth access token.
-
-Configure these values in Netlify only; never expose the token through a `VITE_` variable:
-
-```env
-WORDPRESS_SITE_URL=https://smtop100.blog
-WORDPRESS_SITE_ID=smtop100.blog
-WORDPRESS_ACCESS_TOKEN=your_wordpress_com_oauth_access_token
-```
-
-`WORDPRESS_SITE_ID` may be the WordPress.com numeric site ID or its domain. Application passwords and the OAuth password grant are not supported for this integration.
-
-### Browser-only OAuth setup
-
-The access token can be generated on a phone or tablet without a terminal. Before the one-time setup, add these server-only Netlify variables:
-
-```env
-WORDPRESS_CLIENT_ID=your_wordpress_com_app_client_id
-WORDPRESS_CLIENT_SECRET=your_wordpress_com_app_client_secret
-```
-
-During the domain transition, the currently registered WordPress.com callback may remain:
-
-```text
-https://youth-cup.smtop100.blog/.netlify/functions/wordpress-oauth-setup
-```
-
-That exact path is exempted from the legacy-host 301 and is internally rewritten to the same Netlify function, preserving the request hostname so the OAuth `redirect_uri` still matches the registered callback. If the WordPress.com application callback is later changed to the canonical hostname, use:
-
-```text
-https://tournaments.smtop100.blog/.netlify/functions/wordpress-oauth-setup
-```
-
-Open the URL that is currently registered with WordPress.com in a browser and tap **Authorise with WordPress.com**. The helper generates a fresh random OAuth state for that attempt and stores it in a short-lived Secure, HttpOnly, SameSite cookie. The callback is accepted only in the browser that initiated the flow, then exchanges the temporary authorization code server-side and displays the resulting `WORDPRESS_ACCESS_TOKEN` and numeric `WORDPRESS_SITE_ID` for copying into Netlify.
-
-After the token is saved and a fresh deploy succeeds, remove `WORDPRESS_CLIENT_SECRET` if the setup helper is no longer needed. Keep `WORDPRESS_ACCESS_TOKEN` private.
-
-The draft-publishing function verifies the caller through Supabase's `is_admin` RPC before using the stored WordPress.com token. Posts are always created as drafts, with the relevant report categories and tags created or reused automatically.
+The Reports & Exports module builds the tournament snapshot (JSON and CSV) and generates matchday and knockout stories as Markdown to copy or download for the blog.
 
 ## Netlify build settings
 
