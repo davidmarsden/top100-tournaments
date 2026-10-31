@@ -6,12 +6,14 @@ const PUBLIC_STATUS_LABELS = {
 
 const MAIN_SITE_URL = 'https://smtop100.blog/';
 const REGEN_URL = 'https://smtop100.blog/regen/';
+const CHAT_URL = 'https://manager.smtop100.blog/chat';
 
 const GLOBAL_LINKS = [
   { key: 'top100', label: 'Top 100', href: MAIN_SITE_URL },
   { key: 'regen', label: 'Top 100 Regen', href: REGEN_URL },
   { key: 'about', label: 'About', href: `${MAIN_SITE_URL}about/` },
   { key: 'explore', label: 'Explore', href: `${MAIN_SITE_URL}explore/` },
+  { key: 'chat', label: '💬 Chat', href: CHAT_URL },
 ];
 
 const TOURNAMENT_LINKS = [
@@ -141,7 +143,7 @@ export default function Top100BrandShell({ children, product = 'Tournaments', cu
         <div className="top100-footer__inner">
           <div className="top100-footer__brand"><a href={MAIN_SITE_URL} className="top100-footer__wordmark" aria-label="Top 100 main site"><span>Top</span><strong>100</strong></a><span>{product}</span></div>
           <nav aria-label="Top 100 footer links">
-            <a href={MAIN_SITE_URL}>Top 100</a><a href={REGEN_URL}>Top 100 Regen</a><a href={`${MAIN_SITE_URL}about/`}>About</a><a href={`${MAIN_SITE_URL}explore/`}>Explore</a><a href={`${MAIN_SITE_URL}support/`}>Support</a><a href={`${MAIN_SITE_URL}subscribe/`}>Subscribe</a><a href="https://manager.smtop100.blog/">My Matches</a>
+            <a href={MAIN_SITE_URL}>Top 100</a><a href={REGEN_URL}>Top 100 Regen</a><a href={`${MAIN_SITE_URL}about/`}>About</a><a href={`${MAIN_SITE_URL}explore/`}>Explore</a><a href={CHAT_URL}>Chat</a><a href={`${MAIN_SITE_URL}support/`}>Support</a><a href={`${MAIN_SITE_URL}subscribe/`}>Subscribe</a><a href="https://manager.smtop100.blog/">My Matches</a>
           </nav>
         </div>
         <div className="top100-footer__note">{isManager ? 'Your fixtures, actions and tournament progress in one place, with the wider Top 100 resources always available publicly.' : isVoting ? 'Community Polls help managers shape how the Top 100 game world is run.' : 'Youth Cup, World Club Cup and other Top 100 competitions.'}</div>
