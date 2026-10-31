@@ -1,6 +1,7 @@
 -- Comparison managers are scored with the same inputs from Top 100's records as applicants:
 -- the overview resolves each vacancy's comparison manager to a manager id and loads their inputs.
 -- A comparison manager named on a vacancy, as a manager id (null when the name matches no one, or more than one).
+-- @permissions private public.appointment_comparison_manager_id(text): helper called only by the security-definer appointment_admin_overview.
 create or replace function public.appointment_comparison_manager_id(p_name text)
 returns bigint
 language sql
