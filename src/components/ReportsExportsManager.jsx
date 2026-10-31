@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import {
+  analyseKnockoutRound,
   analyseMatchday,
   buildSnapshot,
   csvFiles,
   downloadText,
+  generateKnockoutMarkdown,
   generateMatchdayMarkdown,
-  groupRounds,
+  isKnockoutStory,
   slugifyFilename,
+  storyFileSlug,
+  storyOptions,
+  storyRound,
 } from '../lib/tournamentReports';
 
 export default function ReportsExportsManager({ selectedTournament }) {
@@ -30,7 +35,10 @@ export default function ReportsExportsManager({ selectedTournament }) {
   }, [selectedTournament?.id]);
 
   const snapshotIsCurrent = Boolean(snapshot && String(snapshot.tournament.id) === String(selectedTournament?.id));
-  const rounds = useMemo(() => snapshotIsCurrent ? groupRounds(snapshot) : [], [snapshot, snapshotIsCurrent]);
+  const options = useMemo(() => snapshotIsCurrent ? storyOptions(snapshot) : [], [snapshot, snapshotIsCurrent]);
+  const groupOptions = options.filter((option) => option.stage === 'group');
+  const knockoutOptions = options.filter((option) => option.stage === 'knockout');
+  const selectedLabel = options.find((option) => option.value === selectedRound)?.label || selectedRound;
   const baseName = slugifyFilename(snapshotIsCurrent ? snapshot.tournament.name : selectedTournament?.name || 'tournament');
 
   async function loadSnapshot() {
@@ -90,8 +98,10 @@ export default function ReportsExportsManager({ selectedTournament }) {
         comments,
       });
       setSnapshot(nextSnapshot);
-      const availableRounds = groupRounds(nextSnapshot);
-      setSelectedRound(availableRounds[0] || '');
+      // Default to the latest stage reached: the last knockout round, else the first matchday.
+      const availableStories = storyOptions(nextSnapshot);
+      const latestKnockout = availableStories.filter((option) => option.stage === 'knockout').pop();
+      setSelectedRound(latestKnockout?.value || availableStories[0]?.value || '');
       setStatus(`Snapshot ready: ${nextSnapshot.entrants.length} entrants, ${nextSnapshot.fixtures.length} fixtures, ${nextSnapshot.results.length} results and ${nextSnapshot.press_conferences.length} press comments.`);
     } catch (error) {
       if (String(currentTournamentId.current) === String(tournamentId)) {
@@ -117,12 +127,23 @@ export default function ReportsExportsManager({ selectedTournament }) {
     setStatus(`Downloading ${Object.keys(files).length} CSV files. Your browser may ask permission for multiple downloads.`);
   }
 
+  function analyseStory() {
+    return isKnockoutStory(selectedRound)
+      ? analyseKnockoutRound(snapshot, storyRound(selectedRound))
+      : analyseMatchday(snapshot, selectedRound);
+  }
+
   function generateReport() {
     if (!snapshotIsCurrent || !selectedRound) return;
-    const analysis = analyseMatchday(snapshot, selectedRound);
-    setMarkdown(generateMatchdayMarkdown(snapshot, analysis));
+    const analysis = analyseStory();
     setWordpressDraftUrl('');
-    setStatus(`${selectedRound} blog draft generated from ${analysis.matches.length} completed group results and ${analysis.pressComments.length} selected press comments.`);
+    if (isKnockoutStory(selectedRound)) {
+      setMarkdown(generateKnockoutMarkdown(snapshot, analysis));
+      setStatus(`${selectedLabel} blog draft generated from ${analysis.ties.length} ties across the ${analysis.brackets.join(' and ')} and ${analysis.pressComments.length} selected press comments.`);
+    } else {
+      setMarkdown(generateMatchdayMarkdown(snapshot, analysis));
+      setStatus(`${selectedLabel} blog draft generated from ${analysis.matches.length} completed group results and ${analysis.pressComments.length} selected press comments.`);
+    }
   }
 
   async function copyMarkdown() {
@@ -140,7 +161,7 @@ export default function ReportsExportsManager({ selectedTournament }) {
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token;
       if (!token) throw new Error('Your admin session has expired. Please sign in again.');
-      const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || `${snapshot.tournament.name} ${selectedRound} report`;
+      const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || `${snapshot.tournament.name} ${selectedLabel} report`;
       const response = await fetch('/.netlify/functions/create-wordpress-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -148,7 +169,7 @@ export default function ReportsExportsManager({ selectedTournament }) {
           title,
           markdown,
           categories: ['Tournament Reports', `${snapshot.tournament.competition} Reports`],
-          tags: [snapshot.tournament.name, selectedRound, snapshot.tournament.competition],
+          tags: [snapshot.tournament.name, selectedLabel, snapshot.tournament.competition],
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -181,15 +202,16 @@ export default function ReportsExportsManager({ selectedTournament }) {
 
     <section className="report-panel">
       <div>
-        <p className="eyebrow">Matchday story generator</p>
-        <h3>What is the story of the group stage?</h3>
-        <p className="muted">The focused draft covers the strongest starters, surprise packages, under-achievers and teams with a mountain to climb, then adds selected comments from the press room. Full results and tables stay on the tournament hub.</p>
+        <p className="eyebrow">Story generator</p>
+        <h3>What is the story of the round?</h3>
+        <p className="muted">Group matchdays cover the strongest starters, surprise packages, under-achievers and teams with a mountain to climb. Knockout rounds cover every Cup and Shield tie with aggregates, upsets, comebacks, who's through and who's next; the Final adds the champions and their road to the title. Each draft ends with selected comments from the press room.</p>
       </div>
       <div className="report-controls">
-        <label>Report through
-          <select value={selectedRound} onChange={(event) => setSelectedRound(event.target.value)} disabled={!rounds.length}>
-            {!rounds.length && <option value="">Load snapshot first</option>}
-            {rounds.map((round) => <option key={round} value={round}>{round.replace(/^MD/i, 'Matchday ')}</option>)}
+        <label>Story
+          <select value={selectedRound} onChange={(event) => setSelectedRound(event.target.value)} disabled={!options.length}>
+            {!options.length && <option value="">Load snapshot first</option>}
+            {groupOptions.length > 0 && <optgroup label="Group stage (table so far)">{groupOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>}
+            {knockoutOptions.length > 0 && <optgroup label="Knockout (Cup and Shield)">{knockoutOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>}
           </select>
         </label>
         <button type="button" onClick={generateReport} disabled={!snapshotIsCurrent || !selectedRound}>Generate blog draft</button>
@@ -197,8 +219,8 @@ export default function ReportsExportsManager({ selectedTournament }) {
       {markdown && snapshotIsCurrent && <>
         <div className="button-row">
           <button type="button" className="secondary" onClick={copyMarkdown}>Copy markdown</button>
-          <button type="button" className="secondary" onClick={() => downloadText(`${baseName}-${selectedRound.toLowerCase()}-report.md`, markdown, 'text/markdown;charset=utf-8')}>Download .md</button>
-          <button type="button" className="secondary" onClick={() => downloadText(`${baseName}-${selectedRound.toLowerCase()}-analysis.json`, JSON.stringify(analyseMatchday(snapshot, selectedRound), null, 2), 'application/json;charset=utf-8')}>Download analysis JSON</button>
+          <button type="button" className="secondary" onClick={() => downloadText(`${baseName}-${storyFileSlug(selectedRound)}-report.md`, markdown, 'text/markdown;charset=utf-8')}>Download .md</button>
+          <button type="button" className="secondary" onClick={() => downloadText(`${baseName}-${storyFileSlug(selectedRound)}-analysis.json`, JSON.stringify(analyseStory(), null, 2), 'application/json;charset=utf-8')}>Download analysis JSON</button>
           <button type="button" onClick={createWordpressDraft} disabled={publishing}>{publishing ? 'Creating WordPress draft...' : 'Create WordPress draft'}</button>
           {wordpressDraftUrl && <a className="button secondary" href={wordpressDraftUrl} target="_blank" rel="noreferrer">Open WordPress draft</a>}
         </div>
