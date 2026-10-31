@@ -52,6 +52,7 @@ const fieldValue = (values, key) => {
 };
 const HERO_LINK = { color: '#fff', textDecoration: 'underline', fontWeight: 600 };
 const STEP = { borderTop: '1px solid var(--line, #e2e8f0)', marginTop: 16, paddingTop: 12 };
+const COMPARISON = 'comparison:';
 const NUM = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 const SCORE_PARTS = [['current', 'Current'], ['recent', 'Recent'], ['honours', 'Honours'], ['level', 'Level'], ['stability', 'Stability'], ['activity', 'Activity']];
 const STEP_TITLE = { margin: '0 0 4px', fontSize: 16 };
@@ -548,12 +549,24 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
 
   const runScoring = async () => {
     const keyOf = (application) => String(application.manager_id);
+    // Each vacancy's outgoing (or previous) manager is scored alongside, for comparison only:
+    // with no preferences they are never allocated, and the scores are kept out of what is published.
+    const comparisons = vacancies.filter((vacancy) => vacancy.comparison_manager).map((vacancy) => {
+      const stillThere = data.clubs.some((club) => club.club === vacancy.club_name && club.manager === vacancy.comparison_manager);
+      return { key: `${COMPARISON}${vacancy.id}`, name: vacancy.comparison_manager, club: stillThere ? vacancy.club_name : undefined, display: vacancy.comparison_manager };
+    });
     const config = {
       mode: 'vacancies',
       currentSeason: data.season,
       vacancies: vacancies.map((vacancy) => ({ club: vacancy.club_name, division: vacancy.division })),
-      applicants: applications.map((application) => ({ key: keyOf(application), name: application.managerName, club: application.club, display: application.managerName })),
-      preferences: Object.fromEntries(applications.map((application) => [keyOf(application), application.preferences.map(clubName)])),
+      applicants: [
+        ...applications.map((application) => ({ key: keyOf(application), name: application.managerName, club: application.club, display: application.managerName })),
+        ...comparisons,
+      ],
+      preferences: Object.fromEntries([
+        ...applications.map((application) => [keyOf(application), application.preferences.map(clubName)]),
+        ...comparisons.map((comparison) => [comparison.key, []]),
+      ]),
       discipline: Object.fromEntries(applications.map((application) => {
         const base = data.inputs[keyOf(application)] || {};
         return [keyOf(application), { gold: base.gold, openSanction: base.openSanction, sanctions: fieldValue(inputs[`a${application.manager_id}`], 'sanctions') || 0 }];
@@ -567,7 +580,14 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     setMessage('Scoring…');
     try {
       const scored = await score(config);
-      await call('save_appointment_round', { p_kind: 'vacancies', p_inputs: { ...config, edited: own(inputs, 'a') }, p_result: scored, p_season: data.season }, 'Scored.');
+      const isComparison = (key) => String(key).startsWith(COMPARISON);
+      const result = {
+        ...scored,
+        applicants: scored.applicants.filter((applicant) => !isComparison(applicant.key)),
+        comparisons: scored.applicants.filter((applicant) => isComparison(applicant.key)),
+        allocation: { ...scored.allocation, unplaced: (scored.allocation.unplaced || []).filter((key) => !isComparison(key)) },
+      };
+      await call('save_appointment_round', { p_kind: 'vacancies', p_inputs: { ...config, edited: own(inputs, 'a') }, p_result: result, p_season: data.season }, 'Scored.');
     } catch (error) {
       setMessage(error.message);
     }
@@ -583,7 +603,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
           {data.vacancies.map((vacancy) => (
             <li key={vacancy.id}>
               <strong>{vacancy.club_name}</strong> (D{vacancy.division}) · {vacancy.status}{vacancy.closes_at ? ` · closes ${when(vacancy.closes_at)}` : ''}
-              {vacancy.context ? ` · ${vacancy.context}` : ''}{' '}
+              {vacancy.context ? ` · ${vacancy.context}` : ''}
+              {` · compared with ${vacancy.comparison_manager || 'nobody'}`}{' '}
+              {!vacancy.published_at && <button type="button" className="secondary" onClick={() => {
+                const name = window.prompt(`Compare ${vacancy.club_name} applicants with which manager (the outgoing or previous manager)?`, vacancy.comparison_manager || '');
+                if (name !== null) call('set_appointment_vacancy_comparison', { p_id: vacancy.id, p_manager: name }, 'Comparison saved. Score applicants again to update it.');
+              }}>Change comparison</button>}{' '}
               {!vacancy.published_at && vacancy.status === 'open' && <button type="button" className="secondary" onClick={() => call('set_appointment_vacancy_status', { p_id: vacancy.id, p_status: 'closed' }, 'Closed.')}>Close</button>}
               {!vacancy.published_at && vacancy.status === 'closed' && !vacancy.decided_at && <button type="button" className="secondary" onClick={() => call('set_appointment_vacancy_status', { p_id: vacancy.id, p_status: 'open' }, 'Reopened.')}>Reopen</button>}
               {!vacancy.published_at && vacancy.status !== 'withdrawn' && !vacancy.decided_at && <> <button type="button" className="secondary" onClick={() => call('set_appointment_vacancy_status', { p_id: vacancy.id, p_status: 'withdrawn' }, 'Withdrawn.')}>Withdraw</button></>}
@@ -636,6 +661,8 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
           .map((applicant) => ({ applicant, scored: applicant.byVacancy?.[vacancy.club_name] }))
           .filter(({ applicant, scored }) => scored && applications.find((application) => String(application.manager_id) === applicant.key)?.preferences.includes(vacancy.id))
           .sort((a, b) => b.scored.total - a.scored.total);
+        const comparison = (result?.comparisons || []).find((entry) => entry.key === `${COMPARISON}${vacancy.id}`);
+        const comparisonScore = comparison?.byVacancy?.[vacancy.club_name];
         const choices = Object.fromEntries(applications.filter((application) => application.preferences.includes(vacancy.id)).map((application) => [String(application.manager_id), application.managerName]));
         // Vacancy votes are stored by applicant name; the decision is by manager id.
         const voteChoices = Object.fromEntries(Object.values(choices).map((name) => [name, name]));
@@ -653,7 +680,14 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
                     {SCORE_PARTS.map(([part]) => <td key={part} style={NUM}>{scored.breakdown[part]}</td>)}
                     <td>{scored.eligibility.eligible ? 'Yes' : scored.eligibility.reasons.join(' ')}</td>
                   </tr>
-                ))}</tbody>
+                ))}
+                {comparisonScore && (
+                  <tr className="muted" style={{ fontStyle: 'italic' }}>
+                    <td>{comparison.display} (outgoing, for comparison)</td><td style={NUM}>{comparisonScore.total}</td>
+                    {SCORE_PARTS.map(([part]) => <td key={part} style={NUM}>{comparisonScore.breakdown[part]}</td>)}
+                    <td>Not applying</td>
+                  </tr>
+                )}</tbody>
               </table>
             ) : <p className="muted">{result ? 'No applicants scored for this club.' : 'Not scored yet.'}</p>}
             <div style={STEP}>
