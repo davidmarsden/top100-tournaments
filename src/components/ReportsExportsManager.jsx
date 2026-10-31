@@ -21,8 +21,6 @@ export default function ReportsExportsManager({ selectedTournament }) {
   const [markdown, setMarkdown] = useState('');
   const [status, setStatus] = useState('Load the current tournament snapshot to begin.');
   const [loading, setLoading] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [wordpressDraftUrl, setWordpressDraftUrl] = useState('');
   const currentTournamentId = useRef(selectedTournament?.id || null);
 
   useEffect(() => {
@@ -30,7 +28,6 @@ export default function ReportsExportsManager({ selectedTournament }) {
     setSnapshot(null);
     setSelectedRound('');
     setMarkdown('');
-    setWordpressDraftUrl('');
     setStatus(selectedTournament ? 'Load the current tournament snapshot to begin.' : 'Select a tournament first.');
   }, [selectedTournament?.id]);
 
@@ -48,7 +45,6 @@ export default function ReportsExportsManager({ selectedTournament }) {
     setSnapshot(null);
     setSelectedRound('');
     setMarkdown('');
-    setWordpressDraftUrl('');
     setStatus('Building tournament snapshot...');
     try {
       const [entriesResult, groupsResult, matchesResult, roundDatesResult, honoursResult] = await Promise.all([
@@ -136,7 +132,6 @@ export default function ReportsExportsManager({ selectedTournament }) {
   function generateReport() {
     if (!snapshotIsCurrent || !selectedRound) return;
     const analysis = analyseStory();
-    setWordpressDraftUrl('');
     if (isKnockoutStory(selectedRound)) {
       setMarkdown(generateKnockoutMarkdown(snapshot, analysis));
       setStatus(`${selectedLabel} blog draft generated from ${analysis.ties.length} ties across the ${analysis.brackets.join(' and ')} and ${analysis.pressComments.length} selected press comments.`);
@@ -149,38 +144,7 @@ export default function ReportsExportsManager({ selectedTournament }) {
   async function copyMarkdown() {
     if (!markdown) return;
     await navigator.clipboard.writeText(markdown);
-    setStatus('Markdown copied to the clipboard.');
-  }
-
-  async function createWordpressDraft() {
-    if (!markdown || !snapshotIsCurrent || publishing) return;
-    setPublishing(true);
-    setWordpressDraftUrl('');
-    setStatus('Creating WordPress draft...');
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token;
-      if (!token) throw new Error('Your admin session has expired. Please sign in again.');
-      const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || `${snapshot.tournament.name} ${selectedLabel} report`;
-      const response = await fetch('/.netlify/functions/create-wordpress-draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          title,
-          markdown,
-          categories: ['Tournament Reports', `${snapshot.tournament.competition} Reports`],
-          tags: [snapshot.tournament.name, selectedLabel, snapshot.tournament.competition],
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || `WordPress returned ${response.status}.`);
-      setWordpressDraftUrl(payload.edit_url || payload.url || '');
-      setStatus('WordPress draft created. Review it on WordPress.com before publishing.');
-    } catch (error) {
-      setStatus(`Could not create WordPress draft: ${error.message}`);
-    } finally {
-      setPublishing(false);
-    }
+    setStatus('Markdown copied. Paste it into a new Micro.blog post.');
   }
 
   if (!selectedTournament) return <p className="muted">Create or select a tournament first.</p>;
@@ -221,8 +185,6 @@ export default function ReportsExportsManager({ selectedTournament }) {
           <button type="button" className="secondary" onClick={copyMarkdown}>Copy markdown</button>
           <button type="button" className="secondary" onClick={() => downloadText(`${baseName}-${storyFileSlug(selectedRound)}-report.md`, markdown, 'text/markdown;charset=utf-8')}>Download .md</button>
           <button type="button" className="secondary" onClick={() => downloadText(`${baseName}-${storyFileSlug(selectedRound)}-analysis.json`, JSON.stringify(analyseStory(), null, 2), 'application/json;charset=utf-8')}>Download analysis JSON</button>
-          <button type="button" onClick={createWordpressDraft} disabled={publishing}>{publishing ? 'Creating WordPress draft...' : 'Create WordPress draft'}</button>
-          {wordpressDraftUrl && <a className="button secondary" href={wordpressDraftUrl} target="_blank" rel="noreferrer">Open WordPress draft</a>}
         </div>
         <textarea className="report-markdown" value={markdown} onChange={(event) => setMarkdown(event.target.value)} aria-label="Generated matchday blog draft" />
       </>}
