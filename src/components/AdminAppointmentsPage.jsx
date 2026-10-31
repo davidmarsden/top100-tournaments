@@ -55,6 +55,16 @@ const STEP = { borderTop: '1px solid var(--line, #e2e8f0)', marginTop: 16, paddi
 const COMPARISON = 'comparison:';
 const NUM = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 const SCORE_PARTS = [['current', 'Current'], ['recent', 'Recent'], ['honours', 'Honours'], ['level', 'Level'], ['stability', 'Stability'], ['activity', 'Activity']];
+// What each score column measures and how it is worked out (the archive's appointmentScoring.js).
+// A finish score is half the place within the division and half the place among all 100 clubs.
+const SCORE_HELP = {
+  current: ['Current (out of 20)', "This season's league position so far: 12 × finish score, plus up to 8 for beating the pre-season prediction (4, plus 0.4 for each place better than predicted, less for each place worse). An outgoing manager who has left is credited with the club's season so far."],
+  recent: ['Recent (out of 15)', 'The last two completed seasons: 9 × finish score (60% last season, 40% the season before), plus up to 6 for beating predictions (3, plus 0.3 for each place better on average).'],
+  honours: ['Honours (out of 15)', 'Completed seasons: 6 for each Division 1 title, 3 for each other title and 2 for each promotion, up to 15.'],
+  level: ['Level (out of 10)', "Record at the vacancy's division or higher: 1.5 for each season there (up to 6), plus 2 for each top-half finish there (up to 4)."],
+  stability: ['Stability (out of 20)', 'Up to 5 for consecutive seasons at their current club; 10, less 3 for each bottom-three finish in the last five seasons (not counting clubs taken over mid-season); and 5 for conduct, less 2.5 for each sanction this season.'],
+  activity: ['Activity (out of 20)', 'Top 100 competitions entered (2 each, up to 4); transfers with Top 100 managers in the last 120 days (0.4 each, up to 4); squad building, places climbed in the squad-strength ranking during their current spell (0–4); helps run Top 100 (0–3); community and social (0–3); and focus, 2 for 3 or fewer Soccer Manager game worlds, 0.25 less for each extra. Any input left blank gets half marks.'],
+};
 const STEP_TITLE = { margin: '0 0 4px', fontSize: 16 };
 
 // The scoring inputs as a table: what each one is, what Top 100's records say, and the
@@ -553,7 +563,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     // with no preferences they are never allocated, and the scores are kept out of what is published.
     const comparisons = vacancies.filter((vacancy) => vacancy.comparison_manager).map((vacancy) => {
       const stillThere = data.clubs.some((club) => club.club === vacancy.club_name && club.manager === vacancy.comparison_manager);
-      return { key: `${COMPARISON}${vacancy.id}`, managerId: vacancy.comparisonManagerId, name: vacancy.comparison_manager, club: stillThere ? vacancy.club_name : undefined, display: vacancy.comparison_manager };
+      return { key: `${COMPARISON}${vacancy.id}`, managerId: vacancy.comparisonManagerId, name: vacancy.comparison_manager, club: stillThere ? vacancy.club_name : undefined, seasonClub: vacancy.club_name, display: vacancy.comparison_manager };
     });
     // A comparison manager's inputs: as edited if they are also applying, otherwise Top 100's records.
     const comparisonInputs = (comparison) => (comparison.managerId ? inputs[`a${comparison.managerId}`] || data.inputs[String(comparison.managerId)] || {} : {});
@@ -563,7 +573,8 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
       vacancies: vacancies.map((vacancy) => ({ club: vacancy.club_name, division: vacancy.division })),
       applicants: [
         ...applications.map((application) => ({ key: keyOf(application), name: application.managerName, club: application.club, display: application.managerName })),
-        ...comparisons.map(({ key, name, club, display }) => ({ key, name, club, display })),
+        // seasonClub: a comparison manager who has left is credited with the club's season so far.
+        ...comparisons.map(({ key, name, club, display, seasonClub }) => ({ key, name, club, display, seasonClub })),
       ],
       preferences: Object.fromEntries([
         ...applications.map((application) => [keyOf(application), application.preferences.map(clubName)]),
@@ -678,8 +689,9 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
           <section className="card" key={vacancy.id}>
             <h3>{vacancy.club_name} (D{vacancy.division})</h3>
             {ranking.length ? (
+              <>
               <table>
-                <thead><tr><th>Applicant</th><th style={NUM}>Score</th>{SCORE_PARTS.map(([, label]) => <th key={label} style={NUM}>{label}</th>)}<th>Eligible</th></tr></thead>
+                <thead><tr><th>Applicant</th><th style={NUM}>Score</th>{SCORE_PARTS.map(([part, label]) => <th key={label} style={NUM} title={SCORE_HELP[part][1]}>{label}</th>)}<th>Eligible</th></tr></thead>
                 <tbody>{ranking.map(({ applicant, scored }) => (
                   <tr key={applicant.key}>
                     <td>{applicant.display}</td><td style={NUM}><strong>{scored.total}</strong></td>
@@ -695,6 +707,15 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
                   </tr>
                 )}</tbody>
               </table>
+              <details style={{ marginTop: 8 }}>
+                <summary>How each score is worked out</summary>
+                <dl style={{ margin: '8px 0 0' }}>
+                  {SCORE_PARTS.map(([part]) => (
+                    <div key={part} style={{ marginBottom: 8 }}><dt style={{ fontWeight: 700 }}>{SCORE_HELP[part][0]}</dt><dd style={{ margin: 0 }} className="muted">{SCORE_HELP[part][1]}</dd></div>
+                  ))}
+                </dl>
+              </details>
+              </>
             ) : <p className="muted">{result ? 'No applicants scored for this club.' : 'Not scored yet.'}</p>}
             <div style={STEP}>
               <h4 style={STEP_TITLE}>Votes</h4>
