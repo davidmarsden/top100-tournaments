@@ -59,15 +59,18 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
   const [archiveRows, setArchiveRows] = useState([]);
   const [archiveStatus, setArchiveStatus] = useState('loading');
   const [currentSeasonNumber, setCurrentSeasonNumber] = useState(null);
+  // Once the tournament is archived its winners belong in the records too.
+  const [currentArchived, setCurrentArchived] = useState(false);
 
   useEffect(() => {
-    if (!currentTournamentId || !hasSupabaseConfig || !supabase) { setCurrentSeasonNumber(null); return undefined; }
+    if (!currentTournamentId || !hasSupabaseConfig || !supabase) { setCurrentSeasonNumber(null); setCurrentArchived(false); return undefined; }
     let active = true;
-    supabase.from('tournaments').select('season_number, name').eq('id', currentTournamentId).maybeSingle().then(({ data }) => {
+    supabase.from('tournaments').select('season_number, name, status').eq('id', currentTournamentId).maybeSingle().then(({ data }) => {
       if (!active) return;
       const season = Number(data?.season_number) || seasonNumber({ tournament_name: data?.name });
       setCurrentSeasonNumber(season || null);
-    }).catch(() => { if (active) setCurrentSeasonNumber(null); });
+      setCurrentArchived(['archived', 'completed'].includes(String(data?.status || '').toLowerCase()));
+    }).catch(() => { if (active) { setCurrentSeasonNumber(null); setCurrentArchived(false); } });
     return () => { active = false; };
   }, [currentTournamentId]);
 
@@ -91,10 +94,11 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
   }, [rows]);
 
   const winners = useMemo(() => relevantRows(archiveRows).filter((row) => {
+    if (currentArchived) return true;
     if (row.tournament_id && Number(row.tournament_id) === Number(currentTournamentId)) return false;
     if (currentSeasonNumber && seasonNumber(row) === currentSeasonNumber) return false;
     return true;
-  }), [archiveRows, currentTournamentId, currentSeasonNumber]);
+  }), [archiveRows, currentTournamentId, currentSeasonNumber, currentArchived]);
   const seasons = useMemo(() => seasonOptions(winners), [winners]);
   const latestSeason = seasons[0] || null;
   const latestRows = useMemo(() => winners.filter((row) => seasonNumber(row) === latestSeason), [winners, latestSeason]);
@@ -116,7 +120,7 @@ export default function WinnersArchive({ rows = [], currentTournamentId }) {
   if (!winners.length) return <div className="previous-winners winners-archive-panel archive-unavailable-card"><h3>Historic winners archive</h3><p className="muted">{archiveStatus === 'empty' ? 'The archive returned no Youth Cup or Shield winner records.' : 'The Top 100 archive could not be reached.'}</p><a className="public-link-button" href={ARCHIVE_URL} target="_blank" rel="noreferrer">Open full honours archive</a></div>;
 
   return <div className="previous-winners winners-archive-panel">
-    <div className="winners-archive-header"><div><h3>{latestSeason ? `Last season's winners — S${latestSeason}` : 'Previous winners archive'}</h3><p className="muted">Historic Youth Cup and Shield winners supplied by the Top 100 archive.</p></div><a className="public-link-button" href={ARCHIVE_URL} target="_blank" rel="noreferrer">Full honours archive</a></div>
+    <div className="winners-archive-header"><div><h3>{latestSeason ? `${currentArchived && latestSeason === currentSeasonNumber ? "This season's" : "Last season's"} winners — S${latestSeason}` : 'Previous winners archive'}</h3><p className="muted">Historic Youth Cup and Shield winners supplied by the Top 100 archive.</p></div><a className="public-link-button" href={ARCHIVE_URL} target="_blank" rel="noreferrer">Full honours archive</a></div>
     {latestRows.length > 0 && <div className="previous-winner-list latest-winner-list">{latestRows.map((row) => <WinnerCard key={`latest-${row.id}`} row={row} featured />)}</div>}
     <div className="winners-filter-row"><label className="public-group-filter">Competition<select value={competitionFilter} onChange={(event) => setCompetitionFilter(event.target.value)}>{COMPETITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="public-group-filter">Season<select value={seasonFilter} onChange={(event) => setSeasonFilter(event.target.value)}><option value="recent">Recent winners</option><option value="all">All seasons</option>{seasons.map((season) => <option key={season} value={season}>S{season}</option>)}</select></label></div>
     <div className="previous-winner-list compact-winner-list">{filteredRows.map((row) => <WinnerCard key={row.id} row={row} />)}</div>
