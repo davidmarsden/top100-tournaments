@@ -412,6 +412,16 @@ function buildTies(snapshot, round) {
     const winnerSeed = winner ? seedById.get(String(winner.id)) ?? null : null;
     const loserSeed = loser ? seedById.get(String(loser.id)) ?? null : null;
     const firstLegLost = winner && legs.length > 1 && goalsFor(first, winner.id) < goalsFor(first, loser.id);
+    const forfeitLegs = legs.filter((leg) => leg.status === 'forfeit' && !leg.double_forfeit && leg.decided_by !== 'double_forfeit');
+    // The responsible side comes from the forfeit records; fall back to the
+    // leg's loser only when no record exists. In a two-leg tie the side that
+    // forfeited a leg can still win on aggregate.
+    const forfeiters = [...new Set(forfeitLegs.flatMap((leg) => {
+      const recorded = (leg.forfeiting_entry_ids || []).map(String);
+      if (recorded.length) return recorded;
+      const legLoser = leg.loser_entry_id ?? (leg.winner_entry_id == null ? null : String(leg.winner_entry_id) === String(leg.home_entry_id) ? leg.away_entry_id : leg.home_entry_id);
+      return legLoser == null ? [] : [String(legLoser)];
+    }))].map((id) => (String(sideA.id) === id ? sideA : String(sideB.id) === id ? sideB : null)).filter(Boolean);
     return {
       bracket: first.bracket || 'Cup',
       legs,
@@ -419,7 +429,10 @@ function buildTies(snapshot, round) {
       bye,
       complete,
       doubleForfeit,
-      forfeit: legs.some((leg) => leg.status === 'forfeit') && !doubleForfeit,
+      forfeit: forfeitLegs.length > 0 && !doubleForfeit,
+      // A walkover: the tie was settled by the forfeit, not by football.
+      walkover: forfeitLegs.length > 0 && !doubleForfeit && forfeitLegs.length === legs.length,
+      forfeiters,
       winner, loser,
       winnerManager: winner ? managerById.get(String(winner.id)) || null : null,
       winnerGoals, loserGoals,
@@ -436,7 +449,7 @@ function buildTies(snapshot, round) {
 export function analyseKnockoutRound(snapshot, round) {
   const ties = buildTies(snapshot, round);
   const brackets = [...new Set(ties.map((tie) => tie.bracket))].sort((a, b) => bracketRank(a) - bracketRank(b) || a.localeCompare(b));
-  const contested = ties.filter((tie) => tie.complete && tie.winner && !tie.bye && !tie.forfeit);
+  const contested = ties.filter((tie) => tie.complete && tie.winner && !tie.bye && !tie.walkover);
   const nextRound = KNOCKOUT_ORDER[knockoutRank(round) + 1] || null;
   const nextTies = nextRound ? buildTies(snapshot, nextRound).filter((tie) => !tie.bye) : [];
   const roundDates = (snapshot.round_dates || []).filter((row) => row.round === nextRound);
@@ -461,7 +474,7 @@ export function analyseKnockoutRound(snapshot, round) {
     roundDates,
     champions,
     pressComments: selectPressComments(snapshot.press_conferences || [], includedMatchIds, matchById),
-    goals: ties.filter((tie) => !tie.bye && !tie.forfeit && !tie.doubleForfeit).reduce((total, tie) => total + tie.legs.reduce((sum, leg) => sum + Number(leg.home_score || 0) + Number(leg.away_score || 0), 0), 0),
+    goals: ties.filter((tie) => !tie.bye && !tie.walkover && !tie.doubleForfeit).reduce((total, tie) => total + tie.legs.reduce((sum, leg) => sum + Number(leg.home_score || 0) + Number(leg.away_score || 0), 0), 0),
   };
 }
 
@@ -495,13 +508,15 @@ function tieSentence(tie) {
   if (tie.doubleForfeit) return `${tie.sideA.team} v ${tie.sideB.team} was not played — a double forfeit, and both sides are out.`;
   if (!tie.complete) return `${tie.sideA.team} v ${tie.sideB.team} — still to be completed (${tie.legs.filter(isComplete).length}/${tie.legs.length} legs played).`;
   if (!tie.winner) return `${tie.sideA.team} v ${tie.sideB.team} — no winner recorded yet.`;
-  if (tie.forfeit) return `**${tie.winner.team}** advance after ${tie.loser.team} forfeited.`;
+  const forfeitedBy = tie.forfeiters.map((side) => side.team).join(' and ') || tie.loser.team;
+  if (tie.walkover) return `**${tie.winner.team}** advance after ${forfeitedBy} forfeited.`;
   const twoLegs = tie.legs.length > 1;
   const score = `${tie.winnerGoals}-${tie.loserGoals}${twoLegs ? ' on aggregate' : ''}`;
   const note = decisionNote(tie);
   const legs = twoLegs ? ` (${tie.legs.map(legScore).join('; ')})` : '';
   const verb = tie.margin >= 3 ? 'swept past' : tie.margin === 0 ? 'edged' : 'beat';
-  return `**${tie.winner.team}** ${verb} ${tie.loser.team} ${score}${note ? ` ${note}` : ''}${legs}.`;
+  const forfeitNote = tie.forfeit ? ` — ${forfeitedBy} forfeited a leg` : '';
+  return `**${tie.winner.team}** ${verb} ${tie.loser.team} ${score}${note ? ` ${note}` : ''}${legs}${forfeitNote}.`;
 }
 
 const seedNote = (tie) => tie.winnerSeed && tie.loserSeed ? ` (seed ${tie.winnerSeed} v seed ${tie.loserSeed})` : '';
@@ -511,15 +526,19 @@ export function generateKnockoutMarkdown(snapshot, analysis) {
   const prefix = /youth/i.test(name) && !/youth/i.test(analysis.brackets.join(' ')) ? 'Youth ' : '';
   const title = (bracket) => `${prefix}${bracket}`;
   const finalRound = analysis.round === 'Final';
+  // Crown champions only once every Final has a winner.
+  const finalsDone = finalRound && !analysis.pending.length && analysis.champions.length > 0
+    && analysis.champions.length === analysis.ties.filter((tie) => !tie.bye && !tie.doubleForfeit).length;
+  const archived = ['archived', 'completed'].includes(String(snapshot.tournament.status || '').toLowerCase());
   const decided = analysis.ties.filter((tie) => tie.complete && tie.winner && !tie.bye);
   const lines = [];
 
-  if (finalRound && analysis.champions.length) {
+  if (finalsDone) {
     const headline = analysis.champions.map((tie) => tie.winner.team).join(' and ');
     lines.push(`# ${name}: ${headline} crowned champions`, '');
     lines.push(`The finals are done. ${analysis.champions.map((tie) => `**${tie.winner.team}**${tie.winnerManager ? ` (${tie.winnerManager})` : ''} won the ${title(tie.bracket)}`).join(', and ')}.`, '');
   } else {
-    lines.push(`# ${name}: ${analysis.label} — who's through`, '');
+    lines.push(`# ${name}: ${analysis.label} — ${finalRound ? 'the story so far' : "who's through"}`, '');
     const through = analysis.ties.filter((tie) => tie.winner).length;
     const plural = /finals$/i.test(analysis.label);
     lines.push(`The ${analysis.label.toLowerCase()} ${plural ? 'are' : 'is'} ${analysis.pending.length ? 'under way' : 'complete'}: ${through} side${through === 1 ? '' : 's'} through across the ${analysis.brackets.map(title).join(' and ')}${analysis.goals ? `, with ${analysis.goals} goals scored` : ''}.`, '');
@@ -534,7 +553,7 @@ export function generateKnockoutMarkdown(snapshot, analysis) {
     lines.push('');
   });
 
-  if (finalRound && analysis.champions.length) {
+  if (finalsDone) {
     analysis.champions.forEach((tie) => {
       lines.push(`## ${tie.winner.team}'s road to the ${title(tie.bracket)} title`, '');
       tie.road.forEach(({ round, tie: step }) => lines.push(`- **${knockoutRoundLabel(round)}:** ${tieSentence(step).replace(/^\*\*[^*]+\*\*\s*/, '')}`));
@@ -553,7 +572,8 @@ export function generateKnockoutMarkdown(snapshot, analysis) {
     const doubles = analysis.forfeits.filter((tie) => tie.doubleForfeit);
     const singles = analysis.forfeits.filter((tie) => !tie.doubleForfeit);
     lines.push('## Fair play', '');
-    if (singles.length) lines.push(`- ${singles.length} walkover${singles.length === 1 ? '' : 's'}: ${singles.map((tie) => tie.loser?.team).filter(Boolean).join(', ')} forfeited.`);
+    const forfeitedTeams = singles.flatMap((tie) => tie.forfeiters.length ? tie.forfeiters.map((side) => side.team) : [tie.loser?.team]).filter(Boolean);
+    if (singles.length) lines.push(`- ${singles.length} tie${singles.length === 1 ? '' : 's'} with a forfeit: ${forfeitedTeams.join(', ')} forfeited.`);
     if (doubles.length) lines.push(`- ${doubles.length} double forfeit${doubles.length === 1 ? '' : 's'}: ${doubles.map((tie) => `${tie.sideA.team} v ${tie.sideB.team}`).join(', ')}.`);
     lines.push('', 'Any forfeit rules the responsible manager out of the end-of-season prize draw.', '');
   }
@@ -568,7 +588,13 @@ export function generateKnockoutMarkdown(snapshot, analysis) {
     });
   }
 
-  if (!finalRound) {
+  if (finalsDone) {
+    lines.push('## That\'s a wrap', '', archived
+      ? `Thanks to every manager who took part. The ${name} is now archived, and the end-of-season prize draw for managers with a clean fair-play record is next.`
+      : `Thanks to every manager who took part. Next comes the end-of-season prize draw for managers with a clean fair-play record.`, '');
+  } else if (finalRound) {
+    lines.push('## Still to play', '', 'The final word comes once every leg of the Final is complete.', '');
+  } else {
     lines.push(`## Next up: ${analysis.nextRound ? knockoutRoundLabel(analysis.nextRound) : 'the next round'}`, '');
     if (analysis.nextTies.length) {
       analysis.brackets.forEach((bracket) => {
@@ -582,8 +608,6 @@ export function generateKnockoutMarkdown(snapshot, analysis) {
     } else if (decided.length) {
       lines.push(`Still in the hunt: ${decided.map((tie) => tie.winner.team).join(', ')}. The draw for the ${analysis.nextRound ? knockoutRoundLabel(analysis.nextRound).toLowerCase() : 'next round'} is next.`, '');
     }
-  } else {
-    lines.push('## That\'s a wrap', '', `Thanks to every manager who took part. The ${name} is now archived, and the end-of-season prize draw for managers with a clean fair-play record is next.`, '');
   }
 
   lines.push(`[Follow every tie, result and bracket on the Top 100 Tournament Hub](${snapshot.tournament.hub_url || HUB_BASE}#knockout)`);
