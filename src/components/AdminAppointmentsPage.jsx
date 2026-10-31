@@ -52,6 +52,8 @@ const fieldValue = (values, key) => {
 };
 const HERO_LINK = { color: '#fff', textDecoration: 'underline', fontWeight: 600 };
 const STEP = { borderTop: '1px solid var(--line, #e2e8f0)', marginTop: 16, paddingTop: 12 };
+const NUM = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+const SCORE_PARTS = [['current', 'Current'], ['recent', 'Recent'], ['honours', 'Honours'], ['level', 'Level'], ['stability', 'Stability'], ['activity', 'Activity']];
 const STEP_TITLE = { margin: '0 0 4px', fontSize: 16 };
 
 // The scoring inputs as a table: what each one is, what Top 100's records say, and the
@@ -644,11 +646,11 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             <h3>{vacancy.club_name} (D{vacancy.division})</h3>
             {ranking.length ? (
               <table>
-                <thead><tr><th>Applicant</th><th>Score</th><th>Current · recent · honours · level · stability · activity</th><th>Eligible</th></tr></thead>
+                <thead><tr><th>Applicant</th><th style={NUM}>Score</th>{SCORE_PARTS.map(([, label]) => <th key={label} style={NUM}>{label}</th>)}<th>Eligible</th></tr></thead>
                 <tbody>{ranking.map(({ applicant, scored }) => (
                   <tr key={applicant.key}>
-                    <td>{applicant.display}</td><td><strong>{scored.total}</strong></td>
-                    <td>{['current', 'recent', 'honours', 'level', 'stability', 'activity'].map((part) => scored.breakdown[part]).join(' · ')}</td>
+                    <td>{applicant.display}</td><td style={NUM}><strong>{scored.total}</strong></td>
+                    {SCORE_PARTS.map(([part]) => <td key={part} style={NUM}>{scored.breakdown[part]}</td>)}
                     <td>{scored.eligibility.eligible ? 'Yes' : scored.eligibility.reasons.join(' ')}</td>
                   </tr>
                 ))}</tbody>
