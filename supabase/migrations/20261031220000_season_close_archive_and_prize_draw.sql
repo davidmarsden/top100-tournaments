@@ -265,7 +265,7 @@ grant execute on function public.archive_tournament(bigint, boolean) to authenti
 create or replace function public.public_tournament_honours()
 returns table (
   tournament_id bigint, tournament_name text, season_number int,
-  honour text, position int, team_name text, manager_name text
+  honour text, "position" int, team_name text, manager_name text
 )
 language sql
 stable
