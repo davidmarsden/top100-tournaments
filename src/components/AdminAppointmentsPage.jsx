@@ -553,15 +553,17 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     // with no preferences they are never allocated, and the scores are kept out of what is published.
     const comparisons = vacancies.filter((vacancy) => vacancy.comparison_manager).map((vacancy) => {
       const stillThere = data.clubs.some((club) => club.club === vacancy.club_name && club.manager === vacancy.comparison_manager);
-      return { key: `${COMPARISON}${vacancy.id}`, name: vacancy.comparison_manager, club: stillThere ? vacancy.club_name : undefined, display: vacancy.comparison_manager };
+      return { key: `${COMPARISON}${vacancy.id}`, managerId: vacancy.comparisonManagerId, name: vacancy.comparison_manager, club: stillThere ? vacancy.club_name : undefined, display: vacancy.comparison_manager };
     });
+    // A comparison manager's inputs: as edited if they are also applying, otherwise Top 100's records.
+    const comparisonInputs = (comparison) => (comparison.managerId ? inputs[`a${comparison.managerId}`] || data.inputs[String(comparison.managerId)] || {} : {});
     const config = {
       mode: 'vacancies',
       currentSeason: data.season,
       vacancies: vacancies.map((vacancy) => ({ club: vacancy.club_name, division: vacancy.division })),
       applicants: [
         ...applications.map((application) => ({ key: keyOf(application), name: application.managerName, club: application.club, display: application.managerName })),
-        ...comparisons,
+        ...comparisons.map(({ key, name, club, display }) => ({ key, name, club, display })),
       ],
       preferences: Object.fromEntries([
         ...applications.map((application) => [keyOf(application), application.preferences.map(clubName)]),
@@ -570,12 +572,16 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
       discipline: Object.fromEntries(applications.map((application) => {
         const base = data.inputs[keyOf(application)] || {};
         return [keyOf(application), { gold: base.gold, openSanction: base.openSanction, sanctions: fieldValue(inputs[`a${application.manager_id}`], 'sanctions') || 0 }];
-      })),
+      }).concat(comparisons.map((comparison) => {
+        const base = data.inputs[String(comparison.managerId)] || {};
+        return [comparison.key, { gold: base.gold, openSanction: base.openSanction, sanctions: fieldValue(comparisonInputs(comparison), 'sanctions') || 0 }];
+      }))),
       activity: Object.fromEntries(applications.map((application) => {
         const values = inputs[`a${application.manager_id}`] || {};
         return [keyOf(application), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds']
           .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
-      })),
+      }).concat(comparisons.map((comparison) => [comparison.key, Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds']
+        .map((key) => [key, fieldValue(comparisonInputs(comparison), key)]).filter(([, value]) => value !== null))]))),
     };
     setMessage('Scoring…');
     try {
