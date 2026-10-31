@@ -12,6 +12,7 @@ import PublicPageManager from './PublicPageManager.jsx';
 import RegistrationManager from './RegistrationManager.jsx';
 import ReportsExportsManager from './ReportsExportsManager.jsx';
 import ResultsTestControls from './ResultsTestControls.jsx';
+import SeasonCloseManager from './SeasonCloseManager.jsx';
 import TablesManager from './TablesManager.jsx';
 import TournamentBuilder from './TournamentBuilder.jsx';
 import TournamentCreateForm from './TournamentCreateForm.jsx';
@@ -23,9 +24,18 @@ import { publicTournamentPath } from '../lib/tournamentSlugs';
 import { deleteTournamentsOnServer } from '../lib/deleteTournaments.js';
 import { supabase } from '../lib/supabaseClient';
 
-const platformModules = ['Overview', 'Organisers', 'Registration', 'Format', 'Entrants', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Reports & Exports', 'Challonge', 'Public Page'];
-const organiserModules = ['Overview', 'Registration', 'Format', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Reports & Exports', 'Public Page'];
+const platformModules = ['Overview', 'Organisers', 'Registration', 'Format', 'Entrants', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Season Close', 'Reports & Exports', 'Challonge', 'Public Page'];
+const organiserModules = ['Overview', 'Registration', 'Format', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Season Close', 'Reports & Exports', 'Public Page'];
 const assistantModules = ['Overview', 'Fixtures', 'Results', 'Tables', 'Forfeits', 'Reports & Exports'];
+// Sidebar sections, in workflow order. Modules a role cannot use are dropped.
+const moduleSections = [
+  ['Tournament', 'Setup', ['Overview', 'Organisers', 'Registration', 'Format', 'Entrants']],
+  ['Draw', 'Setup', ['Groups', 'Knockout']],
+  ['Matchday', 'Matchday', ['Fixtures', 'Results', 'Result Approvals', 'Tables']],
+  ['Discipline', 'Matchday', ['Forfeits']],
+  ['Season close & publishing', 'Publish', ['Season Close', 'Reports & Exports', 'Public Page', 'Challonge']],
+];
+
 const standardWorkflowSteps = ['Tournament', 'Registration', 'Format', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Knockout', 'Publish', 'Archive'];
 const knockoutWorkflowSteps = ['Tournament', 'Registration', 'Format', 'Entrants', 'Knockout', 'Fixtures', 'Results', 'Publish', 'Archive'];
 
@@ -65,7 +75,7 @@ export default function AdminDashboard() {
     <ProgressBar selectedTournament={scopedTournament} preview={preview} progressStats={progressStats} onJump={(module) => modules.includes(module) && setActiveModule(module)} />
     {!canUseDatabase && <section className="warning-card"><strong>Supabase is not connected yet.</strong><span>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify environment variables.</span></section>}
     <section className="dashboard-layout">
-      <aside className="sidebar card"><p className="eyebrow">Modules</p>{modules.map((module) => <button key={module} type="button" className={activeModule === module ? 'nav-pill active' : 'nav-pill'} onClick={() => setActiveModule(module)}>{module}</button>)}</aside>
+      <aside className="sidebar card admin-module-nav" aria-label="Tournament modules">{moduleSections.map(([section, colourGroup, items]) => { const visible = items.filter((module) => modules.includes(module)); if (!visible.length) return null; return <div className="admin-module-group" key={section}><p className="eyebrow">{section}</p>{visible.map((module) => <button key={module} type="button" data-module={module} data-admin-group={colourGroup} className={activeModule === module ? 'nav-pill active' : 'nav-pill'} aria-current={activeModule === module ? 'page' : undefined} onClick={() => setActiveModule(module)}>{module === 'Forfeits' ? 'Fair Play' : module}</button>)}</div>; })}</aside>
       <section className="workspace">
         {isGlobalAdmin ? <section className="grid two-columns compact"><TournamentCreateForm onDemoPreview={onDemoPreview} /><WorkflowCard selectedTournament={scopedTournament} preview={preview} progressStats={progressStats} /></section> : <section className="grid two-columns compact"><section className="card"><div className="card-header"><p className="eyebrow">Access scope</p><h2>{scopedTournament?.name}</h2></div><p>{scopedRole === 'assistant' ? `Assistant: matchday operations only. You can work with ${knockoutOnly ? 'knockout ' : ''}fixtures and results, forfeits and reports. Registration decisions, entrants, tournament format, draw structure and publishing are intentionally unavailable.` : `Organiser: full operational control of this ${knockoutOnly ? 'knockout-only ' : ''}tournament. Tournament creation, manager accounts, Challonge imports and destructive cross-tournament controls remain with the platform administrator.`}</p><a className="button secondary" href="/manager">Manager Portal</a></section><WorkflowCard selectedTournament={scopedTournament} preview={preview} progressStats={progressStats} /></section>}
         {canUseDatabase && scopedTournament && scopedRole !== 'assistant' && <TournamentBuilder selectedTournament={scopedTournament} preview={preview} buildPreview={buildPreview} onNavigate={setActiveModule} onRefresh={refreshTournamentData} />}
@@ -83,7 +93,7 @@ function WorkflowCard({ selectedTournament, preview, progressStats }) {
 }
 
 function moduleHeading(activeModule, knockoutOnly = false) {
-  const headings = { Overview: 'Tournament dashboard', Organisers: 'Tournament organiser access', Registration: 'Registration window and approvals', Format: 'Set tournament shape after registration', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: knockoutOnly ? 'Manage knockout fixtures' : 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: knockoutOnly ? 'Enter and review knockout results' : 'Enter, review and edit results', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: knockoutOnly ? 'Seeded knockout draw' : 'Cup and Shield draw', 'Reports & Exports': 'Download data and generate matchday stories', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
+  const headings = { 'Season Close': 'Archive the tournament and run the prize draw', Forfeits: 'Fair Play: manager discipline register', Overview: 'Tournament dashboard', Organisers: 'Tournament organiser access', Registration: 'Registration window and approvals', Format: 'Set tournament shape after registration', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: knockoutOnly ? 'Manage knockout fixtures' : 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: knockoutOnly ? 'Enter and review knockout results' : 'Enter, review and edit results', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: knockoutOnly ? 'Seeded knockout draw' : 'Cup and Shield draw', 'Reports & Exports': 'Download data and generate matchday stories', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
   return headings[activeModule] || activeModule;
 }
 
@@ -119,6 +129,7 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, isGlobal
   if (activeModule === 'Tables' && !knockoutOnly) return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Forfeits') return <ManagerForfeitRegister selectedTournament={selectedTournament} admin />;
   if (activeModule === 'Knockout' && scopedRole !== 'assistant') return knockoutOnly ? <KnockoutOnlyManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} /> : <KnockoutManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />;
+  if (activeModule === 'Season Close' && scopedRole !== 'assistant') return <SeasonCloseManager selectedTournament={selectedTournament} onTournamentUpdated={refreshTournamentData} canManage />;
   if (activeModule === 'Reports & Exports') return <ReportsExportsManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Challonge' && isGlobalAdmin) return <ChallongeImportManager onTournamentUpdated={refreshTournamentData} />;
   if (activeModule === 'Public Page' && scopedRole !== 'assistant') return <PublicPageManager selectedTournament={selectedTournament} onTournamentUpdated={refreshTournamentData} />;

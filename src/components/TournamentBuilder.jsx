@@ -24,8 +24,10 @@ const knockoutSteps = [
 
 const OPEN_RESULT_STATUSES = ['pending_confirmation', 'disputed', 'pending_admin_check', 'opponent_confirmed', 'appealed'];
 
+// A voided fixture (for example the tie after a double forfeit) is resolved and
+// must not hold the builder on "Enter results".
 function isPlayed(match) {
-  return match.status === 'played' || match.status === 'forfeit';
+  return match.status === 'played' || match.status === 'forfeit' || match.status === 'voided';
 }
 
 function roundRobinRounds(entries) {
@@ -234,17 +236,12 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
   }
 
   async function markCompleted() {
-    if (!window.confirm(`Mark ${selectedTournament.name} completed? This will switch it to archive presentation automatically.`)) return;
+    if (!window.confirm(`Archive ${selectedTournament.name}? This records the winners and runners-up, saves a full snapshot and switches the public page to its archive view.`)) return;
     setLoading(true);
-    const { error } = await supabase.from('tournaments').update({
-      status: 'completed',
-      archived_at: new Date().toISOString(),
-      archive_quality: 'complete',
-      is_public: true,
-    }).eq('id', tournamentId);
-    if (error) setStatus('Could not complete tournament: ' + error.message);
+    const { data, error } = await supabase.rpc('archive_tournament', { p_tournament_id: tournamentId, p_force: false });
+    if (error) setStatus('Could not archive tournament: ' + error.message + ' Open Season Close for the full checklist.');
     else {
-      setStatus('Tournament completed and archive view activated.');
+      setStatus(`Tournament archived with ${(data?.honours || []).length} honours. Run the prize draw from Season Close.`);
       await onRefresh?.();
       await loadSummary();
     }
@@ -261,6 +258,7 @@ export default function TournamentBuilder({ selectedTournament, preview, buildPr
     if (step === 'results') return { label: knockoutOnly && summary?.finalUnderReview ? 'Review Final result' : knockoutOnly ? 'Enter knockout results' : 'Enter results', action: () => onNavigate('Results') };
     if (step === 'knockout') return { label: knockoutOnly ? (summary?.knockoutMatches ? 'Generate next knockout round' : 'Open seeded knockout draw') : 'Generate knockout', action: () => onNavigate('Knockout') };
     if (step === 'publish') return { label: 'Open public page settings', action: () => onNavigate('Public Page') };
+    if (['completed', 'archived'].includes(String(selectedTournament?.status || '').toLowerCase())) return { label: 'Open Season Close', action: () => onNavigate('Season Close') };
     return { label: 'Complete and archive', action: markCompleted };
   }
 

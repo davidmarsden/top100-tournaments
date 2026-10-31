@@ -176,8 +176,10 @@ function ensurePublicFixtureNav() {
   addCollapsibles(hub);
 
   const existing = hub.querySelector('[data-fixture-first="public-callout"]');
-  if (knockoutOnly) existing?.remove();
-  if (!knockoutOnly && !existing && nav) {
+  // Nothing left to arrange once the tournament is over.
+  const complete = Boolean(hub.querySelector('.champions-banner'));
+  if (knockoutOnly || complete) existing?.remove();
+  if (!knockoutOnly && !complete && !existing && nav) {
     const callout = document.createElement('section');
     callout.className = 'fixture-first-callout'; callout.dataset.fixtureFirst = 'public-callout';
     callout.innerHTML = `<div><p class="eyebrow">Looking for your match?</p><strong>Find the date first, then the opponent.</strong><span>The tournament schedule is below. For the simple personalised view — who you send a friendly to, and who you are waiting for — use My Matches.</span></div><div class="fixture-first-actions"><a class="button" href="${MANAGER_URL}">👤 My Matches</a></div>`;

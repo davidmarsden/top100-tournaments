@@ -21,6 +21,11 @@ function slug(value) {
 function prepareSidebar(main) {
   const sidebar = main.querySelector('.sidebar');
   if (!sidebar) return;
+  // The dashboard now renders its own section headings; only tag the modules.
+  if (sidebar.classList.contains('admin-module-nav')) {
+    sidebar.querySelectorAll('.nav-pill').forEach((button) => { button.dataset.adminModule = slug(button.dataset.module || button.textContent); });
+    return;
+  }
   const buttons = [...sidebar.querySelectorAll('.nav-pill')];
   let previousGroup = null;
   buttons.forEach((button) => {
@@ -37,7 +42,7 @@ function prepareSidebar(main) {
 
 function activeModule(main) {
   const active = main.querySelector('.sidebar .nav-pill.active');
-  return active?.textContent?.trim() || 'Overview';
+  return active?.dataset?.module || active?.textContent?.trim() || 'Overview';
 }
 
 function prepareProgress(main) {
