@@ -96,15 +96,16 @@ begin
                   or (vote.subject_kind = 'review' and vote.subject_id in (select id from public.appointment_reviews where game_world_id = v_world and season = v_season and cleared_at is null))), '[]'::jsonb),
     'inputs', public.appointment_manager_inputs(v_world, v_season, coalesce(v_ids, '{}')),
     -- Each official's community and sanctions assessment, averaged per manager; "mine" is the caller's.
-    'assessments', coalesce((select jsonb_object_agg(assessed.manager_id::text, jsonb_strip_nulls(jsonb_build_object(
-                     'community', round(avg(assessed.community), 2), 'communityCount', count(assessed.community),
-                     'sanctions', round(avg(assessed.sanctions), 2), 'sanctionsCount', count(assessed.sanctions),
-                     'assessors', jsonb_agg(assessed.assessor_name order by assessed.assessor_name),
-                     'mine', (array_agg(jsonb_strip_nulls(jsonb_build_object('community', assessed.community, 'sanctions', assessed.sanctions)))
-                              filter (where assessed.assessor = auth.uid()))[1])))
-                   from public.appointment_assessments assessed
-                   where assessed.game_world_id = v_world and assessed.season = v_season
-                   group by assessed.manager_id), '{}'::jsonb)
+    'assessments', coalesce((select jsonb_object_agg(per.manager_id::text, per.summary) from (
+                     select assessed.manager_id, jsonb_strip_nulls(jsonb_build_object(
+                       'community', round(avg(assessed.community), 2), 'communityCount', count(assessed.community),
+                       'sanctions', round(avg(assessed.sanctions), 2), 'sanctionsCount', count(assessed.sanctions),
+                       'assessors', jsonb_agg(assessed.assessor_name order by assessed.assessor_name),
+                       'mine', (array_agg(jsonb_strip_nulls(jsonb_build_object('community', assessed.community, 'sanctions', assessed.sanctions)))
+                                filter (where assessed.assessor = auth.uid()))[1])) as summary
+                     from public.appointment_assessments assessed
+                     where assessed.game_world_id = v_world and assessed.season = v_season
+                     group by assessed.manager_id) per), '{}'::jsonb)
   );
 end;
 $function$;
