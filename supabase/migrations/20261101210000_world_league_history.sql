@@ -13,6 +13,10 @@
 --    archive.
 -- 5. save_soccer_manager_world_honours() also saves each season's final tables,
 --    which Sync now reads from Soccer Manager's Game World History.
+--
+-- league_standings_current_by_club, the crosswalk and the Sync tables come from
+-- Manager Lab's migrations, so SQL function bodies are not checked here.
+set check_function_bodies = false;
 
 create or replace function public.world_current_season_num(p_world_id bigint)
 returns integer
@@ -439,3 +443,5 @@ $$;
 
 revoke all on function public.save_soccer_manager_world_honours(text, jsonb) from public, anon;
 grant execute on function public.save_soccer_manager_world_honours(text, jsonb) to authenticated, service_role;
+
+reset check_function_bodies;
