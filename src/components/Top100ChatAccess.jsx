@@ -180,6 +180,8 @@ export default function Top100ChatAccess() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [linkSent, setLinkSent] = useState(false);
+  const [usePassword, setUsePassword] = useState(false);
+  const [password, setPassword] = useState('');
   const [status, setStatus] = useState('Checking whether you are already signed in…');
   const [busy, setBusy] = useState(false);
   const launchedForToken = useRef('');
@@ -291,6 +293,27 @@ export default function Top100ChatAccess() {
     }
   }
 
+  // Email and password, for managers who have set one in My Matches.
+  async function signInWithPassword(event) {
+    event.preventDefault();
+    if (!email.trim() || !password) return;
+    setBusy(true);
+    setStatus('Signing in…');
+    try {
+      const { data, error } = await withChatTimeout(chatAuthClient.auth.signInWithPassword({ email: email.trim(), password }), 'Password sign-in');
+      if (error || !data?.session) throw error || new Error('We could not sign you in.');
+      storeSession(data.session);
+      setBusy(false);
+      setActiveToken(data.session.access_token);
+      launchChat(data.session.access_token);
+    } catch (error) {
+      setBusy(false);
+      setStatus(/invalid login/i.test(error?.message || '')
+        ? 'That email and password did not match. If you have not set a password yet, use an email link instead.'
+        : error?.message || 'We could not sign you in.');
+    }
+  }
+
   // The code in the sign-in email: signs in on this device without leaving the page.
   async function verifyCode(event) {
     event.preventDefault();
@@ -346,11 +369,22 @@ export default function Top100ChatAccess() {
         <section className="card manager-login-card">
           <h2>Sign in with My Matches</h2>
           <p className="muted">Use the same email address you use for your Top 100 Manager Portal.</p>
+          {usePassword ? <>
+            <form onSubmit={signInWithPassword}>
+              <label>Email address<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={busy} /></label>
+              <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required disabled={busy} /></label>
+              <button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+            </form>
+            {status && <p className="status">{status}</p>}
+            <p className="muted">Forgotten it? Sign in with an email link, then set a new password in My Matches.</p>
+            <button type="button" className="secondary" disabled={busy} onClick={() => { setUsePassword(false); setStatus(''); }}>Email me a sign-in link instead</button>
+          </> : <>
           <form onSubmit={sendMagicLink}>
-            <label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={busy || linkSent} /></label>
+            <label>Email address<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={busy || linkSent} /></label>
             {!linkSent && <button type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Email me a sign-in link'}</button>}
           </form>
           {status && <p className="status">{status}</p>}
+          {!linkSent && <button type="button" className="secondary" disabled={busy} onClick={() => { setUsePassword(true); setStatus(''); }}>Sign in with a password</button>}
           {linkSent && <>
             <form className="sign-in-code-form" onSubmit={verifyCode}>
               <label>Code from the email<input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,12}" maxLength={12} value={code} onChange={(event) => setCode(event.target.value)} required disabled={busy} /></label>
@@ -358,6 +392,7 @@ export default function Top100ChatAccess() {
               <button type="submit" disabled={busy}>{busy ? 'Checking…' : 'Sign in with code'}</button>
             </form>
             <button type="button" className="secondary" disabled={busy} onClick={() => { setLinkSent(false); setCode(''); setStatus(''); }}>Use a different email</button>
+          </>}
           </>}
         </section>
       </main>

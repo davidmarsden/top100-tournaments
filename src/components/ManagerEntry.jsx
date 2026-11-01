@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import ManagerPasswordSettings from './ManagerPasswordSettings.jsx';
 import ManagerPortal from './ManagerPortal.jsx';
 import ManagerResourceHub from './ManagerResourceHub.jsx';
 import ManagerReminderPreferences from './ManagerReminderPreferences.jsx';
@@ -144,6 +145,26 @@ function SignIn({ returnTo, registrationMode }) {
   const [message, setMessage] = useState('');
   const [code, setCode] = useState('');
   const [codeState, setCodeState] = useState({ state: 'idle', message: '' });
+  const [usePassword, setUsePassword] = useState(false);
+  const [password, setPassword] = useState('');
+
+  // Email and password, for managers who have set one in My Matches.
+  async function signInWithPassword(event) {
+    event.preventDefault();
+    if (!email.trim() || !password || state === 'sending') return;
+    setState('sending');
+    setMessage('');
+    try {
+      const { error } = await timeout(supabase.auth.signInWithPassword({ email: email.trim(), password }), 'Password sign-in');
+      if (error) throw error;
+      setState('idle');
+    } catch (error) {
+      setState('error');
+      setMessage(/invalid login/i.test(error?.message || '')
+        ? 'That email and password did not match. If you have not set a password yet, use an email link instead.'
+        : error?.message || 'We could not sign you in.');
+    }
+  }
 
   // The emailed code signs in wherever it is typed. On iPhone the email link
   // opens Safari, which can't sign in the home-screen app (separate storage).
@@ -189,7 +210,7 @@ function SignIn({ returnTo, registrationMode }) {
     }
   }
 
-  return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100</p><h1>Manager sign-in</h1><p>One account for Top 100 and Top 100 Regen.</p></section><section className="card manager-login-card"><h2>{state === 'sent' ? 'Check your email' : 'Sign in securely'}</h2>{state === 'sent' ? <><p className="status" role="status">{message}</p><p className="muted">The link can take a few minutes to arrive. Older links may stop working after you request a newer one.</p><form className="sign-in-code-form" onSubmit={verifyCode}><label>Or enter the code from the email<input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,12}" maxLength={12} value={code} onChange={(event) => setCode(event.target.value)} required disabled={codeState.state === 'checking' || codeState.state === 'done'} /></label><p className="muted">Using Top 100 from your iPhone home screen? Enter the code here instead of tapping the link.</p><button type="submit" disabled={codeState.state === 'checking' || codeState.state === 'done'}>{codeState.state === 'checking' ? 'Checking…' : 'Sign in with code'}</button>{codeState.message && <p className="status" role={codeState.state === 'error' ? 'alert' : 'status'}>{codeState.message}</p>}</form><button type="button" className="secondary" onClick={() => { setState('idle'); setMessage(''); setCode(''); setCodeState({ state: 'idle', message: '' }); }}>Use a different email</button></> : <form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={state === 'sending'} /></label><button type="submit" disabled={state === 'sending'}>{state === 'sending' ? 'Sending…' : 'Email me a sign-in link'}</button>{message && <p className="status" role="alert">{message}</p>}</form>}</section></main>;
+  return <main className="manager-portal-shell"><section className="manager-portal-hero"><p className="eyebrow">Top 100</p><h1>Manager sign-in</h1><p>One account for Top 100 and Top 100 Regen.</p></section><section className="card manager-login-card"><h2>{state === 'sent' ? 'Check your email' : 'Sign in securely'}</h2>{state === 'sent' ? <><p className="status" role="status">{message}</p><p className="muted">The link can take a few minutes to arrive. Older links may stop working after you request a newer one.</p><form className="sign-in-code-form" onSubmit={verifyCode}><label>Or enter the code from the email<input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,12}" maxLength={12} value={code} onChange={(event) => setCode(event.target.value)} required disabled={codeState.state === 'checking' || codeState.state === 'done'} /></label><p className="muted">Using Top 100 from your iPhone home screen? Enter the code here instead of tapping the link.</p><button type="submit" disabled={codeState.state === 'checking' || codeState.state === 'done'}>{codeState.state === 'checking' ? 'Checking…' : 'Sign in with code'}</button>{codeState.message && <p className="status" role={codeState.state === 'error' ? 'alert' : 'status'}>{codeState.message}</p>}</form><button type="button" className="secondary" onClick={() => { setState('idle'); setMessage(''); setCode(''); setCodeState({ state: 'idle', message: '' }); }}>Use a different email</button></> : usePassword ? <><form onSubmit={signInWithPassword}><label>Email address<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={state === 'sending'} /></label><label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required disabled={state === 'sending'} /></label><button type="submit" disabled={state === 'sending'}>{state === 'sending' ? 'Signing in…' : 'Sign in'}</button>{message && <p className="status" role="alert">{message}</p>}</form><p className="muted">Forgotten it? Sign in with an email link, then set a new password in My Matches.</p><button type="button" className="secondary" onClick={() => { setUsePassword(false); setMessage(''); setState('idle'); }}>Email me a sign-in link instead</button></> : <><form onSubmit={submit}><label>Email address<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={state === 'sending'} /></label><button type="submit" disabled={state === 'sending'}>{state === 'sending' ? 'Sending…' : 'Email me a sign-in link'}</button>{message && <p className="status" role="alert">{message}</p>}</form><button type="button" className="secondary" onClick={() => { setUsePassword(true); setMessage(''); setState('idle'); }}>Sign in with a password</button></>}</section></main>;
 }
 
 function Setup({ session, claim: initialClaim, onClaimChanged }) {
@@ -342,6 +363,7 @@ export default function ManagerEntry({ registrationMode = false }) {
     <ManagerPortal returnTo={returnTo} session={session} worldId={portalWorldId} onWorldChange={reportPortalWorld} />
     <div className="top100-app-bottom"><Top100Notifications session={session} /></div>
     <ManagerReminderPreferences session={session} authLoading={false} />
+    <div className="manager-portal-shell"><ManagerPasswordSettings session={session} /></div>
     <ManagerResourceHub />
   </>;
 }
