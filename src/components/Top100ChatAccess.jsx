@@ -63,6 +63,44 @@ function readStoredAccessToken() {
   }
 }
 
+// The stored Manager Portal session (same storage key as the main app's Supabase client).
+function readStoredSession() {
+  try {
+    const key = getConfiguredStorageKey();
+    const raw = key ? window.localStorage.getItem(key) : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed?.currentSession || parsed || null;
+  } catch {
+    return null;
+  }
+}
+
+// Save a session where the main app's Supabase client reads it, so signing in here also signs
+// the manager in to the Manager Portal on this device, and the next visit needs no sign-in.
+function storeSession(session) {
+  try {
+    const key = getConfiguredStorageKey();
+    if (key && session?.access_token && session?.refresh_token) window.localStorage.setItem(key, JSON.stringify(session));
+  } catch {
+    // Storage unavailable (private browsing): this visit still works.
+  }
+}
+
+// A session that has expired but can be renewed: the access token lasts an hour, the refresh
+// token much longer. Renew it rather than asking the manager to sign in again.
+async function refreshStoredSession() {
+  const stored = readStoredSession();
+  if (!stored?.refresh_token || !chatAuthClient) return '';
+  try {
+    const { data, error } = await withChatTimeout(chatAuthClient.auth.refreshSession({ refresh_token: stored.refresh_token }), 'Renewing your sign-in');
+    if (error || !data?.session?.access_token) return '';
+    storeSession(data.session);
+    return data.session.access_token;
+  } catch {
+    return '';
+  }
+}
+
 function normalizeShareIntent(value, { requireFresh = false } = {}) {
   if (!value || typeof value !== 'object') return null;
   const title = String(value.title || '').trim().slice(0, 180);
@@ -140,6 +178,8 @@ function withChatTimeout(promise, label = 'Chat sign-in check', ms = CHAT_SESSIO
 export default function Top100ChatAccess() {
   const [activeToken, setActiveToken] = useState('');
   const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [linkSent, setLinkSent] = useState(false);
   const [status, setStatus] = useState('Checking whether you are already signed in…');
   const [busy, setBusy] = useState(false);
   const launchedForToken = useRef('');
@@ -203,7 +243,22 @@ export default function Top100ChatAccess() {
       return;
     }
 
-    setStatus('');
+    // Signed in before, but the hour-long access token has run out: renew it.
+    let cancelled = false;
+    refreshStoredSession().then((token) => {
+      if (cancelled) return;
+      if (token) { setActiveToken(token); launchChat(token); } else setStatus('');
+    });
+
+    // Signed in in another tab of this browser (a sign-in link, a code, or the Manager Portal):
+    // carry on here without asking again.
+    const onStorage = (event) => {
+      if (event.key !== getConfiguredStorageKey() || launchedForToken.current) return;
+      const token = readStoredAccessToken();
+      if (token) { setActiveToken(token); launchChat(token); }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => { cancelled = true; window.removeEventListener('storage', onStorage); };
   }, []);
 
   async function sendMagicLink(event) {
@@ -227,11 +282,32 @@ export default function Top100ChatAccess() {
         12000,
       );
       if (error) throw error;
-      setStatus('Check your email for your secure My Matches sign-in link.');
+      setLinkSent(true);
+      setStatus('Check your email. Enter the code from the email below, or open its sign-in link on this device.');
     } catch (error) {
       setStatus(error?.message || 'We could not send the sign-in link. Please try again.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  // The code in the sign-in email: signs in on this device without leaving the page.
+  async function verifyCode(event) {
+    event.preventDefault();
+    const token = code.replace(/\s+/g, '');
+    if (!token) return;
+    setBusy(true);
+    setStatus('Checking the code…');
+    try {
+      const { data, error } = await withChatTimeout(chatAuthClient.auth.verifyOtp({ email: email.trim(), token, type: 'email' }), 'Sign-in code check');
+      if (error || !data?.session) throw error || new Error('That code did not work.');
+      storeSession(data.session);
+      setBusy(false);
+      setActiveToken(data.session.access_token);
+      launchChat(data.session.access_token);
+    } catch (error) {
+      setBusy(false);
+      setStatus(error?.message ? `${error.message} Use the newest email you received.` : 'That code did not work. Use the newest email you received.');
     }
   }
 
@@ -271,10 +347,18 @@ export default function Top100ChatAccess() {
           <h2>Sign in with My Matches</h2>
           <p className="muted">Use the same email address you use for your Top 100 Manager Portal.</p>
           <form onSubmit={sendMagicLink}>
-            <label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-            <button type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Email me a sign-in link'}</button>
+            <label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={busy || linkSent} /></label>
+            {!linkSent && <button type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Email me a sign-in link'}</button>}
           </form>
           {status && <p className="status">{status}</p>}
+          {linkSent && <>
+            <form className="sign-in-code-form" onSubmit={verifyCode}>
+              <label>Code from the email<input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,12}" maxLength={12} value={code} onChange={(event) => setCode(event.target.value)} required disabled={busy} /></label>
+              <p className="muted">Best on a phone or in the Chat app: enter the code here rather than opening the link, which may open in a different browser.</p>
+              <button type="submit" disabled={busy}>{busy ? 'Checking…' : 'Sign in with code'}</button>
+            </form>
+            <button type="button" className="secondary" disabled={busy} onClick={() => { setLinkSent(false); setCode(''); setStatus(''); }}>Use a different email</button>
+          </>}
         </section>
       </main>
     );
