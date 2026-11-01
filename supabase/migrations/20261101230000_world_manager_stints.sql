@@ -8,9 +8,9 @@
 -- with save_soccer_manager_world_managers(), together with the current season's
 -- dates (GWHistory Rules.StartDate / EndDate).
 --
--- Past seasons' dates are not given by the game. world_season_end() uses saved
--- dates where it has them, otherwise spaces seasons evenly between the world's
--- first season (its earliest known spell) and the latest season with dates.
+-- Past seasons' dates are not given by the game, but every season is exactly 21
+-- weeks (147 days): world_season_end() uses saved dates where it has them,
+-- otherwise counts back in 147-day steps from the nearest season with dates.
 -- public_league_history_rows() names, for each saved table row, the manager whose
 -- spell at that club covered the end of that season; the manually entered name
 -- and honours remain the fallback.
@@ -70,26 +70,13 @@ stable
 security definer
 set search_path = ''
 as $$
-  with known as (
-    select season_num, start_date, end_date from public.soccer_manager_world_seasons where game_world_id = p_world_id
-  ),
-  latest as (
-    select season_num, start_date, end_date from known order by season_num desc limit 1
-  ),
-  first_start as (
-    select coalesce(
-      (select start_date from known where season_num = 1),
-      (select min(started_at)::date from public.soccer_manager_manager_stints where game_world_id = p_world_id)
-    ) as value
-  )
-  select coalesce(
-    (select end_date from known where season_num = p_season),
-    (select first_start.value
-              + round((latest.start_date - first_start.value)::numeric / (latest.season_num - 1) * (p_season - 1))::integer
-              + (latest.end_date - latest.start_date)
-       from latest, first_start
-      where latest.season_num > 1 and first_start.value is not null and first_start.value < latest.start_date)
-  );
+  -- Every season lasts 21 weeks; a season's dates are its neighbour's shifted
+  -- by whole seasons. The nearest season with saved dates is the anchor.
+  select anchor.end_date + (p_season - anchor.season_num) * 147
+  from public.soccer_manager_world_seasons anchor
+  where anchor.game_world_id = p_world_id
+  order by abs(anchor.season_num - p_season), anchor.season_num desc
+  limit 1;
 $$;
 
 revoke all on function public.world_season_end(bigint, integer) from public, anon, authenticated;
