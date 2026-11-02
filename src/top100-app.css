@@ -103,3 +103,28 @@
 .top100-transfer-dir.in { background: #0f3a2e; color: #6ee7b7; }
 .top100-transfer-dir.out { background: #4a3512; color: #fcd34d; }
 @media (max-width: 760px) { .top100-transfers__grid { grid-template-columns: 1fr; } }
+.top100-market { margin-top: 14px; padding: 16px; border: 1px solid #24406b; border-radius: 20px; background: #0f2443; }
+.top100-market > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.top100-market > summary h3 { display: inline; margin: 0; }
+.top100-market__table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 0.88rem; }
+.top100-market__table th, .top100-market__table td { padding: 7px 8px; border-top: 1px solid #1d355c; text-align: right; white-space: nowrap; }
+.top100-market__table th:first-child { text-align: left; }
+.top100-market__table thead th { border-top: 0; color: #9fb4d6; font-weight: 700; }
+.top100-market__table td strong { display: block; }
+.top100-market__table td span { display: block; font-size: 0.74rem; color: #9fb4d6; }
+.top100-market__table td.is-thin { opacity: 0.5; }
+.top100-market__check { margin-top: 14px; padding-top: 12px; border-top: 1px solid #1d355c; }
+.top100-market__check form { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; align-items: end; }
+.top100-market__check label { display: grid; gap: 4px; font-size: 0.82rem; }
+.top100-market__estimate ul { list-style: none; margin: 0; padding: 0; }
+.top100-market__estimate li { padding: 7px 0; border-top: 1px solid #1d355c; font-size: 0.88rem; }
+.top100-market__estimate li:first-child { border-top: 0; }
+.top100-market__estimate .eyebrow { margin-top: 14px; }
+.top100-market__table .is-short { display: none; }
+@media (max-width: 600px) {
+  .top100-market__table .is-long { display: none; }
+  .top100-market__table .is-short { display: inline; }
+  .top100-market__table { font-size: 0.78rem; }
+  .top100-market__table th, .top100-market__table td { padding: 6px 3px; letter-spacing: 0; }
+  .top100-market__table td span { font-size: 0.66rem; }
+}
