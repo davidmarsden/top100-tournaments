@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { digestKey, formatMarketDigest, hasNews, playerName, signDigest } from '../netlify/functions/lib/chatDigest.mjs';
+import { digestKey, formatMarketDigest, hasNews, packageText, playerName, signDigest } from '../netlify/functions/lib/chatDigest.mjs';
 
 const digest = {
   world: 'Top 100', from: '2026-11-01T00:00:00Z', to: '2026-11-02T18:41:00Z', deals: 3, totalFees: 42000000, typicalRatio: 1.89,
@@ -18,9 +18,12 @@ const digest = {
 test('formats the sections managers talk about', () => {
   const { title, markdown } = formatMarketDigest(digest, new Date('2026-11-02T18:41:00Z'));
   assert.equal(title, 'Top 100 market · Mon 2 Nov');
-  assert.match(markdown, /3 completed deals since Sun 1 Nov, £42\.0m changing hands/);
+  assert.match(markdown, /3 completed deals since Sun 1 Nov, worth £42\.0m in cash and players/);
   assert.match(markdown, /• M\. Silvetti \(81, 20, AM\(RL\),F\(RLC\)\): Girondins Bordeaux → VfB Stuttgart \(Rob Ryan\) · £35\.0m/);
   assert.match(markdown, /21\.9× his value\. Worth it\?/);
+  assert.equal(packageText({ fee: 1000000, total: 4000000, playersBack: [{ name: 'L.DIOUF', rating: 85 }] }), '£1.0m + L. Diouf (85), about £4.0m in all');
+  assert.equal(packageText({ fee: 0, total: 3000000, playersBack: [{ name: 'L.DIOUF', rating: 85 }] }), 'L. Diouf (85), about £3.0m in all');
+  assert.equal(packageText({ fee: 2500000 }), '£2.5m');
   assert.match(markdown, /with V\. Valdepeñas, V\. Joseph going the other way/);
   assert.match(markdown, /A\. Rüdiger \(93, 33, D\(C\)\), Bayern München, part exchange only/);
   assert.match(markdown, /Hamburger SV want a 84-88 rated striker \(transfer\/loan\), up to £3\.5m/);

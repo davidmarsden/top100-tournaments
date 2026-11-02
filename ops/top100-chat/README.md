@@ -273,6 +273,15 @@ sudo systemctl restart systemd-resolved
 
 Then confirm `getent ahosts chat.smtop100.blog` returns the current Droplet address.
 
+If every rss.chat request takes about 5 seconds (`curl -s -o /dev/null -w '%{time_total}s\n' http://127.0.0.1:1430/` prints `5.0…s`) and sign-ins fail with `claim: rss.chat SSO helper timed out`, the local DNS resolver isn't answering. rss.chat's web layer (davehttp) does a reverse DNS lookup of every caller before it handles the request, and Node gives up on it after 5 seconds. Check and restart the resolver:
+
+```bash
+time dig +short -x 127.0.0.1
+sudo systemctl restart systemd-resolved
+```
+
+The gateway waits up to 15 seconds for rss.chat, so sign-in still works while the resolver is slow, but every page is slow until it's fixed.
+
 Do not downgrade or replace the system-wide Node installation just to repair Top 100 Chat: Commons Chat shares the Droplet and may depend on the same runtime. Prefer the per-service native-module repair first.
 
 ## Logout and revocation

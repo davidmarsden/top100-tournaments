@@ -41,9 +41,19 @@ function playerLine(p) {
   return `${playerName(p.player)} (${p.rating}${p.age ? `, ${p.age}` : ''}${p.position ? `, ${clean(p.position, 20)}` : ''})`;
 }
 
+// What was paid: cash, plus the players who went the other way in a part exchange.
+export function packageText(d) {
+  const back = (d.playersBack || []).filter((p) => p && p.name);
+  const players = back.map((p) => `${playerName(p.name)}${p.rating ? ` (${p.rating})` : ''}`).join(' + ');
+  if (!back.length) return money(d.fee);
+  const cash = Number(d.fee) > 0 ? `${money(d.fee)} + ` : '';
+  const total = Number(d.total) > 0 ? `, about ${money(d.total)} in all` : '';
+  return `${cash}${players}${total}`;
+}
+
 function dealLine(d) {
   const buyer = d.buyer ? ` (${clean(d.buyer, 40)})` : '';
-  return `• ${playerLine(d)}: ${clean(d.from, 40)} → ${clean(d.to, 40)}${buyer} · ${money(d.fee)}`;
+  return `• ${playerLine(d)}: ${clean(d.from, 40)} → ${clean(d.to, 40)}${buyer} · ${packageText(d)}`;
 }
 
 function boardLine(p) {
@@ -67,14 +77,15 @@ export function formatMarketDigest(d, now = new Date()) {
   const parts = [];
 
   if (Number(d.deals) > 0) {
-    const typical = d.typicalRatio ? ` Straight cash deals went for a typical ${ratio(d.typicalRatio)} the player's value.` : '';
-    parts.push(`${d.deals} completed deal${d.deals === 1 ? '' : 's'} since ${ukDate(d.from)}, ${money(d.totalFees)} changing hands.${typical}`);
+    const typical = d.typicalRatio ? ` Deals between managers went for a typical ${ratio(d.typicalRatio)} the player's value, counting players in part exchanges.` : '';
+    const worth = Number(d.totalValue) > 0 ? money(d.totalValue) : money(d.totalFees);
+    parts.push(`${d.deals} completed deal${d.deals === 1 ? '' : 's'} since ${ukDate(d.from)}, worth ${worth} in cash and players.${typical}`);
   }
   if (d.biggest?.length) parts.push(['**Biggest deals**', ...d.biggest.slice(0, 5).map(dealLine)].join('\n\n'));
 
   const talking = [];
-  if (d.dearest) talking.push(`• Top dollar: ${playerLine(d.dearest)} went to ${clean(d.dearest.to, 40)} for ${money(d.dearest.fee)}, ${ratio(d.dearest.ratio)} his value. Worth it?`);
-  if (d.cheapest) talking.push(`• Bargain: ${playerLine(d.cheapest)} went to ${clean(d.cheapest.to, 40)} for ${money(d.cheapest.fee)}, ${ratio(d.cheapest.ratio)} his value.`);
+  if (d.dearest) talking.push(`• Top dollar: ${playerLine(d.dearest)} went to ${clean(d.dearest.to, 40)} for ${packageText(d.dearest)}: ${ratio(d.dearest.ratio)} his value. Worth it?`);
+  if (d.cheapest) talking.push(`• Bargain: ${playerLine(d.cheapest)} went to ${clean(d.cheapest.to, 40)} for ${packageText(d.cheapest)}: ${ratio(d.cheapest.ratio)} his value.`);
   if (talking.length) parts.push(['**Talking points**', ...talking].join('\n\n'));
 
   if (Number(d.partExchanges) > 0) {

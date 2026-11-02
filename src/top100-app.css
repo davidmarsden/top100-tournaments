@@ -124,6 +124,10 @@
 .top100-market__estimate li { padding: 7px 0; border-top: 1px solid #1d355c; font-size: 0.88rem; }
 .top100-market__estimate li:first-child { border-top: 0; }
 .top100-market__estimate .eyebrow { margin-top: 14px; }
+.top100-market__section { margin-top: 16px; }
+.top100-market__packages { list-style: none; margin: 8px 0 12px; padding: 0; }
+.top100-market__packages li { padding: 7px 0; border-top: 1px solid #1d355c; font-size: 0.9rem; }
+.top100-market__packages li:first-child { border-top: 0; }
 .top100-market__table .is-short { display: none; }
 @media (max-width: 600px) {
   .top100-market__table .is-long { display: none; }
