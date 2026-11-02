@@ -176,7 +176,12 @@ begin
       ), '[]'::jsonb),
       'posts', coalesce((
         select jsonb_agg(public.sm_board_post_json(p, v_me.manager_id) order by p.created_at desc)
-        from (select * from open_posts order by created_at desc limit 150) p
+        -- All of my open posts, and the latest 150 of everyone else's.
+        from (
+          select * from mine
+          union all
+          (select * from open_posts o where o.manager_id is distinct from v_me.manager_id order by o.created_at desc limit 150)
+        ) p
       ), '[]'::jsonb),
       -- For each of my posts, what fits it.
       'matches', coalesce((
