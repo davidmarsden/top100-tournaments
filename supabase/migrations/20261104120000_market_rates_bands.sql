@@ -85,7 +85,7 @@ begin
         'grid', coalesce((
           select jsonb_agg(jsonb_build_object('band', r.band, 'n', r.n, 'ages', r.ages) order by r.ord)
           from (
-            select b.ord, b.band, count(*) as n, jsonb_agg(jsonb_build_object('band', cell.age_band, 'n', cell.n,
+            select b.ord, b.band, sum(cell.n) as n, jsonb_agg(jsonb_build_object('band', cell.age_band, 'n', cell.n,
               'medianTotal', cell.median_total, 'medianRatio', cell.median_ratio)) as ages
             from bands b
             join (
@@ -105,7 +105,7 @@ begin
         'grid', coalesce((
           select jsonb_agg(jsonb_build_object('band', r.band, 'n', r.n, 'ages', r.ages) order by r.ord)
           from (
-            select b.ord, b.band, count(*) as n, jsonb_agg(jsonb_build_object('band', cell.age_band, 'n', cell.n,
+            select b.ord, b.band, sum(cell.n) as n, jsonb_agg(jsonb_build_object('band', cell.age_band, 'n', cell.n,
               'medianFee', cell.median_fee, 'medianRatio', cell.median_ratio)) as ages
             from bands b
             join (
