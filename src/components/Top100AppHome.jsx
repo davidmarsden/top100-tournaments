@@ -78,6 +78,50 @@ function AppointmentsCard({ session }) {
   );
 }
 
+function TransferRow({ row, showDirection }) {
+  const seen = row.seenAt ? new Date(row.seenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+  return (
+    <li className="top100-transfer-row">
+      <div>
+        {showDirection && <span className={`top100-transfer-dir ${row.direction}`}>{row.direction === 'in' ? 'IN' : 'OUT'}</span>}
+        <strong>{row.player}</strong>
+        <span className="muted"> {row.position}{row.rating ? ` · ${row.rating}` : ''}{row.age ? ` · ${row.age}` : ''}</span>
+      </div>
+      <div className="muted">{row.from} → {row.to} · {money(row.fee)}{seen ? ` · ${seen}` : ''}</div>
+    </li>
+  );
+}
+
+// Completed transfers from Sync: the manager's own buys and sales, and the latest deals in the game world.
+function TransfersCard({ session, worldId }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    if (!session?.user?.id || !supabase || !worldId) return undefined;
+    let active = true;
+    supabase.rpc('get_my_transfers', { p_game_world_id: worldId }).then(({ data: result, error }) => {
+      if (active) setData(error ? null : result);
+    });
+    return () => { active = false; };
+  }, [session?.user?.id, worldId]);
+  if (!data || (!data.mine?.length && !data.latest?.length)) return null;
+  return (
+    <section className="top100-transfers" aria-labelledby="top100-transfers-heading">
+      <h3 id="top100-transfers-heading">Transfers</h3>
+      <div className="top100-transfers__grid">
+        <div>
+          <p className="eyebrow">Your club</p>
+          {data.mine?.length ? <ul>{data.mine.map((row) => <TransferRow key={row.id} row={row} showDirection />)}</ul> : <p className="muted">No completed transfers yet.</p>}
+        </div>
+        <div>
+          <p className="eyebrow">Latest in the game world</p>
+          <ul>{(data.latest || []).map((row) => <TransferRow key={row.id} row={row} />)}</ul>
+        </div>
+      </div>
+      <p className="muted top100-app-card__meta">From Soccer Manager, as of the last sync.</p>
+    </section>
+  );
+}
+
 // gameWorldId follows the world the Manager Portal is showing: undefined while it is still loading,
 // null for the account's home world.
 export default function Top100AppHome({ session, gameWorldId, onSelectWorld = null }) {
@@ -175,6 +219,8 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
           </article>
         ) : null}
       </div>
+
+      <TransfersCard session={session} worldId={shownWorldId} />
 
       {table.length > 0 && (
         <details className="top100-division-table">
