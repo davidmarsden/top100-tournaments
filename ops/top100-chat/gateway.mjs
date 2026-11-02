@@ -403,7 +403,9 @@ export function verifyDigestRequest(rawBody, timestampHeader, signatureHeader, n
   const markdown = String(body?.markdown || '').replace(/\r\n/g, '\n').trim();
   if (!/^[A-Za-z0-9:._-]{1,120}$/.test(keyText)) throw new Error('Invalid digest key.');
   if (!markdown || markdown.length > 4000) throw new Error('Digest text must be 1-4000 characters.');
-  return { key: keyText, title, markdown };
+  // The period the digest covers, kept with its key so a retried run records the original period.
+  const period = (value) => (typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value)) ? value : null);
+  return { key: keyText, title, markdown, from: period(body?.from), to: period(body?.to) };
 }
 
 function postToRssChat(url) {
@@ -437,7 +439,8 @@ async function postDigest(request, response) {
   }
   const store = loadDigestStore();
   if (store[digest.key]) {
-    send(response, 200, JSON.stringify({ ok: true, duplicate: true, id: store[digest.key].id }), { 'Content-Type': 'application/json; charset=utf-8' });
+    const earlier = store[digest.key];
+    send(response, 200, JSON.stringify({ ok: true, duplicate: true, id: earlier.id, from: earlier.from ?? null, to: earlier.to ?? null }), { 'Content-Type': 'application/json; charset=utf-8' });
     return;
   }
   if (digestsInFlight.has(digest.key)) {
@@ -459,9 +462,9 @@ async function postDigest(request, response) {
     newPost.searchParams.set('jsontext', JSON.stringify({ title: digest.title || undefined, markdowntext: digest.markdown }));
     const item = await postToRssChat(newPost);
     const id = item?.id ?? null;
-    store[digest.key] = { id, at: new Date().toISOString() };
+    store[digest.key] = { id, at: new Date().toISOString(), from: digest.from, to: digest.to };
     saveDigestStore(store);
-    send(response, 200, JSON.stringify({ ok: true, id }), { 'Content-Type': 'application/json; charset=utf-8' });
+    send(response, 200, JSON.stringify({ ok: true, id, from: digest.from, to: digest.to }), { 'Content-Type': 'application/json; charset=utf-8' });
   } catch (error) {
     console.error('digest:', error.message);
     send(response, 502, JSON.stringify({ ok: false, error: 'Could not post the digest.' }), { 'Content-Type': 'application/json; charset=utf-8' });

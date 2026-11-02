@@ -24,7 +24,7 @@ export default async () => {
 
     const key = digestKey(WORLD, now);
     const post = formatMarketDigest(digest, now);
-    const body = JSON.stringify({ key, title: post.title, markdown: post.markdown });
+    const body = JSON.stringify({ key, title: post.title, markdown: post.markdown, from: digest.from, to: digest.to });
     const { timestamp, signature } = signDigest(body, secret);
     const response = await fetch(url, {
       method: 'POST',
@@ -34,8 +34,10 @@ export default async () => {
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || `Chat gateway returned HTTP ${response.status}`);
 
+    // A repeat of a key the chat already posted (a retried run) records the period of the post
+    // that was actually published, so nothing between that post and this run is skipped.
     await rpc(config, 'record_chat_market_digest', {
-      p_world_slug: WORLD, p_digest_key: key, p_from: digest.from, p_to: digest.to,
+      p_world_slug: WORLD, p_digest_key: key, p_from: result.from || digest.from, p_to: result.to || digest.to,
       p_chat_item_id: result.id == null ? null : String(result.id),
       p_summary: { deals: digest.deals, totalFees: digest.totalFees, newlyListed: digest.newlyListedCount, duplicate: Boolean(result.duplicate) },
     });
