@@ -595,6 +595,21 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   const clubName = (id) => data.vacancies.find((vacancy) => vacancy.id === id)?.club_name || `#${id}`;
   const applicantName = Object.fromEntries(applications.map((application) => [String(application.manager_id), application.managerName]));
   const result = round?.result;
+  // Applications made or changed since the last scoring aren't in its result: flag them so the
+  // team scores again before relying on the rankings or the suggested appointments.
+  // Compared with the preferences the scoring actually used (saved with its inputs), so a change made
+  // while scoring was running is still caught.
+  const scoredKeys = new Set((result?.applicants || []).map((applicant) => String(applicant.key)));
+  const scoredPreferences = round?.inputs?.preferences || {};
+  const isUnscored = (application) => {
+    if (!round) return false;
+    const key = String(application.manager_id);
+    if (!scoredKeys.has(key)) return true;
+    const used = scoredPreferences[key];
+    const now = application.preferences.map(clubName);
+    return !Array.isArray(used) || used.length !== now.length || used.some((club, index) => club !== now[index]);
+  };
+  const unscored = applications.filter(isUnscored);
 
   const runScoring = async () => {
     const keyOf = (application) => String(application.manager_id);
@@ -687,6 +702,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
           </button>
         </div>
         {round && <p className="muted">Last scored {when(round.scored_at)}{round.published_at ? `, published ${when(round.published_at)}` : ''}.</p>}
+        {unscored.length > 0 && !round?.published_at && (
+          <p className="status" role="status">
+            {unscored.length} application{unscored.length === 1 ? '' : 's'} new or changed since the last scoring ({unscored.map((application) => application.managerName).join(', ')}).
+            {' '}Score applicants again to include {unscored.length === 1 ? 'it' : 'them'} in the rankings and suggested appointments.
+          </p>
+        )}
       </section>
 
       <section className="card">
@@ -694,6 +715,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
         {applications.map((application) => (
           <div key={application.id} style={{ marginBottom: 12 }}>
             <strong>{application.managerName}</strong> ({application.club}, D{application.clubDivision} {ordinal(application.clubPosition)}): {application.preferences.map(clubName).join(' → ')}
+            {isUnscored(application) && <span className="status" style={{ marginLeft: 8 }}>Not yet scored</span>}
             {application.note && <div className="muted">“{application.note}”</div>}
             {data.inputs[String(application.manager_id)]?.gold === false && <div className="status">Not a Gold member.</div>}
             {goldUnclear(data.inputs[String(application.manager_id)]) && <div className="status">{goldUnclear(data.inputs[String(application.manager_id)])}.</div>}
@@ -722,6 +744,10 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
           .map((applicant) => ({ applicant, scored: applicant.byVacancy?.[vacancy.club_name] }))
           .filter(({ applicant, scored }) => scored && applications.find((application) => String(application.manager_id) === applicant.key)?.preferences.includes(vacancy.id))
           .sort((a, b) => b.scored.total - a.scored.total);
+        // Applicants for this club the last scoring didn't include (or include as they now stand).
+        const rankedKeys = new Set(ranking.map(({ applicant }) => String(applicant.key)));
+        const notScored = applications.filter((application) => application.preferences.includes(vacancy.id)
+          && isUnscored(application) && !rankedKeys.has(String(application.manager_id)));
         const comparison = (result?.comparisons || []).find((entry) => entry.key === `${COMPARISON}${vacancy.id}`);
         const comparisonScore = comparison?.byVacancy?.[vacancy.club_name];
         const choices = Object.fromEntries(applications.filter((application) => application.preferences.includes(vacancy.id)).map((application) => [String(application.manager_id), application.managerName]));
@@ -738,9 +764,15 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
                 <thead><tr><th>Applicant</th><th style={NUM}>Score</th>{SCORE_PARTS.map(([part, label]) => <th key={label} style={NUM} title={SCORE_HELP[part][1]}>{label}</th>)}<th>Eligible</th></tr></thead>
                 <tbody>{ranking.map(({ applicant, scored }) => (
                   <tr key={applicant.key}>
-                    <td>{applicant.display}</td><td style={NUM}><strong>{scored.total}</strong></td>
+                    <td>{applicant.display}{applications.some((application) => String(application.manager_id) === String(applicant.key) && isUnscored(application)) && <div className="muted">Changed since scoring</div>}</td><td style={NUM}><strong>{scored.total}</strong></td>
                     {SCORE_PARTS.map(([part]) => <td key={part} style={NUM}>{scored.breakdown[part]}</td>)}
                     <td>{scored.eligibility.eligible ? 'Yes' : scored.eligibility.reasons.join(' ')}</td>
+                  </tr>
+                ))}
+                {notScored.map((application) => (
+                  <tr key={`unscored-${application.id}`}>
+                    <td>{application.managerName}</td>
+                    <td colSpan={SCORE_PARTS.length + 2} className="muted">Not yet scored: applied or changed their application after the last scoring.</td>
                   </tr>
                 ))}
                 {comparisonScore && (
@@ -760,7 +792,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
                 </dl>
               </details>
               </>
-            ) : <p className="muted">{result ? 'No applicants scored for this club.' : 'Not scored yet.'}</p>}
+            ) : (
+              <p className="muted">
+                {result ? 'No applicants scored for this club.' : 'Not scored yet.'}
+                {notScored.length > 0 && ` Not yet scored: ${notScored.map((application) => application.managerName).join(', ')}.`}
+              </p>
+            )}
             <div style={STEP}>
               <h4 style={STEP_TITLE}>Votes</h4>
               <p className="muted" style={{ marginTop: 0 }}>Every admin votes for an applicant, with a reason. Votes and reasons are published with the appointment.</p>
