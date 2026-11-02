@@ -597,10 +597,18 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   const result = round?.result;
   // Applications made or changed since the last scoring aren't in its result: flag them so the
   // team scores again before relying on the rankings or the suggested appointments.
+  // Compared with the preferences the scoring actually used (saved with its inputs), so a change made
+  // while scoring was running is still caught.
   const scoredKeys = new Set((result?.applicants || []).map((applicant) => String(applicant.key)));
-  const scoredAt = round?.scored_at ? Date.parse(round.scored_at) : null;
-  const isUnscored = (application) => Boolean(round) && (!scoredKeys.has(String(application.manager_id))
-    || (scoredAt !== null && Date.parse(application.updated_at || application.submitted_at) > scoredAt));
+  const scoredPreferences = round?.inputs?.preferences || {};
+  const isUnscored = (application) => {
+    if (!round) return false;
+    const key = String(application.manager_id);
+    if (!scoredKeys.has(key)) return true;
+    const used = scoredPreferences[key];
+    const now = application.preferences.map(clubName);
+    return !Array.isArray(used) || used.length !== now.length || used.some((club, index) => club !== now[index]);
+  };
   const unscored = applications.filter(isUnscored);
 
   const runScoring = async () => {
