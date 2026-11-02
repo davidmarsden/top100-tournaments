@@ -29,6 +29,17 @@ const shellHtml = fs.readFileSync(path.join(here, 'shell.html'), 'utf8');
 const clientThemeCss = fs.readFileSync(path.join(here, 'client-theme.css'), 'utf8');
 const clientBrandJs = fs.readFileSync(path.join(here, 'client-brand.js'), 'utf8');
 const usedNonces = new Map();
+// Market digest posts (sent by the Top 100 app's scheduled chat-market-digest function). Signed
+// with a key derived from the SSO secret, posted by a dedicated "Top 100 Market" chat account,
+// and remembered by key so a retried run never posts twice.
+const digestKey = crypto.createHmac('sha256', ssoSecret).update('top100-chat-digest-v1').digest();
+const digestStorePath = String(process.env.TOP100_CHAT_DIGEST_STORE || '/var/lib/top100-chat/digests.json');
+const digestBot = {
+  managerId: Number(process.env.TOP100_CHAT_DIGEST_BOT_ID || 900000001),
+  email: String(process.env.TOP100_CHAT_DIGEST_BOT_EMAIL || 'market-digest@smtop100.blog'),
+  name: 'Top 100 Market',
+};
+const digestsInFlight = new Set();
 const upstreamClientHome = 'https://code.scripting.com/rsschat/index.html';
 let clientHomeCache = '';
 let pushSubscriptions = [];
@@ -345,6 +356,123 @@ function shareQuery(share) {
   return params.toString();
 }
 
+function readRawBody(request, maxBytes = 32 * 1024) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      body += chunk;
+      if (Buffer.byteLength(body, 'utf8') > maxBytes) {
+        reject(new Error('Request body too large.'));
+        request.destroy();
+      }
+    });
+    request.on('end', () => resolve(body));
+    request.on('error', reject);
+  });
+}
+
+function loadDigestStore() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(digestStorePath, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDigestStore(store) {
+  // Keep the latest 300 keys.
+  const entries = Object.entries(store).sort((a, b) => String(b[1].at).localeCompare(String(a[1].at))).slice(0, 300);
+  fs.mkdirSync(path.dirname(digestStorePath), { recursive: true });
+  const temporary = `${digestStorePath}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(Object.fromEntries(entries)), { mode: 0o600 });
+  fs.renameSync(temporary, digestStorePath);
+}
+
+// The signature covers "<timestamp>.<raw body>", so neither can be changed or replayed later.
+export function verifyDigestRequest(rawBody, timestampHeader, signatureHeader, nowSeconds = Math.floor(Date.now() / 1000), key = digestKey) {
+  const timestamp = Number(timestampHeader);
+  if (!Number.isInteger(timestamp) || Math.abs(nowSeconds - timestamp) > 300) throw new Error('Stale or missing timestamp.');
+  const expected = crypto.createHmac('sha256', key).update(`${timestamp}.${rawBody}`).digest('base64url');
+  if (!timingSafeEqualText(String(signatureHeader || ''), expected)) throw new Error('Invalid signature.');
+  let body;
+  try { body = JSON.parse(rawBody); } catch { throw new Error('Invalid JSON body.'); }
+  const keyText = String(body?.key || '');
+  const title = String(body?.title || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 180);
+  const markdown = String(body?.markdown || '').replace(/\r\n/g, '\n').trim();
+  if (!/^[A-Za-z0-9:._-]{1,120}$/.test(keyText)) throw new Error('Invalid digest key.');
+  if (!markdown || markdown.length > 4000) throw new Error('Digest text must be 1-4000 characters.');
+  // The period the digest covers, kept with its key so a retried run records the original period.
+  const period = (value) => (typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value)) ? value : null);
+  return { key: keyText, title, markdown, from: period(body?.from), to: period(body?.to) };
+}
+
+function postToRssChat(url) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(url, { method: 'POST', timeout: 8000 }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { body += chunk; });
+      response.on('end', () => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`rss.chat newpost returned ${response.statusCode}: ${body.slice(0, 200)}`));
+          return;
+        }
+        try { resolve(JSON.parse(body)); } catch (error) { reject(error); }
+      });
+    });
+    request.on('timeout', () => request.destroy(new Error('rss.chat newpost timed out.')));
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+async function postDigest(request, response) {
+  let digest;
+  try {
+    const raw = await readRawBody(request);
+    digest = verifyDigestRequest(raw, request.headers['x-top100-digest-timestamp'], request.headers['x-top100-digest-signature']);
+  } catch (error) {
+    send(response, 401, JSON.stringify({ ok: false, error: error.message }), { 'Content-Type': 'application/json; charset=utf-8' });
+    return;
+  }
+  const store = loadDigestStore();
+  if (store[digest.key]) {
+    const earlier = store[digest.key];
+    send(response, 200, JSON.stringify({ ok: true, duplicate: true, id: earlier.id, from: earlier.from ?? null, to: earlier.to ?? null }), { 'Content-Type': 'application/json; charset=utf-8' });
+    return;
+  }
+  if (digestsInFlight.has(digest.key)) {
+    send(response, 409, JSON.stringify({ ok: false, error: 'This digest is already being posted.' }), { 'Content-Type': 'application/json; charset=utf-8' });
+    return;
+  }
+  digestsInFlight.add(digest.key);
+  try {
+    const helper = new URL(`http://127.0.0.1:${rssChatPort}/localtop100sso`);
+    helper.searchParams.set('managerid', String(digestBot.managerId));
+    helper.searchParams.set('email', digestBot.email);
+    helper.searchParams.set('displayname', digestBot.name);
+    const bot = await getJson(helper);
+    if (!bot?.emailAddress || !bot?.emailSecret) throw new Error('rss.chat did not return the digest account.');
+
+    const newPost = new URL(`http://127.0.0.1:${rssChatPort}/newpost`);
+    newPost.searchParams.set('emailaddress', bot.emailAddress);
+    newPost.searchParams.set('emailcode', bot.emailSecret);
+    newPost.searchParams.set('jsontext', JSON.stringify({ title: digest.title || undefined, markdowntext: digest.markdown }));
+    const item = await postToRssChat(newPost);
+    const id = item?.id ?? null;
+    store[digest.key] = { id, at: new Date().toISOString(), from: digest.from, to: digest.to };
+    saveDigestStore(store);
+    send(response, 200, JSON.stringify({ ok: true, id, from: digest.from, to: digest.to }), { 'Content-Type': 'application/json; charset=utf-8' });
+  } catch (error) {
+    console.error('digest:', error.message);
+    send(response, 502, JSON.stringify({ ok: false, error: 'Could not post the digest.' }), { 'Content-Type': 'application/json; charset=utf-8' });
+  } finally {
+    digestsInFlight.delete(digest.key);
+  }
+}
+
 function getJson(url) {
   return new Promise((resolve, reject) => {
     const request = http.get(url, { timeout: 5000 }, (response) => {
@@ -642,6 +770,11 @@ const server = http.createServer(async (request, response) => {
     } catch {
       redirect(response, 'https://manager.smtop100.blog/chat?' + query);
     }
+    return;
+  }
+
+  if (url.pathname === '/auth/digest' && request.method === 'POST') {
+    await postDigest(request, response);
     return;
   }
 

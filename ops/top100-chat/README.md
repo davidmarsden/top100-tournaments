@@ -167,6 +167,33 @@ rss.chat itself does not send Web Push. The overlay emits a localhost-only reply
 
 The PWA service worker still has no fetch handler and does not cache private chat content. Its additional responsibilities are limited to receiving a push, displaying the notification and opening the relevant chat post when the notification is tapped.
 
+## Market digest
+
+Once a day (18:41 UTC) the Top 100 app's scheduled Netlify function `chat-market-digest` posts a short market digest to Top 100 Chat. It covers what's happened since the previous digest:
+- the biggest deals and the dearest and cheapest against value;
+- part exchanges;
+- players newly transfer listed and newly unhappy;
+- new transfer-board posts;
+- managers' newsfeed posts about deals.
+
+It closes with a question to start replies. Quiet days are skipped.
+
+- The function reads `chat_market_digest()` from Supabase with the service role, formats the post (`netlify/functions/lib/chatDigest.mjs`), and sends it to `https://chat.smtop100.blog/auth/digest`.
+- The request is signed with HMAC-SHA256 over `<timestamp>.<body>`, using a key derived from `TOP100_CHAT_SSO_SECRET`. No new secret is needed. The gateway rejects:
+  - unsigned or tampered requests;
+  - requests more than 5 minutes old;
+  - keys it has already posted, which it answers with the earlier post id instead of posting again.
+- The gateway posts as a dedicated **Top 100 Market** chat account (`manager900000001`, `market-digest@smtop100.blog`). It provisions the account through the same localhost-only `/localtop100sso` helper used for managers.
+- `/auth/digest` is in Caddy's public path list because the Netlify function has no chat session. The signature is its only access control.
+- The gateway keeps posted keys in `/var/lib/top100-chat/digests.json` (`TOP100_CHAT_DIGEST_STORE`).
+
+To turn it on:
+
+1. Redeploy the gateway and Caddy block with `install-on-droplet.sh`. This picks up `/auth/digest`.
+2. In Netlify (`top100-tournaments`), set `TOP100_CHAT_DIGEST_ENABLED=true`. Until then the function skips without posting.
+
+Each posted digest is recorded in `public.chat_market_digests`, so the next one starts where it ended.
+
 ## Smoke tests
 
 Logged out:
