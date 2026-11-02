@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { playerName } from '../lib/playerName';
 import { supabase } from '../lib/supabaseClient';
 import { smClubUrl, smMyClubUrl, smWorldUrl } from '../lib/soccerManagerLinks';
 import MarketRatesCard from './MarketRatesCard';
@@ -86,7 +87,7 @@ function TransferRow({ row, showDirection }) {
     <li className="top100-transfer-row">
       <div>
         {showDirection && <span className={`top100-transfer-dir ${row.direction}`}>{row.direction === 'in' ? 'IN' : 'OUT'}</span>}
-        <strong>{row.player}</strong>
+        <strong>{playerName(row.player)}</strong>
         <span className="muted"> {row.position}{row.rating ? ` · ${row.rating}` : ''}{row.age ? ` · ${row.age}` : ''}</span>
       </div>
       <div className="muted">{row.from} → {row.to} · {money(row.fee)}{seen ? ` · ${seen}` : ''}</div>

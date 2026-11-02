@@ -19,7 +19,7 @@ test('formats the sections managers talk about', () => {
   const { title, markdown } = formatMarketDigest(digest, new Date('2026-11-02T18:41:00Z'));
   assert.equal(title, 'Top 100 market · Mon 2 Nov');
   assert.match(markdown, /3 completed deals since Sun 1 Nov, £42\.0m changing hands/);
-  assert.match(markdown, /M\. Silvetti \(81, 20, AM\(RL\),F\(RLC\)\): Girondins Bordeaux → VfB Stuttgart \(Rob Ryan\) · £35\.0m/);
+  assert.match(markdown, /• M\. Silvetti \(81, 20, AM\(RL\),F\(RLC\)\): Girondins Bordeaux → VfB Stuttgart \(Rob Ryan\) · £35\.0m/);
   assert.match(markdown, /21\.9× his value\. Worth it\?/);
   assert.match(markdown, /with V\. Valdepeñas, V\. Joseph going the other way/);
   assert.match(markdown, /A\. Rüdiger \(93, 33, D\(C\)\), Bayern München, part exchange only/);

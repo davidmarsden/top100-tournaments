@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { playerName } from '../lib/playerName';
 import { supabase } from '../lib/supabaseClient';
 import { POSITION_GROUPS, money, parseMoney } from './MarketRatesCard';
 
@@ -20,7 +21,7 @@ function PostSummary({ post }) {
     const p = post.player || {};
     return (
       <>
-        <strong>{p.name}</strong> <span className="muted">{p.position} · {p.age} · {p.rating} · value {money(p.value)}</span>
+        <strong>{playerName(p.name)}</strong> <span className="muted">{p.position} · {p.age} · {p.rating} · value {money(p.value)}</span>
         <div className="muted">{dealText(post.dealTypes)}{post.askingPrice ? ` · asking ${money(post.askingPrice)}` : ''}</div>
       </>
     );
@@ -52,7 +53,7 @@ function ListedRow({ row }) {
   return (
     <li className="top100-board__post">
       <span className={`top100-board__kind ${row.list}`}>{LIST_LABEL[row.list]}</span>
-      <strong>{row.player}</strong> <span className="muted">{row.club} · {row.position} · {row.age} · {row.rating}</span>
+      <strong>{playerName(row.player)}</strong> <span className="muted">{row.club} · {row.position} · {row.age} · {row.rating}</span>
       <div className="muted">
         Value {money(row.value)}
         {row.list === 'transfer' ? ` · ${row.askingPrice ? `asking ${money(row.askingPrice)}` : (row.askingLabel || 'no asking price')}` : ''}
@@ -130,7 +131,7 @@ function PostForm({ board, onSaved, onCancel }) {
           <label className="top100-board__wide">Player
             <select value={form.playerId} onChange={set('playerId')} required>
               <option value="">Choose from your squad…</option>
-              {squad.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.position} · {p.age} · {p.rating} · {money(p.value)}{p.youth ? ' · youth' : ''}</option>)}
+              {squad.map((p) => <option key={p.id} value={p.id}>{playerName(p.name)} · {p.position} · {p.age} · {p.rating} · {money(p.value)}{p.youth ? ' · youth' : ''}</option>)}
             </select>
           </label>
           <label>Asking price (optional)<input type="text" placeholder="e.g. 2.5m" value={form.askingPrice} onChange={set('askingPrice')} /></label>

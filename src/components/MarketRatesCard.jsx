@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { playerName } from '../lib/playerName';
 import { supabase } from '../lib/supabaseClient';
 
 export const POSITION_GROUPS = [
@@ -75,7 +76,7 @@ function PriceCheck({ worldId }) {
             <>
               <p className="eyebrow">Similar deals</p>
               <ul>{result.comparables.map((row, index) => (
-                <li key={index}><strong>{row.player}</strong> <span className="muted">{row.position} · {row.age} · {row.rating}</span>
+                <li key={index}><strong>{playerName(row.player)}</strong> <span className="muted">{row.position} · {row.age} · {row.rating}</span>
                   <div className="muted">{row.from} → {row.to} · {money(row.fee)} ({ratio(row.ratio)} value) · {shortDate(row.seenAt)}</div></li>
               ))}</ul>
             </>
@@ -84,7 +85,7 @@ function PriceCheck({ worldId }) {
             <>
               <p className="eyebrow">On the transfer list now</p>
               <ul>{result.listed.map((row, index) => (
-                <li key={index}><strong>{row.player}</strong> <span className="muted">{row.club} · {row.position} · {row.age} · {row.rating}</span>
+                <li key={index}><strong>{playerName(row.player)}</strong> <span className="muted">{row.club} · {row.position} · {row.age} · {row.rating}</span>
                   <div className="muted">Value {money(row.value)} · {row.askingPrice ? `asking ${money(row.askingPrice)}` : (row.askingLabel || 'no asking price')}{row.concern ? ` · ${row.concern}` : ''}</div></li>
               ))}</ul>
             </>
@@ -114,7 +115,7 @@ export default function MarketRatesCard({ session, worldId }) {
   const excluded = (data.excluded?.partExchange || 0) + (data.excluded?.linked || 0);
   return (
     <details className="top100-market">
-      <summary><h3>Market rates</h3><span className="muted">What players sell for in {data.world || 'this game world'}</span></summary>
+      <summary><h3>Market rates</h3><span className="muted">What players sell for in {data.world || 'this game world'}</span><span className="top100-market__toggle" aria-hidden="true" /></summary>
       <p className="muted">
         Median fee by position and rating, from {data.clean} completed deals since {shortDate(data.firstDeal)}.
         Bought from computer clubs, players typically go for {ratio(data.ratio?.fromAiClubs)} their value; from other managers, {ratio(data.ratio?.fromManagers)}.
