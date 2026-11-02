@@ -55,8 +55,9 @@ security definer
 set search_path = ''
 as $$
   select a.manager_id, coalesce(m.display_name, m.name), s.team_id, t.name,
-    (select c.source_club_id from public.soccer_manager_club_crosswalk c
-      where c.game_world_id = p_world and c.team_id = s.team_id limit 1)
+    (select sp.current_source_club_id from public.soccer_manager_players sp
+      where sp.game_world_id = p_world and sp.current_team_id = s.team_id and sp.current_source_club_id is not null
+      order by sp.last_seen_at desc nulls last limit 1)
   from public.manager_portal_accounts a
   join public.managers m on m.id = a.manager_id
   left join lateral (
