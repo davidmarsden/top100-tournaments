@@ -88,7 +88,7 @@ grant select on public.soccer_manager_market_listings to authenticated;
 grant select on public.soccer_manager_newsfeed to authenticated;
 
 -- Small parsing helpers for the save functions.
--- @permissions private: called only inside the security definer save functions below.
+-- @permissions private public.sm_market_int(text,bigint,bigint): called only inside the security definer save functions below.
 create or replace function public.sm_market_int(p_value text, p_min bigint, p_max bigint)
 returns bigint
 language sql
