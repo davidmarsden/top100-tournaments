@@ -204,7 +204,7 @@ export default function MarketRatesCard({ session, worldId }) {
       <PriceCheck worldId={data.worldId} />
       <p className="muted top100-app-card__meta">
         Cells show the median price, then price ÷ player value and the number of deals. Faint cells have fewer than {THIN} deals.
-        Players going the other way are valued as of the deal where Sync saw them move, otherwise at today's value.
+        Players going the other way are valued as of the deal where known, otherwise at today's value.
         {data.excluded?.linked ? ` ${data.excluded.linked} swaps split across two transfers are left out.` : ''}
       </p>
     </details>
