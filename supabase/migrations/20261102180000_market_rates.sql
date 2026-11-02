@@ -84,7 +84,11 @@ as $$
   )
   select d.id, d.player_name, d.position, public.sm_position_group(d.position), d.age, d.rating, d.player_value, d.amount,
     case when d.player_value > 0 then round(d.amount::numeric / d.player_value, 3) end,
-    d.from_club_name, d.to_club_name, d.from_manager_id is not null, d.px, d.is_linked,
+    d.from_club_name, d.to_club_name,
+    -- Soccer Manager names the selling manager (fromManagerId; 0 for a computer club), whether or
+    -- not that manager is linked to an archive record.
+    d.from_manager_id is not null or coalesce(nullif(trim(d.source_data->>'fromManagerId'), ''), '0') <> '0',
+    d.px, d.is_linked,
     not d.px and not d.is_linked and coalesce(d.amount, 0) > 0 and coalesce(d.player_value, 0) > 0
       and d.age is not null and d.rating is not null and public.sm_position_group(d.position) is not null,
     d.first_seen_at
