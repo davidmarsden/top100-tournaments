@@ -222,6 +222,7 @@ begin
                 and (w.min_age is null or m.player_age >= w.min_age) and (w.max_age is null or m.player_age <= w.max_age)
                 and (w.min_rating is null or m.player_rating >= w.min_rating) and (w.max_rating is null or m.player_rating <= w.max_rating)
                 and w.deal_types && m.deal_types
+                and (w.max_fee is null or m.asking_price is null or m.asking_price <= w.max_fee * 1.1)
               order by w.created_at desc limit 8
             ) w
           ), '[]'::jsonb)
