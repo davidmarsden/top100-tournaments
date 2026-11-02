@@ -410,7 +410,7 @@ export function verifyDigestRequest(rawBody, timestampHeader, signatureHeader, n
 
 function postToRssChat(url) {
   return new Promise((resolve, reject) => {
-    const request = http.request(url, { method: 'POST', timeout: 8000 }, (response) => {
+    const request = http.request(url, { method: 'POST', timeout: 15000 }, (response) => {
       let body = '';
       response.setEncoding('utf8');
       response.on('data', (chunk) => { body += chunk; });
@@ -475,7 +475,7 @@ async function postDigest(request, response) {
 
 function getJson(url) {
   return new Promise((resolve, reject) => {
-    const request = http.get(url, { timeout: 5000 }, (response) => {
+    const request = http.get(url, { timeout: 15000 }, (response) => {
       let body = '';
       response.setEncoding('utf8');
       response.on('data', (chunk) => { body += chunk; });

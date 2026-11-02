@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
+import { playerName } from '../lib/playerName';
 import { supabase } from '../lib/supabaseClient';
 
 export const POSITION_GROUPS = [
   ['GK', 'Goalkeepers'], ['CB', 'Centre-backs'], ['FB', 'Full-backs'], ['DM', 'Defensive midfielders'],
   ['CM', 'Central midfielders'], ['W', 'Wingers'], ['AM', 'Attacking midfielders'], ['ST', 'Strikers'],
 ];
-const GROUP_LABEL = Object.fromEntries(POSITION_GROUPS);
-const RATING_BANDS = ['under 75', '75-79', '80-84', '85-89', '90+'];
+const AGE_BANDS = ['15-18', '19-21', '22-25', '26-30', '31+'];
 // Fewer deals than this in a cell: shown faintly, as a rough guide only.
 const THIN = 5;
 
@@ -64,39 +64,98 @@ function PriceCheck({ worldId }) {
         <button type="submit" disabled={busy}>{busy ? 'Checking…' : 'Check'}</button>
       </form>
       {error && <p className="status" role="status">{error}</p>}
-      {result && (result.n ? (
+      {result && (
         <div className="top100-market__estimate" role="status">
-          <div className="top100-app-card__headline"><strong>{money(result.mid)}</strong><span>likely range {money(result.low)} – {money(result.high)}</span></div>
-          <p className="muted">
-            From {result.n} similar deal{result.n === 1 ? '' : 's'} ({result.basis})
-            {result.fromValue ? `, at a typical ${ratio(result.medianRatio)} the player's value.` : '.'}
-          </p>
-          {result.comparables?.length > 0 && (
-            <>
-              <p className="eyebrow">Similar deals</p>
-              <ul>{result.comparables.map((row, index) => (
-                <li key={index}><strong>{row.player}</strong> <span className="muted">{row.position} · {row.age} · {row.rating}</span>
-                  <div className="muted">{row.from} → {row.to} · {money(row.fee)} ({ratio(row.ratio)} value) · {shortDate(row.seenAt)}</div></li>
-              ))}</ul>
-            </>
-          )}
+          <EstimateBlock title="From another manager" side={result.managers} total />
+          <EstimateBlock title="From a computer club" side={result.computer} />
           {result.listed?.length > 0 && (
             <>
               <p className="eyebrow">On the transfer list now</p>
               <ul>{result.listed.map((row, index) => (
-                <li key={index}><strong>{row.player}</strong> <span className="muted">{row.club} · {row.position} · {row.age} · {row.rating}</span>
+                <li key={index}><strong>{playerName(row.player)}</strong> <span className="muted">{row.club} · {row.position} · {row.age} · {row.rating}</span>
                   <div className="muted">Value {money(row.value)} · {row.askingPrice ? `asking ${money(row.askingPrice)}` : (row.askingLabel || 'no asking price')}{row.concern ? ` · ${row.concern}` : ''}</div></li>
               ))}</ul>
             </>
           )}
         </div>
-      ) : <p className="muted" role="status">No similar completed deals yet.</p>)}
+      )}
     </div>
   );
 }
 
-// What players have sold for in this game world, by position and rating, from completed transfers.
-// Part exchanges and deals linked to another one between the same clubs are left out.
+// What a deal cost: cash, plus the players who went the other way.
+function DealPrice({ row }) {
+  const back = (row.playersBack || []).filter((p) => p && p.name);
+  if (!back.length) return <>{money(row.fee)}</>;
+  return (
+    <>
+      {Number(row.fee) > 0 ? `${money(row.fee)} + ` : ''}
+      {back.map((p) => `${playerName(p.name)}${p.rating ? ` (${p.rating})` : ''}`).join(' + ')}
+      {' '}≈ {money(row.total)}
+    </>
+  );
+}
+
+function EstimateBlock({ title, side, total = false }) {
+  if (!side) return null;
+  if (!side.n) return (<><p className="eyebrow">{title}</p><p className="muted">No similar completed deals yet.</p></>);
+  const pxShare = Number(side.partExchangeShare) || 0;
+  return (
+    <>
+      <p className="eyebrow">{title}</p>
+      <div className="top100-app-card__headline"><strong>{money(side.mid)}</strong><span>likely {money(side.low)} – {money(side.high)}{total ? ' in cash and players' : ' cash'}</span></div>
+      <p className="muted">
+        From {side.n} similar deal{side.n === 1 ? '' : 's'} ({side.basis}){side.fromValue ? `, at a typical ${ratio(side.medianRatio)} the player's value` : ''}.
+        {total && pxShare > 0 ? ` ${Math.round(pxShare * 100)}% were part exchanges, usually ${side.playersBack} player${Number(side.playersBack) === 1 ? '' : 's'} back${side.bestBackRating ? ` (best about ${side.bestBackRating})` : ''}${Number(side.medianCashWithPlayers) > 0 ? ` plus about ${money(side.medianCashWithPlayers)}` : ''}.` : ''}
+      </p>
+      {side.comparables?.length > 0 && (
+        <ul>{side.comparables.map((row, index) => (
+          <li key={index}><strong>{playerName(row.player)}</strong> <span className="muted">{row.position} · {row.age} · {row.rating} · value {money(row.value)}</span>
+            <div className="muted">{row.from} → {row.to} · <DealPrice row={row} /> ({ratio(row.ratio)} value) · {shortDate(row.seenAt)}</div></li>
+        ))}</ul>
+      )}
+    </>
+  );
+}
+
+// Rows are rating bands (best first), columns age bands; each cell is a median price.
+function RatesGrid({ grid, valueKey }) {
+  return (
+    <div className="table-wrap">
+      <table className="top100-market__table">
+        <thead><tr><th>Rating</th>{AGE_BANDS.map((band) => <th key={band}>{band}</th>)}</tr></thead>
+        <tbody>
+          {grid.map((row) => (
+            <tr key={row.band}>
+              <th scope="row">{row.band}</th>
+              {AGE_BANDS.map((age) => {
+                const cell = row.ages?.find((item) => item.band === age);
+                if (!cell) return <td key={age} className="muted">—</td>;
+                return (
+                  <td key={age} className={cell.n < THIN ? 'is-thin' : undefined} title={`${cell.n} deal${cell.n === 1 ? '' : 's'} · ${ratio(cell.medianRatio)} value`}>
+                    <strong>{money(cell[valueKey])}</strong><span>{ratio(cell.medianRatio)} · {cell.n}</span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function packageLine(b) {
+  const px = Math.round((Number(b.partExchangeShare) || 0) * 100);
+  const parts = [`about ${money(b.medianTotal)} (${ratio(b.medianRatio)} value)`];
+  if (px > 0) {
+    parts.push(`${px}% part exchanges, usually ${b.playersBack} player${Number(b.playersBack) === 1 ? '' : 's'} back${b.bestBackRating ? `, best about ${b.bestBackRating}` : ''}${Number(b.cashShare) > 0 ? `, plus cash in ${Math.round(Number(b.cashShare) * 100)}% of those` : ''}`);
+  }
+  return parts.join(' · ');
+}
+
+// What players have sold for in this game world. Between managers, a deal's price is its cash plus
+// the value of the players who went the other way; from computer clubs, it's the cash.
 export default function MarketRatesCard({ session, worldId }) {
   const [data, setData] = useState(null);
   useEffect(() => {
@@ -108,45 +167,45 @@ export default function MarketRatesCard({ session, worldId }) {
     });
     return () => { active = false; };
   }, [session?.user?.id, worldId]);
-  if (!data || !data.clean) return null;
+  if (!data || !(data.managers?.deals || data.computer?.deals)) return null;
 
-  const cell = (group, band) => group.bands?.find((row) => row.band === band);
-  const excluded = (data.excluded?.partExchange || 0) + (data.excluded?.linked || 0);
+  const managers = data.managers || {};
+  const computer = data.computer || {};
   return (
     <details className="top100-market">
-      <summary><h3>Market rates</h3><span className="muted">What players sell for in {data.world || 'this game world'}</span></summary>
+      <summary><h3>Market rates</h3><span className="muted">What players cost in {data.world || 'this game world'}</span><span className="top100-market__toggle" aria-hidden="true" /></summary>
+
+      <p className="eyebrow top100-market__section">Between managers</p>
       <p className="muted">
-        Median fee by position and rating, from {data.clean} completed deals since {shortDate(data.firstDeal)}.
-        Bought from computer clubs, players typically go for {ratio(data.ratio?.fromAiClubs)} their value; from other managers, {ratio(data.ratio?.fromManagers)}.
-        {excluded ? ` ${excluded} part-exchange or multi-part deals are left out, as their fees don't show the full price.` : ''}
+        {managers.deals} deals since {shortDate(data.firstDeal)}, {Math.round((Number(managers.partExchangeShare) || 0) * 100)}% of them part exchanges.
+        Each deal counts its cash plus the value of the players who went the other way; typically {ratio(managers.medianRatio)} the player's value in all.
       </p>
-      <div className="table-wrap">
-        <table className="top100-market__table">
-          <thead><tr><th><span className="is-long">Position</span><span className="is-short">Pos</span></th>{RATING_BANDS.map((band) => <th key={band}>{band}</th>)}</tr></thead>
-          <tbody>
-            {data.groups.map((group) => (
-              <tr key={group.group}>
-                <th scope="row" title={GROUP_LABEL[group.group]}><span className="is-long">{GROUP_LABEL[group.group] || group.group}</span><span className="is-short">{group.group}</span></th>
-                {RATING_BANDS.map((band) => {
-                  const row = cell(group, band);
-                  if (!row) return <td key={band} className="muted">—</td>;
-                  return (
-                    <td key={band} className={row.n < THIN ? 'is-thin' : undefined}
-                      title={`${row.n} deal${row.n === 1 ? '' : 's'} · middle half ${money(row.p25Fee)}–${money(row.p75Fee)} · ${ratio(row.medianRatio)} value`}>
-                      <strong>{money(row.medianFee)}</strong><span>{ratio(row.medianRatio)} · {row.n}</span>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {managers.bands?.length > 0 && (
+        <ul className="top100-market__packages">
+          {managers.bands.map((b) => (
+            <li key={b.band}><strong>Rated {b.band}</strong> <span className="muted">({b.n} deals)</span><div>{packageLine(b)}</div></li>
+          ))}
+        </ul>
+      )}
+      {managers.grid?.length > 0 && <RatesGrid grid={managers.grid} valueKey="medianTotal" />}
       {data.ages?.length > 0 && (
         <p className="muted">By age: {data.ages.map((row) => `${row.band} ${ratio(row.medianRatio)}`).join(' · ')} of value.</p>
       )}
+
+      {computer.grid?.length > 0 && (
+        <>
+          <p className="eyebrow top100-market__section">From computer clubs</p>
+          <p className="muted">Cash only: {computer.deals} buys, typically {ratio(computer.medianRatio)} the player's value.</p>
+          <RatesGrid grid={computer.grid} valueKey="medianFee" />
+        </>
+      )}
+
       <PriceCheck worldId={data.worldId} />
-      <p className="muted top100-app-card__meta">Cells show the median fee, then fee ÷ player value and the number of deals. Faint cells have fewer than {THIN} deals.</p>
+      <p className="muted top100-app-card__meta">
+        Cells show the median price by rating and age, then price ÷ player value and the number of deals. Faint cells have fewer than {THIN} deals.
+        Players going the other way are valued as of the deal where known, otherwise at today's value.
+        {data.excluded?.linked ? ` ${data.excluded.linked} swaps split across two transfers are left out.` : ''}
+      </p>
     </details>
   );
 }

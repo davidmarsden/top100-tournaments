@@ -41,19 +41,29 @@ function playerLine(p) {
   return `${playerName(p.player)} (${p.rating}${p.age ? `, ${p.age}` : ''}${p.position ? `, ${clean(p.position, 20)}` : ''})`;
 }
 
+// What was paid: cash, plus the players who went the other way in a part exchange.
+export function packageText(d) {
+  const back = (d.playersBack || []).filter((p) => p && p.name);
+  const players = back.map((p) => `${playerName(p.name)}${p.rating ? ` (${p.rating})` : ''}`).join(' + ');
+  if (!back.length) return money(d.fee);
+  const cash = Number(d.fee) > 0 ? `${money(d.fee)} + ` : '';
+  const total = Number(d.total) > 0 ? `, about ${money(d.total)} in all` : '';
+  return `${cash}${players}${total}`;
+}
+
 function dealLine(d) {
   const buyer = d.buyer ? ` (${clean(d.buyer, 40)})` : '';
-  return `- ${playerLine(d)}: ${clean(d.from, 40)} → ${clean(d.to, 40)}${buyer} · ${money(d.fee)}`;
+  return `• ${playerLine(d)}: ${clean(d.from, 40)} → ${clean(d.to, 40)}${buyer} · ${packageText(d)}`;
 }
 
 function boardLine(p) {
   if (p.kind === 'offered') {
-    return `- ${clean(p.club, 40)} offering ${playerName(p.player)} (${p.playerRating}${p.playerPosition ? `, ${clean(p.playerPosition, 20)}` : ''})${p.askingPrice ? `, asking ${money(p.askingPrice)}` : ''}`;
+    return `• ${clean(p.club, 40)} offering ${playerName(p.player)} (${p.playerRating}${p.playerPosition ? `, ${clean(p.playerPosition, 20)}` : ''})${p.askingPrice ? `, asking ${money(p.askingPrice)}` : ''}`;
   }
   const rating = p.minRating && p.maxRating ? `${p.minRating}-${p.maxRating} rated ` : p.minRating ? `${p.minRating}+ rated ` : '';
   const what = `${rating}${p.group ? GROUPS[p.group] || p.group : 'player'}`;
   const deals = (p.dealTypes || []).join('/');
-  return `- ${clean(p.club, 40)} want a ${what}${deals ? ` (${deals})` : ''}${p.maxFee ? `, up to ${money(p.maxFee)}` : ''}`;
+  return `• ${clean(p.club, 40)} want a ${what}${deals ? ` (${deals})` : ''}${p.maxFee ? `, up to ${money(p.maxFee)}` : ''}`;
 }
 
 // Whether there's anything worth posting.
@@ -67,15 +77,16 @@ export function formatMarketDigest(d, now = new Date()) {
   const parts = [];
 
   if (Number(d.deals) > 0) {
-    const typical = d.typicalRatio ? ` Straight cash deals went for a typical ${ratio(d.typicalRatio)} the player's value.` : '';
-    parts.push(`${d.deals} completed deal${d.deals === 1 ? '' : 's'} since ${ukDate(d.from)}, ${money(d.totalFees)} changing hands.${typical}`);
+    const typical = d.typicalRatio ? ` Deals between managers went for a typical ${ratio(d.typicalRatio)} the player's value, counting players in part exchanges.` : '';
+    const worth = Number(d.totalValue) > 0 ? money(d.totalValue) : money(d.totalFees);
+    parts.push(`${d.deals} completed deal${d.deals === 1 ? '' : 's'} since ${ukDate(d.from)}, worth ${worth} in cash and players.${typical}`);
   }
-  if (d.biggest?.length) parts.push(['**Biggest deals**', ...d.biggest.slice(0, 5).map(dealLine)].join('\n'));
+  if (d.biggest?.length) parts.push(['**Biggest deals**', ...d.biggest.slice(0, 5).map(dealLine)].join('\n\n'));
 
   const talking = [];
-  if (d.dearest) talking.push(`- Top dollar: ${playerLine(d.dearest)} went to ${clean(d.dearest.to, 40)} for ${money(d.dearest.fee)}, ${ratio(d.dearest.ratio)} his value. Worth it?`);
-  if (d.cheapest) talking.push(`- Bargain: ${playerLine(d.cheapest)} went to ${clean(d.cheapest.to, 40)} for ${money(d.cheapest.fee)}, ${ratio(d.cheapest.ratio)} his value.`);
-  if (talking.length) parts.push(['**Talking points**', ...talking].join('\n'));
+  if (d.dearest) talking.push(`• Top dollar: ${playerLine(d.dearest)} went to ${clean(d.dearest.to, 40)} for ${packageText(d.dearest)}: ${ratio(d.dearest.ratio)} his value. Worth it?`);
+  if (d.cheapest) talking.push(`• Bargain: ${playerLine(d.cheapest)} went to ${clean(d.cheapest.to, 40)} for ${packageText(d.cheapest)}: ${ratio(d.cheapest.ratio)} his value.`);
+  if (talking.length) parts.push(['**Talking points**', ...talking].join('\n\n'));
 
   if (Number(d.partExchanges) > 0) {
     const px = d.biggestPartExchange;
@@ -85,13 +96,13 @@ export function formatMarketDigest(d, now = new Date()) {
 
   if (d.newlyListed?.length) {
     parts.push([`**New on the transfer list** (${d.newlyListedCount})`,
-      ...d.newlyListed.slice(0, 5).map((p) => `- ${playerLine(p)}, ${clean(p.club, 40)}${p.askingPrice ? `, asking ${money(p.askingPrice)}` : p.askingLabel ? `, ${clean(p.askingLabel, 30).toLowerCase()}` : ''}`),
-    ].join('\n'));
+      ...d.newlyListed.slice(0, 5).map((p) => `• ${playerLine(p)}, ${clean(p.club, 40)}${p.askingPrice ? `, asking ${money(p.askingPrice)}` : p.askingLabel ? `, ${clean(p.askingLabel, 30).toLowerCase()}` : ''}`),
+    ].join('\n\n'));
   }
   if (d.newlyUnhappy?.length) {
-    parts.push([`**Newly unhappy** (${d.newlyUnhappyCount}): might be available, or worth a loan`,
-      ...d.newlyUnhappy.slice(0, 3).map((p) => `- ${playerLine(p)}, ${clean(p.club, 40)}`),
-    ].join('\n'));
+    parts.push([`**Newly unhappy** (${d.newlyUnhappyCount}): their clubs may listen to offers`,
+      ...d.newlyUnhappy.slice(0, 3).map((p) => `• ${playerLine(p)}, ${clean(p.club, 40)}`),
+    ].join('\n\n'));
   }
 
   const board = d.board || {};
@@ -99,13 +110,13 @@ export function formatMarketDigest(d, now = new Date()) {
     parts.push([`**On the transfer board**: ${board.wanted} new wanted, ${board.offered} new offers (${board.open} open in all)`,
       ...(board.latest || []).slice(0, 4).map(boardLine),
       `Post yours in the Manager Portal: ${PORTAL_URL}`,
-    ].join('\n'));
+    ].join('\n\n'));
   } else {
     parts.push(`Looking for someone, or want to move a player on? Post it on the transfer board in the Manager Portal and it's matched with the market: ${PORTAL_URL}`);
   }
 
   if (d.newsfeed?.length) {
-    parts.push(['**From the newsfeed**', ...d.newsfeed.slice(0, 3).map((n) => `- ${clean(n.manager, 40)}, ${clean(n.club, 40)}: "${clean(n.message, 160)}"`)].join('\n'));
+    parts.push(['**From the newsfeed**', ...d.newsfeed.slice(0, 3).map((n) => `• ${clean(n.manager, 40)}, ${clean(n.club, 40)}: "${clean(n.message, 160)}"`)].join('\n\n'));
   }
 
   const prompt = PROMPTS[Math.floor(now.getTime() / 86400000) % PROMPTS.length];
