@@ -6,8 +6,7 @@ export const POSITION_GROUPS = [
   ['GK', 'Goalkeepers'], ['CB', 'Centre-backs'], ['FB', 'Full-backs'], ['DM', 'Defensive midfielders'],
   ['CM', 'Central midfielders'], ['W', 'Wingers'], ['AM', 'Attacking midfielders'], ['ST', 'Strikers'],
 ];
-const GROUP_LABEL = Object.fromEntries(POSITION_GROUPS);
-const RATING_BANDS = ['under 75', '75-79', '80-84', '85-89', '90+'];
+const AGE_BANDS = ['15-18', '19-21', '22-25', '26-30', '31+'];
 // Fewer deals than this in a cell: shown faintly, as a rough guide only.
 const THIN = 5;
 
@@ -119,22 +118,22 @@ function EstimateBlock({ title, side, total = false }) {
   );
 }
 
-function RatesTable({ groups, valueKey }) {
-  const cell = (group, band) => group.bands?.find((row) => row.band === band);
+// Rows are rating bands (best first), columns age bands; each cell is a median price.
+function RatesGrid({ grid, valueKey }) {
   return (
     <div className="table-wrap">
       <table className="top100-market__table">
-        <thead><tr><th><span className="is-long">Position</span><span className="is-short">Pos</span></th>{RATING_BANDS.map((band) => <th key={band}>{band}</th>)}</tr></thead>
+        <thead><tr><th>Rating</th>{AGE_BANDS.map((band) => <th key={band}>{band}</th>)}</tr></thead>
         <tbody>
-          {groups.map((group) => (
-            <tr key={group.group}>
-              <th scope="row" title={GROUP_LABEL[group.group]}><span className="is-long">{GROUP_LABEL[group.group] || group.group}</span><span className="is-short">{group.group}</span></th>
-              {RATING_BANDS.map((band) => {
-                const row = cell(group, band);
-                if (!row) return <td key={band} className="muted">—</td>;
+          {grid.map((row) => (
+            <tr key={row.band}>
+              <th scope="row">{row.band}</th>
+              {AGE_BANDS.map((age) => {
+                const cell = row.ages?.find((item) => item.band === age);
+                if (!cell) return <td key={age} className="muted">—</td>;
                 return (
-                  <td key={band} className={row.n < THIN ? 'is-thin' : undefined} title={`${row.n} deal${row.n === 1 ? '' : 's'} · ${ratio(row.medianRatio)} value`}>
-                    <strong>{money(row[valueKey])}</strong><span>{ratio(row.medianRatio)} · {row.n}</span>
+                  <td key={age} className={cell.n < THIN ? 'is-thin' : undefined} title={`${cell.n} deal${cell.n === 1 ? '' : 's'} · ${ratio(cell.medianRatio)} value`}>
+                    <strong>{money(cell[valueKey])}</strong><span>{ratio(cell.medianRatio)} · {cell.n}</span>
                   </td>
                 );
               })}
@@ -183,27 +182,27 @@ export default function MarketRatesCard({ session, worldId }) {
       </p>
       {managers.bands?.length > 0 && (
         <ul className="top100-market__packages">
-          {[...managers.bands].reverse().map((b) => (
-            <li key={b.band}><strong>{b.band} rated</strong> <span className="muted">({b.n} deals)</span><div>{packageLine(b)}</div></li>
+          {managers.bands.map((b) => (
+            <li key={b.band}><strong>Rated {b.band}</strong> <span className="muted">({b.n} deals)</span><div>{packageLine(b)}</div></li>
           ))}
         </ul>
       )}
-      {managers.groups?.length > 0 && <RatesTable groups={managers.groups} valueKey="medianTotal" />}
+      {managers.grid?.length > 0 && <RatesGrid grid={managers.grid} valueKey="medianTotal" />}
       {data.ages?.length > 0 && (
         <p className="muted">By age: {data.ages.map((row) => `${row.band} ${ratio(row.medianRatio)}`).join(' · ')} of value.</p>
       )}
 
-      {computer.groups?.length > 0 && (
+      {computer.grid?.length > 0 && (
         <>
           <p className="eyebrow top100-market__section">From computer clubs</p>
           <p className="muted">Cash only: {computer.deals} buys, typically {ratio(computer.medianRatio)} the player's value.</p>
-          <RatesTable groups={computer.groups} valueKey="medianFee" />
+          <RatesGrid grid={computer.grid} valueKey="medianFee" />
         </>
       )}
 
       <PriceCheck worldId={data.worldId} />
       <p className="muted top100-app-card__meta">
-        Cells show the median price, then price ÷ player value and the number of deals. Faint cells have fewer than {THIN} deals.
+        Cells show the median price by rating and age, then price ÷ player value and the number of deals. Faint cells have fewer than {THIN} deals.
         Players going the other way are valued as of the deal where known, otherwise at today's value.
         {data.excluded?.linked ? ` ${data.excluded.linked} swaps split across two transfers are left out.` : ''}
       </p>
