@@ -13,7 +13,6 @@
 -- The game world a market request is for: the one asked for if the caller has an active Portal
 -- account whose manager runs a club there, has it as their account's world, or is an admin;
 -- otherwise their own account's world.
--- @permissions private public.sm_market_world(bigint): used only inside the market functions.
 create or replace function public.sm_market_world(p_game_world_id bigint)
 returns bigint
 language plpgsql
@@ -73,6 +72,7 @@ $$;
 
 revoke all on function public.sm_board_me(bigint) from public, anon, authenticated;
 
+-- @permissions private public.market_board_posts: read and written only through the security definer board functions below.
 create table if not exists public.market_board_posts (
   id bigint generated always as identity primary key,
   game_world_id bigint not null references public.game_worlds(id) on delete cascade,
