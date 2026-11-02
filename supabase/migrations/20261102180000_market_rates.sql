@@ -73,6 +73,8 @@ as $$
         select 1 from public.soccer_manager_transfers o
         where o.game_world_id = t.game_world_id and o.status = 9 and o.id <> t.id
           and o.source_turn is not distinct from t.source_turn and o.accepted_date is not distinct from t.accepted_date
+          -- Turn numbers and dates repeat each season: only deals seen within a few days of each other.
+          and o.first_seen_at between t.first_seen_at - interval '3 days' and t.first_seen_at + interval '3 days'
           and ((o.from_source_club_id = t.to_source_club_id and o.to_source_club_id = t.from_source_club_id)
             or (o.from_source_club_id = t.from_source_club_id and o.to_source_club_id = t.to_source_club_id))
       ) as is_linked
