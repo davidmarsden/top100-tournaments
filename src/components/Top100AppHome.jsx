@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { smClubUrl, smMyClubUrl, smWorldUrl } from '../lib/soccerManagerLinks';
 import MarketRatesCard from './MarketRatesCard';
+import MarketBoardCard from './MarketBoardCard';
 
 const EXTERNAL = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -222,6 +223,7 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
       </div>
 
       <TransfersCard session={session} worldId={shownWorldId} />
+      <MarketBoardCard session={session} worldId={shownWorldId} />
       <MarketRatesCard session={session} worldId={shownWorldId} />
 
       {table.length > 0 && (

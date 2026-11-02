@@ -128,3 +128,32 @@
   .top100-market__table th, .top100-market__table td { padding: 6px 3px; letter-spacing: 0; }
   .top100-market__table td span { font-size: 0.66rem; }
 }
+
+.top100-board { margin-top: 14px; padding: 16px; border: 1px solid #24406b; border-radius: 20px; background: #0f2443; }
+.top100-board__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.top100-board__head h3 { margin: 0; }
+.top100-board ul { list-style: none; margin: 0; padding: 0; }
+.top100-board__tabs, .top100-board__switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.top100-board__tabs button, .top100-board__switch button { background: #1b3a68; color: #c8d8f2; padding: 6px 12px; border-radius: 999px; font-size: 0.85rem; }
+.top100-board__tabs button.is-active, .top100-board__switch button.is-active { background: #2563eb; color: #fff; }
+.top100-board__post { padding: 9px 0; border-top: 1px solid #1d355c; font-size: 0.9rem; }
+.top100-board__post:first-child { border-top: 0; }
+.top100-board__kind { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 800; background: #1b3a68; color: #c8d8f2; }
+.top100-board__kind.wanted { background: #0f3a2e; color: #6ee7b7; }
+.top100-board__kind.offered, .top100-board__kind.transfer { background: #4a3512; color: #fcd34d; }
+.top100-board__kind.loan { background: #2b2463; color: #c4b5fd; }
+.top100-board__kind.concerns { background: #4a1d24; color: #fca5a5; }
+.top100-board__note { margin-top: 3px; font-style: italic; color: #c8d8f2; }
+.top100-board__by { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; margin-top: 2px; }
+.top100-board__by .link-button { background: none; color: #8db4ff; padding: 0; text-decoration: underline; font-weight: 700; font-size: 0.82rem; }
+.top100-board__mine { padding: 10px 12px; margin-bottom: 10px; border: 1px solid #1d355c; border-radius: 14px; }
+.top100-board__matches { margin: 4px 0 0 12px; padding-left: 12px; border-left: 2px solid #24406b; }
+.top100-board__matches .eyebrow { margin-top: 8px; }
+.top100-board__form { margin: 12px 0; padding: 12px; border: 1px solid #24406b; border-radius: 14px; display: grid; gap: 10px; }
+.top100-board__fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.top100-board__form label { display: grid; gap: 4px; font-size: 0.82rem; }
+.top100-board__wide { grid-column: 1 / -1; }
+.top100-board__types { display: flex; flex-wrap: wrap; gap: 14px; border: 0; padding: 0; margin: 0; }
+.top100-board__types legend { font-size: 0.82rem; margin-bottom: 4px; }
+.top100-board__types label { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+.top100-board__actions { display: flex; gap: 8px; }
