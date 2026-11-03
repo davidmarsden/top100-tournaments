@@ -295,7 +295,15 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
     { p_manager_id: managerId, p_community: own.community, p_sanctions: own.sanctions, p_season: data.season }, 'Your assessment is saved.');
   const round = data.rounds.review;
   const [newcomers, setNewcomers] = useState((round?.inputs?.supply?.newcomers || []).join(', '));
-  const saved = useMemo(() => Object.fromEntries((round?.result?.reviews || []).map((review) => [review.key, review])), [round]);
+  // A saved result counts only while the review is still the kind it was scored as (routine or
+  // full); a review switched since then shows its automatic score until it's scored again.
+  const kinds = JSON.stringify(data.reviews.map((review) => [review.id, isRoutine(review)]));
+  const saved = useMemo(() => {
+    const routineNow = Object.fromEntries(JSON.parse(kinds).map(([id, routine]) => [String(id), routine]));
+    return Object.fromEntries((round?.result?.reviews || [])
+      .filter((review) => Boolean(review.facts?.routine) === Boolean(routineNow[review.key]))
+      .map((review) => [review.key, review]));
+  }, [round, kinds]);
   // Every review is scored, routine ones too (for comparison and context; their outcome stays
   // routine: reappointed unless barred).
   const toScore = data.reviews.filter((review) => review.manager_name);
