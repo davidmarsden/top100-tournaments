@@ -209,7 +209,7 @@ node /opt/top100-chat/feed-link.mjs 108
 - Caddy sends `/feed/*` to the gateway without the sign-in check. The gateway serves the feed only when the token is the HMAC of that manager id with a key derived from `TOP100_CHAT_SSO_SECRET`. It fetches the feed from rss.chat on loopback, and only `GET`/`HEAD` are allowed.
 - A wrong token, another manager's id, or any other `/feed/` path gets a plain 404. Every other Chat route still needs a sign-in.
 - The link exposes only what that manager's own feed contains. Treat it like a password: anyone who has it can read that feed.
-- To revoke every link, set `TOP100_CHAT_FEED_SALT` in `/etc/top100-chat.env` to a new value and restart the gateway. Links printed before the change stop working.
+- To revoke every link, set `TOP100_CHAT_FEED_SALT` in `/etc/top100-chat.env` to a new value and restart the gateway. Links printed before the change stop working. The installer keeps the salt already in the env file, unless you pass a new `TOP100_CHAT_FEED_SALT`, so a redeploy never restores revoked links.
 
 ## Smoke tests
 

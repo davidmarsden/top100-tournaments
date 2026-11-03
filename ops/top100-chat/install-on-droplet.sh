@@ -157,6 +157,13 @@ if [[ -f "${ENV_FILE}" ]]; then
   fi
 fi
 
+# The private feed link salt: an explicitly supplied value wins, otherwise keep the one already in
+# the env file, so a redeploy never brings revoked feed links back.
+feed_salt="${TOP100_CHAT_FEED_SALT:-}"
+if [[ -z "${feed_salt}" && -f "${ENV_FILE}" ]]; then
+  feed_salt="$(sed -n 's/^TOP100_CHAT_FEED_SALT=//p' "${ENV_FILE}" | tail -1)"
+fi
+
 if [[ -z "${existing_vapid_public}" || -z "${existing_vapid_private}" ]]; then
   echo "Generating persistent VAPID keys for reply notifications..."
   read -r existing_vapid_public existing_vapid_private < <(
@@ -177,6 +184,9 @@ TOP100_CHAT_VAPID_PRIVATE_KEY=${existing_vapid_private}
 TOP100_CHAT_VAPID_SUBJECT=mailto:admin@smtop100.blog
 TOP100_CHAT_PUSH_STORE=/var/lib/top100-chat/push-subscriptions.json
 EOF
+if [[ -n "${feed_salt}" ]]; then
+  printf 'TOP100_CHAT_FEED_SALT=%s\n' "${feed_salt}" >> "${ENV_FILE}"
+fi
 chmod 0600 "${ENV_FILE}"
 chown root:root "${ENV_FILE}"
 
