@@ -196,6 +196,21 @@ To turn it on:
 
 Each posted digest is recorded in `public.chat_market_digests`, so the next one starts where it ended.
 
+## Private feed links
+
+A manager can give a feed reader, or an assistant that can't sign in, read-only access to their **own** rss.chat feed (`/users/manager<ID>/rss.xml`) with a private link:
+
+```
+set -a; . /etc/top100-chat.env; set +a
+node /opt/top100-chat/feed-link.mjs 108
+# https://chat.smtop100.blog/feed/108/<token>.xml
+```
+
+- Caddy sends `/feed/*` to the gateway without the sign-in check. The gateway serves the feed only when the token is the HMAC of that manager id with a key derived from `TOP100_CHAT_SSO_SECRET`. It fetches the feed from rss.chat on loopback, and only `GET`/`HEAD` are allowed.
+- A wrong token, another manager's id, or any other `/feed/` path gets a plain 404. Every other Chat route still needs a sign-in.
+- The link exposes only what that manager's own feed contains. Treat it like a password: anyone who has it can read that feed.
+- To revoke every link, set `TOP100_CHAT_FEED_SALT` in `/etc/top100-chat.env` to a new value and restart the gateway. Links printed before the change stop working.
+
 ## Smoke tests
 
 Logged out:

@@ -6,6 +6,13 @@ chat.smtop100.blog {
         reverse_proxy 127.0.0.1:1470
     }
 
+    # Private feed links: the gateway checks the token and serves only that manager's own feed.
+    @feed path /feed/*
+    handle @feed {
+        header X-Robots-Tag "noindex, nofollow, noarchive"
+        reverse_proxy 127.0.0.1:1470
+    }
+
     @push path /push/*
     handle @push {
         forward_auth 127.0.0.1:1470 {

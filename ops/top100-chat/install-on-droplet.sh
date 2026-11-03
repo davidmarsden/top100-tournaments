@@ -55,6 +55,7 @@ fetch_top100_file () {
 
 echo "Fetching Top 100 privacy gateway and reproducible rss.chat overlay..."
 fetch_top100_file "ops/top100-chat/gateway.mjs" "${tmpdir}/gateway.mjs"
+fetch_top100_file "ops/top100-chat/feed-link.mjs" "${tmpdir}/feed-link.mjs"
 fetch_top100_file "ops/top100-chat/package.json" "${tmpdir}/package.json"
 fetch_top100_file "ops/top100-chat/shell.html" "${tmpdir}/shell.html"
 fetch_top100_file "ops/top100-chat/client-theme.css" "${tmpdir}/client-theme.css"
@@ -81,6 +82,7 @@ chmod 0755 "${GATEWAY_DIR}"
 # live gateway files. This avoids ever executing service-writable code as root
 # during upgrades from older installations.
 install -o root -g root -m 0644 "${tmpdir}/gateway.mjs" "${GATEWAY_DIR}/gateway.mjs"
+install -o root -g root -m 0644 "${tmpdir}/feed-link.mjs" "${GATEWAY_DIR}/feed-link.mjs"
 install -o root -g root -m 0644 "${tmpdir}/package.json" "${GATEWAY_DIR}/package.json"
 install -o root -g root -m 0644 "${tmpdir}/shell.html" "${GATEWAY_DIR}/shell.html"
 install -o root -g root -m 0644 "${tmpdir}/client-theme.css" "${GATEWAY_DIR}/client-theme.css"
