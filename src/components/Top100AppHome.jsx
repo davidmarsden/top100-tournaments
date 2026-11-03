@@ -140,7 +140,7 @@ export function AppointmentProfileCard({ club, worldSlug }) {
     setProfile(null);
     fetch(`${PROFILES_URL}&club=${encodeURIComponent(club)}`)
       .then((response) => (response.ok ? response.json() : null))
-      .then((data) => { if (active) setProfile(data?.profiles?.[0] || null); })
+      .then((data) => { if (active) setProfile(data?.profiles?.[0] ? { ...data.profiles[0], managers: data.managers } : null); })
       .catch(() => {});
     return () => { active = false; };
   }, [club, worldSlug]);
@@ -154,6 +154,7 @@ export function AppointmentProfileCard({ club, worldSlug }) {
       </p>
       <div className="top100-profile__pills">
         <span><strong>Level</strong> {profile.level}</span>
+        {profile.rank && <span><strong>Ranking</strong> {ordinal(profile.rank)}{profile.managers ? ` of ${profile.managers}` : ''}</span>}
         <span><strong>Trajectory</strong> {TRAJECTORY[profile.trajectory] || TRAJECTORY.steady}{profile.trajectory !== 'new' && profile.change !== null ? ' since last season' : ''}</span>
         {profile.strengths.length > 0 && <span><strong>Strengths</strong> {profile.strengths.join(', ')}</span>}
         {profile.weaknesses.length > 0 && <span><strong>To work on</strong> {profile.weaknesses.join(', ')}</span>}
@@ -167,7 +168,7 @@ export function AppointmentProfileCard({ club, worldSlug }) {
           </li>
         ))}
       </ul>
-      <p className="muted top100-app-card__meta">Everyone's profile is also on their <a href="https://archive.smtop100.blog/" target="_blank" rel="noopener noreferrer">Stats &amp; History</a> manager page.</p>
+      <p className="muted top100-app-card__meta">Everyone's profile is also on their <a href="https://archive.smtop100.blog/" target="_blank" rel="noopener noreferrer">Stats &amp; History</a> manager page, and the full table is under <a href="https://archive.smtop100.blog/#manager-rankings" target="_blank" rel="noopener noreferrer">Manager Rankings</a>.</p>
     </details>
   );
 }
