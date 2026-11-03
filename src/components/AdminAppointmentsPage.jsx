@@ -273,6 +273,8 @@ const reviewScoringConfig = (data, reviews, inputs, newcomers) => ({
     const base = data.inputs[String(review.manager_id)] || {};
     return {
       key: String(review.id), name: review.manager_name, club: review.club_name, display: review.manager_name,
+      // Routine reviews are scored for context only: reappointed unless barred (rule 3.1).
+      routine: isRoutine(review) || undefined,
       tookOverMidSeason: review.took_over_mid_season, gold: base.gold, loginGaps: fieldValue(values, 'loginGaps'),
       inactive: review.inactive || undefined, misconduct: review.misconduct || undefined, standing: review.standing || undefined,
       lastChance: review.last_chance ? 'recorded at an earlier review' : undefined, wish: review.wish || undefined,
@@ -293,8 +295,18 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
     { p_manager_id: managerId, p_community: own.community, p_sanctions: own.sanctions, p_season: data.season }, 'Your assessment is saved.');
   const round = data.rounds.review;
   const [newcomers, setNewcomers] = useState((round?.inputs?.supply?.newcomers || []).join(', '));
-  const saved = useMemo(() => Object.fromEntries((round?.result?.reviews || []).map((review) => [review.key, review])), [round]);
-  const toScore = data.reviews.filter((review) => review.manager_name && !isRoutine(review));
+  // A saved result counts only while the review is still the kind it was scored as (routine or
+  // full); a review switched since then shows its automatic score until it's scored again.
+  const kinds = JSON.stringify(data.reviews.map((review) => [review.id, isRoutine(review)]));
+  const saved = useMemo(() => {
+    const routineNow = Object.fromEntries(JSON.parse(kinds).map(([id, routine]) => [String(id), routine]));
+    return Object.fromEntries((round?.result?.reviews || [])
+      .filter((review) => Boolean(review.facts?.routine) === Boolean(routineNow[review.key]))
+      .map((review) => [review.key, review]));
+  }, [round, kinds]);
+  // Every review is scored, routine ones too (for comparison and context; their outcome stays
+  // routine: reappointed unless barred).
+  const toScore = data.reviews.filter((review) => review.manager_name);
   // Automatic scores from Top 100's records, worked out when the page opens and not saved, so
   // the list shows a score straight away. Score reviews saves the admin team's (with any
   // corrected inputs), and those replace the automatic ones.
@@ -446,7 +458,10 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                           : !results[String(review.id)] ? (routineByDefault(review) ? 'Full (exception)' : 'Full')
                             : needsVote(review) ? <strong>Vote: {results[String(review.id)].outcome === 'secondChance' ? 'second chance' : 'close score'}</strong>
                               : `Clear: ${OUTCOMES[results[String(review.id)].outcome].toLowerCase()}`}</td>
-                        <td>{isRoutine(review) ? '–' : result ? <>{result.total}{isAuto(review.id) ? <span className="muted"> auto</span> : ''}{result.vote ? ' (vote)' : ''}</> : autoFailed ? '–' : '…'}</td>
+                        <td>{result ? (isRoutine(review)
+                          ? <span className="muted" title="Routine review: score for context only">{result.total} <span>context</span></span>
+                          : <>{result.total}{isAuto(review.id) ? <span className="muted"> auto</span> : ''}{result.vote ? ' (vote)' : ''}</>)
+                          : autoFailed ? '–' : '…'}</td>
                         <td>{votesFor(review.id).length || '–'}</td>
                         <td>{review.published_at ? `${OUTCOMES[review.decision]} (published)` : review.decision ? OUTCOMES[review.decision] : '–'}</td>
                       </tr>
@@ -491,7 +506,14 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                 )}
                 {routineBlock(review, data.inputs[String(review.manager_id)])
                   ? <p><strong>Needs a decision: {routineBlock(review, data.inputs[String(review.manager_id)])}.</strong> No scoring or votes needed unless the team wants them.</p>
-                  : <p className="muted" style={{ marginTop: 0 }}>Reappointed unless the manager asks to move or take a break. No scoring or votes needed: record it here, or use Reappoint routine reviews at the top for all of them.</p>}
+                  : <p className="muted" style={{ marginTop: 0 }}>Reappointed unless the manager asks to move or take a break. No votes needed: record it here, or use Reappoint routine reviews at the top for all of them.</p>}
+                {result && (
+                  <p className="muted">
+                    For context only, the review score: <strong>{result.total}</strong> out of 100 (result {result.breakdown.result} · record {result.breakdown.record} · activity {result.breakdown.activity} · conduct {result.breakdown.conduct}
+                    {isAuto(review.id) ? '; automatic, from Top 100\'s records' : ''}).
+                    {result.errors?.length ? ` A full review would find: ${result.errors.map((error) => error.text).join('; ')}.` : ' A full review would find no clear and obvious error.'}
+                  </p>
+                )}
                 <Decision current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} requireVotes={false}
                   defaultChoice={review.wish === 'move' ? 'anotherClub' : review.wish === 'break' ? 'leave'
                     : routineBlock(review, data.inputs[String(review.manager_id)]) ? '' : 'reappoint'}
