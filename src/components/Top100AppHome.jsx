@@ -125,6 +125,53 @@ function TransfersCard({ session, worldId }) {
   );
 }
 
+// The manager's appointment profile (rulebook 3.2) from the archive: roughly where they would stand
+// among this season's managers if they applied for a club, which way they're heading, and their
+// strongest and weakest parts. Public records only; Top 100 only (the archive covers Top 100).
+const PROFILES_URL = 'https://archive.smtop100.blog/.netlify/functions/appointment-scores?mode=profiles';
+const TRAJECTORY = { rising: '↗ Rising', steady: '→ Steady', falling: '↘ Falling', new: 'New this season' };
+const roughly = (percentile) => Math.max(5, Math.min(95, Math.round(percentile / 10) * 10));
+
+export function AppointmentProfileCard({ club, worldSlug }) {
+  const [profile, setProfile] = useState(null);
+  useEffect(() => {
+    if (!club || worldSlug !== 'top-100') return undefined;
+    let active = true;
+    setProfile(null);
+    fetch(`${PROFILES_URL}&club=${encodeURIComponent(club)}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => { if (active) setProfile(data?.profiles?.[0] || null); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [club, worldSlug]);
+  if (!profile) return null;
+  return (
+    <details className="top100-profile">
+      <summary><h3>Your appointment profile</h3><span className="muted">{profile.level} · {TRAJECTORY[profile.trajectory] || TRAJECTORY.steady}</span><span className="top100-market__toggle" aria-hidden="true" /></summary>
+      <p className="muted">
+        Roughly where you'd stand among this season's managers if you applied for a club today, from the parts of the
+        appointment score that come from public records (rulebook 3.2). Activity and conduct, which the admin team assesses, aren't included.
+      </p>
+      <div className="top100-profile__pills">
+        <span><strong>Level</strong> {profile.level}</span>
+        <span><strong>Trajectory</strong> {TRAJECTORY[profile.trajectory] || TRAJECTORY.steady}{profile.trajectory !== 'new' && profile.change !== null ? ' since last season' : ''}</span>
+        {profile.strengths.length > 0 && <span><strong>Strengths</strong> {profile.strengths.join(', ')}</span>}
+        {profile.weaknesses.length > 0 && <span><strong>To work on</strong> {profile.weaknesses.join(', ')}</span>}
+      </div>
+      <ul className="top100-profile__parts">
+        {profile.parts.map((part) => (
+          <li key={part.part}>
+            <span>{part.label}</span>
+            <span className="top100-profile__bar" aria-hidden="true"><span style={{ width: `${Math.max(4, part.percentile)}%` }} /></span>
+            <span className="muted">better than ~{roughly(part.percentile)}%</span>
+          </li>
+        ))}
+      </ul>
+      <p className="muted top100-app-card__meta">Everyone's profile is also on their <a href="https://archive.smtop100.blog/" target="_blank" rel="noopener noreferrer">Stats &amp; History</a> manager page.</p>
+    </details>
+  );
+}
+
 // gameWorldId follows the world the Manager Portal is showing: undefined while it is still loading,
 // null for the account's home world.
 export default function Top100AppHome({ session, gameWorldId, onSelectWorld = null }) {
@@ -223,6 +270,7 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
         ) : null}
       </div>
 
+      <AppointmentProfileCard club={club?.name} worldSlug={home?.world?.slug} />
       <TransfersCard session={session} worldId={shownWorldId} />
       <MarketBoardCard session={session} worldId={shownWorldId} />
       <MarketRatesCard session={session} worldId={shownWorldId} />

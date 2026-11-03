@@ -165,3 +165,17 @@
 .top100-board__types legend { font-size: 0.82rem; margin-bottom: 4px; }
 .top100-board__types label { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
 .top100-board__actions { display: flex; gap: 8px; }
+
+.top100-profile { margin-top: 14px; padding: 16px; border: 1px solid #24406b; border-radius: 20px; background: #0f2443; }
+.top100-profile > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.top100-profile > summary::-webkit-details-marker { display: none; }
+.top100-profile > summary h3 { display: inline; margin: 0; }
+.top100-profile[open] .top100-market__toggle::after { content: 'Hide ▴'; }
+.top100-profile__pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.top100-profile__pills span { padding: 4px 10px; border-radius: 999px; background: #1b3a68; color: #e2ecfb; font-size: 0.85rem; }
+.top100-profile__pills strong { color: #9fb4d6; margin-right: 4px; font-weight: 700; }
+.top100-profile__parts { list-style: none; margin: 0; padding: 0; }
+.top100-profile__parts li { display: grid; grid-template-columns: 130px 1fr 120px; gap: 10px; align-items: center; padding: 5px 0; font-size: 0.88rem; }
+.top100-profile__bar { height: 8px; border-radius: 999px; background: #1d355c; overflow: hidden; }
+.top100-profile__bar span { display: block; height: 8px; border-radius: 999px; background: #3b82f6; }
+@media (max-width: 600px) { .top100-profile__parts li { grid-template-columns: 100px 1fr 96px; font-size: 0.8rem; } }
