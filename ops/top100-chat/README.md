@@ -10,7 +10,7 @@ There are three separate layers:
 
 1. **Top 100 identity** — Supabase Auth identifies the user. The Netlify ticket issuer then requires an active `manager_portal_accounts` record in the `top-100` game world.
 2. **Short-lived SSO handoff** — `netlify/functions/chat-ticket.js` creates a signed ticket valid for 90 seconds. It contains no rss.chat credential. The gateway rejects expired/replayed tickets.
-3. **Private reverse-proxy boundary** — Caddy runs `forward_auth` before **every** rss.chat route. The UI, read APIs, user feeds, comments feeds, OPML, media and WebSocket endpoint are therefore inaccessible without the HttpOnly Top 100 Chat session cookie.
+3. **Private reverse-proxy boundary** — Caddy runs `forward_auth` before **every** rss.chat route. The UI, read APIs, user feeds, comments feeds, OPML, media and WebSocket endpoint are therefore inaccessible without the HttpOnly Top 100 Chat session cookie. The one exception is a private feed link (`/feed/<id>/<token>.xml`, see below), which serves only one manager's own feed and only with a valid signed token.
 
 The rss.chat patch does **not** implement the privacy wall. It only provides a localhost-only SSO helper so that an approved Top 100 manager gets a stable rss.chat posting identity without signing in twice.
 
