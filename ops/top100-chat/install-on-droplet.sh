@@ -123,6 +123,10 @@ echo "Installing rss.chat dependencies..."
 (
   cd "${RSS_DIR}"
   npm install --omit=dev --no-audit --no-fund
+  # rss.chat pins better-sqlite3 11.x, which aborts Node 24 when a statement is garbage
+  # collected ("Assertion failed: (env) != nullptr" in Statement::~Statement). 12.x supports
+  # Node 20-26 with the same API, so replace it.
+  npm install --omit=dev --no-audit --no-fund --save-exact "better-sqlite3@${TOP100_CHAT_SQLITE_VERSION:-12.11.1}"
 )
 chown -R www-data:www-data "${RSS_DIR}"
 

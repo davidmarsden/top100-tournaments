@@ -98,6 +98,8 @@ Deployment helpers are staged outside the live gateway directory and installed r
 
 The installer also verifies the native `better-sqlite3` binding against the currently installed Node runtime. It opens an in-memory SQLite database and runs a query; if that probe fails, the helper rebuilds `better-sqlite3` and verifies it again before rss.chat is allowed to start. This protects the service from a Node ABI change leaving it in a restart loop. The SQLite data files themselves are not rebuilt or replaced.
 
+rss.chat itself pins `better-sqlite3` 11.x, which crashes Node 24 at random when a prepared statement is garbage collected (`Assertion failed: (env) != nullptr` in `Statement::~Statement`, service exits with `status=6/ABRT`). The installer therefore replaces it with `better-sqlite3` 12.11.1 (override with `TOP100_CHAT_SQLITE_VERSION`), which supports Node 20 to 26 with the same API.
+
 ## Applying the rss.chat overlay
 
 The pinned upstream is:
