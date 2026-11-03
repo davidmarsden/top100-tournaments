@@ -5,6 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import webpush from 'web-push';
+import { feedKey, verifyFeedPath } from './feed-link.mjs';
 
 const host = process.env.TOP100_CHAT_GATEWAY_HOST || '127.0.0.1';
 const port = Number(process.env.TOP100_CHAT_GATEWAY_PORT || 1470);
@@ -40,6 +41,9 @@ const digestBot = {
   name: 'Top 100 Market',
 };
 const digestsInFlight = new Set();
+// Private feed links (feed-link.mjs): read-only access to one manager's own rss.chat feed.
+const privateFeedKey = feedKey(ssoSecret, String(process.env.TOP100_CHAT_FEED_SALT || ''));
+const maxFeedBytes = 5 * 1024 * 1024;
 const upstreamClientHome = 'https://code.scripting.com/rsschat/index.html';
 let clientHomeCache = '';
 let pushSubscriptions = [];
@@ -492,6 +496,46 @@ function getJson(url) {
   });
 }
 
+// GET /feed/<manager id>/<token>.xml: that manager's own rss.chat feed, fetched from rss.chat on
+// loopback. Anything else under /feed/ is a plain 404, so a wrong token reveals nothing.
+function servePrivateFeed(request, response, url) {
+  const managerId = request.method === 'GET' || request.method === 'HEAD' ? verifyFeedPath(url.pathname, privateFeedKey) : null;
+  if (!managerId) {
+    send(response, 404, 'Not found.', { 'Content-Type': 'text/plain; charset=utf-8' });
+    return;
+  }
+  const upstream = http.get(`http://127.0.0.1:${rssChatPort}/users/manager${managerId}/rss.xml`, { timeout: 15000 }, (feed) => {
+    const chunks = [];
+    let size = 0;
+    feed.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxFeedBytes) feed.destroy(new Error('Feed too large.'));
+      else chunks.push(chunk);
+    });
+    feed.on('end', () => {
+      if (feed.statusCode !== 200) {
+        send(response, feed.statusCode === 404 ? 404 : 502, 'Feed unavailable.', { 'Content-Type': 'text/plain; charset=utf-8' });
+        return;
+      }
+      const body = Buffer.concat(chunks);
+      send(response, 200, request.method === 'HEAD' ? '' : body, {
+        'Content-Type': String(feed.headers['content-type'] || 'application/rss+xml; charset=utf-8'),
+        'X-Robots-Tag': 'noindex, nofollow, noarchive',
+        'Referrer-Policy': 'no-referrer',
+      });
+    });
+    feed.on('error', (error) => {
+      console.error('feed:', error.message);
+      if (!response.headersSent) send(response, 502, 'Feed unavailable.', { 'Content-Type': 'text/plain; charset=utf-8' });
+    });
+  });
+  upstream.on('timeout', () => upstream.destroy(new Error('rss.chat feed timed out.')));
+  upstream.on('error', (error) => {
+    console.error('feed:', error.message);
+    if (!response.headersSent) send(response, 502, 'Feed unavailable.', { 'Content-Type': 'text/plain; charset=utf-8' });
+  });
+}
+
 function bootstrapHtml(user, share) {
   const params = new URLSearchParams({
     emailconfirmed: 'true',
@@ -770,6 +814,11 @@ const server = http.createServer(async (request, response) => {
     } catch {
       redirect(response, 'https://manager.smtop100.blog/chat?' + query);
     }
+    return;
+  }
+
+  if (url.pathname.startsWith('/feed/')) {
+    servePrivateFeed(request, response, url);
     return;
   }
 

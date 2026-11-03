@@ -50,4 +50,18 @@ check_private "/users/manager1/rss.xml"
 check_private "/feed?screenname=manager1"
 check_private "/push/config"
 
+check_not_found () {
+  local path="$1"
+  local code
+  code="$(curl "${curl_extra[@]}" -sS -o /tmp/top100-chat-smoke-body -w '%{http_code}' --max-time 10 "${base}${path}" || true)"
+  if [[ "${code}" != "404" ]]; then
+    echo "FAIL private feed link: ${path} returned ${code}, expected 404" >&2
+    exit 1
+  fi
+  echo "PASS private feed link: ${path} -> 404"
+}
+
+check_not_found "/feed/1/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.xml"
+check_not_found "/feed/1/rss.xml"
+
 echo "Logged-out privacy smoke tests passed."

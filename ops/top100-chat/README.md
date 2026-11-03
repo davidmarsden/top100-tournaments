@@ -10,7 +10,7 @@ There are three separate layers:
 
 1. **Top 100 identity** — Supabase Auth identifies the user. The Netlify ticket issuer then requires an active `manager_portal_accounts` record in the `top-100` game world.
 2. **Short-lived SSO handoff** — `netlify/functions/chat-ticket.js` creates a signed ticket valid for 90 seconds. It contains no rss.chat credential. The gateway rejects expired/replayed tickets.
-3. **Private reverse-proxy boundary** — Caddy runs `forward_auth` before **every** rss.chat route. The UI, read APIs, user feeds, comments feeds, OPML, media and WebSocket endpoint are therefore inaccessible without the HttpOnly Top 100 Chat session cookie.
+3. **Private reverse-proxy boundary** — Caddy runs `forward_auth` before **every** rss.chat route. The UI, read APIs, user feeds, comments feeds, OPML, media and WebSocket endpoint are therefore inaccessible without the HttpOnly Top 100 Chat session cookie. The one exception is a private feed link (`/feed/<id>/<token>.xml`, see below), which serves only one manager's own feed and only with a valid signed token.
 
 The rss.chat patch does **not** implement the privacy wall. It only provides a localhost-only SSO helper so that an approved Top 100 manager gets a stable rss.chat posting identity without signing in twice.
 
@@ -195,6 +195,21 @@ To turn it on:
 2. In Netlify (`top100-tournaments`), set `TOP100_CHAT_DIGEST_ENABLED=true`. Until then the function skips without posting.
 
 Each posted digest is recorded in `public.chat_market_digests`, so the next one starts where it ended.
+
+## Private feed links
+
+A manager can give a feed reader, or an assistant that can't sign in, read-only access to their **own** rss.chat feed (`/users/manager<ID>/rss.xml`) with a private link:
+
+```
+set -a; . /etc/top100-chat.env; set +a
+node /opt/top100-chat/feed-link.mjs 108
+# https://chat.smtop100.blog/feed/108/<token>.xml
+```
+
+- Caddy sends `/feed/*` to the gateway without the sign-in check. The gateway serves the feed only when the token is the HMAC of that manager id with a key derived from `TOP100_CHAT_SSO_SECRET`. It fetches the feed from rss.chat on loopback, and only `GET`/`HEAD` are allowed.
+- A wrong token, another manager's id, or any other `/feed/` path gets a plain 404. Every other Chat route still needs a sign-in.
+- The link exposes only what that manager's own feed contains. Treat it like a password: anyone who has it can read that feed.
+- To revoke every link, set `TOP100_CHAT_FEED_SALT` in `/etc/top100-chat.env` to a new value and restart the gateway. Links printed before the change stop working. The installer keeps the salt already in the env file, unless you pass a new `TOP100_CHAT_FEED_SALT`, so a redeploy never restores revoked links.
 
 ## Smoke tests
 
