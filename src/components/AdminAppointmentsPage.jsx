@@ -436,7 +436,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
             <div key={value} style={{ overflowX: 'auto' }}>
               <h3 id={`division-${value}`}>Division {value}</h3>
               <table style={{ fontSize: 13, width: '100%' }}>
-                <thead><tr><th>Pos</th><th style={{ textAlign: 'left' }}>Club</th><th style={{ textAlign: 'left' }}>Manager</th><th>Pts</th><th>Bottom three</th><th>Mid-season</th><th>Wants</th><th>Review</th><th>Score</th><th>Votes</th><th>Decision</th></tr></thead>
+                <thead><tr><th>Pos</th><th style={{ textAlign: 'left' }}>Club</th><th style={{ textAlign: 'left' }}>Manager</th><th>Pts</th><th>Bottom three</th><th>Mid-season</th><th>Wants</th><th>Review</th><th title="Review score (rule 3.1), out of 100: this season's result, record, activity and conduct. Not the appointment score (3.2) shown in Manager Rankings and on applications.">Review score /100</th><th>Votes</th><th>Decision</th></tr></thead>
                 <tbody>
                   {ordered.filter((review) => review.division === value).map((review) => {
                     const result = results[String(review.id)];
@@ -509,7 +509,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                   : <p className="muted" style={{ marginTop: 0 }}>Reappointed unless the manager asks to move or take a break. No votes needed: record it here, or use Reappoint routine reviews at the top for all of them.</p>}
                 {result && (
                   <p className="muted">
-                    For context only, the review score: <strong>{result.total}</strong> out of 100 (result {result.breakdown.result} · record {result.breakdown.record} · activity {result.breakdown.activity} · conduct {result.breakdown.conduct}
+                    For context only, the review score (rule 3.1): <strong>{result.total}</strong> out of 100 (result {result.breakdown.result} · record {result.breakdown.record} · activity {result.breakdown.activity} · conduct {result.breakdown.conduct}
                     {isAuto(review.id) ? '; automatic, from Top 100\'s records' : ''}).
                     {result.errors?.length ? ` A full review would find: ${result.errors.map((error) => error.text).join('; ')}.` : ' A full review would find no clear and obvious error.'}
                   </p>
@@ -541,7 +541,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                 <>
                   {isAuto(review.id) && <p className="muted" style={{ marginTop: 0 }}>Automatic, from Top 100's records. Score reviews saves the admin team's score with any corrected inputs.</p>}
                   <p>
-                    <strong>{result.total}</strong> out of 100 (result {result.breakdown.result} · record {result.breakdown.record} · activity {result.breakdown.activity} · conduct {result.breakdown.conduct}).
+                    Review score (rule 3.1): <strong>{result.total}</strong> out of 100 (result {result.breakdown.result} · record {result.breakdown.record} · activity {result.breakdown.activity} · conduct {result.breakdown.conduct}).
                     Suggested: <strong>{OUTCOMES[result.outcome]}</strong>{result.vote ? ' · close: the admin team should vote' : ''}.
                   </p>
                   <p className="muted">{result.reason}</p>
@@ -783,7 +783,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             {ranking.length ? (
               <>
               <table>
-                <thead><tr><th>Applicant</th><th style={NUM}>Score</th>{SCORE_PARTS.map(([part, label]) => <th key={label} style={NUM} title={SCORE_HELP[part][1]}>{label}</th>)}<th>Eligible</th></tr></thead>
+                <thead><tr><th>Applicant</th><th style={NUM} title="Appointment score (rule 3.2), out of 100">Appointment score /100</th>{SCORE_PARTS.map(([part, label]) => <th key={label} style={NUM} title={SCORE_HELP[part][1]}>{label}</th>)}<th>Eligible</th></tr></thead>
                 <tbody>{ranking.map(({ applicant, scored }) => (
                   <tr key={applicant.key}>
                     <td>{applicant.display}{applications.some((application) => String(application.manager_id) === String(applicant.key) && isUnscored(application)) && <div className="muted">Changed since scoring</div>}</td><td style={NUM}><strong>{scored.total}</strong></td>
