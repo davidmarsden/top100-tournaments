@@ -179,3 +179,14 @@
 .top100-profile__bar { height: 8px; border-radius: 999px; background: #1d355c; overflow: hidden; }
 .top100-profile__bar span { display: block; height: 8px; border-radius: 999px; background: #3b82f6; }
 @media (max-width: 600px) { .top100-profile__parts li { grid-template-columns: 100px 1fr 96px; font-size: 0.8rem; } }
+
+/* Waiting list (rule 3.3) */
+.top100-waiting__entries { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 10px; }
+.top100-waiting__entries > li { padding: 12px; border: 1px solid #24406b; border-radius: 14px; display: grid; gap: 6px; }
+.top100-waiting__entries input { width: 100%; }
+.top100-waiting__form { display: grid; gap: 10px; margin-top: 12px; }
+.top100-waiting__form fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.top100-waiting__form legend { font-weight: 700; margin-bottom: 4px; }
+.top100-waiting__check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+.top100-waiting__check input { width: auto; margin-top: 3px; flex: none; }
+.top100-waiting__agree span { line-height: 1.45; }
