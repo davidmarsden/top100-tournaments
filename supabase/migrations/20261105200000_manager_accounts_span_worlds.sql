@@ -34,8 +34,6 @@ $$;
 revoke all on function public.manager_in_world(bigint, bigint) from public, anon, authenticated;
 grant execute on function public.manager_in_world(bigint, bigint) to service_role;
 
--- @permissions private public.manager_in_world(bigint, bigint): internal, called by security definer functions
-
 -- The worlds the signed-in manager's account covers (claim world plus current memberships).
 create or replace function public.my_manager_world_slugs()
 returns text[]
