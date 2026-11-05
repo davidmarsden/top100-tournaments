@@ -190,3 +190,4 @@
 .top100-waiting__check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
 .top100-waiting__check input { width: auto; margin-top: 3px; flex: none; }
 .top100-waiting__agree span { line-height: 1.45; }
+.top100-waiting__taken { padding: 12px; border: 1px solid #10b981; border-radius: 14px; margin: 12px 0; display: grid; gap: 8px; }

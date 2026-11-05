@@ -29,6 +29,8 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
   if (!entries) return null;
 
   const active = entries.filter((entry) => ['waiting', 'offered'].includes(entry.status));
+  // Taken a club but not yet linked to a Manager Account (shown on the screen for people without one).
+  const taken = standalone ? entries.filter((entry) => entry.status === 'appointed' && entry.club) : [];
   const open = WORLDS.filter(([slug]) => !managedWorlds.includes(slug) && !active.some((entry) => entry.world === slug));
   // On the portal home, current Top 100 managers only see the card while they're on a list.
   if (!standalone && !active.length && (managedWorlds.includes('top-100') || !open.length)) return null;
@@ -50,6 +52,23 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
     setMessage("You're on the waiting list. We'll be in touch when a club is available.");
   }
 
+  // Open the usual Manager Account claim for the club they've taken, under the manager name the
+  // club directory shows (the claim is checked against it).
+  async function linkClub(entry) {
+    setBusy(true);
+    const { data: club } = await supabase.from('game_world_clubs').select('club_name, current_manager_name')
+      .eq('game_world_id', entry.worldId).ilike('club_name', entry.club).eq('active', true).maybeSingle();
+    const payload = {
+      auth_user_id: session.user.id, email: session.user.email, game_world_id: entry.worldId,
+      claimed_manager_name: club?.current_manager_name || entry.managerName, claimed_club_name: club?.club_name || entry.club,
+      status: 'pending', review_notes: null, reviewed_by: null, reviewed_at: null, updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('manager_portal_claims').upsert(payload, { onConflict: 'auth_user_id' });
+    setBusy(false);
+    if (error) { setMessage(`Could not link ${entry.club} yet (${error.message}). Our records may not show you there yet; try again after the next update.`); return; }
+    window.location.reload();
+  }
+
   async function update(world, withdraw) {
     if (withdraw && !window.confirm('Leave the waiting list? You can join again later, but your place starts again.')) return;
     const { data, error } = await supabase.rpc('update_my_waiting_list', { p_world_slug: world, p_withdraw: withdraw });
@@ -60,6 +79,12 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
 
   const body = (
     <>
+      {taken.map((entry) => (
+        <div key={`taken-${entry.world}`} className="top100-waiting__taken">
+          <p><strong>Welcome to {entry.worldName}!</strong> Our records show you've taken over <strong>{entry.club}</strong>. Link it to your Manager Account to finish setting up.</p>
+          <button type="button" disabled={busy} onClick={() => linkClub(entry)}>Link {entry.club} to my account</button>
+        </div>
+      ))}
       {active.length > 0 && (
         <ul className="top100-waiting__entries">
           {active.map((entry) => (

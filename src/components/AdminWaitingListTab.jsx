@@ -25,7 +25,7 @@ async function fetchHistory(currentSeason, applicants) {
   return Object.fromEntries((body.applicants || []).map((item) => [item.key, item]));
 }
 
-function EntryDetails({ entry, scored, history, onUpdate }) {
+function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer }) {
   const [fields, setFields] = useState({
     gold: entry.goldFrom === 'admin' ? String(entry.gold) : '', gameWorlds: entry.gameWorldsFrom === 'admin' ? String(entry.gameWorlds ?? '') : '',
     smManagerId: entry.smManagerId || '', adminNotes: entry.adminNotes || '', offerClub: entry.offerClub || '',
@@ -71,6 +71,8 @@ function EntryDetails({ entry, scored, history, onUpdate }) {
         </ul>
       )}
       <div className="muted">
+        {entry.checkedAt ? `Gold and game worlds last read ${shortDate(entry.checkedAt)}. ` : ''}
+        {entry.offerEmailedAt ? `Offer emailed ${shortDate(entry.offerEmailedAt)}. ` : ''}
         Score {scored.score}: {WAITING_LIST_PARTS.map(([part, label]) => `${label.toLowerCase()} ${scored.parts[part]}`).join(' · ')}
         {scored.parts.concerns ? ` · concerns ${scored.parts.concerns}` : ''}{scored.unknown.length ? ` (half points for unknown ${scored.unknown.join(' and ')})` : ''}
       </div>
@@ -99,7 +101,10 @@ function EntryDetails({ entry, scored, history, onUpdate }) {
         <label style={{ fontSize: 13 }}>Accept by
           <input type="date" value={fields.offerDeadline} onChange={set('offerDeadline')} style={{ display: 'block' }} />
         </label>
-        <button type="button" disabled={!fields.offerClub.trim()} onClick={() => save({ status: 'offered', offerClub: fields.offerClub, offerDeadline: fields.offerDeadline ? `${fields.offerDeadline}T23:59:00Z` : null })}>Offer</button>
+        <button type="button" disabled={!fields.offerClub.trim()} onClick={async () => {
+          if (await save({ status: 'offered', offerClub: fields.offerClub, offerDeadline: fields.offerDeadline ? `${fields.offerDeadline}T23:59:00Z` : null })) onEmailOffer(entry.id);
+        }}>Offer and email</button>
+        {entry.status === 'offered' && <button type="button" className="secondary" onClick={() => onEmailOffer(entry.id)}>Email the offer again</button>}
         {entry.status !== 'appointed' && <button type="button" className="secondary" onClick={() => save({ status: 'appointed' })}>Mark appointed</button>}
         {entry.status !== 'waiting' && <button type="button" className="secondary" onClick={() => save({ status: 'waiting', offerClub: null, offerDeadline: null })}>Back to waiting</button>}
         {!['withdrawn', 'lapsed'].includes(entry.status) && <button type="button" className="secondary" onClick={() => save({ status: 'lapsed' })}>Lapse</button>}
@@ -168,9 +173,25 @@ export default function AdminWaitingListTab({ setMessage }) {
   async function update(id, fields) {
     setMessage('Saving…');
     const { error } = await supabase.rpc('update_waiting_list_entry', { p_id: id, p_fields: fields });
-    if (error) { setMessage(error.message); return; }
+    if (error) { setMessage(error.message); return false; }
     await load();
     setMessage('Saved.');
+    return true;
+  }
+
+  // Email the applicant their offer (replies go to the admin team).
+  async function emailOffer(id) {
+    setMessage('Emailing the offer…');
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/.netlify/functions/waiting-list-offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ entryId: id }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { setMessage(`Offer saved, but the email wasn't sent: ${body.error || response.status}`); return; }
+    await load();
+    setMessage(`Offer emailed to ${body.to}. Replies come to the admin team.`);
   }
 
   const table = (list, numbered) => (
@@ -204,7 +225,7 @@ export default function AdminWaitingListTab({ setMessage }) {
               openId === entry.id && (
                 <tr key={`${entry.id}-details`}>
                   <td colSpan={numbered ? 11 : 10} style={{ textAlign: 'left' }}>
-                    <EntryDetails entry={entry} scored={scored} history={h} onUpdate={update} />
+                    <EntryDetails entry={entry} scored={scored} history={h} onUpdate={update} onEmailOffer={emailOffer} />
                   </td>
                 </tr>
               ),

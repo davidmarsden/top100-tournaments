@@ -152,6 +152,34 @@ create trigger waiting_list_on_new_stint
   after insert on public.soccer_manager_manager_stints
   for each row execute function public.waiting_list_on_new_stint();
 
+-- The applicant's own entries, now with the club they have taken (to link it to their account).
+create or replace function public.my_waiting_list()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'world', world.slug, 'worldName', world.name, 'worldId', world.id,
+      'managerName', entry.sm_manager_name, 'status', entry.status,
+      'joinedAt', entry.created_at, 'confirmedSeason', entry.confirmed_season,
+      'season', public.appointment_current_season(world.slug),
+      'needsConfirming', entry.status = 'waiting' and coalesce(entry.confirmed_season, 0) < coalesce(public.appointment_current_season(world.slug), 0),
+      'place', position.place, 'waiting', position.waiting,
+      'offer', case when entry.status = 'offered' then jsonb_build_object('club', entry.offer_club, 'deadline', entry.offer_deadline) end,
+      -- Once they have taken a club: the club, so the Portal can offer to link it to their account.
+      'club', case when entry.status = 'appointed' then entry.offer_club end
+    ) order by world.display_order), '[]'::jsonb)
+  from public.waiting_list_entries entry
+  join public.game_worlds world on world.id = entry.game_world_id
+  left join lateral public.waiting_list_positions(entry.game_world_id) position on position.entry_id = entry.id
+  where entry.auth_user_id = auth.uid();
+$$;
+
+revoke all on function public.my_waiting_list() from public, anon;
+grant execute on function public.my_waiting_list() to authenticated;
+
 -- The offer email's details, for the Netlify function that sends it (officials only).
 create or replace function public.waiting_list_offer_details(p_id bigint)
 returns jsonb
