@@ -92,13 +92,22 @@ export default async () => {
     const youthCupTypeId = competitionTypes?.[0]?.id;
     if (!youthCupTypeId) return json({ skipped: true, reason: 'Youth Cup competition type was not found.' }, 202);
 
+    // Top 100 Youth Cup reminders go to any account managing in Top 100, whichever
+    // world it was claimed through (one account covers every world a manager is in).
+    const worlds = await requestJson(`${supabaseUrl}/rest/v1/game_worlds?slug=eq.top-100&select=id`, { headers });
+    const top100WorldId = worlds?.[0]?.id;
+    if (!top100WorldId) return json({ skipped: true, reason: 'The Top 100 game world was not found.' }, 202);
+    const memberships = await requestJson(`${supabaseUrl}/rest/v1/manager_game_world_memberships?game_world_id=eq.${top100WorldId}&active=eq.true&select=manager_id`, { headers });
+    const top100Managers = new Set((memberships || []).map((row) => String(row.manager_id)));
+
     const prefs = await requestJson(`${supabaseUrl}/rest/v1/manager_reminder_preferences?youth_cup_enabled=eq.true&select=account_id,fixture_assigned,day_before,deadline_day`, { headers });
     for (const pref of prefs || []) {
       const accounts = await requestJson(`${supabaseUrl}/rest/v1/manager_portal_accounts?id=eq.${pref.account_id}&active=eq.true&select=id,manager_id,email,game_world_id,game_worlds!inner(slug)`, { headers });
       const account = accounts?.[0];
-      if (!account || account.game_worlds?.slug !== 'top-100' || !account.email) { skipped += 1; continue; }
+      const inTop100 = account && (account.game_worlds?.slug === 'top-100' || top100Managers.has(String(account.manager_id)));
+      if (!inTop100 || !account.email) { skipped += 1; continue; }
 
-      const tournaments = await requestJson(`${supabaseUrl}/rest/v1/tournaments?game_world_id=eq.${account.game_world_id}&competition_type_id=eq.${youthCupTypeId}&is_public=eq.true&status=not.in.(archived,completed)&select=id,name,public_slug,season_number,status&order=season_number.desc`, { headers });
+      const tournaments = await requestJson(`${supabaseUrl}/rest/v1/tournaments?game_world_id=eq.${top100WorldId}&competition_type_id=eq.${youthCupTypeId}&is_public=eq.true&status=not.in.(archived,completed)&select=id,name,public_slug,season_number,status&order=season_number.desc`, { headers });
       const tournamentIds = (tournaments || []).map((row) => row.id);
       if (!tournamentIds.length) { skipped += 1; continue; }
 

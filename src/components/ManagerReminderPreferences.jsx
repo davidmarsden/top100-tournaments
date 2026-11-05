@@ -57,7 +57,7 @@ export default function ManagerReminderPreferences({ session = null, authLoading
   async function loadFixtureStatus(accountRow) {
     setNextFixture(null);
     setLastDelivery(null);
-    if (accountRow.game_worlds?.slug !== 'top-100') return;
+    if (!accountRow.inTop100 || !accountRow.top100WorldId) return;
 
     const [{ data: competition }, { data: deliveries }] = await Promise.all([
       supabase.from('competition_types').select('id').eq('slug', 'youth-cup').maybeSingle(),
@@ -69,7 +69,7 @@ export default function ManagerReminderPreferences({ session = null, authLoading
     const { data: tournaments } = await supabase
       .from('tournaments')
       .select('id, season_number')
-      .eq('game_world_id', accountRow.game_world_id)
+      .eq('game_world_id', accountRow.top100WorldId)
       .eq('competition_type_id', competition.id)
       .eq('is_public', true)
       .not('status', 'in', '(completed,archived)')
@@ -110,7 +110,7 @@ export default function ManagerReminderPreferences({ session = null, authLoading
     setLoading(true);
     setNextFixture(null);
     setLastDelivery(null);
-    const { data: accountRow, error: accountError } = await supabase
+    let { data: accountRow, error: accountError } = await supabase
       .from('manager_portal_accounts')
       .select('id, manager_id, game_world_id, email, active, game_worlds(slug)')
       .eq('auth_user_id', session.user.id)
@@ -121,6 +121,17 @@ export default function ManagerReminderPreferences({ session = null, authLoading
       setLoading(false);
       return;
     }
+    // One account covers every world the manager is in: a Top 100 manager who
+    // claimed through Top 100 Regen still gets Top 100 Youth Cup reminders.
+    const [{ data: worldSlugs }, { data: top100World }] = await Promise.all([
+      supabase.rpc('my_manager_world_slugs'),
+      supabase.from('game_worlds').select('id').eq('slug', 'top-100').maybeSingle(),
+    ]);
+    accountRow = {
+      ...accountRow,
+      inTop100: accountRow.game_worlds?.slug === 'top-100' || (Array.isArray(worldSlugs) && worldSlugs.includes('top-100')),
+      top100WorldId: top100World?.id ?? (accountRow.game_worlds?.slug === 'top-100' ? accountRow.game_world_id : null),
+    };
     setAccount(accountRow);
     const { data, error } = await supabase
       .from('manager_reminder_preferences')
@@ -150,7 +161,7 @@ export default function ManagerReminderPreferences({ session = null, authLoading
     setSaving(false);
   }
 
-  if (loading || !account || account.game_worlds?.slug !== 'top-100') return null;
+  if (loading || !account || !account.inTop100) return null;
 
   return (
     <section className="manager-portal-shell" aria-labelledby="youth-cup-reminders-heading">

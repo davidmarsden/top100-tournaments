@@ -51,6 +51,12 @@ function signTicket(payload, secret) {
   return `${encoded}.${signature}`;
 }
 
+async function top100WorldId(db) {
+  const { data, error } = await db.from('game_worlds').select('id').eq('slug', 'top-100').maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
 export async function handler(event) {
   if (event.httpMethod !== 'POST') return reply(405, { ok: false, error: 'Method not allowed.' });
 
@@ -74,7 +80,18 @@ export async function handler(event) {
       .maybeSingle();
 
     if (accountError) throw accountError;
-    if (!account || account.game_worlds?.slug !== 'top-100') {
+    // One account covers every world a manager manages in: a Top 100 manager who
+    // claimed through Top 100 Regen still belongs in Top 100 Chat.
+    let inTop100 = account?.game_worlds?.slug === 'top-100';
+    if (account && !inTop100) {
+      const { data: inWorld, error: worldError } = await db.rpc('manager_in_world', {
+        p_manager_id: account.manager_id,
+        p_world_id: await top100WorldId(db),
+      });
+      if (worldError) throw worldError;
+      inTop100 = inWorld === true;
+    }
+    if (!account || !inTop100) {
       return reply(403, { ok: false, error: 'Top 100 Chat is for approved Top 100 managers.' });
     }
 
