@@ -1,6 +1,7 @@
 // Waiting list (rule 3.3): emails an applicant their club offer. POST { entryId } with the signed-in
 // official's Supabase access token as a Bearer token; waiting_list_offer_details() checks that the
-// caller is an official and that the entry has an open offer, and records when it was emailed.
+// caller is an official and that the entry has an open offer, and waiting_list_offer_emailed()
+// records the send once Resend has accepted it.
 // Replies go to the admin team (MANAGER_CLAIM_ADMIN_EMAIL).
 const json = (body, status = 200) => Response.json(body, { status });
 
@@ -21,8 +22,14 @@ export default async (request) => {
 
   const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return json({ error: 'Sign in first.' }, 401);
-  let entryId;
-  try { entryId = Number((await request.json())?.entryId); } catch { return json({ error: 'Invalid JSON body.' }, 400); }
+  let entryId, sendId;
+  try {
+    const body = await request.json();
+    entryId = Number(body?.entryId);
+    // One id per click: a deliberate resend is a new email, while a retried request of the same
+    // click reuses the key and isn't sent twice.
+    sendId = /^[A-Za-z0-9-]{8,64}$/.test(String(body?.sendId || '')) ? String(body.sendId) : crypto.randomUUID();
+  } catch { return json({ error: 'Invalid JSON body.' }, 400); }
   if (!Number.isInteger(entryId) || entryId <= 0) return json({ error: 'A valid entryId is required.' }, 400);
 
   // As the signed-in official, so the function's own check decides.
@@ -48,9 +55,15 @@ export default async (request) => {
 
   const sent = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { authorization: `Bearer ${resendApiKey}`, 'content-type': 'application/json', 'idempotency-key': `waiting-list-offer-${entryId}-${offer.club}-${offer.deadline || ''}` },
+    headers: { authorization: `Bearer ${resendApiKey}`, 'content-type': 'application/json', 'idempotency-key': `waiting-list-offer-${entryId}-${sendId}` },
     body: JSON.stringify({ from: emailFrom, to: [offer.email], ...(adminEmail ? { reply_to: adminEmail, bcc: [adminEmail] } : {}), subject, text, html }),
   });
   if (!sent.ok) return json({ error: `The email could not be sent (HTTP ${sent.status}): ${(await sent.text()).slice(0, 300)}` }, 502);
-  return json({ ok: true, to: offer.email });
+  // Only now record the send, so "Offer emailed" never shows for an email that didn't go.
+  const recorded = await fetch(`${supabaseUrl}/rest/v1/rpc/waiting_list_offer_emailed`, {
+    method: 'POST',
+    headers: { apikey: anonKey, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ p_id: entryId }),
+  });
+  return json({ ok: true, to: offer.email, recorded: recorded.ok });
 };

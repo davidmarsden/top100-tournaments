@@ -7,7 +7,7 @@
 --     appointed and, if they have no Manager Account yet, a pending claim for that club is opened
 --     for the administrators to approve as usual.
 --  3. Offer emails: waiting_list_offer_details() gives the offer email's details to the Netlify
---     function that sends it, for officials only.
+--     function that sends it, and waiting_list_offer_emailed() records the send; officials only.
 -- SQL function bodies depend on Manager Lab objects, so they are not checked here.
 set check_function_bodies = false;
 
@@ -180,11 +180,13 @@ $$;
 revoke all on function public.my_waiting_list() from public, anon;
 grant execute on function public.my_waiting_list() to authenticated;
 
--- The offer email's details, for the Netlify function that sends it (officials only).
+-- The offer email's details, for the Netlify function that sends it (officials only). Reading them
+-- changes nothing; the function records the send with waiting_list_offer_emailed() once the email
+-- provider has accepted it.
 create or replace function public.waiting_list_offer_details(p_id bigint)
 returns jsonb
 language plpgsql
-volatile
+stable
 security definer
 set search_path = ''
 as $$
@@ -192,11 +194,11 @@ declare
   v_result jsonb;
 begin
   if not public.is_top100_official() then raise exception 'Only Top 100 officials can send offers.'; end if;
-  update public.waiting_list_entries entry set offer_emailed_at = now()
-  where entry.id = p_id and entry.status = 'offered' and entry.offer_club is not null and entry.email is not null
-  returning jsonb_build_object('email', entry.email, 'managerName', entry.sm_manager_name, 'club', entry.offer_club,
+  select jsonb_build_object('email', entry.email, 'managerName', entry.sm_manager_name, 'club', entry.offer_club,
     'deadline', entry.offer_deadline, 'world', (select name from public.game_worlds where id = entry.game_world_id))
-  into v_result;
+  into v_result
+  from public.waiting_list_entries entry
+  where entry.id = p_id and entry.status = 'offered' and entry.offer_club is not null and entry.email is not null;
   if v_result is null then raise exception 'That entry has no open offer with an email address.'; end if;
   return v_result;
 end;
@@ -204,6 +206,23 @@ $$;
 
 revoke all on function public.waiting_list_offer_details(bigint) from public, anon;
 grant execute on function public.waiting_list_offer_details(bigint) to authenticated;
+
+-- Record that the offer email went (after the email provider accepted it).
+create or replace function public.waiting_list_offer_emailed(p_id bigint)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_top100_official() then raise exception 'Only Top 100 officials can send offers.'; end if;
+  update public.waiting_list_entries set offer_emailed_at = now() where id = p_id and status = 'offered';
+end;
+$$;
+
+revoke all on function public.waiting_list_offer_emailed(bigint) from public, anon;
+grant execute on function public.waiting_list_offer_emailed(bigint) to authenticated;
 
 create or replace function public.waiting_list_admin(p_world_slug text default 'top-100')
 returns jsonb

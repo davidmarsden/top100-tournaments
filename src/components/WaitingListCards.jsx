@@ -52,20 +52,27 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
     setMessage("You're on the waiting list. We'll be in touch when a club is available.");
   }
 
-  // Open the usual Manager Account claim for the club they've taken, under the manager name the
-  // club directory shows (the claim is checked against it).
+  // Open the usual Manager Account claim for the club they've taken, under their own name. It goes
+  // ahead only once the club directory lists them as its manager: until it does, the directory may
+  // still name the previous manager, and a claim must never be made under someone else's name.
   async function linkClub(entry) {
     setBusy(true);
     const { data: club } = await supabase.from('game_world_clubs').select('club_name, current_manager_name')
       .eq('game_world_id', entry.worldId).ilike('club_name', entry.club).eq('active', true).maybeSingle();
+    const same = (a, b) => String(a || '').trim().toLowerCase().replace(/\s+/g, ' ') === String(b || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!club || !same(club.current_manager_name, entry.managerName)) {
+      setBusy(false);
+      setMessage(`Our club list doesn't show you at ${entry.club} yet. It updates after the next records check, so please try again later, or contact the admin team if it still doesn't work.`);
+      return;
+    }
     const payload = {
       auth_user_id: session.user.id, email: session.user.email, game_world_id: entry.worldId,
-      claimed_manager_name: club?.current_manager_name || entry.managerName, claimed_club_name: club?.club_name || entry.club,
+      claimed_manager_name: entry.managerName, claimed_club_name: club.club_name,
       status: 'pending', review_notes: null, reviewed_by: null, reviewed_at: null, updated_at: new Date().toISOString(),
     };
     const { error } = await supabase.from('manager_portal_claims').upsert(payload, { onConflict: 'auth_user_id' });
     setBusy(false);
-    if (error) { setMessage(`Could not link ${entry.club} yet (${error.message}). Our records may not show you there yet; try again after the next update.`); return; }
+    if (error) { setMessage(`Could not link ${entry.club} yet (${error.message}). Please try again later.`); return; }
     window.location.reload();
   }
 

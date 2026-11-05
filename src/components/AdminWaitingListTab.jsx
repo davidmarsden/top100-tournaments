@@ -186,7 +186,7 @@ export default function AdminWaitingListTab({ setMessage }) {
     const response = await fetch('/.netlify/functions/waiting-list-offer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-      body: JSON.stringify({ entryId: id }),
+      body: JSON.stringify({ entryId: id, sendId: crypto.randomUUID() }),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) { setMessage(`Offer saved, but the email wasn't sent: ${body.error || response.status}`); return; }
