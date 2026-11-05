@@ -182,6 +182,27 @@ $$;
 revoke all on function public.update_my_waiting_list(text, boolean) from public, anon;
 grant execute on function public.update_my_waiting_list(text, boolean) to authenticated;
 
+-- The signed-in manager, if they currently have a club in Top 100 or Top 100 Regen (an active world
+-- membership, not just an active Manager Account: a manager whose club changes hands keeps their
+-- account but loses the membership). Only they can recommend applicants or raise concerns.
+create or replace function public.waiting_list_current_manager_id()
+returns bigint
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select account.manager_id from public.manager_portal_accounts account
+  where account.auth_user_id = auth.uid() and account.active and account.manager_id is not null
+    and exists (select 1 from public.manager_game_world_memberships membership
+                where membership.manager_id = account.manager_id and membership.active)
+  order by account.id limit 1;
+$$;
+
+revoke all on function public.waiting_list_current_manager_id() from public, anon, authenticated;
+
+-- @permissions private public.waiting_list_current_manager_id: used only by the waiting list functions below
+
 -- ── Current managers ────────────────────────────────────────────────────────
 
 -- Applicants waiting in either game world, for current managers to recommend or raise a concern.
@@ -194,7 +215,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_manager bigint := public.appointment_my_manager_id();
+  v_manager bigint := public.waiting_list_current_manager_id();
 begin
   if v_manager is null then return '[]'::jsonb; end if;
   return coalesce((select jsonb_agg(jsonb_build_object(
@@ -222,9 +243,9 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_manager bigint := public.appointment_my_manager_id();
+  v_manager bigint := public.waiting_list_current_manager_id();
 begin
-  if v_manager is null then raise exception 'Only current managers with a Manager Account can recommend or raise a concern.'; end if;
+  if v_manager is null then raise exception 'Only current Top 100 and Top 100 Regen managers can recommend or raise a concern.'; end if;
   if p_kind is not null and p_kind not in ('recommend', 'concern') then raise exception 'Unknown choice.'; end if;
   if not exists (select 1 from public.waiting_list_entries entry
                  where entry.id = p_entry_id and entry.status in ('waiting', 'offered') and entry.auth_user_id <> auth.uid()) then

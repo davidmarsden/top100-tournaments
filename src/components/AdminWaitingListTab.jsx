@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { WAITING_LIST_PARTS, waitingListScore } from '../lib/waitingList';
 
@@ -113,23 +113,36 @@ export default function AdminWaitingListTab({ setMessage }) {
   const [data, setData] = useState(null);
   const [history, setHistory] = useState({});
   const [historyError, setHistoryError] = useState('');
+  // Scores can only be saved once this world's Stats & History records have loaded; otherwise
+  // returning managers would be saved with no Top 100 record and lose their priority.
+  const [historyReady, setHistoryReady] = useState(false);
+  // Only the latest load (for the selected world) may publish its results.
+  const loadId = useRef(0);
   const [openId, setOpenId] = useState(null);
   const [showClosed, setShowClosed] = useState(false);
 
   const load = useCallback(async () => {
+    const id = ++loadId.current;
+    const current = () => id === loadId.current;
+    setHistoryReady(false);
     const { data: list, error } = await supabase.rpc('waiting_list_admin', { p_world_slug: world });
+    if (!current()) return;
     if (error) { setMessage(error.message); return; }
     setData(list);
     setHistoryError('');
     try {
       const { data: season } = await supabase.rpc('appointment_current_season', { p_world_slug: 'top-100' });
-      setHistory(await fetchHistory(Number(season) || 28, (list.entries || []).map((entry) => ({ key: String(entry.id), name: entry.managerName }))));
+      const loaded = await fetchHistory(Number(season) || 28, (list.entries || []).map((entry) => ({ key: String(entry.id), name: entry.managerName })));
+      if (!current()) return;
+      setHistory(loaded);
+      setHistoryReady(true);
     } catch (error) {
+      if (!current()) return;
       setHistory({});
-      setHistoryError(`Top 100 records could not be loaded from Stats & History (${error.message}), so Top 100 record counts as 0 for now.`);
+      setHistoryError(`Top 100 records could not be loaded from Stats & History (${error.message}). Scores can't be saved until they load; try again shortly.`);
     }
   }, [world, setMessage]);
-  useEffect(() => { setData(null); load(); }, [load]);
+  useEffect(() => { setData(null); setHistory({}); load(); }, [load]);
 
   // Scores and order worked out from what's on the page: returning managers first, then score, then date joined.
   const rows = useMemo(() => (data?.entries || []).map((entry) => {
@@ -143,6 +156,7 @@ export default function AdminWaitingListTab({ setMessage }) {
   const unsaved = waiting.some(({ entry, scored }) => Number(entry.score) !== scored.score || Boolean(entry.returning) !== scored.returning);
 
   async function saveScores() {
+    if (!historyReady) return;
     const scores = Object.fromEntries(rows.map(({ entry, scored }) => [String(entry.id), { score: scored.score, returning: scored.returning, parts: scored.parts }]));
     setMessage('Saving…');
     const { error } = await supabase.rpc('save_waiting_list_scores', { p_world_slug: world, p_scores: scores });
@@ -220,7 +234,7 @@ export default function AdminWaitingListTab({ setMessage }) {
           <h3>Waiting ({waiting.length})</h3>
           {waiting.length ? table(waiting, true) : <p className="muted">Nobody is waiting.</p>}
           <div className="button-row">
-            <button type="button" disabled={!waiting.length} onClick={saveScores}>{unsaved ? 'Save scores and order' : 'Scores saved'}</button>
+            <button type="button" disabled={!waiting.length || !historyReady} onClick={saveScores}>{!historyReady ? 'Loading Top 100 records…' : unsaved ? 'Save scores and order' : 'Scores saved'}</button>
           </div>
           {closed.length > 0 && (
             <>
