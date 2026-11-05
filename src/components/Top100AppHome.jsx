@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { WaitingListCard, WaitingListRecommendCard } from './WaitingListCards';
 import { playerName } from '../lib/playerName';
 import { supabase } from '../lib/supabaseClient';
 import { smClubUrl, smMyClubUrl, smWorldUrl } from '../lib/soccerManagerLinks';
@@ -272,6 +273,8 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
       </div>
 
       <AppointmentProfileCard club={club?.name} worldSlug={home?.world?.slug} />
+      <WaitingListRecommendCard session={session} />
+      <WaitingListCard session={session} managedWorlds={worlds.map((world) => world.slug)} />
       <TransfersCard session={session} worldId={shownWorldId} />
       <MarketBoardCard session={session} worldId={shownWorldId} />
       <MarketRatesCard session={session} worldId={shownWorldId} />

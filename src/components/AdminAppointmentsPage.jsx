@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import AdminWaitingListTab from './AdminWaitingListTab';
 import { supabase } from '../lib/supabaseClient';
 
 // Top 100 officials: bottom-three reviews (rulebook 3.1) and vacancies (3.2).
@@ -887,18 +888,20 @@ export default function AdminAppointmentsPage() {
         <p className="eyebrow">Top 100 · Admin team</p>
         <h1>Appointments</h1>
         <p>
-          Bottom-three reviews (rule 3.1) and vacancies (rule 3.2). Managers state their wishes and apply in{' '}
+          Bottom-three reviews (rule 3.1), vacancies (rule 3.2) and the waiting list (rule 3.3). Managers state their wishes and apply in{' '}
           <a href="https://manager.smtop100.blog/appointments" style={HERO_LINK}>Manager Portal</a>; published decisions appear at{' '}
           <a href="https://tournaments.smtop100.blog/appointments" style={HERO_LINK}>tournaments.smtop100.blog/appointments</a>.
         </p>
         <div className="button-row">
           <button type="button" className={tab === 'reviews' ? '' : 'secondary'} onClick={() => setTab('reviews')}>Reviews</button>
           <button type="button" className={tab === 'vacancies' ? '' : 'secondary'} onClick={() => setTab('vacancies')}>Vacancies</button>
+          <button type="button" className={tab === 'waiting' ? '' : 'secondary'} onClick={() => setTab('waiting')}>Waiting list</button>
         </div>
       </section>
       {message && <p role="status">{message}</p>}
       {data && tab === 'reviews' && <ReviewsTab data={data} inputs={inputs} setInputs={setInputs} call={call} setMessage={setMessage} reload={load} />}
       {data && tab === 'vacancies' && <VacanciesTab data={data} inputs={inputs} setInputs={setInputs} call={call} setMessage={setMessage} />}
+      {tab === 'waiting' && <AdminWaitingListTab setMessage={setMessage} />}
     </main>
   );
 }
