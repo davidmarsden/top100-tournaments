@@ -24,7 +24,7 @@ create table if not exists public.waiting_list_entries (
   game_worlds integer check (game_worlds is null or game_worlds between 0 and 500),
   admin_notes text,
   -- The last scoring: returning Top 100 manager, score out of 100 and its parts.
-  returning boolean not null default false,
+  is_returning boolean not null default false,
   score numeric,
   score_parts jsonb,
   scored_at timestamptz,
@@ -65,7 +65,7 @@ security definer
 set search_path = ''
 as $$
   select entry.id,
-    (row_number() over (order by entry.returning desc, entry.score desc nulls last, entry.created_at))::integer,
+    (row_number() over (order by entry.is_returning desc, entry.score desc nulls last, entry.created_at))::integer,
     (count(*) over ())::integer
   from public.waiting_list_entries entry
   where entry.game_world_id = p_world_id and entry.status = 'waiting';
@@ -270,7 +270,7 @@ begin
           'status', entry.status, 'joinedAt', entry.created_at, 'agreedAt', entry.agreed_at,
           'confirmedSeason', entry.confirmed_season, 'managerId', entry.manager_id, 'smManagerId', coalesce(entry.sm_manager_id, stints.sm_manager_id),
           'adminNotes', entry.admin_notes, 'offerClub', entry.offer_club, 'offerDeadline', entry.offer_deadline,
-          'returning', entry.returning, 'score', entry.score, 'scoreParts', entry.score_parts, 'scoredAt', entry.scored_at,
+          'returning', entry.is_returning, 'score', entry.score, 'scoreParts', entry.score_parts, 'scoredAt', entry.scored_at,
           'place', position.place,
           'sortStatus', case entry.status when 'offered' then 0 when 'waiting' then 1 when 'appointed' then 2 else 3 end,
           -- Gold and game worlds: the administrators' entry wins, otherwise the latest records check.
@@ -357,7 +357,7 @@ begin
   if not public.is_top100_official() then raise exception 'Only Top 100 officials can score the waiting list.'; end if;
   update public.waiting_list_entries entry set
     score = (scored.value->>'score')::numeric,
-    returning = coalesce((scored.value->>'returning')::boolean, false),
+    is_returning = coalesce((scored.value->>'returning')::boolean, false),
     score_parts = scored.value->'parts',
     scored_at = now()
   from jsonb_each(coalesce(p_scores, '{}'::jsonb)) scored
