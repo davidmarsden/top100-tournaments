@@ -70,6 +70,13 @@ const SCORE_HELP = {
   activity: ['Activity (out of 20)', 'Top 100 competitions entered (2 each, up to 4); transfers with Top 100 managers in the last 120 days (0.4 each, up to 4); squad building, places climbed in the squad-strength ranking during their current spell (0–4); helps run Top 100 (0–3); community and social (0–3, the average of the admin team’s scores); and focus, 2 for 3 or fewer Soccer Manager game worlds, 0.25 less for each extra. Any input left blank gets half marks.'],
 };
 const STEP_TITLE = { margin: '0 0 4px', fontSize: 16 };
+// Voting and the team decision look different on purpose, so an admin casting their own vote
+// can't mistake the decision box for it: votes are blue and individual, the decision amber and final.
+const VOTE_STEP = { marginTop: 16, padding: 12, borderRadius: 12, border: '2px solid #93c5fd', background: 'var(--vote-bg, #eff6ff)' };
+const DECISION_STEP = { marginTop: 24, padding: 12, borderRadius: 12, border: '2px solid #f59e0b', background: 'var(--decision-bg, #fffbeb)' };
+const TAG = { display: 'inline-block', fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', padding: '2px 8px', borderRadius: 999, marginLeft: 8, verticalAlign: 'middle' };
+const VOTE_TAG = { ...TAG, background: '#dbeafe', color: '#1e3a8a' };
+const DECISION_TAG = { ...TAG, background: '#fde68a', color: '#78350f' };
 
 // The scoring inputs as a table: what each one is, what Top 100's records say, and the
 // value that will be used (editable, within its limits).
@@ -157,7 +164,7 @@ function Votes({ votes, choices, onVote, disabled }) {
       ) : <p className="muted">No votes yet.</p>}
       {!disabled && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ fontSize: 13 }}>Your vote
+          <label style={{ fontSize: 13 }}>Your own vote
             <select value={choice} onChange={(event) => setChoice(event.target.value)} style={{ display: 'block' }}>
               <option value="">Choose…</option>
               {Object.entries(choices).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -169,13 +176,18 @@ function Votes({ votes, choices, onVote, disabled }) {
           <button type="button" disabled={!choice || !reason.trim()} onClick={() => onVote(choice, reason)}>{mine ? 'Change my vote' : 'Cast my vote'}</button>
         </div>
       )}
+      {!disabled && (
+        <p className="muted" style={{ margin: '6px 0 0', fontSize: 13 }}>
+          Casting your vote doesn't decide anything. The team's final decision is recorded separately, below, once everyone has voted.
+        </p>
+      )}
     </div>
   );
 }
 
 // Step: the team's decision, recorded once the votes are in. It is saved, not published:
 // "Publish decided…" at the top publishes every decided one and tells the managers.
-function Decision({ current, reason: currentReason, choices, votes, onDecide, published, majorityFor = [], requireVotes = true, defaultChoice = '', defaultReason = '' }) {
+function Decision({ current, reason: currentReason, choices, votes, onDecide, onClear, subject, published, majorityFor = [], requireVotes = true, defaultChoice = '', defaultReason = '' }) {
   const tally = tallyOf(votes);
   const leading = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
   const [choice, setChoice] = useState(current || leading || defaultChoice);
@@ -193,9 +205,22 @@ function Decision({ current, reason: currentReason, choices, votes, onDecide, pu
       {votes.length > 0 && (
         <p className="muted">Votes so far: {Object.entries(tally).map(([value, count]) => `${choices[value] || value} ${count}`).join(' · ')}.</p>
       )}
-      {current && <p><strong>Decided: {choices[current]}</strong>{currentReason ? `. ${currentReason}` : ''} <span className="muted">(not published yet)</span></p>}
+      {current && (
+        <p>
+          <strong>Team decision recorded: {choices[current]}</strong>{currentReason ? `. ${currentReason}` : ''} <span className="muted">(not published yet)</span>
+          {onClear && (
+            <>
+              {' '}
+              <button type="button" className="secondary"
+                onClick={() => window.confirm(`Clear the team decision for ${subject} (${choices[current]})? Votes are kept.`) && onClear()}>
+                Clear decision
+              </button>
+            </>
+          )}
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <label style={{ fontSize: 13 }}>Team decision
+        <label style={{ fontSize: 13 }}>Final team decision
           <select value={choice} disabled={waiting} onChange={(event) => setChoice(event.target.value)} style={{ display: 'block' }}>
             <option value="">Choose…</option>
             {Object.entries(choices).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -204,7 +229,10 @@ function Decision({ current, reason: currentReason, choices, votes, onDecide, pu
         <label style={{ flex: 1, minWidth: 200, fontSize: 13 }}>The team's reason (published)
           <input value={reason} disabled={waiting} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
         </label>
-        <button type="button" disabled={!choice || Boolean(blocked)} onClick={() => onDecide(choice, reason)}>{current ? 'Change decision' : 'Record decision'}</button>
+        <button type="button" disabled={!choice || Boolean(blocked)}
+          onClick={() => window.confirm(`Record the TEAM's final decision for ${subject}: ${choices[choice]}?\n\nThis is not your own vote: it's what the whole admin team has agreed. To vote, use "Your vote" above.`) && onDecide(choice, reason)}>
+          {current ? "Change the team's decision" : "Record the team's decision"}
+        </button>
       </div>
       {blocked && <p className="muted">{blocked}</p>}
     </div>
@@ -477,6 +505,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
       {ordered.map((review) => {
         const result = results[String(review.id)];
         const key = `r${review.id}`;
+        const subject = `${review.club_name} (${review.manager_name || 'no manager'})`;
+        const clear = () => call('decide_appointment_review', { p_id: review.id, p_decision: null, p_reason: null }, 'Team decision cleared.');
         return (
           <section className="card" key={review.id} id={`review-${review.id}`} hidden={!shown(review)} style={{ scrollMarginTop: 16, display: shown(review) ? undefined : 'none' }}>
             <p style={{ margin: 0, textAlign: 'right' }}><a href="#review-summary">Back to the list</a></p>
@@ -496,8 +526,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
             </div>
 
             {isRoutine(review) ? (
-              <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
-                <h4 style={STEP_TITLE}>Routine review: {routineLabel(review)}</h4>
+              <div style={DECISION_STEP}>
+                <h4 style={STEP_TITLE}>Routine review: {routineLabel(review)}<span style={DECISION_TAG}>Final · recorded once for the team</span></h4>
                 {!review.published_at && !review.decision && (
                   <p style={{ marginTop: 0 }}>
                     <button type="button" className="secondary" onClick={() => call('update_appointment_review', { p_id: review.id, p_fields: { fullReview: true } }, 'This club now has a full review.')}>
@@ -519,8 +549,9 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                   defaultChoice={review.wish === 'move' ? 'anotherClub' : review.wish === 'break' ? 'leave'
                     : routineBlock(review, data.inputs[String(review.manager_id)]) ? '' : 'reappoint'}
                   defaultReason={`${routineLabel(review)[0].toUpperCase()}${routineLabel(review).slice(1)}.`}
-                  published={Boolean(review.published_at)}
-                  onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
+                  published={Boolean(review.published_at)} subject={subject}
+                  onClear={clear}
+                  onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Team decision saved (not yet published).')} />
               </div>
             ) : (<>
             {routineByDefault(review) && !review.published_at && (
@@ -556,21 +587,21 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
                 {' '}Record the decision below{result.outcome === 'reappoint' ? ', or use Reappoint routine and clear reviews at the top once the scores are saved' : ''}.
               </p>
             )}
-            <div style={STEP} hidden={isClear(review)}>
-              <h4 style={STEP_TITLE}>4 · Votes</h4>
-              <p className="muted" style={{ marginTop: 0 }}>Every admin votes, with a reason. Votes and reasons are published with the decision.</p>
+            <div style={VOTE_STEP} hidden={isClear(review)}>
+              <h4 style={STEP_TITLE}>4 · Votes<span style={VOTE_TAG}>Each admin, individually</span></h4>
+              <p className="muted" style={{ marginTop: 0 }}>Every admin casts their own vote, with a reason. Votes and reasons are published with the decision.</p>
               <Votes votes={votesFor(review.id)} choices={OUTCOMES} disabled={Boolean(review.published_at)}
                 onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'review', p_subject_id: review.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')} />
             </div>
 
-            <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
-              <h4 style={STEP_TITLE}>5 · Team decision</h4>
-              <p className="muted" style={{ marginTop: 0 }}>{isClear(review) ? 'One admin records the outcome the rules give.' : 'Once the votes are in, one admin records what the team decided.'} It isn't published until you publish the decided reviews.</p>
+            <div style={DECISION_STEP}>
+              <h4 style={STEP_TITLE}>5 · Team decision<span style={DECISION_TAG}>Final · recorded once for the team</span></h4>
+              <p className="muted" style={{ marginTop: 0 }}>{isClear(review) ? 'Not a vote. One admin records the outcome the rules give.' : 'Not a vote. Once everyone has voted, one admin records what the team decided.'} It isn't published until you publish the decided reviews.</p>
               <Decision key={isClear(review) ? `clear:${result.outcome}` : 'vote'} current={review.decision} reason={review.decision_reason} choices={OUTCOMES} votes={votesFor(review.id)} majorityFor={['secondChance']}
                 requireVotes={!isClear(review)} defaultChoice={isClear(review) ? result.outcome : ''}
                 defaultReason={isClear(review) && result.outcome === 'reappoint' ? 'No clear and obvious error: reappointed.' : ''}
-                published={Boolean(review.published_at)}
-                onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Decision saved (not yet published).')} />
+                published={Boolean(review.published_at)} subject={subject} onClear={clear}
+                onDecide={(decision, reason) => call('decide_appointment_review', { p_id: review.id, p_decision: decision, p_reason: reason }, 'Team decision saved (not yet published).')} />
             </div>
             </>)}
           </section>
@@ -821,18 +852,19 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
                 {notScored.length > 0 && ` Not yet scored: ${notScored.map((application) => application.managerName).join(', ')}.`}
               </p>
             )}
-            <div style={STEP}>
-              <h4 style={STEP_TITLE}>Votes</h4>
-              <p className="muted" style={{ marginTop: 0 }}>Every admin votes for an applicant, with a reason. Votes and reasons are published with the appointment.</p>
+            <div style={VOTE_STEP}>
+              <h4 style={STEP_TITLE}>Votes<span style={VOTE_TAG}>Each admin, individually</span></h4>
+              <p className="muted" style={{ marginTop: 0 }}>Every admin casts their own vote for an applicant, with a reason. Votes and reasons are published with the appointment.</p>
               <Votes votes={vacancyVotes} disabled={Boolean(vacancy.published_at)} choices={voteChoices}
                 onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')} />
             </div>
-            <div style={{ ...STEP, background: 'var(--surface-muted, #f1f5f9)', padding: 12, borderRadius: 12 }}>
-              <h4 style={STEP_TITLE}>Team decision</h4>
-              <p className="muted" style={{ marginTop: 0 }}>Once the votes are in, one admin records who the team appoints. It isn't published until you publish the decided vacancies.</p>
+            <div style={DECISION_STEP}>
+              <h4 style={STEP_TITLE}>Team decision<span style={DECISION_TAG}>Final · recorded once for the team</span></h4>
+              <p className="muted" style={{ marginTop: 0 }}>Not a vote. Once everyone has voted, one admin records who the team appoints. It isn't published until you publish the decided vacancies.</p>
               <Decision current={vacancy.appointed_manager_id ? String(vacancy.appointed_manager_id) : ''} reason={vacancy.decision_reason} published={Boolean(vacancy.published_at)}
                 votes={vacancyVotes.map((vote) => ({ ...vote, choice: idByName[vote.choice] || vote.choice }))}
                 choices={{ ...choices, ...(vacancy.appointed_manager_id ? { [String(vacancy.appointed_manager_id)]: vacancy.appointedManager } : {}) }}
+                subject={vacancy.club_name}
                 onDecide={(manager, reason) => call('decide_appointment_vacancy', { p_id: vacancy.id, p_manager_id: Number(manager), p_reason: reason }, 'Decision saved (not yet published).')} />
             </div>
           </section>
