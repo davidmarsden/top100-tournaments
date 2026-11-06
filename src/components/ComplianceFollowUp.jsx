@@ -20,7 +20,8 @@ export default function ComplianceFollowUp() {
   const [clubs, setClubs] = useState([]);
   const [message, setMessage] = useState('');
   const [ban, setBan] = useState({ club: '', starts: today(), ends: inAMonth(), terms: 'external_cash_sales_only', reason: '' });
-  const [sale, setSale] = useState({ club: '', player: '', requirement: 'sell_external_cash', noRebid: true, reason: '' });
+  const [sale, setSale] = useState({ club: '', players: [], extraIds: '', requirement: 'sell_external_cash', noRebid: true, reason: '' });
+  const [squad, setSquad] = useState([]);
 
   const load = useCallback(async () => {
     const [log, banRows, obligationRows, crosswalk] = await Promise.all([
@@ -40,6 +41,18 @@ export default function ComplianceFollowUp() {
 
   useEffect(() => { load(); }, [load]);
 
+  // The chosen club's squad from the latest sync, for picking the player(s) a ruling names.
+  useEffect(() => {
+    if (!sale.club) { setSquad([]); return undefined; }
+    let current = true;
+    supabase.rpc('compliance_club_squad', { p_source_club_id: sale.club, p_world_slug: 'top-100' }).then(({ data, error }) => {
+      if (!current) return;
+      if (error) { setMessage(error.message); setSquad([]); return; }
+      setSquad(data || []);
+    });
+    return () => { current = false; };
+  }, [sale.club]);
+
   const call = async (name, args) => {
     const { error } = await supabase.rpc(name, args);
     if (error) { setMessage(error.message); return false; }
@@ -57,9 +70,12 @@ export default function ComplianceFollowUp() {
 
   const addSale = async (event) => {
     event.preventDefault();
-    if (!sale.club || !/^\d+$/.test(sale.player) || !sale.reason.trim()) { setMessage('Choose a club, enter the Soccer Manager player ID (a number) and give a reason.'); return; }
-    if (await call('add_compliance_obligation', { p_source_club_id: sale.club, p_source_player_id: sale.player, p_requirement: sale.requirement, p_no_rebid: sale.noRebid, p_reason: sale.reason })) {
-      setSale({ ...sale, club: '', player: '', reason: '' });
+    const extra = sale.extraIds.split(/[\s,;/]+/).filter(Boolean);
+    if (extra.some((id) => !/^\d+$/.test(id))) { setMessage('Soccer Manager player IDs are numbers (separate several with commas).'); return; }
+    const players = [...new Set([...sale.players, ...extra])];
+    if (!sale.club || players.length === 0 || !sale.reason.trim()) { setMessage('Choose a club, tick the player (or players: selling any one of them meets the ruling) and give a reason.'); return; }
+    if (await call('add_compliance_obligations', { p_source_club_id: sale.club, p_source_player_ids: players, p_requirement: sale.requirement, p_no_rebid: sale.noRebid, p_reason: sale.reason })) {
+      setSale({ ...sale, club: '', players: [], extraIds: '', reason: '' });
     }
   };
 
@@ -69,6 +85,10 @@ export default function ComplianceFollowUp() {
       {clubs.map((club) => <option key={club.source_club_id} value={club.source_club_id}>{club.source_club_name}</option>)}
     </select>
   );
+
+  const togglePlayer = (id) => setSale({ ...sale, players: sale.players.includes(id) ? sale.players.filter((p) => p !== id) : [...sale.players, id] });
+  const alternatives = (row) => obligations.filter((other) => row.choice_group && other.choice_group === row.choice_group && other.id !== row.id);
+  const playerLabel = (row) => row.player_name || row.source_player_id;
 
   const open = events.filter((event) => !event.acknowledged_at);
   const activeBans = bans.filter((row) => row.ends_on >= today());
@@ -123,15 +143,19 @@ export default function ComplianceFollowUp() {
             {obligations.map((row) => (
               <tr key={row.id}>
                 <td>{row.club_name}</td>
-                <td>{row.player_name || row.source_player_id}</td>
+                <td>
+                  {playerLabel(row)}
+                  {alternatives(row).length > 0 && <small> (or {alternatives(row).map(playerLabel).join(' or ')}: one must go)</small>}
+                </td>
                 <td>{REQUIREMENT[row.requirement]}{row.no_rebid ? '; no re-bid' : ''}</td>
                 <td>
                   {row.sellable_from ? date(row.sellable_from) : '–'}
                   {row.status === 'open' && row.sellable_from && new Date(row.sellable_from) <= new Date() ? <strong> (now: not yet sold)</strong> : ''}
                 </td>
                 <td>
-                  {row.status}
-                  {row.resolved_transfer ? ` (to ${row.resolved_transfer.to}, ${date(row.resolved_transfer.date)})` : ''}
+                  {row.status === 'released' ? 'not needed' : row.status}
+                  {row.status === 'released' && row.resolved_transfer?.player ? ` (${row.resolved_transfer.player} sold)` : ''}
+                  {row.status !== 'released' && row.resolved_transfer ? ` (to ${row.resolved_transfer.to}, ${date(row.resolved_transfer.date)})` : ''}
                 </td>
                 <td>{row.status === 'open' && <button type="button" onClick={() => call('set_compliance_obligation_status', { p_obligation_id: row.id, p_status: 'waived' })}>Waive</button>}</td>
               </tr>
@@ -141,14 +165,29 @@ export default function ComplianceFollowUp() {
         <form onSubmit={addSale}>
           <h3>Record a required sale</h3>
           <p>
-            {clubPicker(sale.club, (club) => setSale({ ...sale, club }))}{' '}
-            <input placeholder="SM player ID" value={sale.player} onChange={(event) => setSale({ ...sale, player: event.target.value.trim() })} size={10} />{' '}
+            {clubPicker(sale.club, (club) => setSale({ ...sale, club, players: [], extraIds: '' }))}{' '}
             <select value={sale.requirement} onChange={(event) => setSale({ ...sale, requirement: event.target.value })}>
               <option value="sell_external_cash">Sell to a club outside Top 100 for cash</option>
               <option value="sell">Sell (any buyer)</option>
             </select>{' '}
             <label><input type="checkbox" checked={sale.noRebid} onChange={(event) => setSale({ ...sale, noRebid: event.target.checked })} /> No re-bid</label>
           </p>
+          {sale.club && (
+            <fieldset>
+              <legend>Player(s): tick one, or several if selling any one of them meets the ruling</legend>
+              {squad.length === 0 && <p>No synced squad for this club. Enter the Soccer Manager player ID(s) below.</p>}
+              <div style={{ columns: '14rem', fontSize: '0.9em' }}>
+                {squad.map((player) => (
+                  <label key={player.source_player_id} style={{ display: 'block' }}>
+                    <input type="checkbox" checked={sale.players.includes(player.source_player_id)} onChange={() => togglePlayer(player.source_player_id)} />{' '}
+                    {player.player_name || player.source_player_id} <small>{[player.player_position, player.rating, player.age && `age ${player.age}`].filter(Boolean).join(' · ')}</small>
+                  </label>
+                ))}
+              </div>
+              <p><input placeholder="Or SM player IDs, comma-separated" value={sale.extraIds} onChange={(event) => setSale({ ...sale, extraIds: event.target.value })} size={30} /></p>
+              {sale.players.length + sale.extraIds.split(/[\s,;/]+/).filter(Boolean).length > 1 && <p><strong>Either-or:</strong> selling any one of these meets the ruling; the others are then released.</p>}
+            </fieldset>
+          )}
           <p><input style={{ width: '100%' }} placeholder="Reason (the ruling)" value={sale.reason} onChange={(event) => setSale({ ...sale, reason: event.target.value })} /></p>
           <button type="submit">Record required sale</button>
         </form>
