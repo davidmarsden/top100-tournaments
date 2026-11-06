@@ -72,8 +72,8 @@ const SCORE_HELP = {
 const STEP_TITLE = { margin: '0 0 4px', fontSize: 16 };
 // Voting and the team decision look different on purpose, so an admin casting their own vote
 // can't mistake the decision box for it: votes are blue and individual, the decision amber and final.
-const VOTE_STEP = { marginTop: 16, padding: 12, borderRadius: 12, border: '2px solid #93c5fd', background: 'var(--vote-bg, #eff6ff)' };
-const DECISION_STEP = { marginTop: 24, padding: 12, borderRadius: 12, border: '2px solid #f59e0b', background: 'var(--decision-bg, #fffbeb)' };
+const VOTE_STEP = { marginTop: 16, padding: 12, borderRadius: 12, border: '2px solid #60a5fa', background: 'rgba(96, 165, 250, 0.10)' };
+const DECISION_STEP = { marginTop: 24, padding: 12, borderRadius: 12, border: '2px solid #f59e0b', background: 'rgba(245, 158, 11, 0.12)' };
 const TAG = { display: 'inline-block', fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', padding: '2px 8px', borderRadius: 999, marginLeft: 8, verticalAlign: 'middle' };
 const VOTE_TAG = { ...TAG, background: '#dbeafe', color: '#1e3a8a' };
 const DECISION_TAG = { ...TAG, background: '#fde68a', color: '#78350f' };
