@@ -87,8 +87,28 @@ export default function ComplianceFollowUp() {
   );
 
   const togglePlayer = (id) => setSale({ ...sale, players: sale.players.includes(id) ? sale.players.filter((p) => p !== id) : [...sale.players, id] });
-  const alternatives = (row) => obligations.filter((other) => row.choice_group && other.choice_group === row.choice_group && other.id !== row.id);
   const playerLabel = (row) => row.player_name || row.source_player_id;
+  // Soccer Manager reports "no transfer ban" as time 0 (1 Jan 1970).
+  const banEnds = (row) => (row.sellable_from && new Date(row.sellable_from).getFullYear() > 2000 ? row.sellable_from : null);
+  // An either-or ruling is one row per player in the database; show it as one ruling.
+  const rulings = [];
+  obligations.forEach((row) => {
+    const group = row.choice_group && rulings.find((ruling) => ruling.choice_group === row.choice_group);
+    if (group) group.members.push(row);
+    else rulings.push({ ...row, members: [row] });
+  });
+  rulings.forEach((ruling) => {
+    const sold = ruling.members.find((member) => member.status === 'met' || member.status === 'breached');
+    const open = ruling.members.filter((member) => member.status === 'open');
+    const dates = (open.length ? open : ruling.members).map(banEnds);
+    Object.assign(ruling, {
+      status: sold ? sold.status : ruling.members[0].status,
+      resolved_transfer: sold ? { ...sold.resolved_transfer, player: playerLabel(sold) } : ruling.members[0].resolved_transfer,
+      // The soonest any of the players can be sold.
+      sellable_from: dates.includes(null) ? null : dates.sort()[0],
+      checked: ruling.members.some((member) => member.checked_at),
+    });
+  });
 
   const open = events.filter((event) => !event.acknowledged_at);
   const activeBans = bans.filter((row) => row.ends_on >= today());
@@ -136,26 +156,25 @@ export default function ComplianceFollowUp() {
       </section>
 
       <section className="card">
-        <h2>Required sales ({obligations.filter((row) => row.status === 'open').length} outstanding)</h2>
+        <h2>Required sales ({rulings.filter((row) => row.status === 'open').length} outstanding)</h2>
         <table>
           <thead><tr><th>Club</th><th>Player</th><th>Requirement</th><th>Can be sold from</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {obligations.map((row) => (
+            {rulings.map((row) => (
               <tr key={row.id}>
                 <td>{row.club_name}</td>
                 <td>
-                  {playerLabel(row)}
-                  {alternatives(row).length > 0 && <small> (or {alternatives(row).map(playerLabel).join(' or ')}: one must go)</small>}
+                  {row.members.map(playerLabel).join(' or ')}
+                  {row.members.length > 1 && <small> (any one)</small>}
                 </td>
                 <td>{REQUIREMENT[row.requirement]}{row.no_rebid ? '; no re-bid' : ''}</td>
                 <td>
-                  {row.sellable_from ? date(row.sellable_from) : '–'}
-                  {row.status === 'open' && row.sellable_from && new Date(row.sellable_from) <= new Date() ? <strong> (now: not yet sold)</strong> : ''}
+                  {row.sellable_from ? date(row.sellable_from) : (row.checked ? 'now' : '–')}
+                  {row.status === 'open' && row.checked && (!row.sellable_from || new Date(row.sellable_from) <= new Date()) ? <strong> (not yet sold)</strong> : ''}
                 </td>
                 <td>
-                  {row.status === 'released' ? 'not needed' : row.status}
-                  {row.status === 'released' && row.resolved_transfer?.player ? ` (${row.resolved_transfer.player} sold)` : ''}
-                  {row.status !== 'released' && row.resolved_transfer ? ` (to ${row.resolved_transfer.to}, ${date(row.resolved_transfer.date)})` : ''}
+                  {row.status}
+                  {row.resolved_transfer?.to ? ` (${row.members.length > 1 ? `${row.resolved_transfer.player} ` : ''}to ${row.resolved_transfer.to}, ${date(row.resolved_transfer.date)})` : ''}
                 </td>
                 <td>{row.status === 'open' && <button type="button" onClick={() => call('set_compliance_obligation_status', { p_obligation_id: row.id, p_status: 'waived' })}>Waive</button>}</td>
               </tr>
