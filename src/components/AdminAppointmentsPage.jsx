@@ -648,12 +648,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   const applications = data.applications.filter((application) => application.status === 'active');
   const clubName = (id) => data.vacancies.find((vacancy) => vacancy.id === id)?.club_name || `#${id}`;
   const applicantName = Object.fromEntries(applications.map((application) => [String(application.manager_id), application.managerName]));
-  const result = round?.result;
+  const savedResult = round?.result;
   // Applications made or changed since the last scoring aren't in its result: flag them so the
   // team scores again before relying on the rankings or the suggested appointments.
   // Compared with the preferences the scoring actually used (saved with its inputs), so a change made
   // while scoring was running is still caught.
-  const scoredKeys = new Set((result?.applicants || []).map((applicant) => String(applicant.key)));
+  const scoredKeys = new Set((savedResult?.applicants || []).map((applicant) => String(applicant.key)));
   const scoredPreferences = round?.inputs?.preferences || {};
   const isUnscored = (application) => {
     if (!round) return false;
@@ -665,7 +665,14 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   };
   const unscored = applications.filter(isUnscored);
 
-  const runScoring = async () => {
+  // Vacancies (or their comparison managers) added or changed since the last scoring.
+  const vacancySignature = (list) => JSON.stringify(list.map((vacancy) => [vacancy.club, vacancy.division]).sort());
+  const vacanciesChanged = Boolean(round) && vacancySignature(round.inputs?.vacancies || [])
+    !== vacancySignature(vacancies.map((vacancy) => ({ club: vacancy.club_name, division: vacancy.division })));
+  const comparisonsChanged = Boolean(round) && vacancies.some((vacancy) => vacancy.comparison_manager
+    && !(savedResult?.comparisons || []).some((entry) => entry.key === `${COMPARISON}${vacancy.id}` && entry.display === vacancy.comparison_manager));
+
+  const buildConfig = () => {
     const keyOf = (application) => String(application.manager_id);
     // Each vacancy's outgoing (or previous) manager is scored alongside, for comparison only:
     // with no preferences they are never allocated, and the scores are kept out of what is published.
@@ -706,16 +713,47 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
       }).concat(comparisons.map((comparison) => [comparison.key, Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds']
         .map((key) => [key, fieldValue(scoringValues(comparison.managerId, comparisonInputs(comparison)), key)]).filter(([, value]) => value !== null))]))),
     };
+    return config;
+  };
+
+  const scoreConfig = async (config) => {
+    const scored = await score(config);
+    const isComparison = (key) => String(key).startsWith(COMPARISON);
+    return {
+      ...scored,
+      applicants: scored.applicants.filter((applicant) => !isComparison(applicant.key)),
+      comparisons: scored.applicants.filter((applicant) => isComparison(applicant.key)),
+      allocation: { ...scored.allocation, unplaced: (scored.allocation.unplaced || []).filter((key) => !isComparison(key)) },
+    };
+  };
+
+  // Like the reviews: whenever there's no saved scoring, or applications or vacancies have changed
+  // since it, the page works out the scores automatically from Top 100's records and shows those.
+  // Score applicants saves the admin team's scoring (with any corrected inputs), which replaces them.
+  const needsAuto = !round?.published_at && applications.length > 0 && vacancies.length > 0
+    && (!round || unscored.length > 0 || vacanciesChanged || comparisonsChanged);
+  const [auto, setAuto] = useState(null);
+  const [autoFailed, setAutoFailed] = useState(false);
+  const autoKey = JSON.stringify([needsAuto, applications.map((application) => [application.manager_id, application.preferences]),
+    vacancies.map((vacancy) => [vacancy.id, vacancy.club_name, vacancy.division, vacancy.comparison_manager])]);
+  useEffect(() => {
+    setAuto(null);
+    setAutoFailed(false);
+    if (!needsAuto) return undefined;
+    let active = true;
+    scoreConfig(buildConfig())
+      .then((scored) => { if (active) setAuto(scored); })
+      .catch(() => { if (active) setAutoFailed(true); });
+    return () => { active = false; };
+  }, [autoKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const isAuto = needsAuto && Boolean(auto);
+  const result = isAuto ? auto : savedResult;
+
+  const runScoring = async () => {
+    const config = buildConfig();
     setMessage('Scoring…');
     try {
-      const scored = await score(config);
-      const isComparison = (key) => String(key).startsWith(COMPARISON);
-      const result = {
-        ...scored,
-        applicants: scored.applicants.filter((applicant) => !isComparison(applicant.key)),
-        comparisons: scored.applicants.filter((applicant) => isComparison(applicant.key)),
-        allocation: { ...scored.allocation, unplaced: (scored.allocation.unplaced || []).filter((key) => !isComparison(key)) },
-      };
+      const result = await scoreConfig(config);
       await call('save_appointment_round', { p_kind: 'vacancies', p_inputs: { ...config, edited: own(inputs, 'a') }, p_result: result, p_season: data.season }, 'Scored.');
     } catch (error) {
       setMessage(error.message);
@@ -756,10 +794,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
           </button>
         </div>
         {round && <p className="muted">Last scored {when(round.scored_at)}{round.published_at ? `, published ${when(round.published_at)}` : ''}.</p>}
-        {unscored.length > 0 && !round?.published_at && (
+        {needsAuto && (
           <p className="status" role="status">
-            {unscored.length} application{unscored.length === 1 ? '' : 's'} new or changed since the last scoring ({unscored.map((application) => application.managerName).join(', ')}).
-            {' '}Score applicants again to include {unscored.length === 1 ? 'it' : 'them'} in the rankings and suggested appointments.
+            {isAuto ? 'The scores below are automatic, from Top 100\'s records' : autoFailed ? 'The automatic scores could not be worked out' : 'Working out the scores automatically…'}
+            {unscored.length > 0 ? ` (${unscored.length} application${unscored.length === 1 ? '' : 's'} new or changed since the last saved scoring: ${unscored.map((application) => application.managerName).join(', ')})` : ''}
+            {vacanciesChanged || comparisonsChanged ? `${unscored.length > 0 ? ',' : ''} with vacancies changed since the last saved scoring` : ''}.
+            {' '}Check the scoring inputs, then Score applicants to save the admin team's scores.
           </p>
         )}
       </section>
@@ -769,7 +809,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
         {applications.map((application) => (
           <div key={application.id} style={{ marginBottom: 12 }}>
             <strong>{application.managerName}</strong> ({application.club}, D{application.clubDivision} {ordinal(application.clubPosition)}): {application.preferences.map(clubName).join(' → ')}
-            {isUnscored(application) && <span className="status" style={{ marginLeft: 8 }}>Not yet scored</span>}
+            {isUnscored(application) && <span className="status" style={{ marginLeft: 8 }}>{isAuto ? 'Automatic score' : 'Not yet scored'}</span>}
             {application.note && <div className="muted">“{application.note}”</div>}
             {data.inputs[String(application.manager_id)]?.gold === false && <div className="status">Not a Gold member.</div>}
             {goldUnclear(data.inputs[String(application.manager_id)]) && <div className="status">{goldUnclear(data.inputs[String(application.manager_id)])}.</div>}
