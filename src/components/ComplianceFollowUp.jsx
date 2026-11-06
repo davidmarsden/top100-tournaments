@@ -100,13 +100,15 @@ export default function ComplianceFollowUp() {
   rulings.forEach((ruling) => {
     const sold = ruling.members.find((member) => member.status === 'met' || member.status === 'breached');
     const open = ruling.members.filter((member) => member.status === 'open');
-    const dates = (open.length ? open : ruling.members).map(banEnds);
+    // Only synced players count: one with no snapshot has unknown availability.
+    const checked = (open.length ? open : ruling.members).filter((member) => member.checked_at);
+    const dates = checked.map(banEnds);
     Object.assign(ruling, {
       status: sold ? sold.status : ruling.members[0].status,
       resolved_transfer: sold ? { ...sold.resolved_transfer, player: playerLabel(sold) } : ruling.members[0].resolved_transfer,
       // The soonest any of the players can be sold.
-      sellable_from: dates.includes(null) ? null : dates.sort()[0],
-      checked: ruling.members.some((member) => member.checked_at),
+      sellable_from: dates.includes(null) ? null : dates.sort()[0] || null,
+      checked: checked.length > 0,
     });
   });
 
