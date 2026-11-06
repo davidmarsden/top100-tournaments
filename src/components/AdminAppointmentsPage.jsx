@@ -735,7 +735,9 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   const [auto, setAuto] = useState(null);
   const [autoFailed, setAutoFailed] = useState(false);
   const autoKey = JSON.stringify([needsAuto, applications.map((application) => [application.manager_id, application.preferences]),
-    vacancies.map((vacancy) => [vacancy.id, vacancy.club_name, vacancy.division, vacancy.comparison_manager])]);
+    vacancies.map((vacancy) => [vacancy.id, vacancy.club_name, vacancy.division, vacancy.comparison_manager]),
+    // The team's community and sanctions assessments feed the scores too.
+    data.assessments || null]);
   useEffect(() => {
     setAuto(null);
     setAutoFailed(false);
