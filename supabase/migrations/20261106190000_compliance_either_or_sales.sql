@@ -7,8 +7,9 @@
 --    Status 'released': another player in the group was sold, so this one no longer
 --    has to go (and is not covered by the no re-bid rule).
 -- 2. add_compliance_obligations(): records one ruling for one or more players.
--- 3. enqueue_compliance_events(): when one player in a group is sold, the others
---    are released (patched in place; the anchor must match exactly once).
+-- 3. enqueue_compliance_events(): sales are taken in date order; when one player
+--    in a group is sold, the others are released and later rows for them skipped
+--    (patched in place; the anchor must match exactly once).
 -- 4. set_compliance_obligation_status(): waiving or reopening applies to the whole
 --    group.
 -- 5. compliance_obligation_overview() returns choice_group; compliance_club_squad()
@@ -195,8 +196,15 @@ grant execute on function public.compliance_obligation_overview(text) to authent
 
 do $migration$
 declare
-  v_anchor text := E'  loop\n    if v_row.requirement = ''sell'' or (v_row.to_manager = ''0'' and coalesce(v_row.amount, 0) > 0) then\n';
-  v_patch text := E'  loop\n'
+  v_anchor text := E'    where obligation.source_world_id = v_source_world and obligation.status = ''open''\n  loop\n    if v_row.requirement = ''sell'' or (v_row.to_manager = ''0'' and coalesce(v_row.amount, 0) > 0) then\n';
+  v_patch text := E'    where obligation.source_world_id = v_source_world and obligation.status = ''open''\n'
+    || E'    order by sale.d, obligation.id\n'
+    || E'  loop\n'
+    || E'    -- The cursor read every open row up front; an alternative released earlier in\n'
+    || E'    -- this scan (an earlier sale in its group) is no longer open.\n'
+    || E'    if (select fresh.status from public.compliance_obligations fresh where fresh.id = v_row.id) <> ''open'' then\n'
+    || E'      continue;\n'
+    || E'    end if;\n\n'
     || E'    -- Either-or ruling: selling this player means the others no longer have to go.\n'
     || E'    if v_row.choice_group is not null then\n'
     || E'      update public.compliance_obligations\n'

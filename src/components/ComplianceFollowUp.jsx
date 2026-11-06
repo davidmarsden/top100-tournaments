@@ -165,7 +165,7 @@ export default function ComplianceFollowUp() {
         <form onSubmit={addSale}>
           <h3>Record a required sale</h3>
           <p>
-            {clubPicker(sale.club, (club) => setSale({ ...sale, club }))}{' '}
+            {clubPicker(sale.club, (club) => setSale({ ...sale, club, players: [], extraIds: '' }))}{' '}
             <select value={sale.requirement} onChange={(event) => setSale({ ...sale, requirement: event.target.value })}>
               <option value="sell_external_cash">Sell to a club outside Top 100 for cash</option>
               <option value="sell">Sell (any buyer)</option>
