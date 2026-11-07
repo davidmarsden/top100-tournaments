@@ -116,7 +116,7 @@ function timeout(promise, label) {
 }
 
 // Where to go back to after signing in: Community Polls, or the admin team's pages on
-// admin.smtop100.blog, which pick up the Manager Portal sign-in themselves.
+// admin.smtop100.blog, which receive a one-time handoff code (Safari blocks the iframe bridge).
 const ADMIN_ORIGIN = 'https://admin.smtop100.blog';
 const isAdminReturn = (url) => url.origin === ADMIN_ORIGIN && /^\/(?:appointments\/?|alerts\/?)?$/.test(url.pathname);
 function safeReturnTo() {
@@ -265,7 +265,7 @@ function ReturnHandoff({ session, returnTo }) {
   const [message, setMessage] = useState('Preparing secure handoff…');
   useEffect(() => {
     let active = true;
-    (async () => { try { const target = new URL(returnTo); if (isAdminReturn(target)) { window.location.replace(target.origin + target.pathname); return; } if (target.origin !== 'https://vote.smtop100.blog' || !/^\/vote\/?$/.test(target.pathname)) throw new Error('Invalid voting destination.'); const { data, error } = await supabase.rpc('create_manager_auth_handoff'); if (error) throw error; if (!active) return; target.search = ''; target.searchParams.set('handoff', data); window.location.replace(target.toString()); } catch (error) { if (active) setMessage(error?.message || 'Could not continue to Community Polls.'); } })();
+    (async () => { try { const target = new URL(returnTo); if (isAdminReturn(target)) { const adminTarget = new URL(target.origin + target.pathname); const { data, error } = await supabase.rpc('create_manager_auth_handoff', { target_destination: 'admin' }); if (!active) return; if (!error && data) adminTarget.searchParams.set('handoff', data); window.location.replace(adminTarget.toString()); return; } if (target.origin !== 'https://vote.smtop100.blog' || !/^\/vote\/?$/.test(target.pathname)) throw new Error('Invalid voting destination.'); const { data, error } = await supabase.rpc('create_manager_auth_handoff'); if (error) throw error; if (!active) return; target.search = ''; target.searchParams.set('handoff', data); window.location.replace(target.toString()); } catch (error) { if (active) setMessage(error?.message || 'Could not continue to Community Polls.'); } })();
     return () => { active = false; };
   }, [session?.user?.id, returnTo]);
   return <main className="manager-portal-shell"><section className="card"><h1>Sign-in complete ✓</h1><p>{message}</p></section></main>;

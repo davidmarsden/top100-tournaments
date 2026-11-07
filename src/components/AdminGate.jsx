@@ -6,6 +6,7 @@ const configuredUsername = String(import.meta.env.VITE_ADMIN_USERNAME || 'admin'
 const configuredEmail = String(import.meta.env.VITE_ADMIN_LOGIN_EMAIL || import.meta.env.VITE_ADMIN_EMAIL || '').trim();
 const MANAGER_ORIGIN = 'https://manager.smtop100.blog';
 const SESSION_BRIDGE_TIMEOUT_MS = 15000;
+const HANDOFF_EXCHANGE_URL = 'https://xxntutejknolhmbssqdf.supabase.co/functions/v1/exchange-manager-handoff';
 
 export function useAdminAuth() {
   return useContext(AdminAuthContext);
@@ -30,6 +31,7 @@ export default function AdminGate({ children, requireGlobal = false, requireOffi
     let mounted = true;
     let bridgeFrame;
     let bridgeTimeout;
+    let handoffFailed = false;
 
     const cleanupBridge = () => {
       if (bridgeTimeout) {
@@ -43,7 +45,7 @@ export default function AdminGate({ children, requireGlobal = false, requireOffi
 
     const finishWithoutSession = async () => {
       cleanupBridge();
-      if (mounted) await checkAccess(null, false);
+      if (mounted) await checkAccess(null, false, handoffFailed);
     };
 
     const handleBridgeMessage = async (event) => {
@@ -77,7 +79,34 @@ export default function AdminGate({ children, requireGlobal = false, requireOffi
       bridgeTimeout = window.setTimeout(finishWithoutSession, SESSION_BRIDGE_TIMEOUT_MS);
     };
 
+    // The Manager Portal sends officials back with a one-time ?handoff= code. Exchange it for a
+    // session here: the iframe bridge below cannot see the Manager Portal session in Safari.
+    async function redeemHandoff() {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('handoff');
+      if (!code) return;
+      params.delete('handoff');
+      const query = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+      try {
+        const response = await fetch(HANDOFF_EXCHANGE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.token_hash) throw new Error(payload?.error || 'Sign-in handoff failed.');
+        const { error } = await supabase.auth.verifyOtp({ token_hash: payload.token_hash, type: 'email' });
+        if (error) throw error;
+      } catch (error) {
+        handoffFailed = true;
+        if (mounted) setAccessError(`Could not bring your Manager Portal sign-in across: ${error.message}. Please try again.`);
+      }
+    }
+
     async function checkSession() {
+      await redeemHandoff();
+      if (!mounted) return;
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       if (data.session?.user) {
@@ -89,7 +118,7 @@ export default function AdminGate({ children, requireGlobal = false, requireOffi
         tryManagerSessionBridge();
         return;
       }
-      await checkAccess(null, false);
+      await checkAccess(null, false, handoffFailed);
     }
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       // Supabase may emit SIGNED_IN as well as TOKEN_REFRESHED when an already
