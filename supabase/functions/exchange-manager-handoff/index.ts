@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 const DESTINATIONS: Record<string, { destination: string; redirectTo: string }> = {
   "https://vote.smtop100.blog": { destination: "vote", redirectTo: "https://vote.smtop100.blog/vote" },
   "https://manager.smtop100.blog": { destination: "manager", redirectTo: "https://manager.smtop100.blog/" },
+  "https://admin.smtop100.blog": { destination: "admin", redirectTo: "https://admin.smtop100.blog/" },
 };
 
 Deno.serve(async (req) => {
