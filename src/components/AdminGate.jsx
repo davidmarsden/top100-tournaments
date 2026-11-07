@@ -196,16 +196,18 @@ export default function AdminGate({ children, requireGlobal = false, requireOffi
 
   return <main className="app-shell">
     <section className="hero">
-      <p className="eyebrow">Top 100 Tournament Manager</p>
-      <h1>Tournament administration</h1>
-      <p>Tournament organisers use their normal Manager Portal email sign-in. The username and password login is only for the platform administrator.</p>
+      <p className="eyebrow">{requireOfficial ? 'Top 100' : 'Top 100 Tournament Manager'}</p>
+      <h1>{requireOfficial ? 'Admin team sign-in' : 'Tournament administration'}</h1>
+      <p>{requireOfficial
+        ? 'Admin team members sign in with their normal Manager Portal account. There is no separate admin username or password.'
+        : 'Tournament organisers use their normal Manager Portal email sign-in. The username and password login is only for the platform administrator.'}</p>
     </section>
 
     <section className="card admin-login-card">
-      <h2>Tournament organiser</h2>
-      <p>Sign in with the same email you use for the Manager Portal. You do not need a separate admin username or password.</p>
+      <h2>{requireOfficial ? 'Admin team' : 'Tournament organiser'}</h2>
+      <p>Sign in with the same email (and password, if you set one) you use for the Manager Portal. You'll be brought straight back here.</p>
       {accessError && <p className="status error-text">{accessError}</p>}
-      {userEmail && !accessError && <p className="muted">Signed in as {userEmail}, but this account has not been assigned tournament administration.</p>}
+      {userEmail && !accessError && <p className="muted">Signed in as {userEmail}, but this account has not been assigned {requireOfficial ? 'to the admin team' : 'tournament administration'}.</p>}
       <div className="button-row">
         <a className="button" href={window.location.hostname === 'admin.smtop100.blog'
           ? `${MANAGER_ORIGIN}/?returnTo=${encodeURIComponent(window.location.origin + window.location.pathname)}`
@@ -213,7 +215,8 @@ export default function AdminGate({ children, requireGlobal = false, requireOffi
       </div>
     </section>
 
-    <section className="card admin-login-card">
+    <details className="card admin-login-card" open={!requireOfficial || Boolean(loginError)}>
+      <summary>Platform administrator only</summary>
       <h2>Platform administrator</h2>
       <p className="muted">Private login for the overall Top 100 Tournament Manager administrator.</p>
       <form onSubmit={login}>
@@ -222,7 +225,7 @@ export default function AdminGate({ children, requireGlobal = false, requireOffi
         <button type="submit" disabled={checking}>Log in as platform admin</button>
         {loginError && <p className="status error-text">{loginError}</p>}
       </form>
-      <p className="muted">Admin username: {configuredUsername}</p>
-    </section>
+      <p className="muted">Not for the admin team or tournament organisers: this logs in to David's platform account only.</p>
+    </details>
   </main>;
 }
