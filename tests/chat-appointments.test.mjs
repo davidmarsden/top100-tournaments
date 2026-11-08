@@ -33,3 +33,20 @@ test('posts without a card when there is none', () => {
   assert.doesNotMatch(markdown, /!\[/);
   assert.match(markdown, /\*\*New Person\*\* is the new manager of \*\*São Paulo FC\*\*/);
 });
+
+test('announces each newly opened vacancy once it has settled, while it is still open', async () => {
+  const { newVacancies, formatVacancyPost, vacancyKey } = await import('../netlify/functions/lib/chatAppointments.mjs');
+  const vacancies = [
+    { id: 13, season: 28, club: 'São Paulo FC', division: 1, context: 'What São Paulo needs: a winner.', closesAt: '2026-11-12T18:00:00Z', createdAt: '2026-11-08T11:00:00Z' },
+    { id: 14, season: 28, club: 'Just Opened', division: 2, createdAt: '2026-11-08T11:55:00Z' },
+    { id: 15, season: 28, club: 'Old', division: 3, createdAt: '2026-10-20T10:00:00Z' },
+    { id: 16, season: 28, club: 'Closed', division: 3, closesAt: '2026-11-08T11:00:00Z', createdAt: '2026-11-08T10:00:00Z' },
+  ];
+  assert.deepEqual(newVacancies(vacancies, now).map((v) => v.id), [13]);
+  assert.equal(vacancyKey('top-100', vacancies[0]), 'top-100:vacancy:s28:v13');
+  const { title, markdown } = formatVacancyPost(vacancies[0]);
+  assert.equal(title, 'Vacancy: São Paulo FC (Division 1)');
+  assert.match(markdown, /\*\*São Paulo FC\*\* \(Division 1\) needs a new manager\./);
+  assert.match(markdown, /What São Paulo needs: a winner\./);
+  assert.match(markdown, /Apply in Manager Portal by Thu 12 Nov, 18:00 \(UK time\): https:\/\/manager\.smtop100\.blog\/appointments/);
+});

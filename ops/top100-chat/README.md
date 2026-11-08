@@ -196,11 +196,14 @@ To turn it on:
 
 Each posted digest is recorded in `public.chat_market_digests`, so the next one starts where it ended.
 
-## Appointment announcements
+## Vacancy and appointment announcements
 
-Every 10 minutes the scheduled Netlify function `chat-appointments` reads `public_appointment_decisions()` and announces each appointment published in the last three days: one post per new manager, with their profile card (`src/lib/appointmentCards.mjs`), the team's reason and a link to `tournaments.smtop100.blog/appointments`.
+Every 10 minutes the scheduled Netlify function `chat-appointments` announces:
 
-- It uses the same signed `/auth/digest` route and `TOP100_CHAT_SSO_SECRET`. Each post's key is `top-100:appointment:s<season>:v<vacancy id>`, so the gateway's key store makes sure each appointment is posted once.
+- each new vacancy (from `chat_open_vacancies()`, service role only), once it has been open for 15 minutes, so the admin team can fix any details first. The post gives the club, what it needs, the closing date and a link to apply in Manager Portal. Vacancies opened more than three days ago, or already closed, are skipped;
+- each appointment published in the last three days (from `public_appointment_decisions()`): one post per new manager, with their profile card (`src/lib/appointmentCards.mjs`), the team's reason and a link to `tournaments.smtop100.blog/appointments`.
+
+- It uses the same signed `/auth/digest` route and `TOP100_CHAT_SSO_SECRET`. Each post's key is `top-100:vacancy:s<season>:v<id>` or `top-100:appointment:s<season>:v<id>`, so the gateway's key store makes sure each appointment is posted once.
 - The body carries `"account": "news"`, and the gateway posts it as a separate **Top 100 News** account (`manager900000002`, `news@smtop100.blog`). A gateway that hasn't been redeployed ignores the field and posts as Top 100 Market.
 - It runs whenever the secret is configured. Set `TOP100_CHAT_APPOINTMENTS_ENABLED=false` in Netlify to stop it.
 
