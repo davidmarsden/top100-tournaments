@@ -153,7 +153,7 @@ function InputsEditor({ values, records = {}, onChange, fields = INPUT_FIELDS, d
 const tallyOf = (votes) => votes.reduce((tally, vote) => ({ ...tally, [vote.choice]: (tally[vote.choice] || 0) + 1 }), {});
 
 // Step: every admin votes, with a reason. Votes and reasons are published with the decision.
-function Votes({ votes, choices, onVote, disabled }) {
+function Votes({ votes, choices, onVote, onWithdraw, disabled }) {
   const mine = votes.find((vote) => vote.mine);
   const [choice, setChoice] = useState(mine?.choice || '');
   const [reason, setReason] = useState(mine?.reason || '');
@@ -174,6 +174,12 @@ function Votes({ votes, choices, onVote, disabled }) {
             <input value={reason} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
           </label>
           <button type="button" disabled={!choice || !reason.trim()} onClick={() => onVote(choice, reason)}>{mine ? 'Change my vote' : 'Cast my vote'}</button>
+          {mine && onWithdraw && (
+            <button type="button" className="secondary"
+              onClick={() => { if (window.confirm('Withdraw your vote? It will be removed, and won\'t be published.')) { setChoice(''); setReason(''); onWithdraw(); } }}>
+              Withdraw my vote
+            </button>
+          )}
         </div>
       )}
       {!disabled && (
@@ -591,7 +597,8 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
               <h4 style={STEP_TITLE}>4 · Votes<span style={VOTE_TAG}>Each admin, individually</span></h4>
               <p className="muted" style={{ marginTop: 0 }}>Every admin casts their own vote, with a reason. Votes and reasons are published with the decision.</p>
               <Votes votes={votesFor(review.id)} choices={OUTCOMES} disabled={Boolean(review.published_at)}
-                onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'review', p_subject_id: review.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')} />
+                onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'review', p_subject_id: review.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')}
+                onWithdraw={() => call('withdraw_appointment_vote', { p_subject_kind: 'review', p_subject_id: review.id }, 'Vote withdrawn.')} />
             </div>
 
             <div style={DECISION_STEP}>
@@ -896,9 +903,20 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             )}
             <div style={VOTE_STEP}>
               <h4 style={STEP_TITLE}>Votes<span style={VOTE_TAG}>Each admin, individually</span></h4>
-              <p className="muted" style={{ marginTop: 0 }}>Every admin casts their own vote for an applicant, with a reason. Votes and reasons are published with the appointment.</p>
+              <p className="muted" style={{ marginTop: 0 }}>Every admin casts their own vote for an applicant, with a reason. Rule 3.2 asks for a vote where applicants are within five points; those votes and reasons are published with the appointment.</p>
               <Votes votes={vacancyVotes} disabled={Boolean(vacancy.published_at)} choices={voteChoices}
-                onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')} />
+                onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')}
+                onWithdraw={() => call('withdraw_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id }, 'Vote withdrawn.')} />
+              {vacancy.published_at ? (
+                <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>{vacancy.publish_votes === false ? 'These votes were not published.' : 'These votes were published with the appointment.'}</p>
+              ) : (
+                <label style={{ ...INLINE, marginTop: 8, fontSize: 13 }}>
+                  <input type="checkbox" style={BOX} checked={vacancy.publish_votes !== false}
+                    onChange={(event) => call('set_appointment_vacancy_votes_published', { p_id: vacancy.id, p_publish: event.target.checked },
+                      event.target.checked ? 'These votes will be published with the appointment.' : 'These votes won\'t be published.')} />
+                  Publish these votes and reasons with the appointment (untick if this club didn't need a vote)
+                </label>
+              )}
             </div>
             <div style={DECISION_STEP}>
               <h4 style={STEP_TITLE}>Team decision<span style={DECISION_TAG}>Final · recorded once for the team</span></h4>
