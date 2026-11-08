@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AdminWaitingListTab from './AdminWaitingListTab';
 import { supabase } from '../lib/supabaseClient';
 
@@ -299,6 +299,56 @@ const goldUnclear = (records = {}) => (records.goldUnclearSince
   ? `Gold unclear – check: no days left on the profile since ${new Date(records.goldUnclearSince).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, though the Manager List still shows the badge`
   : '');
 
+// A manager's mid-season spell this season (rules 3.1 and 3.2). From their Soccer Manager profile
+// history or entered by the admin team, it's what "this season" is scored on; suggested by the
+// sync alone (a club's assignment first seen during the season), it waits for confirmation.
+const confirmedSpell = (data, managerId) => {
+  const spell = data.inputs[String(managerId)]?.spell;
+  return spell?.confirmed ? spell : null;
+};
+const spellsFor = (data, entries) => Object.fromEntries(entries
+  .map(([key, managerId]) => [key, confirmedSpell(data, managerId)]).filter(([, spell]) => spell));
+const shortDay = (value) => new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+function SpellLine({ spell, managerId, name, season, call }) {
+  const save = (startedOn, games, points) => call('set_manager_spell',
+    { p_manager_id: managerId, p_started_on: startedOn, p_games: games, p_points: points, p_season: season },
+    startedOn ? 'Takeover saved. Score again to use it.' : 'Takeover removed. Score again to use the whole season.');
+  const edit = (current) => {
+    const date = window.prompt(`When did ${name} take over this season? (YYYY-MM-DD)`, current?.startedOn || '');
+    if (date === null) return;
+    if (!date.trim()) { save(null, null, null); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) { window.alert('Use the format YYYY-MM-DD, for example 2026-08-21.'); return; }
+    const record = window.prompt('Their games and points in charge, if Top 100\'s records are wrong (for example "22, 41"). Leave blank to use the records.',
+      current?.corrected ? `${current.games}, ${current.points}` : '');
+    if (record === null) return;
+    const [games, points] = record.split(/[,\s]+/).filter(Boolean).map(Number);
+    if (record.trim() && !(Number.isInteger(games) && Number.isInteger(points))) { window.alert('Give the games and points as two whole numbers, for example "22, 41".'); return; }
+    save(date.trim(), record.trim() ? games : null, record.trim() ? points : null);
+  };
+  const record = spell && spell.games !== undefined ? `${spell.games} game${spell.games === 1 ? '' : 's'}, ${spell.points} point${spell.points === 1 ? '' : 's'}` : 'no record found';
+  if (spell?.confirmed) {
+    return (
+      <div className="status">
+        Took over {spell.club} on {shortDay(spell.startedOn)}{spell.source === 'profile' ? ' (from their Soccer Manager profile)' : ' (entered by the admin team)'}: {record}{spell.corrected ? ', as corrected by the admin team' : ''}.
+        {spell.complete === false ? ' The club\'s earlier games aren\'t all on record, so check this.' : ''}
+        {' '}"This season" is scored on these games{spell.games < 10 ? ' (half marks under 10 games)' : ''}.{' '}
+        <button type="button" className="secondary" onClick={() => edit(spell)}>Change</button>
+      </div>
+    );
+  }
+  if (spell && spell.games > 0) {
+    return (
+      <div className="muted">
+        Possible mid-season takeover: Top 100's records first show {name} at {spell.club} on {shortDay(spell.startedOn)} ({record} since). Not counted until confirmed.{' '}
+        <button type="button" className="secondary" onClick={() => save(spell.startedOn, null, null)}>Confirm</button>{' '}
+        <button type="button" className="secondary" onClick={() => edit(spell)}>Different date</button>
+      </div>
+    );
+  }
+  return <div><button type="button" className="secondary" onClick={() => edit(null)}>Took over mid-season?</button></div>;
+}
+
 // The scoring request for the reviews that need scoring, from the inputs on the page.
 const reviewScoringConfig = (data, reviews, inputs, newcomers) => ({
   mode: 'review',
@@ -310,12 +360,13 @@ const reviewScoringConfig = (data, reviews, inputs, newcomers) => ({
       key: String(review.id), name: review.manager_name, club: review.club_name, display: review.manager_name,
       // Routine reviews are scored for context only: reappointed unless barred (rule 3.1).
       routine: isRoutine(review) || undefined,
-      tookOverMidSeason: review.took_over_mid_season, gold: base.gold, loginGaps: fieldValue(values, 'loginGaps'),
+      tookOverMidSeason: review.took_over_mid_season || Boolean(confirmedSpell(data, review.manager_id)), gold: base.gold, loginGaps: fieldValue(values, 'loginGaps'),
       inactive: review.inactive || undefined, misconduct: review.misconduct || undefined, standing: review.standing || undefined,
       lastChance: review.last_chance ? 'recorded at an earlier review' : undefined, wish: review.wish || undefined,
     };
   }),
   supply: { newcomers: newcomers.split(',').map((name) => name.trim()).filter(Boolean), leavers: [] },
+  spells: spellsFor(data, reviews.map((review) => [String(review.id), review.manager_id])),
   discipline: Object.fromEntries(reviews.map((review) => [String(review.id), { sanctions: teamValue(data, review.manager_id, 'sanctions') || 0 }])),
   activity: Object.fromEntries(reviews.map((review) => {
     const values = { ...(inputs[`r${review.id}`] || {}), community: teamValue(data, review.manager_id, 'community') };
@@ -349,7 +400,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
   const [autoFailed, setAutoFailed] = useState(false);
   // Rescore when anything the scoring reads changes: the clubs, or a review's facts.
   const toScoreKey = JSON.stringify(data.reviews.map((review) => [review.id, review.took_over_mid_season, review.last_chance,
-    review.standing, review.misconduct, review.inactive, review.wish, review.division, review.full_review]));
+    review.standing, review.misconduct, review.inactive, review.wish, review.division, review.full_review, confirmedSpell(data, review.manager_id)]));
   useEffect(() => {
     if (!toScore.length) return undefined;
     let active = true;
@@ -532,6 +583,9 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
               <h4 style={STEP_TITLE}>1 · The manager and the facts</h4>
               <p>{review.wish ? <>The manager wants to <strong>{review.wish}</strong>{review.wish_note ? `: “${review.wish_note}”` : '.'}</> : <span className="muted">The manager hasn't said what they want yet.</span>}</p>
               {goldUnclear(data.inputs[String(review.manager_id)]) && <p className="status">{goldUnclear(data.inputs[String(review.manager_id)])}.</p>}
+              {review.manager_id && !review.published_at && (
+                <SpellLine spell={data.inputs[String(review.manager_id)]?.spell} managerId={review.manager_id} name={review.manager_name} season={data.season} call={call} />
+              )}
               <ReviewFacts review={review} onSave={(fields) => call('update_appointment_review', { p_id: review.id, p_fields: fields }, 'Saved.')} />
             </div>
 
@@ -722,6 +776,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
         // seasonClub: a comparison manager who has left is credited with the club's season so far.
         ...comparisons.map(({ key, name, club, display, seasonClub }) => ({ key, name, club, display, seasonClub })),
       ],
+      spells: spellsFor(data, applications.map((application) => [keyOf(application), application.manager_id])),
       preferences: Object.fromEntries([
         ...applications.map((application) => [keyOf(application), application.preferences.map(clubName)]),
         ...comparisons.map((comparison) => [comparison.key, []]),
@@ -765,8 +820,8 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   const [autoFailed, setAutoFailed] = useState(false);
   const autoKey = JSON.stringify([needsAuto, applications.map((application) => [application.manager_id, application.preferences]),
     vacancies.map((vacancy) => [vacancy.id, vacancy.club_name, vacancy.division, vacancy.comparison_manager]),
-    // The team's community and sanctions assessments feed the scores too.
-    data.assessments || null]);
+    // The team's community and sanctions assessments, and confirmed mid-season spells, feed the scores too.
+    data.assessments || null, applications.map((application) => confirmedSpell(data, application.manager_id))]);
   useEffect(() => {
     setAuto(null);
     setAutoFailed(false);
@@ -863,6 +918,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             {application.note && <div className="muted">“{application.note}”</div>}
             {data.inputs[String(application.manager_id)]?.gold === false && <div className="status">Not a Gold member.</div>}
             {goldUnclear(data.inputs[String(application.manager_id)]) && <div className="status">{goldUnclear(data.inputs[String(application.manager_id)])}.</div>}
+            <SpellLine spell={data.inputs[String(application.manager_id)]?.spell} managerId={application.manager_id} name={application.managerName} season={data.season} call={call} />
             <details>
               <summary>Scoring inputs (from Top 100's records; check and fill in before scoring)</summary>
               <InputsEditor fields={INPUT_FIELDS.filter(({ key }) => key !== 'loginGaps')} values={inputs[`a${application.manager_id}`] || {}}
@@ -1012,11 +1068,31 @@ export default function AdminAppointmentsPage() {
   const [tab, setTab] = useState('reviews');
   const [message, setMessage] = useState('Loading…');
 
+  // Top 100's forfeit counts as last loaded, so a count nobody edited follows the records (a
+  // confirmed takeover drops the club's earlier forfeits) while a manual correction stays.
+  const recordedForfeits = useRef({});
   const load = useCallback(async () => {
-    const { data: overview, error } = await supabase.rpc('appointment_admin_overview', { p_world_slug: 'top-100' });
+    const { data: loaded, error } = await supabase.rpc('appointment_admin_overview', { p_world_slug: 'top-100' });
     if (error) { setMessage(error.message); return; }
+    // A confirmed mid-season takeover (from the manager's profile or entered by the admin team)
+    // makes a review a mid-season one, so it's routine unless the team asked for a full review.
+    const overview = { ...loaded, reviews: (loaded.reviews || []).map((review) => ({ ...review,
+      took_over_mid_season: review.took_over_mid_season || Boolean(loaded.inputs?.[String(review.manager_id)]?.spell?.confirmed) })) };
+    const forfeits = Object.fromEntries(Object.entries(overview.inputs || {}).map(([id, values]) => [id, values?.forfeits ?? '']));
+    const managerOf = (key) => (key.startsWith('a') ? key.slice(1)
+      : String(overview.reviews.find((review) => `r${review.id}` === key)?.manager_id ?? ''));
     setData(overview);
-    setInputs((current) => ({ ...initialInputs(overview), ...current }));
+    setInputs((current) => {
+      const next = { ...initialInputs(overview), ...current };
+      Object.keys(current).forEach((key) => {
+        const id = managerOf(key);
+        if (id && id in forfeits && String(current[key]?.forfeits ?? '') === String(recordedForfeits.current[id] ?? '')) {
+          next[key] = { ...next[key], forfeits: forfeits[id] };
+        }
+      });
+      return next;
+    });
+    recordedForfeits.current = forfeits;
     setMessage('');
   }, []);
 
