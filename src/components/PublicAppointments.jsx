@@ -34,7 +34,10 @@ export default function PublicAppointments() {
   }, []);
 
   const reviewScores = Object.fromEntries((data?.scores?.review?.reviews || []).map((review) => [review.key, review]));
-  const vacancyScores = data?.scores?.vacancies?.applicants || [];
+  // One list of every applicant in the round, each with a single score (measured against the
+  // yardstick division): Top 100 doesn't publish who applied for which club.
+  const vacancyScores = (data?.scores?.vacancies?.applicants || []).filter((applicant) => applicant.total !== undefined);
+  const yardstick = data?.scores?.vacancies?.yardstickDivision;
 
   return (
     <main className="app-shell">
@@ -75,31 +78,40 @@ export default function PublicAppointments() {
       {data?.vacancies.length > 0 && (
         <section className="card">
           <h2>Appointments</h2>
-          {data.vacancies.map((vacancy) => {
-            const ranking = vacancyScores
-              .map((applicant) => ({ applicant, scored: applicant.byVacancy?.[vacancy.club] }))
-              .filter(({ scored }) => scored)
-              .sort((a, b) => b.scored.total - a.scored.total);
-            return (
-              <div key={vacancy.id} style={{ marginBottom: 16 }}>
-                <h3>{vacancy.club} (Division {vacancy.division})</h3>
-                {vacancy.context && <p className="muted">{vacancy.context}</p>}
-                <p><strong>{vacancy.appointed ? `Appointed: ${vacancy.appointed}` : 'Not filled'}</strong>{vacancy.reason ? `. ${vacancy.reason}` : ''}</p>
-                {ranking.length > 0 && (
-                  <table>
-                    <thead><tr><th>Applicant</th><th>Score</th><th>Current · recent · honours · level · stability · activity</th></tr></thead>
-                    <tbody>{ranking.map(({ applicant, scored }) => (
-                      <tr key={applicant.key}>
-                        <td>{applicant.display}</td><td>{scored.total}</td>
-                        <td>{['current', 'recent', 'honours', 'level', 'stability', 'activity'].map((part) => scored.breakdown[part]).join(' · ')}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                )}
-                <VoteList votes={vacancy.votes} />
-              </div>
-            );
-          })}
+          {data.vacancies.map((vacancy) => (
+            <div key={vacancy.id} style={{ marginBottom: 16 }}>
+              <h3>{vacancy.club} (Division {vacancy.division})</h3>
+              {vacancy.context && <p className="muted">{vacancy.context}</p>}
+              <p><strong>{vacancy.appointed ? `Appointed: ${vacancy.appointed}` : 'Not filled'}</strong>{vacancy.reason ? `. ${vacancy.reason}` : ''}</p>
+              <VoteList votes={vacancy.votes} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      {vacancyScores.length > 0 && (
+        <section className="card">
+          <h2>Applicants</h2>
+          <p>
+            Every manager who applied in this round, with their appointment score under rule 3.2. Not everyone applied for
+            every club: each manager applied only for the clubs they wanted, in their own order of preference, so a lower
+            score doesn't mean a manager missed out on any particular job.
+          </p>
+          <p className="muted">
+            Scores are measured against Division {yardstick ?? 1}. Part of the score is a manager's record at the vacancy's
+            level, so for a club in a lower division a score can be a little higher. The scores guide the decisions but don't
+            make them: where applicants for the same club are within five points, the admin team votes, and those votes
+            aren't part of the scores.
+          </p>
+          <table>
+            <thead><tr><th>Applicant</th><th>Score</th><th>Current · recent · honours · level · stability · activity</th></tr></thead>
+            <tbody>{vacancyScores.map((applicant) => (
+              <tr key={applicant.display}>
+                <td>{applicant.display}</td><td>{applicant.total}</td>
+                <td>{['current', 'recent', 'honours', 'level', 'stability', 'activity'].map((part) => applicant.breakdown?.[part]).join(' · ')}</td>
+              </tr>
+            ))}</tbody>
+          </table>
         </section>
       )}
     </main>
