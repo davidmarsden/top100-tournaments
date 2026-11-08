@@ -50,3 +50,8 @@ test('announces each newly opened vacancy once it has settled, while it is still
   assert.match(markdown, /What São Paulo needs: a winner\./);
   assert.match(markdown, /Apply in Manager Portal by Thu 12 Nov, 18:00 \(UK time\): https:\/\/manager\.smtop100\.blog\/appointments/);
 });
+
+test('still announces appointments from a round archived soon after publishing', () => {
+  const archivedData = { season: 28, vacancies: [], archivedRounds: [{ id: 1, vacancies: [data.vacancies[1]] }] };
+  assert.deepEqual(recentAppointments(archivedData, now).map((v) => v.id), [9]);
+});

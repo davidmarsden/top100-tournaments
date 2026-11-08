@@ -13,10 +13,11 @@ export function appointmentKey(worldSlug, season, vacancy) {
   return `${worldSlug}:appointment:s${Number(season)}:v${Number(vacancy.id)}`;
 }
 
-// Published appointments (not unfilled vacancies) from public_appointment_decisions(), newest last.
+// Published appointments (not unfilled vacancies) from public_appointment_decisions(), newest
+// last, including rounds archived since (so a round archived soon after publishing still posts).
 export function recentAppointments(data, now = new Date(), days = RECENT_DAYS) {
   const since = new Date(now).getTime() - days * 24 * 60 * 60 * 1000;
-  return (data?.vacancies || [])
+  return [...(data?.vacancies || []), ...(data?.archivedRounds || []).flatMap((round) => round.vacancies || [])]
     .filter((vacancy) => vacancy?.id != null && vacancy.appointed && Date.parse(vacancy.publishedAt) >= since)
     .sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt) || Number(a.id) - Number(b.id));
 }
