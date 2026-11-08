@@ -35,6 +35,7 @@ export default function PublicAppointments() {
 
   const reviewScores = Object.fromEntries((data?.scores?.review?.reviews || []).map((review) => [review.key, review]));
   const vacancyScores = data?.scores?.vacancies?.applicants || [];
+  const vacancyPreferences = data?.scores?.vacancies?.preferences || null;
 
   return (
     <main className="app-shell">
@@ -78,7 +79,8 @@ export default function PublicAppointments() {
           {data.vacancies.map((vacancy) => {
             const ranking = vacancyScores
               .map((applicant) => ({ applicant, scored: applicant.byVacancy?.[vacancy.club] }))
-              .filter(({ scored }) => scored)
+              // Only the managers who applied for this club (the saved scoring records each applicant's choices).
+              .filter(({ applicant, scored }) => scored && (!vacancyPreferences || (vacancyPreferences[applicant.key] || []).includes(vacancy.club)))
               .sort((a, b) => b.scored.total - a.scored.total);
             return (
               <div key={vacancy.id} style={{ marginBottom: 16 }}>

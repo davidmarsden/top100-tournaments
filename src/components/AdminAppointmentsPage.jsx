@@ -762,7 +762,10 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     const config = buildConfig();
     setMessage('Scoring…');
     try {
-      const result = await scoreConfig(config);
+      // Each applicant's choices go with the scores, so the published decisions can show each
+      // club's own applicants (comparison managers have none and are left out).
+      const result = { ...(await scoreConfig(config)),
+        preferences: Object.fromEntries(Object.entries(config.preferences).filter(([key]) => !String(key).startsWith(COMPARISON))) };
       await call('save_appointment_round', { p_kind: 'vacancies', p_inputs: { ...config, edited: own(inputs, 'a') }, p_result: result, p_season: data.season }, 'Scored.');
     } catch (error) {
       setMessage(error.message);
