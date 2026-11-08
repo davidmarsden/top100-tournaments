@@ -11,6 +11,23 @@ const OUTCOMES = {
   leave: 'Not reappointed',
 };
 
+// Profile cards announcing new managers, by season and club (sources in docs/appointment-cards).
+const CARDS = {
+  28: {
+    'Borussia Dortmund': { src: '/appointments/s28/card-scott.webp', manager: 'Scott Mckenzie' },
+    'Atlético Madrid': { src: '/appointments/s28/card-simon.webp', manager: 'Simon Thomas' },
+    'Hellas Verona': { src: '/appointments/s28/card-beddows.webp', manager: 'Sir Stephen Beddows' },
+    Juventus: { src: '/appointments/s28/card-trx.webp', manager: 'Mister TRX' },
+  },
+};
+const normalise = (text) => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function cardFor(season, vacancy) {
+  if (!vacancy.appointed) return null;
+  const club = normalise(vacancy.club);
+  const match = Object.entries(CARDS[season] || {}).find(([name]) => club.includes(normalise(name)) || normalise(name).includes(club));
+  return match && normalise(vacancy.appointed).startsWith(normalise(match[1].manager)) ? match[1] : null;
+}
+
 const ordinal = (n) => { const v = Number(n) % 100; return `${n}${v >= 11 && v <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[v % 10] || 'th'}`; };
 function VoteList({ votes, label = (choice) => choice }) {
   if (!votes?.length) return null;
@@ -43,37 +60,15 @@ export default function PublicAppointments() {
     <main className="app-shell">
       <section className="hero">
         <p className="eyebrow">Top 100 · Appointments</p>
-        <h1>S{data?.season ?? ''} reviews and appointments</h1>
+        <h1>S{data?.season ?? ''} appointments and reviews</h1>
         <p>
-          Every bottom-three manager is reviewed under <a href="https://smtop100.blog/rules/" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 600 }}>rule 3.1</a>: reappoint unless
-          reappointing would be a clear and obvious error. Vacant clubs are filled under rule 3.2. Each decision is published
+          Vacant clubs are filled under <a href="https://smtop100.blog/rules/#32-club-vacancies-and-manager-appointments" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 600 }}>rule 3.2</a>, and every bottom-three manager is reviewed under <a href="https://smtop100.blog/rules/" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 600 }}>rule 3.1</a>: reappoint unless
+          reappointing would be a clear and obvious error. Each decision is published
           with its score and the admin team's votes and reasons.
         </p>
       </section>
       {message && <p role="status">{message}</p>}
       {data && !data.reviews.length && !data.vacancies.length && <section className="card"><p>No decisions published yet this season.</p></section>}
-
-      {data?.reviews.length > 0 && (
-        <section className="card">
-          <h2>Bottom-three reviews</h2>
-          {data.reviews.map((review) => {
-            const scored = reviewScores[String(review.id)];
-            return (
-              <div key={review.id} style={{ marginBottom: 16 }}>
-                <h3>D{review.division} {ordinal(review.position)} · {review.club} · {review.manager}</h3>
-                <p><strong>{OUTCOMES[review.decision]}</strong>{review.reason ? `. ${review.reason}` : ''}</p>
-                {scored && (
-                  <p className="muted">
-                    Review score {scored.total} (result {scored.breakdown.result} · record {scored.breakdown.record} · activity {scored.breakdown.activity} · conduct {scored.breakdown.conduct}).
-                    {scored.errors?.length ? ` Clear and obvious errors: ${scored.errors.map((error) => error.text).join('; ')}.` : ' No clear and obvious error.'}
-                  </p>
-                )}
-                <VoteList votes={review.votes} label={(choice) => OUTCOMES[choice] || choice} />
-              </div>
-            );
-          })}
-        </section>
-      )}
 
       {data?.vacancies.length > 0 && (
         <section className="card">
@@ -84,6 +79,10 @@ export default function PublicAppointments() {
               {vacancy.context && <p className="muted">{vacancy.context}</p>}
               <p><strong>{vacancy.appointed ? `Appointed: ${vacancy.appointed}` : 'Not filled'}</strong>{vacancy.reason ? `. ${vacancy.reason}` : ''}</p>
               <VoteList votes={vacancy.votes} />
+              {(() => {
+                const card = cardFor(data.season, vacancy);
+                return card && <img src={card.src} alt={`${card.manager}, new manager of ${vacancy.club}`} loading="lazy" width="1200" height="675" style={{ width: '100%', height: 'auto', borderRadius: 12, marginTop: 8 }} />;
+              })()}
             </div>
           ))}
         </section>
@@ -114,6 +113,28 @@ export default function PublicAppointments() {
           </table>
         </section>
       )}
+      {data?.reviews.length > 0 && (
+        <section className="card">
+          <h2>Bottom-three reviews</h2>
+          {data.reviews.map((review) => {
+            const scored = reviewScores[String(review.id)];
+            return (
+              <div key={review.id} style={{ marginBottom: 16 }}>
+                <h3>D{review.division} {ordinal(review.position)} · {review.club} · {review.manager}</h3>
+                <p><strong>{OUTCOMES[review.decision]}</strong>{review.reason ? `. ${review.reason}` : ''}</p>
+                {scored && (
+                  <p className="muted">
+                    Review score {scored.total} (result {scored.breakdown.result} · record {scored.breakdown.record} · activity {scored.breakdown.activity} · conduct {scored.breakdown.conduct}).
+                    {scored.errors?.length ? ` Clear and obvious errors: ${scored.errors.map((error) => error.text).join('; ')}.` : ' No clear and obvious error.'}
+                  </p>
+                )}
+                <VoteList votes={review.votes} label={(choice) => OUTCOMES[choice] || choice} />
+              </div>
+            );
+          })}
+        </section>
+      )}
+
     </main>
   );
 }
