@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { cardFor } from '../lib/appointmentCards.mjs';
 
 // Published bottom-three review decisions (rulebook 3.1) and appointments (3.2), with
 // the scores they rest on and every official's vote and reason.
@@ -10,23 +11,6 @@ const OUTCOMES = {
   anotherClub: 'Not reappointed: may apply for another club',
   leave: 'Not reappointed',
 };
-
-// Profile cards announcing new managers, by season and club (sources in docs/appointment-cards).
-const CARDS = {
-  28: {
-    'Borussia Dortmund': { src: '/appointments/s28/card-scott.webp', manager: 'Scott Mckenzie' },
-    'Atlético Madrid': { src: '/appointments/s28/card-simon.webp', manager: 'Simon Thomas' },
-    'Hellas Verona': { src: '/appointments/s28/card-beddows.webp', manager: 'Sir Stephen Beddows' },
-    Juventus: { src: '/appointments/s28/card-trx.webp', manager: 'Mister TRX' },
-  },
-};
-const normalise = (text) => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-function cardFor(season, vacancy) {
-  if (!vacancy.appointed) return null;
-  const club = normalise(vacancy.club);
-  const match = Object.entries(CARDS[season] || {}).find(([name]) => club.includes(normalise(name)) || normalise(name).includes(club));
-  return match && normalise(vacancy.appointed).startsWith(normalise(match[1].manager)) ? match[1] : null;
-}
 
 const ordinal = (n) => { const v = Number(n) % 100; return `${n}${v >= 11 && v <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[v % 10] || 'th'}`; };
 function VoteList({ votes, label = (choice) => choice }) {
