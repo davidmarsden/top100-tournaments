@@ -40,6 +40,12 @@ const digestBot = {
   email: String(process.env.TOP100_CHAT_DIGEST_BOT_EMAIL || 'market-digest@smtop100.blog'),
   name: 'Top 100 Market',
 };
+// Announcements (published appointments) post from their own "Top 100 News" account.
+const newsBot = {
+  managerId: Number(process.env.TOP100_CHAT_NEWS_BOT_ID || 900000002),
+  email: String(process.env.TOP100_CHAT_NEWS_BOT_EMAIL || 'news@smtop100.blog'),
+  name: 'Top 100 News',
+};
 const digestsInFlight = new Set();
 // Private feed links (feed-link.mjs): read-only access to one manager's own rss.chat feed.
 const privateFeedKey = feedKey(ssoSecret, String(process.env.TOP100_CHAT_FEED_SALT || ''));
@@ -409,7 +415,8 @@ export function verifyDigestRequest(rawBody, timestampHeader, signatureHeader, n
   if (!markdown || markdown.length > 4000) throw new Error('Digest text must be 1-4000 characters.');
   // The period the digest covers, kept with its key so a retried run records the original period.
   const period = (value) => (typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value)) ? value : null);
-  return { key: keyText, title, markdown, from: period(body?.from), to: period(body?.to) };
+  const account = body?.account === 'news' ? 'news' : 'market';
+  return { key: keyText, title, markdown, from: period(body?.from), to: period(body?.to), account };
 }
 
 function postToRssChat(url) {
@@ -454,9 +461,10 @@ async function postDigest(request, response) {
   digestsInFlight.add(digest.key);
   try {
     const helper = new URL(`http://127.0.0.1:${rssChatPort}/localtop100sso`);
-    helper.searchParams.set('managerid', String(digestBot.managerId));
-    helper.searchParams.set('email', digestBot.email);
-    helper.searchParams.set('displayname', digestBot.name);
+    const poster = digest.account === 'news' ? newsBot : digestBot;
+    helper.searchParams.set('managerid', String(poster.managerId));
+    helper.searchParams.set('email', poster.email);
+    helper.searchParams.set('displayname', poster.name);
     const bot = await getJson(helper);
     if (!bot?.emailAddress || !bot?.emailSecret) throw new Error('rss.chat did not return the digest account.');
 
