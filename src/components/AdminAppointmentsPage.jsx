@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AdminWaitingListTab from './AdminWaitingListTab';
 import { supabase } from '../lib/supabaseClient';
 
@@ -1068,11 +1068,31 @@ export default function AdminAppointmentsPage() {
   const [tab, setTab] = useState('reviews');
   const [message, setMessage] = useState('Loading…');
 
+  // Top 100's forfeit counts as last loaded, so a count nobody edited follows the records (a
+  // confirmed takeover drops the club's earlier forfeits) while a manual correction stays.
+  const recordedForfeits = useRef({});
   const load = useCallback(async () => {
-    const { data: overview, error } = await supabase.rpc('appointment_admin_overview', { p_world_slug: 'top-100' });
+    const { data: loaded, error } = await supabase.rpc('appointment_admin_overview', { p_world_slug: 'top-100' });
     if (error) { setMessage(error.message); return; }
+    // A confirmed mid-season takeover (from the manager's profile or entered by the admin team)
+    // makes a review a mid-season one, so it's routine unless the team asked for a full review.
+    const overview = { ...loaded, reviews: (loaded.reviews || []).map((review) => ({ ...review,
+      took_over_mid_season: review.took_over_mid_season || Boolean(loaded.inputs?.[String(review.manager_id)]?.spell?.confirmed) })) };
+    const forfeits = Object.fromEntries(Object.entries(overview.inputs || {}).map(([id, values]) => [id, values?.forfeits ?? '']));
+    const managerOf = (key) => (key.startsWith('a') ? key.slice(1)
+      : String(overview.reviews.find((review) => `r${review.id}` === key)?.manager_id ?? ''));
     setData(overview);
-    setInputs((current) => ({ ...initialInputs(overview), ...current }));
+    setInputs((current) => {
+      const next = { ...initialInputs(overview), ...current };
+      Object.keys(current).forEach((key) => {
+        const id = managerOf(key);
+        if (id && id in forfeits && String(current[key]?.forfeits ?? '') === String(recordedForfeits.current[id] ?? '')) {
+          next[key] = { ...next[key], forfeits: forfeits[id] };
+        }
+      });
+      return next;
+    });
+    recordedForfeits.current = forfeits;
     setMessage('');
   }, []);
 

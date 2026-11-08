@@ -34,9 +34,10 @@ create table public.manager_spells (
 alter table public.manager_spells enable row level security;
 -- @permissions private public.manager_spells: read and written only through the spell functions below
 
--- A club's league record from the start date on: its latest table row less the league games it
--- played before that date (in the 160 days before), from the synced match reports.
-create or replace function public.appointment_spell_record(p_world_id bigint, p_team_id bigint, p_started_on date)
+-- A club's league record this season from the start date on: its latest table row less its
+-- record before that date (the table snapshot in the three days before, else the league games
+-- in the synced match reports since the season started).
+create or replace function public.appointment_spell_record(p_world_id bigint, p_team_id bigint, p_started_on date, p_season_start date)
 returns jsonb
 language sql
 stable
@@ -46,15 +47,15 @@ as $$
   with latest as (
     select snapshot.* from public.league_standing_snapshots snapshot
     where snapshot.game_world_id = p_world_id and snapshot.team_id = p_team_id
-      and snapshot.captured_at >= p_started_on - 160
+      and snapshot.captured_at >= p_season_start
     order by snapshot.captured_at desc limit 1
   ),
-  -- The club's table row just before the start date, when one was captured.
+  -- The club's table row just before the start date, when one was captured this season.
   at_start as (
     select snapshot.played, snapshot.won, snapshot.drawn, snapshot.lost, snapshot.points
     from public.league_standing_snapshots snapshot
     where snapshot.game_world_id = p_world_id and snapshot.team_id = p_team_id
-      and snapshot.captured_at < p_started_on and snapshot.captured_at >= p_started_on - 3
+      and snapshot.captured_at < p_started_on and snapshot.captured_at >= greatest(p_started_on - 3, p_season_start)
     order by snapshot.captured_at desc limit 1
   ),
   games as (
@@ -64,7 +65,7 @@ as $$
     from public.soccer_manager_match_snapshots match
     where match.game_world_id = p_world_id and match.competition_code = 'league'
       and match.home_score is not null and match.away_score is not null
-      and (match.source_data->'fixture'->>'date')::date >= p_started_on - 160
+      and (match.source_data->'fixture'->>'date')::date >= p_season_start
       and (match.source_data->'fixture'->>'date')::date < p_started_on
   ),
   mine as (
@@ -82,10 +83,11 @@ as $$
     join lateral (values (games.home_team_id), (games.away_team_id)) team(id) on true
     where team.id in (select other.team_id from public.league_standing_snapshots other, latest
                       where other.game_world_id = p_world_id and other.league_id = latest.league_id
-                        and other.captured_at >= p_started_on - 160)
+                        and other.captured_at >= p_season_start)
   ),
   division_most as (
     select coalesce((select max(per_team.played) from (select count(*) as played from division_games group by division_games.id) per_team), 0) as played,
+           (select min(division_games.played_on) from division_games) as first_on,
            (select max(division_games.played_on) from division_games) as last_on
   ),
   before as (
@@ -95,7 +97,10 @@ as $$
            coalesce(at_start.lost, from_reports.lost) as lost,
            coalesce(at_start.points, 3 * from_reports.won + from_reports.drawn) as points,
            case when at_start.played is not null then true
-                else from_reports.played >= division_most.played and division_most.last_on >= p_started_on - 4 end as complete
+                -- The reports must run from the season's start to the takeover, with as many of the
+                -- club's games as any club in its division (a gap they all share can't be seen).
+                else from_reports.played >= division_most.played and division_most.first_on <= p_season_start + 4
+                     and division_most.last_on >= p_started_on - 4 end as complete
     from from_reports cross join division_most left join at_start on true
   )
   select jsonb_build_object(
@@ -107,8 +112,8 @@ as $$
     'complete', coalesce(before.complete, false))
   from latest, before;
 $$;
-revoke all on function public.appointment_spell_record(bigint, bigint, date) from public, anon, authenticated;
--- @permissions private public.appointment_spell_record(bigint, bigint, date): used only by appointment_manager_spells
+revoke all on function public.appointment_spell_record(bigint, bigint, date, date) from public, anon, authenticated;
+-- @permissions private public.appointment_spell_record(bigint, bigint, date, date): used only by appointment_manager_spells
 
 -- Each manager's current spell this season, when it began after the season started: keyed by
 -- manager id, with its start date, its source (admin, profile or records), whether it counts
@@ -128,7 +133,7 @@ as $$
       public.world_season_end(p_world_id, p_season) - 147) as starts_on
   ),
   found as (
-    select distinct on (club.manager_id) club.manager_id, club.club_name, crosswalk.team_id, override.id as override_id,
+    select distinct on (club.manager_id) club.manager_id, club.club_name, crosswalk.team_id, season.starts_on as season_start, override.id as override_id,
       override.games as override_games, override.points as override_points, override.note,
       case when override.id is not null then override.started_on
            when stint.started_at is not null then stint.started_at::date
@@ -157,10 +162,10 @@ as $$
       'startedOn', found.started_on, 'source', found.source, 'note', found.note)) ||
     case when found.override_games is not null
       -- The admin team's games and points replace the record from the table and match reports.
-      then (coalesce(public.appointment_spell_record(p_world_id, found.team_id, found.started_on), '{}'::jsonb)
+      then (coalesce(public.appointment_spell_record(p_world_id, found.team_id, found.started_on, found.season_start), '{}'::jsonb)
               - array['won', 'drawn', 'lost', 'gamesBefore'])
            || jsonb_build_object('games', found.override_games, 'points', found.override_points, 'complete', true, 'corrected', true)
-      else coalesce(public.appointment_spell_record(p_world_id, found.team_id, found.started_on), '{}'::jsonb)
+      else coalesce(public.appointment_spell_record(p_world_id, found.team_id, found.started_on, found.season_start), '{}'::jsonb)
     end), '{}'::jsonb)
   from found;
 $$;
