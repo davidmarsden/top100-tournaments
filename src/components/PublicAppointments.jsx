@@ -92,7 +92,7 @@ export default function PublicAppointments() {
                     <thead><tr><th>Applicant</th><th>Score</th><th>Current · recent · honours · level · stability · activity</th></tr></thead>
                     <tbody>{ranking.map(({ applicant, scored }) => (
                       <tr key={applicant.key}>
-                        <td>{applicant.display}</td><td>{scored.total}</td>
+                        <td>{applicant.display || <span className="muted">Applicant</span>}</td><td>{scored.total}</td>
                         <td>{['current', 'recent', 'honours', 'level', 'stability', 'activity'].map((part) => scored.breakdown[part]).join(' · ')}</td>
                       </tr>
                     ))}</tbody>
