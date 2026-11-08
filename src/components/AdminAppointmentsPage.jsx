@@ -299,8 +299,9 @@ const goldUnclear = (records = {}) => (records.goldUnclearSince
   ? `Gold unclear – check: no days left on the profile since ${new Date(records.goldUnclearSince).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, though the Manager List still shows the badge`
   : '');
 
-// A manager's mid-season spell this season (rules 3.1 and 3.2): confirmed by the admin team, it's
-// what "this season" is scored on; suggested by the sync, it waits for confirmation.
+// A manager's mid-season spell this season (rules 3.1 and 3.2). From their Soccer Manager profile
+// history or entered by the admin team, it's what "this season" is scored on; suggested by the
+// sync alone (a club's assignment first seen during the season), it waits for confirmation.
 const confirmedSpell = (data, managerId) => {
   const spell = data.inputs[String(managerId)]?.spell;
   return spell?.confirmed ? spell : null;
@@ -329,7 +330,7 @@ function SpellLine({ spell, managerId, name, season, call }) {
   if (spell?.confirmed) {
     return (
       <div className="status">
-        Took over {spell.club} on {shortDay(spell.startedOn)}: {record}{spell.corrected ? ' (as corrected by the admin team)' : ''}.
+        Took over {spell.club} on {shortDay(spell.startedOn)}{spell.source === 'profile' ? ' (from their Soccer Manager profile)' : ' (entered by the admin team)'}: {record}{spell.corrected ? ', as corrected by the admin team' : ''}.
         {spell.complete === false ? ' The club\'s earlier games aren\'t all on record, so check this.' : ''}
         {' '}"This season" is scored on these games{spell.games < 10 ? ' (half marks under 10 games)' : ''}.{' '}
         <button type="button" className="secondary" onClick={() => edit(spell)}>Change</button>
