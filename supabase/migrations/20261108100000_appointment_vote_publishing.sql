@@ -46,7 +46,8 @@ $$;
 revoke all on function public.withdraw_appointment_vote(text, bigint) from public, anon;
 grant execute on function public.withdraw_appointment_vote(text, bigint) to authenticated;
 
--- Published decisions: a vacancy's votes only when the admin team chose to publish them.
+-- Published decisions: as defined live (comparison scores stay private, as in
+-- 20261031130000_vacancy_comparison_manager.sql), plus a vacancy's votes only when the admin team chose to publish them.
 create or replace function public.public_appointment_decisions(p_season integer default null, p_world_slug text default 'top-100')
 returns jsonb
 language plpgsql
@@ -76,7 +77,7 @@ begin
                    order by vacancy.division, vacancy.club_name)
                  from public.appointment_vacancies vacancy
                  where vacancy.game_world_id = v_world and vacancy.season = v_season and vacancy.published_at is not null), '[]'::jsonb),
-    'scores', coalesce((select jsonb_object_agg(round.kind, round.result)
+    'scores', coalesce((select jsonb_object_agg(round.kind, round.result - 'comparisons')
                 from public.appointment_rounds round
                 where round.game_world_id = v_world and round.season = v_season and round.published_at is not null), '{}'::jsonb)
   );
