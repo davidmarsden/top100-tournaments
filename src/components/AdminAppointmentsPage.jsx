@@ -391,13 +391,17 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
   // With every club that can still finish in the bottom three loaded, there are many cards:
   // division tabs filter the summary and the cards, and the summary links to each card.
   const [division, setDivision] = useState('all');
-  const divisions = [...new Set(data.reviews.map((review) => review.division))].sort((a, b) => a - b);
+  // Published reviews are done: they move to the archive at the bottom, out of the working list.
+  const working = data.reviews.filter((review) => !review.published_at);
+  const completed = data.reviews.filter((review) => review.published_at);
+  const divisions = [...new Set(working.map((review) => review.division))].sort((a, b) => a - b);
   // Most at risk first: certain to finish in the bottom three, then in it now, then the clubs
   // that could still drop into it (most of which will finish clear).
   const clubsIn = (value) => data.clubs.filter((club) => club.division === value).length || 20;
   const risk = (review) => (review.certain === true ? 0 : review.position > clubsIn(review.division) - 3 ? 1 : 2);
   const RISK_LABEL = ['Certain', 'In it now', 'Could'];
-  const ordered = [...data.reviews].sort((a, b) => a.division - b.division || risk(a) - risk(b) || b.position - a.position);
+  const byRisk = (a, b) => a.division - b.division || risk(a) - risk(b) || b.position - a.position;
+  const ordered = [...working].sort(byRisk);
   // Cards outside the chosen division are hidden, not unmounted, so unsaved votes and reasons survive.
   const shown = (review) => division === 'all' || review.division === division;
 
@@ -457,13 +461,13 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
           </p>
         )}
       </section>
-      {data.reviews.length > 0 && (
+      {working.length > 0 && (
         <section className="card" id="review-summary">
           <div className="button-row" style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--surface, #fff)', padding: '8px 0' }}>
-            <button type="button" className={division === 'all' ? '' : 'secondary'} onClick={() => setDivision('all')}>All ({data.reviews.length})</button>
+            <button type="button" className={division === 'all' ? '' : 'secondary'} onClick={() => setDivision('all')}>All ({working.length})</button>
             {divisions.map((value) => (
               <button type="button" key={value} className={division === value ? '' : 'secondary'} onClick={() => setDivision(value)}>
-                D{value} ({data.reviews.filter((review) => review.division === value).length})
+                D{value} ({working.filter((review) => review.division === value).length})
               </button>
             ))}
           </div>
@@ -614,6 +618,24 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
           </section>
         );
       })}
+      {completed.length > 0 && (
+        <section className="card">
+          <details>
+            <summary><strong>Archive: completed reviews ({completed.length})</strong> <span className="muted">published, with the manager told</span></summary>
+            <table style={{ fontSize: 13, width: '100%', marginTop: 8 }}>
+              <thead><tr><th>Div</th><th>Pos</th><th style={{ textAlign: 'left' }}>Club</th><th style={{ textAlign: 'left' }}>Manager</th><th style={{ textAlign: 'left' }}>Decision</th><th>Published</th></tr></thead>
+              <tbody>{[...completed].sort(byRisk).map((review) => (
+                <tr key={review.id}>
+                  <td>D{review.division}</td><td>{ordinal(review.position)}</td>
+                  <td style={{ textAlign: 'left' }}>{review.club_name}</td><td style={{ textAlign: 'left' }}>{review.manager_name || '–'}</td>
+                  <td style={{ textAlign: 'left' }}><strong>{OUTCOMES[review.decision]}</strong>{review.decision_reason ? `. ${review.decision_reason}` : ''}</td>
+                  <td>{when(review.published_at)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </details>
+        </section>
+      )}
     </>
   );
 }
@@ -772,6 +794,16 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     }
   };
 
+  // A finished round (decisions published, or vacancies withdrawn) is archived before the next
+  // one, since a season holds one round of scores at a time.
+  const archivable = data.vacancies.filter((vacancy) => vacancy.published_at || vacancy.status === 'withdrawn');
+  const unpublished = data.vacancies.some((vacancy) => vacancy.decided_at && !vacancy.published_at);
+  const archiveBlock = !archivable.length ? ''
+    : unpublished ? 'Publish the decided vacancies before archiving this round.'
+      : round && !round.published_at ? 'Publish this round\'s decisions before archiving it.' : '';
+  const canArchive = archivable.length > 0 && !archiveBlock;
+  const archives = data.archives || [];
+
   return (
     <>
       <section className="card">
@@ -804,7 +836,13 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             onClick={() => window.confirm('Publish every decided vacancy, with the scores, and tell the managers appointed?') && call('publish_appointments', { p_kind: 'vacancies', p_season: data.season }, 'Published.')}>
             Publish decided vacancies
           </button>
+          <button type="button" className="secondary" disabled={!canArchive} title="Move this round's published and withdrawn vacancies to the archive, so a new round can start"
+            onClick={() => window.confirm(`Archive this round? ${archivable.map((vacancy) => vacancy.club_name).join(', ')} move to the archive with their applications and scores, and stay on the public page as an earlier round. Open vacancies stay, and the next round starts fresh.`)
+              && call('archive_appointment_round', { p_season: data.season }, 'Round archived. Add the next round\'s vacancies.')}>
+            Archive this round
+          </button>
         </div>
+        {archiveBlock && <p className="muted">{archiveBlock}</p>}
         {round && <p className="muted">Last scored {when(round.scored_at)}{round.published_at ? `, published ${when(round.published_at)}` : ''}.</p>}
         {needsAuto && (
           <p className="status" role="status">
@@ -933,6 +971,21 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
           </section>
         );
       })}
+      {archives.length > 0 && (
+        <section className="card">
+          <details>
+            <summary><strong>Archive: earlier rounds ({archives.length})</strong> <span className="muted">still shown on the public page</span></summary>
+            {archives.map((archive) => (
+              <div key={archive.id} style={{ marginTop: 8 }}>
+                <strong>Archived {when(archive.archivedAt)}</strong> <span className="muted">· {archive.applications} application{archive.applications === 1 ? '' : 's'}</span>
+                <ul>{archive.vacancies.map((vacancy) => (
+                  <li key={vacancy.id}>{vacancy.club} (D{vacancy.division}): {vacancy.appointed ? `appointed ${vacancy.appointed}` : vacancy.status === 'withdrawn' ? 'withdrawn' : 'not filled'}</li>
+                ))}</ul>
+              </div>
+            ))}
+          </details>
+        </section>
+      )}
     </>
   );
 }
