@@ -1,11 +1,15 @@
 -- Mid-season spells: a manager who took over a club part-way through the season is judged on
 -- their own games, not the club's whole season (rulebook 3.1 and 3.2).
 --
--- When the current spell started: the admin team confirms it with set_manager_spell(), which can
--- also correct the games and points by hand. The sync suggests takeovers (a club's assignment
--- first seen after the season started, appointment_mid_season_clubs), but re-syncs can re-stamp
--- an assignment without a change of manager, so a suggestion counts only once confirmed.
--- Takeovers before the sync began (S28 ran from game 25) are entered by hand.
+-- When the current spell started, in this order:
+--   * a date the admin team entered with set_manager_spell() (which can also correct the games
+--     and points by hand);
+--   * the manager's Soccer Manager profile history (soccer_manager_manager_stints, read by Sync):
+--     their open spell at the club, if it began after the season's first two days
+--     (soccer_manager_world_seasons, or 147-day seasons counted back from world_season_end());
+--   * otherwise a suggestion from the sync (the club's assignment first seen after the season
+--     started, appointment_mid_season_clubs), which counts only once confirmed: re-syncs can
+--     re-stamp an assignment without a change of manager.
 -- The spell's record is the club's latest table row less its record before the start date:
 -- from the table snapshot in the three days before, or else from the synced match reports, which
 -- are "complete" when the club has as many earlier games on record as any club in its division
@@ -107,8 +111,9 @@ revoke all on function public.appointment_spell_record(bigint, bigint, date) fro
 -- @permissions private public.appointment_spell_record(bigint, bigint, date): used only by appointment_manager_spells
 
 -- Each manager's current spell this season, when it began after the season started: keyed by
--- manager id, with its start date, whether the admin team confirmed it (only confirmed spells
--- count), and its record (games and points as the admin team corrected them, when they did).
+-- manager id, with its start date, its source (admin, profile or records), whether it counts
+-- (confirmed: admin or profile), and its record (games and points as the admin team corrected
+-- them, when they did).
 create or replace function public.appointment_manager_spells(p_world_id bigint, p_season integer, p_manager_ids bigint[])
 returns jsonb
 language sql
@@ -116,30 +121,48 @@ stable
 security definer
 set search_path = ''
 as $$
-  select coalesce(jsonb_object_agg(per.manager_id::text, per.spell), '{}'::jsonb) from (
-    select distinct on (club.manager_id) club.manager_id,
-      jsonb_strip_nulls(jsonb_build_object(
-        'club', club.club_name,
-        'confirmed', override.id is not null,
-        'startedOn', coalesce(override.started_on, mid.assigned_at::date),
-        'source', case when override.id is not null then 'admin' else 'records' end,
-        'note', override.note)) ||
-      case when override.games is not null
-        -- The admin team's games and points replace the record from the match reports.
-        then (coalesce(public.appointment_spell_record(p_world_id, crosswalk.team_id, override.started_on), '{}'::jsonb)
-                - array['won', 'drawn', 'lost', 'gamesBefore'])
-             || jsonb_build_object('games', override.games, 'points', override.points, 'complete', true, 'corrected', true)
-        else coalesce(public.appointment_spell_record(p_world_id, crosswalk.team_id, coalesce(override.started_on, mid.assigned_at::date)), '{}'::jsonb)
-      end as spell
-    from public.appointment_world_managers(p_world_id) club
+  with season as (
+    select coalesce(
+      (select world_season.start_date from public.soccer_manager_world_seasons world_season
+        where world_season.game_world_id = p_world_id and world_season.season_num = p_season),
+      public.world_season_end(p_world_id, p_season) - 147) as starts_on
+  ),
+  found as (
+    select distinct on (club.manager_id) club.manager_id, club.club_name, crosswalk.team_id, override.id as override_id,
+      override.games as override_games, override.points as override_points, override.note,
+      case when override.id is not null then override.started_on
+           when stint.started_at is not null then stint.started_at::date
+           else mid.assigned_at::date end as started_on,
+      case when override.id is not null then 'admin' when stint.started_at is not null then 'profile' else 'records' end as source
+    from season, public.appointment_world_managers(p_world_id) club
     join public.soccer_manager_club_crosswalk crosswalk on crosswalk.game_world_club_id = club.game_world_club_id
     left join public.manager_spells override
       on override.game_world_id = p_world_id and override.season = p_season and override.manager_id = club.manager_id
+    -- The manager's open spell at the club in their Soccer Manager history, begun after the season's first two days.
+    left join lateral (
+      select history.started_at from public.soccer_manager_manager_stints history
+      where history.game_world_id = p_world_id and lower(history.club_name) = lower(club.club_name) and history.ended_at is null
+      order by history.started_at desc limit 1
+    ) open_spell on true
+    left join lateral (select open_spell.started_at where open_spell.started_at::date > season.starts_on + 2) stint on true
     left join public.appointment_mid_season_clubs(p_world_id) mid on mid.club_name = club.club_name
     where club.manager_id = any (p_manager_ids)
-      and (override.id is not null or mid.club_name is not null)
+      and (override.id is not null or stint.started_at is not null or mid.club_name is not null)
+      -- A club whose profile history shows its manager there since before the season isn't a suggestion.
+      and (override.id is not null or stint.started_at is not null or open_spell.started_at is null)
     order by club.manager_id, override.id nulls last
-  ) per;
+  )
+  select coalesce(jsonb_object_agg(found.manager_id::text,
+    jsonb_strip_nulls(jsonb_build_object('club', found.club_name, 'confirmed', found.source <> 'records',
+      'startedOn', found.started_on, 'source', found.source, 'note', found.note)) ||
+    case when found.override_games is not null
+      -- The admin team's games and points replace the record from the table and match reports.
+      then (coalesce(public.appointment_spell_record(p_world_id, found.team_id, found.started_on), '{}'::jsonb)
+              - array['won', 'drawn', 'lost', 'gamesBefore'])
+           || jsonb_build_object('games', found.override_games, 'points', found.override_points, 'complete', true, 'corrected', true)
+      else coalesce(public.appointment_spell_record(p_world_id, found.team_id, found.started_on), '{}'::jsonb)
+    end), '{}'::jsonb)
+  from found;
 $$;
 revoke all on function public.appointment_manager_spells(bigint, integer, bigint[]) from public, anon, authenticated;
 -- @permissions private public.appointment_manager_spells(bigint, integer, bigint[]): used only by the appointment functions
@@ -177,7 +200,7 @@ $$;
 revoke all on function public.set_manager_spell(bigint, date, integer, integer, text, integer, text) from public, anon;
 grant execute on function public.set_manager_spell(bigint, date, integer, integer, text, integer, text) to authenticated;
 
--- Scoring inputs: each manager's mid-season spell (confirmed or suggested), and, once confirmed,
+-- Scoring inputs: each manager's mid-season spell (confirmed or suggested), and, when confirmed,
 -- forfeits only from when they took over (a club's earlier forfeits stay with its earlier manager).
 create or replace function public.appointment_manager_inputs(p_world_id bigint, p_season integer, p_manager_ids bigint[])
 returns jsonb
