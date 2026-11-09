@@ -217,6 +217,15 @@ function Decision({ current, reason: currentReason, choices, votes, onDecide, on
   const leading = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
   const [choice, setChoice] = useState(current || leading || defaultChoice);
   const [reason, setReason] = useState(currentReason || defaultReason);
+  // The choices can change after the first render (automatic scores arriving, or a decision at
+  // another club changing who is free): drop a choice that's no longer offered, and take up the
+  // default the scores give when nothing has been chosen.
+  const offered = Object.keys(choices).join('|');
+  useEffect(() => {
+    if (choice && !(choice in choices)) setChoice(defaultChoice in choices ? defaultChoice : '');
+    else if (!choice && !current && defaultChoice in choices) setChoice(defaultChoice);
+    if (!reason && !currentReason && defaultReason) setReason(defaultReason);
+  }, [offered, defaultChoice, defaultReason]); // eslint-disable-line react-hooks/exhaustive-deps
   const waiting = requireVotes && !votes.length;
   if (published) return <p><strong>Published: {choices[current] || 'no appointment'}.</strong> {currentReason}</p>;
   const hasMajority = (value) => (tally[value] || 0) * 2 > votes.length;
@@ -254,7 +263,7 @@ function Decision({ current, reason: currentReason, choices, votes, onDecide, on
         <label style={{ flex: 1, minWidth: 200, fontSize: 13 }}>The team's reason (published)
           <input value={reason} disabled={waiting} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
         </label>
-        <button type="button" disabled={!choice || Boolean(blocked)}
+        <button type="button" disabled={!choice || !(choice in choices) || Boolean(blocked)}
           onClick={() => window.confirm(`Record the TEAM's final decision for ${subject}: ${choices[choice]}?\n\nThis is not your own vote: it's what the whole admin team has agreed. To vote, use "Your vote" above.`) && onDecide(choice, reason)}>
           {current ? "Change the team's decision" : "Record the team's decision"}
         </button>
@@ -917,8 +926,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     const appointments = allocate(vacancy.club_name);
     const placedAt = Object.fromEntries(appointments.map((item) => [item.manager, item.club]));
     const rank = (application, club) => application.preferences.map(clubName).indexOf(club);
+    // Managers the team has already appointed at another club are taken, whatever their preferences.
+    const decidedElsewhere = new Set(vacancies.filter((other) => other.appointed_manager_id && other.club_name !== vacancy.club_name)
+      .map((other) => String(other.appointed_manager_id)));
     const free = applying.filter((application) => {
       if (!scoredFor(application.manager_id, vacancy.club_name).eligibility?.eligible) return false;
+      if (decidedElsewhere.has(String(application.manager_id))) return false;
       const at = placedAt[String(application.manager_id)];
       return !at || at === vacancy.club_name || rank(application, vacancy.club_name) < rank(application, at);
     });
