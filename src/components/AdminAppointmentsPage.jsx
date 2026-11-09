@@ -156,7 +156,9 @@ const tallyOf = (votes) => votes.reduce((tally, vote) => ({ ...tally, [vote.choi
 // warningFor(choice, voter): an optional caution about a vote (e.g. a vacancy applicant the same
 // official backs at another club, or one the suggested appointments place elsewhere).
 const WARNING = { color: '#b45309', fontSize: 13 };
-function Votes({ votes, choices, onVote, onWithdraw, disabled, warningFor }) {
+function Votes({ votes, choices, onVote, onWithdraw, disabled: closed, warningFor, notice }) {
+  // notice: why there is nothing to vote on (e.g. the scores decide it); shown in place of the form.
+  const disabled = closed || Boolean(notice);
   const mine = votes.find((vote) => vote.mine);
   const [choice, setChoice] = useState(mine?.choice || '');
   const [reason, setReason] = useState(mine?.reason || '');
@@ -172,6 +174,7 @@ function Votes({ votes, choices, onVote, onWithdraw, disabled, warningFor }) {
           );
         })}</ul>
       ) : <p className="muted">No votes yet.</p>}
+      {!closed && notice && <p style={{ margin: '6px 0 0' }}><strong>{notice}</strong></p>}
       {!disabled && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ fontSize: 13 }}>Your own vote
@@ -875,9 +878,76 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   const canArchive = archivable.length > 0 && !archiveBlock;
   const archives = data.archives || [];
 
+  // Rule 3.2: the scores appoint, unless applicants for the same club are within five points, when
+  // the admin team votes between them. So for each club the vote is open only to the applicant the
+  // scores appoint and those within five points of them who could still take the club: eligible,
+  // and not placed by the scores at a club they prefer. Returns null when the scores can't settle
+  // it yet (no scores, or an applicant for the club not scored), and then anyone may be voted for.
+  // The rule's allocation (the archive's allocateVacancies), re-run here with the team's recorded
+  // decisions at other clubs fixed: each round, every applicant still free points at their
+  // most-preferred open club they are eligible for, and the highest score among those is appointed.
+  const scoredFor = (managerId, club) => result?.applicants?.find((applicant) => applicant.key === String(managerId))?.byVacancy?.[club];
+  const allocate = (exceptClub) => {
+    const fixed = vacancies.filter((vacancy) => vacancy.appointed_manager_id && vacancy.club_name !== exceptClub);
+    const open = new Set(vacancies.filter((vacancy) => !fixed.includes(vacancy)).map((vacancy) => vacancy.club_name));
+    const taken = new Set(fixed.map((vacancy) => String(vacancy.appointed_manager_id)));
+    const waiting = new Set(applications.map((application) => String(application.manager_id)).filter((id) => !taken.has(id)));
+    const appointments = fixed.map((vacancy) => ({ club: vacancy.club_name, manager: String(vacancy.appointed_manager_id) }));
+    const choiceFor = (id) => applications.find((application) => String(application.manager_id) === id).preferences.map(clubName)
+      .find((club) => open.has(club) && scoredFor(id, club)?.eligibility?.eligible);
+    for (;;) {
+      const bids = [...waiting].map((id) => ({ id, club: choiceFor(id) })).filter((bid) => bid.club)
+        .map((bid) => ({ ...bid, scored: scoredFor(bid.id, bid.club) }))
+        .sort((x, y) => y.scored.total - x.scored.total || y.scored.breakdown.current - x.scored.breakdown.current);
+      if (!bids.length) break;
+      open.delete(bids[0].club);
+      waiting.delete(bids[0].id);
+      appointments.push({ club: bids[0].club, manager: bids[0].id, score: bids[0].scored.total });
+    }
+    return appointments;
+  };
+  // Rule 3.2: the scores appoint, unless applicants for the same club are within five points, when
+  // the admin team votes between them. So the vote at a club is open only to the applicant the
+  // scores appoint there and those within five points of them who could still take it: eligible,
+  // and not placed by the scores at a club they prefer. Returns null when the scores can't settle
+  // it yet (no scores, or an applicant for the club not scored), and then anyone may be voted for.
+  const contendersFor = (vacancy) => {
+    const applying = applications.filter((application) => application.preferences.includes(vacancy.id));
+    if (!result || applying.some((application) => !scoredFor(application.manager_id, vacancy.club_name) || (isUnscored(application) && !isAuto))) return null;
+    const appointments = allocate(vacancy.club_name);
+    const placedAt = Object.fromEntries(appointments.map((item) => [item.manager, item.club]));
+    const rank = (application, club) => application.preferences.map(clubName).indexOf(club);
+    const free = applying.filter((application) => {
+      if (!scoredFor(application.manager_id, vacancy.club_name).eligibility?.eligible) return false;
+      const at = placedAt[String(application.manager_id)];
+      return !at || at === vacancy.club_name || rank(application, vacancy.club_name) < rank(application, at);
+    });
+    const appointed = appointments.find((item) => item.club === vacancy.club_name);
+    const scoreOf = (application) => scoredFor(application.manager_id, vacancy.club_name).total;
+    const top = appointed ? appointed.score : Math.max(...free.map(scoreOf));
+    const within = free.filter((application) => top - scoreOf(application) <= 5 + 1e-9);
+    return { appointed: appointed ? applicantName[appointed.manager] || appointed.manager : null, placedAt,
+      names: within.map((application) => application.managerName), ids: within.map((application) => String(application.manager_id)) };
+  };
+  // Clubs still to be decided where the scores leave a vote between applicants who also applied
+  // here: that vote's outcome can change who is free to take this club.
+  const contested = (here) => {
+    const applyingHere = new Set(applications.filter((application) => application.preferences.includes(here.id)).map((application) => application.managerName));
+    return vacancies.filter((vacancy) => vacancy.id !== here.id && !vacancy.appointed_manager_id && !vacancy.published_at)
+      .filter((vacancy) => { const names = contendersFor(vacancy)?.names || []; return names.length > 1 && names.some((name) => applyingHere.has(name)); })
+      .map((vacancy) => vacancy.club_name);
+  };
+  const contenderNotice = (vacancy, contenders) => {
+    if (!contenders) return '';
+    const pending = contested(vacancy);
+    const after = pending.length ? ` This can change once the team decides ${pending.join(' and ')}.` : '';
+    if (!contenders.names.length) return `No eligible applicant is free to take this club under the scores (rule 3.2), so there is nothing to vote on.${after}`;
+    if (contenders.names.length === 1) return `The scores appoint ${contenders.names[0]}: no other applicant who could take this club is within five points (rule 3.2), so there is no vote.${after}`;
+    return '';
+  };
+
   // A vote for an applicant who can't end up at this club as things stand: the same official
-  // backs them at another open club (each manager takes one club), or the suggested appointments
-  // place them elsewhere (each applicant goes to their most-preferred club they win).
+  // backs them at another open club (each manager takes one club), or the scores rule them out.
   const openVacancyIds = new Set(vacancies.filter((vacancy) => !vacancy.published_at).map((vacancy) => vacancy.id));
   const vacancyVoteWarning = (vacancy, name, voter) => {
     const notes = [];
@@ -886,11 +956,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     const elsewhere = data.votes.filter((vote) => vote.subject_kind === 'vacancy' && vote.subject_id !== vacancy.id
       && openVacancyIds.has(vote.subject_id) && vote.choice === name && sameVoter(vote)).map((vote) => clubName(vote.subject_id));
     if (elsewhere.length) notes.push(`${voter ? 'This official' : 'You'} also voted for ${name} at ${elsewhere.join(' and ')}; a manager can only take one club.`);
-    const managerId = applications.find((application) => application.managerName === name)?.manager_id;
-    const placed = result?.allocation?.appointments?.find((item) => String(item.manager) === String(managerId));
-    if (placed && placed.club !== vacancy.club_name) {
-      const order = applications.find((application) => application.manager_id === managerId)?.preferences.map(clubName) || [];
-      notes.push(`The suggested appointments place ${name} at ${placed.club}${order.length > 1 ? ` (their order: ${order.join(' → ')})` : ''}.`);
+    const contenders = contendersFor(vacancy);
+    if (contenders && !contenders.names.includes(name)) {
+      const application = applications.find((item) => item.managerName === name);
+      const placed = application && contenders.placedAt[String(application.manager_id)];
+      notes.push(`Not open to a vote under rule 3.2${placed && placed !== vacancy.club_name ? `: the scores place ${name} at ${placed}, which they prefer`
+        : contenders.appointed ? `: more than five points behind ${contenders.appointed}` : ''}. This vote doesn't count.`);
     }
     return notes.join(' ');
   };
@@ -991,6 +1062,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
         const voteChoices = Object.fromEntries(Object.values(choices).map((name) => [name, name]));
         const idByName = Object.fromEntries(Object.entries(choices).map(([id, name]) => [name, id]));
         const vacancyVotes = data.votes.filter((vote) => vote.subject_kind === 'vacancy' && vote.subject_id === vacancy.id);
+        const contenders = vacancy.published_at ? null : contendersFor(vacancy);
+        const openChoices = contenders ? Object.fromEntries(contenders.names.map((name) => [name, name])) : voteChoices;
+        const decisionChoices = contenders ? Object.fromEntries(contenders.ids.map((id) => [id, choices[id]])) : choices;
+        // Votes for an applicant the scores rule out don't count towards the decision.
+        const countedVotes = contenders ? vacancyVotes.filter((vote) => contenders.names.includes(vote.choice)) : vacancyVotes;
+        const settled = contenders && contenders.names.length === 1 ? contenders.ids[0] : '';
         return (
           <section className="card" key={vacancy.id}>
             <h3>{vacancy.club_name} (D{vacancy.division})</h3>
@@ -1037,7 +1114,8 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             <div style={VOTE_STEP}>
               <h4 style={STEP_TITLE}>Votes<span style={VOTE_TAG}>Each admin, individually</span></h4>
               <p className="muted" style={{ marginTop: 0 }}>Every admin casts their own vote for an applicant, with a reason. Rule 3.2 asks for a vote where applicants are within five points; those votes and reasons are published with the appointment.</p>
-              <Votes votes={vacancyVotes} disabled={Boolean(vacancy.published_at)} choices={voteChoices}
+              <Votes votes={vacancyVotes} disabled={Boolean(vacancy.published_at)} choices={openChoices}
+                notice={contenderNotice(vacancy, contenders)}
                 warningFor={(name, voter) => vacancyVoteWarning(vacancy, name, voter)}
                 onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')}
                 onWithdraw={() => call('withdraw_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id }, 'Vote withdrawn.')} />
@@ -1056,8 +1134,10 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
               <h4 style={STEP_TITLE}>Team decision<span style={DECISION_TAG}>Final · recorded once for the team</span></h4>
               <p className="muted" style={{ marginTop: 0 }}>Not a vote. Once everyone has voted, one admin records who the team appoints. It isn't published until you publish the decided vacancies.</p>
               <Decision current={vacancy.appointed_manager_id ? String(vacancy.appointed_manager_id) : ''} reason={vacancy.decision_reason} published={Boolean(vacancy.published_at)}
-                votes={vacancyVotes.map((vote) => ({ ...vote, choice: idByName[vote.choice] || vote.choice }))}
-                choices={{ ...choices, ...(vacancy.appointed_manager_id ? { [String(vacancy.appointed_manager_id)]: vacancy.appointedManager } : {}) }}
+                votes={countedVotes.map((vote) => ({ ...vote, choice: idByName[vote.choice] || vote.choice }))}
+                requireVotes={!settled} defaultChoice={settled}
+                defaultReason={settled ? 'Highest score, with no other applicant within five points (rule 3.2).' : ''}
+                choices={{ ...decisionChoices, ...(vacancy.appointed_manager_id ? { [String(vacancy.appointed_manager_id)]: vacancy.appointedManager } : {}) }}
                 subject={vacancy.club_name}
                 onDecide={(manager, reason) => call('decide_appointment_vacancy', { p_id: vacancy.id, p_manager_id: Number(manager), p_reason: reason }, 'Decision saved (not yet published).')} />
             </div>
