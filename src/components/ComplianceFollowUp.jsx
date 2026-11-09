@@ -20,7 +20,7 @@ export default function ComplianceFollowUp() {
   const [clubs, setClubs] = useState([]);
   const [message, setMessage] = useState('');
   const [ban, setBan] = useState({ club: '', starts: today(), ends: inAMonth(), terms: 'external_cash_sales_only', reason: '' });
-  const [sale, setSale] = useState({ club: '', players: [], extraIds: '', requirement: 'sell_external_cash', noRebid: true, reason: '' });
+  const [sale, setSale] = useState({ club: '', players: [], extraIds: '', requirement: 'sell_external_cash', noRebid: true, anyOne: false, reason: '' });
   const [squad, setSquad] = useState([]);
 
   const load = useCallback(async () => {
@@ -73,9 +73,9 @@ export default function ComplianceFollowUp() {
     const extra = sale.extraIds.split(/[\s,;/]+/).filter(Boolean);
     if (extra.some((id) => !/^\d+$/.test(id))) { setMessage('Soccer Manager player IDs are numbers (separate several with commas).'); return; }
     const players = [...new Set([...sale.players, ...extra])];
-    if (!sale.club || players.length === 0 || !sale.reason.trim()) { setMessage('Choose a club, tick the player (or players: selling any one of them meets the ruling) and give a reason.'); return; }
-    if (await call('add_compliance_obligations', { p_source_club_id: sale.club, p_source_player_ids: players, p_requirement: sale.requirement, p_no_rebid: sale.noRebid, p_reason: sale.reason })) {
-      setSale({ ...sale, club: '', players: [], extraIds: '', reason: '' });
+    if (!sale.club || players.length === 0 || !sale.reason.trim()) { setMessage('Choose a club, tick the player or players and give a reason.'); return; }
+    if (await call('add_compliance_obligations', { p_source_club_id: sale.club, p_source_player_ids: players, p_requirement: sale.requirement, p_no_rebid: sale.noRebid, p_reason: sale.reason, p_any_one: players.length > 1 && sale.anyOne })) {
+      setSale({ ...sale, club: '', players: [], extraIds: '', anyOne: false, reason: '' });
     }
   };
 
@@ -206,7 +206,12 @@ export default function ComplianceFollowUp() {
                 ))}
               </div>
               <p><input placeholder="Or SM player IDs, comma-separated" value={sale.extraIds} onChange={(event) => setSale({ ...sale, extraIds: event.target.value })} size={30} /></p>
-              {sale.players.length + sale.extraIds.split(/[\s,;/]+/).filter(Boolean).length > 1 && <p><strong>Either-or:</strong> selling any one of these meets the ruling; the others are then released.</p>}
+              {sale.players.length + sale.extraIds.split(/[\s,;/]+/).filter(Boolean).length > 1 && (
+                <p>
+                  <label><input type="radio" name="sale-scope" checked={!sale.anyOne} onChange={() => setSale({ ...sale, anyOne: false })} /> <strong>Each</strong> of these must be sold</label>{' '}
+                  <label><input type="radio" name="sale-scope" checked={sale.anyOne} onChange={() => setSale({ ...sale, anyOne: true })} /> Selling <strong>any one</strong> is enough (the others are then released)</label>
+                </p>
+              )}
             </fieldset>
           )}
           <p><input style={{ width: '100%' }} placeholder="Reason (the ruling)" value={sale.reason} onChange={(event) => setSale({ ...sale, reason: event.target.value })} /></p>
