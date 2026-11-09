@@ -162,6 +162,12 @@ function Votes({ votes, choices, onVote, onWithdraw, disabled: closed, warningFo
   const mine = votes.find((vote) => vote.mine);
   const [choice, setChoice] = useState(mine?.choice || '');
   const [reason, setReason] = useState(mine?.reason || '');
+  // The ballot can narrow after the first render (scores arriving, a decision at another club):
+  // drop a selection that is no longer offered.
+  const offered = Object.keys(choices).join('|');
+  useEffect(() => {
+    if (choice && !(choice in choices)) setChoice('');
+  }, [offered]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div>
       {votes.length ? (
@@ -194,7 +200,7 @@ function Votes({ votes, choices, onVote, onWithdraw, disabled: closed, warningFo
           <label style={{ flex: 1, minWidth: 200, fontSize: 13 }}>Your reason (published)
             <input value={reason} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
           </label>
-          <button type="button" disabled={!choice || !reason.trim()} onClick={() => {
+          <button type="button" disabled={!choice || !(choice in choices) || !reason.trim()} onClick={() => {
             const warning = choice && choice !== mine?.choice ? warningFor?.(choice, mine?.voter ?? null) : '';
             if (!warning || window.confirm(`${warning}\n\nCast this vote anyway?`)) onVote(choice, reason);
           }}>{mine ? 'Change my vote' : 'Cast my vote'}</button>
