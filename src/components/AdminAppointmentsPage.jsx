@@ -938,7 +938,8 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
     const appointed = appointments.find((item) => item.club === vacancy.club_name);
     const scoreOf = (application) => scoredFor(application.manager_id, vacancy.club_name).total;
     const top = appointed ? appointed.score : Math.max(...free.map(scoreOf));
-    const within = free.filter((application) => top - scoreOf(application) <= 5 + 1e-9);
+    // Within five points either way: an applicant freed late can score above the one the scores appoint.
+    const within = free.filter((application) => Math.abs(top - scoreOf(application)) <= 5 + 1e-9);
     return { appointed: appointed ? applicantName[appointed.manager] || appointed.manager : null, placedAt,
       names: within.map((application) => application.managerName), ids: within.map((application) => String(application.manager_id)) };
   };
@@ -974,7 +975,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
       const application = applications.find((item) => item.managerName === name);
       const placed = application && contenders.placedAt[String(application.manager_id)];
       notes.push(`Not open to a vote under rule 3.2${placed && placed !== vacancy.club_name ? `: the scores place ${name} at ${placed}, which they prefer`
-        : contenders.appointed ? `: more than five points behind ${contenders.appointed}` : ''}. This vote doesn't count.`);
+        : contenders.appointed ? `: more than five points from ${contenders.appointed}` : ''}. This vote doesn't count.`);
     }
     return notes.join(' ');
   };
