@@ -153,14 +153,24 @@ function InputsEditor({ values, records = {}, onChange, fields = INPUT_FIELDS, d
 const tallyOf = (votes) => votes.reduce((tally, vote) => ({ ...tally, [vote.choice]: (tally[vote.choice] || 0) + 1 }), {});
 
 // Step: every admin votes, with a reason. Votes and reasons are published with the decision.
-function Votes({ votes, choices, onVote, onWithdraw, disabled }) {
+// warningFor(choice, voter): an optional caution about a vote (e.g. a vacancy applicant the same
+// official backs at another club, or one the suggested appointments place elsewhere).
+const WARNING = { color: '#b45309', fontSize: 13 };
+function Votes({ votes, choices, onVote, onWithdraw, disabled, warningFor }) {
   const mine = votes.find((vote) => vote.mine);
   const [choice, setChoice] = useState(mine?.choice || '');
   const [reason, setReason] = useState(mine?.reason || '');
   return (
     <div>
       {votes.length ? (
-        <ul>{votes.map((vote) => <li key={vote.id}><strong>{vote.voter_name || 'Official'}</strong>: {choices[vote.choice] || vote.choice}. {vote.reason}</li>)}</ul>
+        <ul>{votes.map((vote) => {
+          const warning = warningFor?.(vote.choice, vote.voter);
+          return (
+            <li key={vote.id}><strong>{vote.voter_name || 'Official'}</strong>: {choices[vote.choice] || vote.choice}. {vote.reason}
+              {warning && <div style={WARNING}>⚠ {warning}</div>}
+            </li>
+          );
+        })}</ul>
       ) : <p className="muted">No votes yet.</p>}
       {!disabled && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -173,7 +183,10 @@ function Votes({ votes, choices, onVote, onWithdraw, disabled }) {
           <label style={{ flex: 1, minWidth: 200, fontSize: 13 }}>Your reason (published)
             <input value={reason} onChange={(event) => setReason(event.target.value)} style={{ display: 'block', width: '100%' }} />
           </label>
-          <button type="button" disabled={!choice || !reason.trim()} onClick={() => onVote(choice, reason)}>{mine ? 'Change my vote' : 'Cast my vote'}</button>
+          <button type="button" disabled={!choice || !reason.trim()} onClick={() => {
+            const warning = choice && choice !== mine?.choice ? warningFor?.(choice, mine?.voter ?? null) : '';
+            if (!warning || window.confirm(`${warning}\n\nCast this vote anyway?`)) onVote(choice, reason);
+          }}>{mine ? 'Change my vote' : 'Cast my vote'}</button>
           {mine && onWithdraw && (
             <button type="button" className="secondary"
               onClick={() => { if (window.confirm('Withdraw your vote? It will be removed, and won\'t be published.')) { setChoice(''); setReason(''); onWithdraw(); } }}>
@@ -181,6 +194,9 @@ function Votes({ votes, choices, onVote, onWithdraw, disabled }) {
             </button>
           )}
         </div>
+      )}
+      {!disabled && choice && choice !== mine?.choice && warningFor?.(choice, mine?.voter ?? null) && (
+        <p style={{ ...WARNING, margin: '6px 0 0' }}>⚠ {warningFor(choice, mine?.voter ?? null)}</p>
       )}
       {!disabled && (
         <p className="muted" style={{ margin: '6px 0 0', fontSize: 13 }}>
@@ -859,6 +875,26 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
   const canArchive = archivable.length > 0 && !archiveBlock;
   const archives = data.archives || [];
 
+  // A vote for an applicant who can't end up at this club as things stand: the same official
+  // backs them at another open club (each manager takes one club), or the suggested appointments
+  // place them elsewhere (each applicant goes to their most-preferred club they win).
+  const openVacancyIds = new Set(vacancies.filter((vacancy) => !vacancy.published_at).map((vacancy) => vacancy.id));
+  const vacancyVoteWarning = (vacancy, name, voter) => {
+    const notes = [];
+    // voter is null for an official who hasn't voted on this club yet: their votes elsewhere are "mine".
+    const sameVoter = (vote) => (voter ? vote.voter === voter : vote.mine);
+    const elsewhere = data.votes.filter((vote) => vote.subject_kind === 'vacancy' && vote.subject_id !== vacancy.id
+      && openVacancyIds.has(vote.subject_id) && vote.choice === name && sameVoter(vote)).map((vote) => clubName(vote.subject_id));
+    if (elsewhere.length) notes.push(`${voter ? 'This official' : 'You'} also voted for ${name} at ${elsewhere.join(' and ')}; a manager can only take one club.`);
+    const managerId = applications.find((application) => application.managerName === name)?.manager_id;
+    const placed = result?.allocation?.appointments?.find((item) => String(item.manager) === String(managerId));
+    if (placed && placed.club !== vacancy.club_name) {
+      const order = applications.find((application) => application.manager_id === managerId)?.preferences.map(clubName) || [];
+      notes.push(`The suggested appointments place ${name} at ${placed.club}${order.length > 1 ? ` (their order: ${order.join(' → ')})` : ''}.`);
+    }
+    return notes.join(' ');
+  };
+
   return (
     <>
       <section className="card">
@@ -1002,6 +1038,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
               <h4 style={STEP_TITLE}>Votes<span style={VOTE_TAG}>Each admin, individually</span></h4>
               <p className="muted" style={{ marginTop: 0 }}>Every admin casts their own vote for an applicant, with a reason. Rule 3.2 asks for a vote where applicants are within five points; those votes and reasons are published with the appointment.</p>
               <Votes votes={vacancyVotes} disabled={Boolean(vacancy.published_at)} choices={voteChoices}
+                warningFor={(name, voter) => vacancyVoteWarning(vacancy, name, voter)}
                 onVote={(choice, reason) => call('cast_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id, p_choice: choice, p_reason: reason }, 'Vote recorded.')}
                 onWithdraw={() => call('withdraw_appointment_vote', { p_subject_kind: 'vacancy', p_subject_id: vacancy.id }, 'Vote withdrawn.')} />
               {vacancy.published_at ? (
