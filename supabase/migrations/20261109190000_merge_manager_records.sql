@@ -15,6 +15,7 @@
 -- 2. Every manager Sync links to a Soccer Manager ID takes that account's current
 --    Soccer Manager name, and Sync keeps it current from now on.
 -- 3. The duplicates found on 9 November 2026 are merged into the Sync record.
+-- 4. Seven former Regen managers without a club have their Regen memberships closed.
 --
 -- Patched in place (Sync): the anchor must match exactly once, or nothing changes.
 
@@ -148,3 +149,20 @@ begin
   end loop;
 end;
 $merges$;
+
+-- 4. Former Top 100 Regen managers who no longer have a club (confirmed by the
+--    administrators, 9 November 2026): their Regen memberships close. Their records
+--    and history stay.
+update public.manager_game_world_memberships mm
+set active = false, updated_at = now()
+from public.game_worlds w
+where w.id = mm.game_world_id and w.slug = 'regen' and mm.active
+  and mm.manager_id in (
+    477, -- ⚔ Andrea Marchese ⚔
+    474, -- Alexandre Almeida
+    484, -- Chris Waters
+    490, -- des wild
+    503, -- john james
+    510, -- mackem in andeʀlecht
+    537  -- Tharanidharan
+  );
