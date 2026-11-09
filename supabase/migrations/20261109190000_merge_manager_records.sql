@@ -27,6 +27,7 @@ as $$
 declare
   v_ref record;
   v_row record;
+  v_member public.manager_game_world_memberships;
   v_moved integer := 0;
   v_dropped integer := 0;
   v_links integer := 0;
@@ -44,7 +45,21 @@ begin
   select display_name into v_into_name from public.managers where id = p_into for update;
   if not found then raise exception 'Manager % not found', p_into; end if;
 
-  -- Every single-column foreign key to managers.id.
+  -- Game world memberships first: the target keeps its own; one it lacks is moved
+  -- by deleting and re-adding, so the Top 100 cap of 100 active managers never
+  -- counts the same manager twice during the move.
+  for v_member in select * from public.manager_game_world_memberships where manager_id = p_from loop
+    delete from public.manager_game_world_memberships where manager_id = p_from and game_world_id = v_member.game_world_id;
+    if exists (select 1 from public.manager_game_world_memberships where manager_id = p_into and game_world_id = v_member.game_world_id) then
+      v_dropped := v_dropped + 1;
+    else
+      insert into public.manager_game_world_memberships (manager_id, game_world_id, active, created_at, updated_at)
+      values (p_into, v_member.game_world_id, v_member.active, v_member.created_at, now());
+      v_moved := v_moved + 1;
+    end if;
+  end loop;
+
+  -- Every other single-column foreign key to managers.id.
   for v_ref in
     select c.conrelid::regclass as tbl, a.attname as col
     from pg_constraint c
