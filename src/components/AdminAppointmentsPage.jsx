@@ -1161,13 +1161,18 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
             <div style={DECISION_STEP}>
               <h4 style={STEP_TITLE}>Team decision<span style={DECISION_TAG}>Final · recorded once for the team</span></h4>
               <p className="muted" style={{ marginTop: 0 }}>Not a vote. Once everyone has voted, one admin records who the team appoints. It isn't published until you publish the decided vacancies.</p>
+              {vacancy.decided_at && !vacancy.appointed_manager_id && !vacancy.published_at && (
+                <p className="status">Recorded as not filled (a cleared decision). Publishing now would publish it unfilled: record the team's decision first.</p>
+              )}
               <Decision current={vacancy.appointed_manager_id ? String(vacancy.appointed_manager_id) : ''} reason={vacancy.decision_reason} published={Boolean(vacancy.published_at)}
                 votes={countedVotes.map((vote) => ({ ...vote, choice: idByName[vote.choice] || vote.choice }))}
                 requireVotes={!settled} defaultChoice={settled}
                 defaultReason={settled ? 'Highest score, with no other applicant within five points (rule 3.2).' : ''}
                 choices={{ ...decisionChoices, ...(vacancy.appointed_manager_id ? { [String(vacancy.appointed_manager_id)]: vacancy.appointedManager } : {}) }}
                 subject={vacancy.club_name}
-                onDecide={(manager, reason) => call('decide_appointment_vacancy', { p_id: vacancy.id, p_manager_id: Number(manager), p_reason: reason }, 'Decision saved (not yet published).')} />
+                onDecide={(manager, reason) => call('decide_appointment_vacancy', { p_id: vacancy.id, p_manager_id: Number(manager), p_reason: reason }, 'Decision saved (not yet published).')}
+                // Releases the manager, so decisions at two clubs can be swapped before publishing.
+                onClear={() => call('decide_appointment_vacancy', { p_id: vacancy.id, p_manager_id: null, p_reason: null }, 'Decision cleared. Record the team\'s decision again before publishing.')} />
             </div>
           </section>
         );
