@@ -175,6 +175,14 @@ function Votes({ votes, choices, onVote, onWithdraw, disabled: closed, warningFo
         })}</ul>
       ) : <p className="muted">No votes yet.</p>}
       {!closed && notice && <p style={{ margin: '6px 0 0' }}><strong>{notice}</strong></p>}
+      {/* With the ballot closed by the scores, an admin can still take back a vote cast earlier,
+          so it isn't published with the appointment. */}
+      {!closed && notice && mine && onWithdraw && (
+        <button type="button" className="secondary" style={{ marginTop: 6 }}
+          onClick={() => window.confirm('Withdraw your vote? It will be removed, and won\'t be published.') && onWithdraw()}>
+          Withdraw my vote
+        </button>
+      )}
       {!disabled && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ fontSize: 13 }}>Your own vote
