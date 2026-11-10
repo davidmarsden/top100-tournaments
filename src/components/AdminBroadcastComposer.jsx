@@ -42,7 +42,7 @@ export default function AdminBroadcastComposer() {
         <label>Audience<select value={form.worldId} onChange={update('worldId')}><option value="">All game worlds</option>{worlds.map((world) => <option key={world.id} value={world.id}>{world.name}</option>)}</select></label>
         <label>Title<input value={form.title} onChange={update('title')} minLength={3} maxLength={120} required /></label>
         <label>Message<textarea value={form.body} onChange={update('body')} maxLength={500} required /></label>
-        <label>Link (optional, a smtop100.blog page)<input type="url" value={form.url} onChange={update('url')} placeholder="https://smtop100.blog/…" /></label>
+        <label>Link (optional, a smtop100.blog or soccermanager.com page)<input type="url" value={form.url} onChange={update('url')} placeholder="https://smtop100.blog/…" /></label>
         <div className="button-row"><button type="submit" disabled={status.state === 'sending'}>{status.state === 'sending' ? 'Sending…' : 'Send announcement'}</button></div>
         {status.message && <p className="status" role={status.state === 'error' ? 'alert' : 'status'}>{status.message}</p>}
       </form>
