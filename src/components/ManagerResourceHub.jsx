@@ -1,3 +1,5 @@
+import { PUBLISHING_DESK_URL, publishingDeskClick } from '../lib/publishingDesk';
+
 const RESOURCES = [
   { label: 'Stats & History', description: 'Seasons, managers, honours, records and the statistical story of Top 100.', href: 'https://archive.smtop100.blog/' },
   { label: 'Tournaments', description: 'Youth Cup, World Club Cup, fixtures, tables and competition history.', href: 'https://tournaments.smtop100.blog/' },
@@ -5,12 +7,13 @@ const RESOURCES = [
   { label: 'Community Polls', description: 'See open manager polls, cast your vote and take part in game-world decisions.', href: 'https://vote.smtop100.blog/' },
   { label: 'Poll Results', description: 'Read the published results of completed Community Polls.', href: 'https://vote.smtop100.blog/results' },
   { label: 'Search & Categories', description: 'Find more than a decade of manager-written Top 100 stories.', href: 'https://smtop100.blog/explore/' },
-  { label: 'Write for Top 100', description: 'Submit club news, reports and features to the community.', href: 'https://write.smtop100.blog/' },
+  { label: 'Write for Top 100', description: 'Submit club news, reports and features to the community.', href: PUBLISHING_DESK_URL, desk: true },
   { label: 'Subscribe', description: 'Get new Top 100 posts by email. Manager accounts can also opt in to Youth Cup fixture reminders here in the portal.', href: 'https://smtop100.blog/subscribe/' },
   { label: 'Support', description: 'Help with the site, accounts, submissions and keeping Top 100 running.', href: 'https://smtop100.blog/support/' },
 ];
 
-export default function ManagerResourceHub() {
+// signedIn: the Publishing Desk link opens it already signed in with the Portal's account.
+export default function ManagerResourceHub({ signedIn = false }) {
   return (
     <section className="manager-resource-hub" aria-labelledby="manager-resource-heading">
       <div className="manager-resource-hub__intro">
@@ -20,7 +23,7 @@ export default function ManagerResourceHub() {
       </div>
       <div className="manager-resource-grid">
         {RESOURCES.map((resource) => (
-          <a key={resource.label} className="manager-resource-card" href={resource.href}>
+          <a key={resource.label} className="manager-resource-card" href={resource.href} onClick={signedIn && resource.desk ? publishingDeskClick : undefined}>
             <strong>{resource.label}</strong>
             <span>{resource.description}</span>
           </a>

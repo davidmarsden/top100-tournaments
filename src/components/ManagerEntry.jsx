@@ -364,6 +364,6 @@ export default function ManagerEntry({ registrationMode = false }) {
     <div className="top100-app-bottom"><Top100Notifications session={session} /></div>
     <ManagerReminderPreferences session={session} authLoading={false} />
     <div className="manager-portal-shell"><ManagerPasswordSettings session={session} /></div>
-    <ManagerResourceHub />
+    <ManagerResourceHub signedIn />
   </>;
 }

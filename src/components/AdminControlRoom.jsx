@@ -1,4 +1,5 @@
 import AdminBroadcastComposer from './AdminBroadcastComposer.jsx';
+import { PUBLISHING_DESK_URL, publishingDeskClick } from '../lib/publishingDesk';
 import { useAdminAuth } from './AdminGate.jsx';
 
 // The admin team's tools, for every Top 100 official.
@@ -16,11 +17,11 @@ const PLATFORM_TOOLS = [
   { title: 'Result submissions', description: 'Review submitted tournament results.', href: 'https://tournaments.smtop100.blog/admin/result-submissions', action: 'Review results' },
   { title: 'Manager Lab', description: 'Performance and manager analysis tools.', href: 'https://lab.smtop100.blog/', action: 'Open lab' },
   { title: 'Manager Awards', description: 'Awards voting and historical honours.', href: 'https://awards.smtop100.blog/', action: 'Open Awards' },
-  { title: 'Publishing Desk', description: 'Write and publish Top 100 stories.', href: 'https://write.smtop100.blog/', action: 'Open publishing' },
+  { title: 'Publishing Desk', description: 'Write and publish Top 100 stories.', href: PUBLISHING_DESK_URL, action: 'Open publishing', desk: true },
 ];
 
 function ToolGrid({ tools }) {
-  return <div className="manager-resource-grid">{tools.map((tool) => <a key={tool.title} className="manager-resource-card" href={tool.href}><strong>{tool.title}</strong><span>{tool.description}</span><span className="muted">{tool.action} →</span></a>)}</div>;
+  return <div className="manager-resource-grid">{tools.map((tool) => <a key={tool.title} className="manager-resource-card" href={tool.href} onClick={tool.desk ? publishingDeskClick : undefined}><strong>{tool.title}</strong><span>{tool.description}</span><span className="muted">{tool.action} →</span></a>)}</div>;
 }
 
 export default function AdminControlRoom() {
