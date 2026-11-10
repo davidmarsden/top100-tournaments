@@ -1221,7 +1221,8 @@ const initialInputs = (data) => {
   const saved = { ...own(data.rounds.review?.inputs?.edited || {}, 'r'), ...own(data.rounds.vacancies?.inputs?.edited || {}, 'a') };
   const fill = (key, managerId) => {
     const base = data.inputs[String(managerId)] || {};
-    return saved[key] || Object.fromEntries(INPUT_FIELDS.map(({ key: field }) => [field, base[field] ?? '']));
+    // Saved edits win; an input added since they were saved (such as votingPercent) comes from records.
+    return { ...Object.fromEntries(INPUT_FIELDS.map(({ key: field }) => [field, base[field] ?? ''])), ...(saved[key] || {}) };
   };
   return {
     ...Object.fromEntries(data.reviews.filter((review) => review.manager_id).map((review) => [`r${review.id}`, fill(`r${review.id}`, review.manager_id)])),
