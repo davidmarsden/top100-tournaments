@@ -7,6 +7,11 @@ export const CARDS = {
     'Atlético Madrid': { src: '/appointments/s28/card-simon.webp', manager: 'Simon Thomas' },
     'Hellas Verona': { src: '/appointments/s28/card-beddows.webp', manager: 'Sir Stephen Beddows' },
     Juventus: { src: '/appointments/s28/card-trx.webp', manager: 'Mister TRX' },
+    // Round 2
+    'São Paulo FC': { src: '/appointments/s28/card-neil.webp', manager: 'Neil Frankland' },
+    Sampdoria: { src: '/appointments/s28/card-chris.webp', manager: 'Chris East' },
+    'AC Milan': { src: '/appointments/s28/card-kevin.webp', manager: 'Kevin Trapp' },
+    'Sevilla FC': { src: '/appointments/s28/card-shashi.webp', manager: 'Shashi P' },
   },
 };
 
