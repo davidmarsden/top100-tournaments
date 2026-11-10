@@ -1013,6 +1013,12 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
               {!vacancy.published_at && vacancy.status === 'open' && <button type="button" className="secondary" onClick={() => call('set_appointment_vacancy_status', { p_id: vacancy.id, p_status: 'closed' }, 'Closed.')}>Close</button>}
               {!vacancy.published_at && vacancy.status === 'closed' && !vacancy.decided_at && <button type="button" className="secondary" onClick={() => call('set_appointment_vacancy_status', { p_id: vacancy.id, p_status: 'open' }, 'Reopened.')}>Reopen</button>}
               {!vacancy.published_at && vacancy.status !== 'withdrawn' && !vacancy.decided_at && <> <button type="button" className="secondary" onClick={() => call('set_appointment_vacancy_status', { p_id: vacancy.id, p_status: 'withdrawn' }, 'Withdrawn.')}>Withdraw</button></>}
+              {/* Rule 3.2: the appointee confirms within 24 hours. One who declines a published appointment is recorded here. */}
+              {vacancy.published_at && vacancy.appointed_manager_id && <button type="button" className="secondary" onClick={() => {
+                const note = window.prompt(`Record that ${vacancy.appointedManager || 'the appointee'} declined ${vacancy.club_name}?\n\nThe decision stays published, marked as declined, and ${vacancy.club_name} can go into the next round. Optional note for the public page (e.g. "Prefers to stay at Sunderland."):`, '');
+                if (note !== null) call('record_appointment_declined', { p_id: vacancy.id, p_note: note }, `Recorded: the appointee declined ${vacancy.club_name}. Archive this round, then add ${vacancy.club_name} to the next one.`);
+              }}>Appointee declined</button>}
+              {vacancy.declined_at && <span className="status"> · appointee declined {when(vacancy.declined_at)}</span>}
             </li>
           ))}
         </ul>
@@ -1185,7 +1191,15 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
               <div key={archive.id} style={{ marginTop: 8 }}>
                 <strong>Archived {when(archive.archivedAt)}</strong> <span className="muted">· {archive.applications} application{archive.applications === 1 ? '' : 's'}</span>
                 <ul>{archive.vacancies.map((vacancy) => (
-                  <li key={vacancy.id}>{vacancy.club} (D{vacancy.division}): {vacancy.appointed ? `appointed ${vacancy.appointed}` : vacancy.status === 'withdrawn' ? 'withdrawn' : 'not filled'}</li>
+                  <li key={vacancy.id}>{vacancy.club} (D{vacancy.division}): {vacancy.appointed ? `appointed ${vacancy.appointed}`
+                    : vacancy.declined ? `${vacancy.declined} declined (${when(vacancy.declinedAt)}): add ${vacancy.club} to the next round`
+                    : vacancy.status === 'withdrawn' ? 'withdrawn' : 'not filled'}
+                    {/* Rule 3.2: the appointee confirms within 24 hours; one who declines is recorded here. */}
+                    {vacancy.appointed && vacancy.publishedAt && <> <button type="button" className="secondary" onClick={() => {
+                      const note = window.prompt(`Record that ${vacancy.appointed} declined ${vacancy.club}?\n\nThe decision stays published, marked as declined, and ${vacancy.club} can go into the next round. Optional note for the public page (e.g. "Prefers to stay at their club."):`, '');
+                      if (note !== null) call('record_appointment_declined', { p_id: vacancy.id, p_note: note }, `Recorded: ${vacancy.appointed} declined ${vacancy.club}. Add ${vacancy.club} as a vacancy in the next round.`);
+                    }}>Appointee declined</button></>}
+                  </li>
                 ))}</ul>
               </div>
             ))}

@@ -43,7 +43,14 @@ function AppointmentRound({ season, vacancies, scores, label }) {
               <div key={vacancy.id} style={{ marginBottom: 16 }}>
                 <h3>{vacancy.club} (Division {vacancy.division})</h3>
                 {vacancy.context && <p className="muted">{vacancy.context}</p>}
-                <p><strong>{vacancy.appointed ? `Appointed: ${vacancy.appointed}` : 'Not filled'}</strong>{vacancy.reason ? `. ${vacancy.reason}` : ''}</p>
+                {vacancy.declined ? (
+                  <p>
+                    <strong>{vacancy.declined} was appointed but declined{vacancy.declinedAt ? ` (${shortDate(vacancy.declinedAt)})` : ''}.</strong>
+                    {vacancy.declinedNote ? ` ${vacancy.declinedNote}` : ''} {vacancy.club} goes to the next round.
+                  </p>
+                ) : (
+                  <p><strong>{vacancy.appointed ? `Appointed: ${vacancy.appointed}` : 'Not filled'}</strong>{vacancy.reason ? `. ${vacancy.reason}` : ''}</p>
+                )}
                 <VoteList votes={vacancy.votes} />
                 {card && <img src={card.src} alt={`${card.manager}, new manager of ${vacancy.club}`} loading="lazy" width="1200" height="675" style={{ width: '100%', height: 'auto', borderRadius: 12, marginTop: 8 }} />}
               </div>
