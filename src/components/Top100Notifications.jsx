@@ -226,7 +226,7 @@ export default function Top100Notifications({ session }) {
           <ul>
             {inbox.map((item) => (
               <li key={item.id} className={item.read_at ? undefined : 'is-unread'}>
-                <a href={item.url || '/'} onClick={() => { if (!item.read_at) markRead([item.id]); }}>
+                <a href={item.url || '/'} {...(/^https:\/\/([a-z0-9-]+\.)*soccermanager\.com(\/|$)/i.test(item.url || '') ? { target: '_blank', rel: 'noopener noreferrer' } : {})} onClick={() => { if (!item.read_at) markRead([item.id]); }}>
                   <strong>{item.title}</strong>
                   {item.body && <span>{item.body}</span>}
                   <time dateTime={item.created_at}>{timeLabel(item.created_at)}</time>

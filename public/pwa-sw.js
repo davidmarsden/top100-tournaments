@@ -31,7 +31,9 @@ if (IS_MANAGER_HOST) {
     try { payload = event.data ? event.data.json() : {}; } catch { payload = { body: event.data ? event.data.text() : '' }; }
     const title = String(payload.title || 'Top 100').slice(0, 120);
     const url = new URL(String(payload.url || '/'), self.location.origin);
-    const target = url.origin === self.location.origin || url.hostname.endsWith('.smtop100.blog') ? url.href : self.location.origin + '/';
+    // Top 100 pages, and Soccer Manager's own site for official game updates.
+    const trusted = url.hostname.endsWith('.smtop100.blog') || url.hostname === 'soccermanager.com' || url.hostname.endsWith('.soccermanager.com');
+    const target = url.origin === self.location.origin || (url.protocol === 'https:' && trusted) ? url.href : self.location.origin + '/';
     event.waitUntil(self.registration.showNotification(title, {
       body: String(payload.body || '').slice(0, 400),
       icon: '/top100-icon-192.png',
