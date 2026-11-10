@@ -1,4 +1,5 @@
-// Announces new vacancies and newly published appointments (rule 3.2) in Top 100 Chat: one post
+// Announces new vacancies, newly published appointments (rule 3.2) and newly opened votes (awards
+// and community polls) in Top 100 Chat: one post
 // per vacancy (from chat_open_vacancies()) and one per new manager, with their profile card when
 // there is one (from public_appointment_decisions()). Each goes to the chat gateway's signed
 // /auth/digest route, posted by the "Top 100 News" account. The gateway remembers each post's key,
@@ -6,7 +7,7 @@
 // "false" to stop it.
 import { envValue, rpc } from './lib/pushDispatch.mjs';
 import { signDigest } from './lib/chatDigest.mjs';
-import { appointmentKey, formatAppointmentPost, formatVacancyPost, newVacancies, recentAppointments, vacancyKey } from './lib/chatAppointments.mjs';
+import { appointmentKey, formatAppointmentPost, formatVacancyPost, formatVotePost, newVacancies, newVotes, recentAppointments, vacancyKey, voteKey } from './lib/chatAppointments.mjs';
 
 const WORLD = 'top-100';
 
@@ -50,6 +51,19 @@ export default async () => {
     }
   } catch (error) {
     errors.push(`appointments: ${error.message}`);
+  }
+  // Awards and community polls, once each, when they open.
+  try {
+    const select = 'id,title,event_type,status,opens_at,closes_at,voting_questions(title,sort_order,voting_options(label,sort_order))';
+    const response = await fetch(`${config.supabaseUrl}/rest/v1/voting_events?select=${encodeURIComponent(select)}&status=eq.open&event_type=in.(awards,poll)`, {
+      headers: { apikey: config.serviceRoleKey, Authorization: `Bearer ${config.serviceRoleKey}` },
+    });
+    if (!response.ok) throw new Error(`voting_events returned HTTP ${response.status}`);
+    for (const event of newVotes(await response.json())) {
+      results.push(await send(voteKey(WORLD, event), formatVotePost(event)));
+    }
+  } catch (error) {
+    errors.push(`votes: ${error.message}`);
   }
   const posted = results.filter((r) => !r.duplicate).length;
   if (errors.length) {

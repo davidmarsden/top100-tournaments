@@ -55,3 +55,25 @@ test('still announces appointments from a round archived soon after publishing',
   const archivedData = { season: 28, vacancies: [], archivedRounds: [{ id: 1, vacancies: [data.vacancies[1]] }] };
   assert.deepEqual(recentAppointments(archivedData, now).map((v) => v.id), [9]);
 });
+
+test('announces an awards vote once it has settled, with every category and nominee', async () => {
+  const { newVotes, formatVotePost, voteKey } = await import('../netlify/functions/lib/chatAppointments.mjs');
+  const event = {
+    id: 9, title: 'Season 28 Manager of the Season Awards', event_type: 'awards', status: 'open',
+    opens_at: '2026-11-10T22:28:24Z', closes_at: '2026-11-15T12:00:00Z',
+    voting_questions: [
+      { title: 'Division 1 Manager of the Season', sort_order: 2, voting_options: [{ label: 'Ash L', sort_order: 2 }, { label: 'André Guerra', sort_order: 1 }] },
+      { title: 'Overall Manager of the Season', sort_order: 1, voting_options: [{ label: 'Chris East', sort_order: 1 }] },
+    ],
+  };
+  const poll = { id: 5, title: 'Old poll', event_type: 'poll', status: 'open', opens_at: '2026-09-26T17:12:56Z', closes_at: '2026-12-10T17:00:00Z' };
+  assert.deepEqual(newVotes([event, poll], new Date('2026-11-10T22:30:00Z')), [], 'waits to settle');
+  assert.deepEqual(newVotes([event, poll], new Date('2026-11-10T22:50:00Z')).map((e) => e.id), [9], 'old poll left out');
+  assert.deepEqual(newVotes([{ ...event, status: 'draft' }], new Date('2026-11-10T22:50:00Z')), []);
+  assert.equal(voteKey('top-100', event), 'top-100:vote:e9');
+  const post = formatVotePost(event);
+  assert.equal(post.title, 'Vote now: Season 28 Manager of the Season Awards');
+  assert.match(post.markdown, /Voting closes Sun 15 Nov, 12:00 \(UK time\)/);
+  assert.match(post.markdown, /\*\*Overall Manager of the Season\*\*: Chris East[\s\S]*\*\*Division 1 Manager of the Season\*\*: André Guerra, Ash L/);
+  assert.match(post.markdown, /https:\/\/awards\.smtop100\.blog\/vote/);
+});
