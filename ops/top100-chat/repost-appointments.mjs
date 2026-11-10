@@ -8,8 +8,11 @@
 // top-100:appointment:s<season>:v<id> (rss.chat /deletepost, over loopback) and forgets the key, so
 // netlify/functions/chat-appointments.mjs announces it again on its next run (every 10 minutes,
 // within three days of publishing), now with the profile card. Add --dry-run to only list them.
+// The gateway service is stopped for the few seconds this takes: it saves the whole store after
+// each post, so a post in flight could otherwise write back a key removed here.
 import fs from 'node:fs';
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
@@ -51,6 +54,10 @@ const found = keys.filter((key) => store[key]);
 for (const key of keys) console.log(store[key] ? `${key}: chat item ${store[key].id}, posted ${store[key].at}` : `${key}: not posted (nothing to do)`);
 if (dryRun || !found.length) process.exit(0);
 
+const service = process.env.TOP100_CHAT_GATEWAY_SERVICE ?? 'top100-chat-gateway.service';
+const systemctl = (action) => { if (service) execFileSync('systemctl', [action, service], { stdio: 'inherit' }); };
+systemctl('stop');
+try {
 const helper = new URL(`http://127.0.0.1:${rssChatPort}/localtop100sso`);
 helper.searchParams.set('managerid', String(newsBot.managerId));
 helper.searchParams.set('email', newsBot.email);
@@ -83,4 +90,7 @@ for (const key of found) {
   fs.chownSync(temporary, uid, gid);
   fs.renameSync(temporary, storePath);
   console.log(`${key}: forgotten; the Chat job will announce it again within 10 minutes`);
+}
+} finally {
+  systemctl('start');
 }

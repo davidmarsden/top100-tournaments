@@ -206,7 +206,7 @@ Every 10 minutes the scheduled Netlify function `chat-appointments` announces:
 - It uses the same signed `/auth/digest` route and `TOP100_CHAT_SSO_SECRET`. Each post's key is `top-100:vacancy:s<season>:v<id>` or `top-100:appointment:s<season>:v<id>`, so the gateway's key store makes sure each appointment is posted once.
 - The body carries `"account": "news"`, and the gateway posts it as a separate **Top 100 News** account (`manager900000002`, `news@smtop100.blog`). A gateway that hasn't been redeployed ignores the field and posts as Top 100 Market.
 - It runs whenever the secret is configured. Set `TOP100_CHAT_APPOINTMENTS_ENABLED=false` in Netlify to stop it.
-- To replace announcements that went out before their profile cards were added, run `repost-appointments.mjs` on the server with the season and vacancy ids. It deletes those "Top 100 News" posts and forgets their keys, so the job posts them again (with cards) on its next run, within three days of publishing:
+- To replace announcements that went out before their profile cards were added, run `repost-appointments.mjs` on the server with the season and vacancy ids. It deletes those "Top 100 News" posts and forgets their keys, so the job posts them again (with cards) on its next run, within three days of publishing. It stops the gateway for the few seconds this takes, so a post in flight can't write a removed key back:
 
 ```sh
 set -a; . /etc/top100-chat.env; set +a
