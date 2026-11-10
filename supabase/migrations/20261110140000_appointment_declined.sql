@@ -53,5 +53,4 @@ as $$
                   else '[]'::jsonb end);
 $$;
 
--- @permissions private public.appointment_public_vacancy(public.appointment_vacancies): used only inside public_appointment_decisions()
 revoke all on function public.appointment_public_vacancy(public.appointment_vacancies) from public, anon, authenticated;
