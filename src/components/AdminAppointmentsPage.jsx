@@ -26,10 +26,12 @@ const INPUT_FIELDS = [
     help: 'Last 120 days. 0.4 points each, up to 4 (10 or more is full marks).' },
   { key: 'running', label: 'Helps run Top 100 (0–3)', source: 'records', min: 0, max: 3,
     help: '3 for admins (from records). Otherwise your judgement: 1–2 for regular helpers. Blank counts as 0.' },
+  { key: 'votingPercent', label: 'Awards and polls voted in (%)', source: 'records', min: 0, max: 100,
+    help: 'Last 12 months, of the votes they could take part in that have closed. Up to 2 points: 100% is full marks, not voting counts against. No votes yet leaves it out (half marks).' },
   { key: 'community', label: 'Community and social (0–3)', source: 'admin', min: 0, max: 3,
-    help: 'Your judgement: chat, polls, helping other managers. Each admin scores separately and the team average is used; no scores at all leaves it out (half marks).' },
+    help: 'Your judgement: chat, helping other managers. Each admin scores separately and the team average is used, counting for up to 2 points; no scores at all leaves it out (half marks).' },
   { key: 'gameWorlds', label: 'Soccer Manager game worlds', source: 'records', min: 1, max: 50,
-    help: 'From their Soccer Manager profile, Top 100 included. Full marks (2) at 3 or fewer, 0.25 less for each extra.' },
+    help: 'From their Soccer Manager profile, Top 100 included. Full marks (1) at 3 or fewer, 0.125 less for each extra.' },
   { key: 'forfeits', label: 'Forfeits this season', source: 'records', min: 0, max: 50,
     help: 'Top 100 competitions such as the Youth Cup. In a review, 3 or more is a clear and obvious error; an applicant loses 2.5 from stability and conduct for each.' },
   { key: 'sanctions', label: 'Sanctions this season', source: 'admin', min: 0, max: 5,
@@ -129,6 +131,7 @@ function InputsEditor({ values, records = {}, onChange, fields = INPUT_FIELDS, d
                 </td>
                 <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                   {field.source === 'admin' ? <span className="muted">Admin team fills in</span> : record ?? <span className="muted">Not recorded</span>}
+                  {field.key === 'votingPercent' && records.votesEligible ? <div className="muted">{records.votesCast} of {records.votesEligible}</div> : null}
                 </td>
                 <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                   <input type="number" min={field.min} max={field.max} step="1" style={{ width: 80 }} disabled={disabled}
@@ -412,7 +415,7 @@ const reviewScoringConfig = (data, reviews, inputs, newcomers) => ({
   discipline: Object.fromEntries(reviews.map((review) => [String(review.id), { sanctions: teamValue(data, review.manager_id, 'sanctions') || 0 }])),
   activity: Object.fromEntries(reviews.map((review) => {
     const values = { ...(inputs[`r${review.id}`] || {}), community: teamValue(data, review.manager_id, 'community') };
-    return [String(review.id), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds', 'forfeits']
+    return [String(review.id), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'votingPercent', 'community', 'gameWorlds', 'forfeits']
       .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
   })),
 });
@@ -834,9 +837,9 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
       }))),
       activity: Object.fromEntries(applications.map((application) => {
         const values = scoringValues(application.manager_id, inputs[`a${application.manager_id}`] || {});
-        return [keyOf(application), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds']
+        return [keyOf(application), Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'votingPercent', 'community', 'gameWorlds']
           .map((key) => [key, fieldValue(values, key)]).filter(([, value]) => value !== null))];
-      }).concat(comparisons.map((comparison) => [comparison.key, Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'community', 'gameWorlds']
+      }).concat(comparisons.map((comparison) => [comparison.key, Object.fromEntries(['competitions', 'topManagerDeals', 'running', 'votingPercent', 'community', 'gameWorlds']
         .map((key) => [key, fieldValue(scoringValues(comparison.managerId, comparisonInputs(comparison)), key)]).filter(([, value]) => value !== null))]))),
     };
     return config;

@@ -11,6 +11,10 @@ function governanceLabel(value) {
   return ({ advisory: 'Advisory', rule_change: 'Rule change', appointment: 'Appointment', other: 'Other' })[value] || 'Poll';
 }
 
+// "41 of 96 managers (43%)"
+export const turnoutText = ({ ballots_cast: cast = 0, electorate_count: of = 0 }) =>
+  `${cast} of ${of} manager${of === 1 ? '' : 's'}${of ? ` (${Math.round((100 * cast) / of)}%)` : ''}`;
+
 export default function VotingPortal() {
   const [session, setSession] = useState(null);
   const [account, setAccount] = useState(null);
@@ -26,6 +30,8 @@ export default function VotingPortal() {
   const [results, setResults] = useState({});
   const [participants, setParticipants] = useState({});
   const [finalResults, setFinalResults] = useState({});
+  // How many managers have voted in each open or closed vote (counts only, public).
+  const [turnout, setTurnout] = useState({});
   const [editingEventId, setEditingEventId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -102,11 +108,13 @@ export default function VotingPortal() {
       ? supabase.from('voting_ballots').select('*').in('event_id', eventIds).eq('manager_id', managerAccount.manager_id)
       : Promise.resolve({ data: [], error: null });
     const finalResultQuery = supabase.from('voting_event_results').select('*').in('event_id', eventIds);
-    const [questionResult, ballotResult, finalResultResult] = await Promise.all([
+    const [questionResult, ballotResult, finalResultResult, turnoutResult] = await Promise.all([
       supabase.from('voting_questions').select('*').in('event_id', eventIds).order('sort_order').order('id'),
       ownBallotQuery,
       finalResultQuery,
+      supabase.rpc('voting_turnout'),
     ]);
+    setTurnout(Object.fromEntries((turnoutResult.data || []).map((row) => [row.event_id, row])));
     if (questionResult.error) { setMessage(questionResult.error.message); setLoading(false); return; }
     const questionRows = questionResult.data || [];
     setQuestions(questionRows);
@@ -223,7 +231,7 @@ export default function VotingPortal() {
       return <section className={`card voting-card voting-card--${vote.status}`} key={vote.id}>
         <p className="eyebrow">{vote.event_type === 'awards' ? 'Awards' : vote.event_type === 'test' ? 'System test' : governanceLabel(vote.governance_kind)} · {vote.status}</p>
         {editingEventId === vote.id ? <div className="voting-card__edit"><label>Poll title<input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label><label>Description <span className="muted">— blank lines become separate paragraphs</span><textarea rows={8} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label><div className="button-row"><button type="button" onClick={() => saveEdit(vote)}>Save changes</button><button type="button" className="secondary" onClick={() => setEditingEventId(null)}>Cancel</button></div></div> : <><h2>{vote.title}</h2>{vote.description && <div className="voting-card__proposal">{vote.description.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}</>}
-        <div className="voting-card__meta"><span><strong>Opens</strong> {formatDate(vote.opens_at)}</span><span><strong>Closes</strong> {formatDate(vote.closes_at)}</span></div>
+        <div className="voting-card__meta"><span><strong>Opens</strong> {formatDate(vote.opens_at)}</span><span><strong>Closes</strong> {formatDate(vote.closes_at)}</span>{turnout[vote.id] && <span><strong>Voted</strong> {turnoutText(turnout[vote.id])}</span>}</div>
         {vote.event_type === 'poll' && <p className="voting-card__rules"><strong>Voting rules:</strong> quorum {vote.quorum_percent || 0}% · {vote.decision_rule}{vote.decision_rule !== 'plurality' ? ` at ${vote.threshold_percent}%` : ''} · tie: {(vote.tie_policy || 'no_change').replaceAll('_', ' ')}</p>}
         {isAdmin && editingEventId !== vote.id && <button type="button" className="secondary voting-card__edit-button" onClick={() => startEdit(vote)}>Edit poll text</button>}
         {existingBallot && <p><strong>Your ballot is saved.</strong> {canVote ? 'You may change it before the deadline.' : ''}</p>}
