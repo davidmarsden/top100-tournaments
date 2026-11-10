@@ -112,8 +112,11 @@ export function formatVotePost(event) {
   } else if (questions[0]) {
     parts.push(clean(questions[0].title, 300));
   }
-  parts.push(`${awards ? 'Vote' : 'Have your say'} with your Manager Portal account: ${awards ? AWARDS_VOTE_URL : POLLS_VOTE_URL}`);
-  parts.push(awards ? 'Every Top 100 manager has a vote. Who gets yours?' : 'Every Top 100 manager has a vote.');
-  const markdown = parts.join('\n\n');
-  return { title: `${awards ? 'Vote now' : 'New poll'}: ${title}`, markdown: markdown.length > 3900 ? `${markdown.slice(0, 3890)}…` : markdown };
+  // Shorten the body, never the closing lines, so the voting link always survives.
+  const tail = [`${awards ? 'Vote' : 'Have your say'} with your Manager Portal account: ${awards ? AWARDS_VOTE_URL : POLLS_VOTE_URL}`,
+    awards ? 'Every Top 100 manager has a vote. Who gets yours?' : 'Every Top 100 manager has a vote.'].join('\n\n');
+  let body = parts.join('\n\n');
+  const room = 3900 - tail.length - 2;
+  if (body.length > room) body = `${body.slice(0, room - 1)}…`;
+  return { title: `${awards ? 'Vote now' : 'New poll'}: ${title}`, markdown: `${body}\n\n${tail}` };
 }

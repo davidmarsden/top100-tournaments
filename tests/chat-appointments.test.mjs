@@ -76,4 +76,9 @@ test('announces an awards vote once it has settled, with every category and nomi
   assert.match(post.markdown, /Voting closes Sun 15 Nov, 12:00 \(UK time\)/);
   assert.match(post.markdown, /\*\*Overall Manager of the Season\*\*: Chris East[\s\S]*\*\*Division 1 Manager of the Season\*\*: André Guerra, Ash L/);
   assert.match(post.markdown, /https:\/\/awards\.smtop100\.blog\/vote/);
+  const huge = { ...event, voting_questions: Array.from({ length: 30 }, (_, q) => ({ title: `Category ${q} with a long name`, sort_order: q,
+    voting_options: Array.from({ length: 10 }, (_, o) => ({ label: `Nominee ${q}-${o} with a long label`, sort_order: o })) })) };
+  const long = formatVotePost(huge).markdown;
+  assert.ok(long.length <= 3900, 'fits');
+  assert.match(long, /…\n\nVote with your Manager Portal account: https:\/\/awards\.smtop100\.blog\/vote/, 'link survives shortening');
 });
