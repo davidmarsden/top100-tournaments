@@ -74,3 +74,49 @@ export function formatVacancyPost(vacancy) {
   parts.push('Who fancies it? Reply below.');
   return { title: `Vacancy: ${club}${division}`, markdown: parts.join('\n\n') };
 }
+
+// Votes -----------------------------------------------------------------------------------------
+
+// Shared Voting events (awards and community polls) are announced once, when they open.
+export const AWARDS_VOTE_URL = 'https://awards.smtop100.blog/vote';
+export const POLLS_VOTE_URL = 'https://vote.smtop100.blog/';
+
+export function voteKey(worldSlug, event) {
+  return `${worldSlug}:vote:e${Number(event.id)}`;
+}
+
+// Open awards and polls that opened recently and haven't closed, after SETTLE_MINUTES so the
+// admin team can correct a vote just opened.
+export function newVotes(events, now = new Date(), days = RECENT_DAYS) {
+  const at = new Date(now).getTime();
+  const since = at - days * 24 * 60 * 60 * 1000;
+  const settled = at - SETTLE_MINUTES * 60 * 1000;
+  return (events || [])
+    .filter((e) => e?.id != null && e.status === 'open' && ['awards', 'poll'].includes(e.event_type)
+      && Date.parse(e.opens_at) >= since && Date.parse(e.opens_at) <= settled
+      && (!e.closes_at || Date.parse(e.closes_at) > at))
+    .sort((a, b) => Date.parse(a.opens_at) - Date.parse(b.opens_at) || Number(a.id) - Number(b.id));
+}
+
+const byOrder = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
+
+export function formatVotePost(event) {
+  const title = clean(event.title, 160);
+  const awards = event.event_type === 'awards';
+  const by = event.closes_at ? ` Voting closes ${closing(event.closes_at)} (UK time).` : '';
+  const parts = [`Voting is open: **${title}**.${by}`];
+  const questions = [...(event.voting_questions || [])].sort(byOrder);
+  if (awards) {
+    parts.push(questions.map((question) => `**${clean(question.title, 120)}**: ${[...(question.voting_options || [])].sort(byOrder)
+      .map((option) => clean(option.label, 60)).join(', ')}`).join('\n\n'));
+  } else if (questions[0]) {
+    parts.push(clean(questions[0].title, 300));
+  }
+  // Shorten the body, never the closing lines, so the voting link always survives.
+  const tail = [`${awards ? 'Vote' : 'Have your say'} with your Manager Portal account: ${awards ? AWARDS_VOTE_URL : POLLS_VOTE_URL}`,
+    awards ? 'Every Top 100 manager has a vote. Who gets yours?' : 'Every Top 100 manager has a vote.'].join('\n\n');
+  let body = parts.join('\n\n');
+  const room = 3900 - tail.length - 2;
+  if (body.length > room) body = `${body.slice(0, room - 1)}…`;
+  return { title: `${awards ? 'Vote now' : 'New poll'}: ${title}`, markdown: `${body}\n\n${tail}` };
+}
