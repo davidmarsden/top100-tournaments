@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { signInFromOtherTop100Sites } from './ManagerEntry.jsx';
+import { vacancyCardFor } from '../lib/appointmentCards.mjs';
 
 // Manager Portal: apply for vacant clubs (rulebook 3.2) and, after a bottom-three
 // finish, say whether you want to stay, move or take a break (3.1).
@@ -132,6 +133,10 @@ function VacanciesCard({ data, onSubmit, onWithdraw, busy }) {
                 {vacancy.open ? (vacancy.closesAt ? `, closes ${when(vacancy.closesAt)}` : '') : ', closed'}</span>
             </label>
             {vacancy.context && <div className="muted">{vacancy.context}</div>}
+            {vacancy.open && vacancyCardFor(vacancy) && (
+              <img src={vacancyCardFor(vacancy).src} alt={`${vacancy.club}: club profile`} loading="lazy" width="1200" height="675"
+                style={{ width: '100%', maxWidth: 640, height: 'auto', borderRadius: 12, marginTop: 8, display: 'block' }} />
+            )}
           </li>
         ))}
       </ul>

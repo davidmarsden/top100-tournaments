@@ -3,11 +3,14 @@
 //
 //   set -a; . /etc/top100-chat.env; set +a
 //   node /opt/top100-chat/repost-appointments.mjs 28 13 14 15 16
+//   node /opt/top100-chat/repost-appointments.mjs 28 17 18 19 20 --vacancies
 //
 // (season, then the vacancy ids). For each vacancy it deletes the "Top 100 News" post recorded under
 // top-100:appointment:s<season>:v<id> (rss.chat /deletepost, over loopback) and forgets the key, so
 // netlify/functions/chat-appointments.mjs announces it again on its next run (every 10 minutes,
 // within three days of publishing), now with the profile card. Add --dry-run to only list them.
+// --vacancies does the same for vacancy announcements (top-100:vacancy:s<season>:v<id>), which are
+// posted again with their club profile card while still open, within three days of opening.
 // The gateway service is stopped for the few seconds this takes: it saves the whole store after
 // each post, so a post in flight could otherwise write back a key removed here.
 import fs from 'node:fs';
@@ -16,9 +19,10 @@ import { execFileSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
-const [season, ...ids] = args.filter((arg) => arg !== '--dry-run').map(Number);
+const kind = args.includes('--vacancies') ? 'vacancy' : 'appointment';
+const [season, ...ids] = args.filter((arg) => !arg.startsWith('--')).map(Number);
 if (!Number.isInteger(season) || !ids.length || ids.some((id) => !Number.isInteger(id))) {
-  console.error('Usage: node repost-appointments.mjs <season> <vacancy id>... [--dry-run]');
+  console.error('Usage: node repost-appointments.mjs <season> <vacancy id>... [--vacancies] [--dry-run]');
   process.exit(1);
 }
 
@@ -49,7 +53,7 @@ const call = (url, method = 'GET') => new Promise((resolve, reject) => {
 });
 
 const store = JSON.parse(fs.readFileSync(storePath, 'utf8'));
-const keys = ids.map((id) => `top-100:appointment:s${season}:v${id}`);
+const keys = ids.map((id) => `top-100:${kind}:s${season}:v${id}`);
 const found = keys.filter((key) => store[key]);
 for (const key of keys) console.log(store[key] ? `${key}: chat item ${store[key].id}, posted ${store[key].at}` : `${key}: not posted (nothing to do)`);
 if (dryRun || !found.length) process.exit(0);

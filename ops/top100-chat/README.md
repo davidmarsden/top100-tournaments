@@ -212,6 +212,7 @@ Every 10 minutes the scheduled Netlify function `chat-appointments` announces:
 set -a; . /etc/top100-chat.env; set +a
 node /opt/top100-chat/repost-appointments.mjs 28 13 14 15 16 --dry-run   # list only
 node /opt/top100-chat/repost-appointments.mjs 28 13 14 15 16
+node /opt/top100-chat/repost-appointments.mjs 28 17 18 19 20 --vacancies   # vacancy posts, reposted with club cards
 ```
 
 ## Private feed links

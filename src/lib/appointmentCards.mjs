@@ -24,3 +24,19 @@ export function cardFor(season, vacancy) {
   const match = Object.entries(CARDS[season] || {}).find(([name]) => club.includes(normalise(name)) || normalise(name).includes(club));
   return match && normalise(vacancy.appointed).startsWith(normalise(match[1].manager)) ? match[1] : null;
 }
+
+// Club profile cards for open vacancies, by vacancy id (a club can be advertised in more than one
+// round, with a different card each time). Images in public/vacancies/s<season>/, sources in
+// docs/appointment-cards/. Shown in the Manager Portal and the Chat vacancy announcement.
+export const VACANCY_CARDS = {
+  17: { src: '/vacancies/s28/club-udinese.webp', club: 'Udinese Calcio' },
+  18: { src: '/vacancies/s28/club-sevilla.webp', club: 'Sevilla FC' },
+  19: { src: '/vacancies/s28/club-southampton.webp', club: 'Southampton' },
+  20: { src: '/vacancies/s28/club-psv.webp', club: 'PSV' },
+};
+
+// The card for an open vacancy, only when it is for the same club.
+export function vacancyCardFor(vacancy) {
+  const card = VACANCY_CARDS[Number(vacancy?.id)];
+  return card && normalise(vacancy.club) === normalise(card.club) ? card : null;
+}
