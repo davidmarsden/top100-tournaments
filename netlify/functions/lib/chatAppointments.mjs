@@ -1,7 +1,7 @@
 // Formats Top 100 Chat announcements of published appointments (rule 3.2), one post per new
 // manager, with their profile card when there is one. Kept free of Netlify globals so it can be
 // tested with node.
-import { cardFor } from '../../../src/lib/appointmentCards.mjs';
+import { cardFor, vacancyCardFor } from '../../../src/lib/appointmentCards.mjs';
 
 export const SITE_URL = 'https://tournaments.smtop100.blog';
 // Only decisions published this recently are announced, so a first run doesn't post old seasons.
@@ -66,7 +66,9 @@ const closing = (value) => new Date(value).toLocaleString('en-GB', {
 export function formatVacancyPost(vacancy) {
   const club = clean(vacancy.club, 80);
   const division = vacancy.division ? ` (Division ${Number(vacancy.division)})` : '';
-  const parts = [`**${club}**${division} needs a new manager.`];
+  const card = vacancyCardFor(vacancy);
+  const parts = card ? [`![${club} club profile](${SITE_URL}${card.src})`] : [];
+  parts.push(`**${club}**${division} needs a new manager.`);
   if (vacancy.context) parts.push(clean(vacancy.context));
   const by = vacancy.closesAt ? ` by ${closing(vacancy.closesAt)} (UK time)` : '';
   parts.push(`Apply in Manager Portal${by}: ${PORTAL_APPOINTMENTS_URL}`);

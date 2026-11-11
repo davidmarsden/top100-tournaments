@@ -49,6 +49,10 @@ test('announces each newly opened vacancy once it has settled, while it is still
   assert.match(markdown, /\*\*São Paulo FC\*\* \(Division 1\) needs a new manager\./);
   assert.match(markdown, /What São Paulo needs: a winner\./);
   assert.match(markdown, /Apply in Manager Portal by Thu 12 Nov, 18:00 \(UK time\): https:\/\/manager\.smtop100\.blog\/appointments/);
+  assert.doesNotMatch(markdown, /!\[/, 'no card for a vacancy without one');
+  const psv = formatVacancyPost({ id: 20, season: 28, club: 'PSV', division: 4 }).markdown;
+  assert.match(psv, /^!\[PSV club profile\]\(https:\/\/tournaments\.smtop100\.blog\/vacancies\/s28\/club-psv\.webp\)/);
+  assert.doesNotMatch(formatVacancyPost({ id: 20, season: 28, club: 'Another club', division: 4 }).markdown, /!\[/, 'card only for its own club');
 });
 
 test('still announces appointments from a round archived soon after publishing', () => {
