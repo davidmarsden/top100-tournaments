@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { digestItems, digestWindow, formatDigest, parseFeed } from '../netlify/functions/lib/portalNews.mjs';
+import { digestItems, digestWindow, formatDigest, marketLine, parseFeed } from '../netlify/functions/lib/portalNews.mjs';
 
 const feed = `<rss><channel>
 <item><title>Four Top 100 clubs need new managers</title><link>https://smtop100.blog/2026/11/12/four/</link><pubDate>Thu, 12 Nov 2026 14:35:56 +0000</pubDate></item>
@@ -40,4 +40,16 @@ test('one digest of new posts, new managers and votes; nothing when nothing is n
   assert.equal(digest.url, 'https://smtop100.blog/2026/11/12/four/');
   assert.ok(digest.body.length <= 600);
   assert.equal(formatDigest(digestItems({ posts: parseFeed(feed) }, digestWindow(new Date('2026-11-20T18:10:00Z')))), null);
+});
+
+test('adds the transfer market, as in the Chat market post', () => {
+  const market = { deals: 19, totalValue: 181023000, totalFees: 88889000, newlyListedCount: 14,
+    biggest: [{ player: 'G.SIMEONE', rating: 91, from: 'Sampdoria', to: 'Hellas Verona' }],
+    board: { wanted: 2, offered: 1, open: 3 }, newsfeed: [{ manager: 'Kevin Trapp', club: 'AC Milan', message: 'Looking for a striker' }] };
+  const line = marketLine(market);
+  assert.match(line, /^Transfer market: 19 deals worth £181\.0m, biggest G\. Simeone \(91\) Sampdoria → Hellas Verona; 14 new on the transfer list; 2 wanted and 1 offered on the transfer board; newsfeed: Kevin Trapp \(AC Milan\): "Looking for a striker"\.$/);
+  assert.equal(marketLine({ deals: 0, board: {} }), '');
+  const only = formatDigest({ posts: [], appointments: [], votes: [], market: line });
+  assert.equal(only.title, 'Top 100 today: transfer news');
+  assert.equal(only.url, 'https://manager.smtop100.blog/');
 });

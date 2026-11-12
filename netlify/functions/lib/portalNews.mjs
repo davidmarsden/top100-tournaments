@@ -1,7 +1,8 @@
-// The Manager Portal's evening news digest (category "news"): new blog posts, new managers and votes
-// opening in the 24 hours to 18:00 UK time, in one notification per manager per day. Built by
+// The Manager Portal's evening news digest (category "news"): new blog posts, new managers, votes
+// opening and the transfer market (as in the Top 100 Chat market post) in the 24 hours to 18:00 UK time, in one notification per manager per day. Built by
 // netlify/functions/portal-news.mjs and queued with enqueue_news_digest().
 import { recentAppointments } from './chatAppointments.mjs';
+import { hasNews, money, playerName } from './chatDigest.mjs';
 
 export const BLOG_FEED_URL = 'https://smtop100.blog/feed.xml';
 export const DIGEST_HOUR = 18;
@@ -58,8 +59,31 @@ export function digestItems({ posts = [], appointmentData = null, votes = [] }, 
   };
 }
 
+const cut = (value, max) => { const text = String(value ?? '').replace(/\s+/g, ' ').trim(); return text.length > max ? `${text.slice(0, max - 1)}…` : text; };
+
+// One line on the transfer market from chat_market_digest() (deals since the last Chat market post,
+// new transfer listings, transfer board requests and the newsfeed), or '' when it's quiet.
+export function marketLine(market) {
+  if (!hasNews(market)) return '';
+  const bits = [];
+  const deals = Number(market.deals) || 0;
+  if (deals) {
+    const worth = Number(market.totalValue) > 0 ? market.totalValue : market.totalFees;
+    const top = market.biggest?.[0];
+    const biggest = top ? `, biggest ${playerName(top.player)} (${top.rating}) ${cut(top.from, 30)} → ${cut(top.to, 30)}` : '';
+    bits.push(`${deals} deal${deals === 1 ? '' : 's'} worth ${money(worth)}${biggest}`);
+  }
+  if (Number(market.newlyListedCount) > 0) bits.push(`${market.newlyListedCount} new on the transfer list`);
+  const board = market.board || {};
+  const requests = (Number(board.wanted) || 0) + (Number(board.offered) || 0);
+  if (requests) bits.push(`${board.wanted || 0} wanted and ${board.offered || 0} offered on the transfer board`);
+  const news = market.newsfeed?.[0];
+  if (news) bits.push(`newsfeed: ${cut(news.manager, 30)} (${cut(news.club, 30)}): "${cut(news.message, 90)}"`);
+  return bits.length ? `Transfer market: ${bits.join('; ')}.` : '';
+}
+
 // The notification, or null when there's nothing new.
-export function formatDigest({ posts, appointments, votes }) {
+export function formatDigest({ posts, appointments, votes, market = '' }) {
   const counts = [];
   const lines = [];
   if (posts.length) {
@@ -74,11 +98,16 @@ export function formatDigest({ posts, appointments, votes }) {
     counts.push(votes.length === 1 ? 'voting open' : `${votes.length} votes open`);
     lines.push(`Voting open: ${votes.map((v) => `${v.title}${v.closes_at ? ` (closes ${closing(v.closes_at)})` : ''}`).join('; ')}.`);
   }
+  if (market) {
+    counts.push('transfer news');
+    lines.push(market);
+  }
   if (!lines.length) return null;
   let body = lines.join(' ');
   if (body.length > 600) body = `${body.slice(0, 599)}…`;
   const url = posts.length ? (posts.length === 1 ? posts[0].link : 'https://smtop100.blog/')
     : appointments.length ? 'https://tournaments.smtop100.blog/appointments'
-      : votes.some((v) => v.event_type === 'awards') ? 'https://awards.smtop100.blog/vote' : 'https://vote.smtop100.blog/';
+      : votes.length ? (votes.some((v) => v.event_type === 'awards') ? 'https://awards.smtop100.blog/vote' : 'https://vote.smtop100.blog/')
+        : 'https://manager.smtop100.blog/';
   return { title: `Top 100 today: ${counts.join(', ')}`, body, url };
 }
