@@ -1,12 +1,13 @@
 // Manager Portal news, every 10 minutes:
 // - each new vacancy notifies every manager once it has settled (notify_new_vacancies());
 // - after 18:00 UK time, one evening digest per manager of the day's new blog posts, new managers
-//   and votes opening (lib/portalNews.mjs, enqueue_news_digest()). The dedupe key makes it once a
+//   and votes opening, plus the transfer market as in the Chat market post (lib/portalNews.mjs,
+//   enqueue_news_digest()). The dedupe key makes it once a
 //   day; a day with nothing new sends nothing.
 // push-dispatch-scheduled.mjs sends the queued notifications. Set TOP100_PORTAL_NEWS_ENABLED to
 // "false" to stop both.
 import { envValue, rpc } from './lib/pushDispatch.mjs';
-import { BLOG_FEED_URL, digestItems, digestWindow, formatDigest, parseFeed } from './lib/portalNews.mjs';
+import { BLOG_FEED_URL, digestItems, digestWindow, formatDigest, marketLine, parseFeed } from './lib/portalNews.mjs';
 
 const WORLD = 'top-100';
 
@@ -35,14 +36,16 @@ export default async () => {
         if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
         return response;
       };
-      const [feed, appointmentData, votes] = await Promise.all([
+      const [feed, appointmentData, votes, market] = await Promise.all([
         fetch(BLOG_FEED_URL, { headers: { 'user-agent': 'Top100PortalNews/1.0' } }).then(ok('blog feed')).then((r) => r.text()),
         rpc(config, 'public_appointment_decisions', { p_world_slug: WORLD }),
         fetch(`${config.supabaseUrl}/rest/v1/voting_events?select=title,event_type,status,opens_at,closes_at&status=in.(open,closed)&event_type=in.(awards,poll)`, {
           headers: { apikey: config.serviceRoleKey, Authorization: `Bearer ${config.serviceRoleKey}` },
         }).then(ok('voting_events')).then((r) => r.json()),
+        // Read-only: the deals, listings, transfer board and newsfeed since the last Chat market post.
+        rpc(config, 'chat_market_digest', { p_world_slug: WORLD }),
       ]);
-      const notification = formatDigest(digestItems({ posts: parseFeed(feed), appointmentData, votes }, window));
+      const notification = formatDigest({ ...digestItems({ posts: parseFeed(feed), appointmentData, votes }, window), market: marketLine(market) });
       digest = notification
         ? { day: window.day, queued: await rpc(config, 'enqueue_news_digest', { p_day: window.day, p_title: notification.title, p_body: notification.body, p_url: notification.url }) }
         : { day: window.day, queued: 0, reason: 'nothing new' };
