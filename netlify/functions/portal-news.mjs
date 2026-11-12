@@ -29,12 +29,18 @@ export default async () => {
   const window = digestWindow();
   if (window) {
     try {
+      // Any source failing fails the run, so the next run (10 minutes later) tries again: a digest
+      // is sent once a day, so it must never go out with a source missing.
+      const ok = (label) => (response) => {
+        if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+        return response;
+      };
       const [feed, appointmentData, votes] = await Promise.all([
-        fetch(BLOG_FEED_URL, { headers: { 'user-agent': 'Top100PortalNews/1.0' } }).then((r) => (r.ok ? r.text() : '')).catch(() => ''),
-        rpc(config, 'public_appointment_decisions', { p_world_slug: WORLD }).catch(() => null),
+        fetch(BLOG_FEED_URL, { headers: { 'user-agent': 'Top100PortalNews/1.0' } }).then(ok('blog feed')).then((r) => r.text()),
+        rpc(config, 'public_appointment_decisions', { p_world_slug: WORLD }),
         fetch(`${config.supabaseUrl}/rest/v1/voting_events?select=title,event_type,status,opens_at,closes_at&status=in.(open,closed)&event_type=in.(awards,poll)`, {
           headers: { apikey: config.serviceRoleKey, Authorization: `Bearer ${config.serviceRoleKey}` },
-        }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+        }).then(ok('voting_events')).then((r) => r.json()),
       ]);
       const notification = formatDigest(digestItems({ posts: parseFeed(feed), appointmentData, votes }, window));
       digest = notification
