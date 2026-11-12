@@ -12,6 +12,8 @@ export const CARDS = {
     Sampdoria: { src: '/appointments/s28/card-chris.webp', manager: 'Chris East' },
     'AC Milan': { src: '/appointments/s28/card-kevin.webp', manager: 'Kevin Trapp' },
     'Sevilla FC': { src: '/appointments/s28/card-shashi.webp', manager: 'Shashi P' },
+    // Round 3
+    'Udinese Calcio': { src: '/appointments/s28/card-giuseppe.webp', manager: 'Giuseppe Trovato' },
   },
 };
 
