@@ -12,6 +12,8 @@ export const CARDS = {
     Sampdoria: { src: '/appointments/s28/card-chris.webp', manager: 'Chris East' },
     'AC Milan': { src: '/appointments/s28/card-kevin.webp', manager: 'Kevin Trapp' },
     'Sevilla FC': { src: '/appointments/s28/card-shashi.webp', manager: 'Shashi P' },
+    // Round 3
+    'Udinese Calcio': { src: '/appointments/s28/card-giuseppe.webp', manager: 'Giuseppe Trovato' },
   },
 };
 
@@ -33,6 +35,7 @@ export const VACANCY_CARDS = {
   18: { src: '/vacancies/s28/club-sevilla.webp', club: 'Sevilla FC' },
   19: { src: '/vacancies/s28/club-southampton.webp', club: 'Southampton' },
   20: { src: '/vacancies/s28/club-psv.webp', club: 'PSV' },
+  21: { src: '/vacancies/s28/club-psg.webp', club: 'Paris Saint-Germain' },
 };
 
 // The card for an open vacancy, only when it is for the same club.
