@@ -35,6 +35,7 @@ export const VACANCY_CARDS = {
   18: { src: '/vacancies/s28/club-sevilla.webp', club: 'Sevilla FC' },
   19: { src: '/vacancies/s28/club-southampton.webp', club: 'Southampton' },
   20: { src: '/vacancies/s28/club-psv.webp', club: 'PSV' },
+  21: { src: '/vacancies/s28/club-psg.webp', club: 'Paris Saint-Germain' },
 };
 
 // The card for an open vacancy, only when it is for the same club.
