@@ -11,7 +11,8 @@ const CATEGORIES = [
   { key: 'opponent_actions', label: 'Opponent actions', description: 'Your opponent sends, receives or chases the SM match request, or reports a problem.' },
   { key: 'match_comments', label: 'Match comments', description: 'New comments on your fixtures.' },
   { key: 'chat_replies', label: 'Top 100 Chat', description: 'Replies to your posts in Top 100 Chat.' },
-  { key: 'broadcasts', label: 'Announcements', description: 'Messages from the Top 100 organisers.' },
+  { key: 'broadcasts', label: 'Announcements', description: 'Messages from the Top 100 organisers, including new vacancies.' },
+  { key: 'news', label: 'Daily news', description: 'One evening round-up of new blog posts, new managers and votes opening.' },
 ];
 const DEFAULT_PREFS = Object.fromEntries(CATEGORIES.map((category) => [category.key, true]));
 
