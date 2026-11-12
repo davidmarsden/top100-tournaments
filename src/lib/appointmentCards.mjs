@@ -14,6 +14,7 @@ export const CARDS = {
     'Sevilla FC': { src: '/appointments/s28/card-shashi.webp', manager: 'Shashi P' },
     // Round 3
     'Udinese Calcio': { src: '/appointments/s28/card-giuseppe.webp', manager: 'Giuseppe Trovato' },
+    'Paris Saint-Germain': { src: '/appointments/s28/card-jay.webp', manager: 'Jay Jones' },
   },
 };
 
