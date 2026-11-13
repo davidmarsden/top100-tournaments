@@ -17,6 +17,7 @@ export const CARDS = {
     'Paris Saint-Germain': { src: '/appointments/s28/card-jay.webp', manager: 'Jay Jones' },
     Southampton: { src: '/appointments/s28/card-carlo.webp', manager: 'Carlo Ancelotti' },
     'AS Monaco': { src: '/appointments/s28/card-francesco.webp', manager: 'Francesco Senesi' },
+    PSV: { src: '/appointments/s28/card-anton.webp', manager: 'Anton I' },
   },
 };
 
