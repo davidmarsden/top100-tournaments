@@ -16,6 +16,7 @@ export const CARDS = {
     'Udinese Calcio': { src: '/appointments/s28/card-giuseppe.webp', manager: 'Giuseppe Trovato' },
     'Paris Saint-Germain': { src: '/appointments/s28/card-jay.webp', manager: 'Jay Jones' },
     Southampton: { src: '/appointments/s28/card-carlo.webp', manager: 'Carlo Ancelotti' },
+    'AS Monaco': { src: '/appointments/s28/card-francesco.webp', manager: 'Francesco Senesi' },
   },
 };
 
