@@ -15,6 +15,7 @@ export const CARDS = {
     // Round 3
     'Udinese Calcio': { src: '/appointments/s28/card-giuseppe.webp', manager: 'Giuseppe Trovato' },
     'Paris Saint-Germain': { src: '/appointments/s28/card-jay.webp', manager: 'Jay Jones' },
+    Southampton: { src: '/appointments/s28/card-carlo.webp', manager: 'Carlo Ancelotti' },
   },
 };
 
