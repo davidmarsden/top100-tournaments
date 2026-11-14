@@ -18,6 +18,7 @@ export const CARDS = {
     Southampton: { src: '/appointments/s28/card-carlo.webp', manager: 'Carlo Ancelotti' },
     'AS Monaco': { src: '/appointments/s28/card-francesco.webp', manager: 'Francesco Senesi' },
     PSV: { src: '/appointments/s28/card-anton.webp', manager: 'Anton I' },
+    'FC Basel': { src: '/appointments/s28/card-max.webp', manager: 'MAX PALACE' },
   },
 };
 
