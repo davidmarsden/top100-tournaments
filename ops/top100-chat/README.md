@@ -324,6 +324,6 @@ Do not downgrade or replace the system-wide Node installation just to repair Top
 
 `/auth/logout` removes both the HttpOnly clubhouse cookie and rss.chat's local posting credential.
 
-Removing/deactivating a manager account prevents issuance of any new SSO ticket. Existing clubhouse sessions currently last 12 hours by default; reduce `TOP100_CHAT_SESSION_SECONDS` if faster revocation is required.
+Removing/deactivating a manager account prevents issuance of any new SSO ticket. Existing clubhouse sessions currently last 30 days by default; reduce `TOP100_CHAT_SESSION_SECONDS` if faster revocation is required.
 
 A later hardening step can add server-side session revocation against the Top 100 database on every auth check if immediate revocation becomes necessary.
