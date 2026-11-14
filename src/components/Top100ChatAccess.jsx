@@ -184,6 +184,9 @@ export default function Top100ChatAccess() {
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState('Checking whether you are already signed in…');
   const [busy, setBusy] = useState(false);
+  // True until we know whether this browser is already signed in, so a signed-in manager never
+  // sees the sign-in form flash up while the session is renewed.
+  const [checking, setChecking] = useState(true);
   const launchedForToken = useRef('');
   const callbackTokenRef = useRef('');
 
@@ -224,6 +227,7 @@ export default function Top100ChatAccess() {
 
     if (!hasSupabaseConfig || !chatAuthClient) {
       setBusy(false);
+      setChecking(false);
       setStatus('My Matches sign-in is unavailable.');
       return;
     }
@@ -249,7 +253,7 @@ export default function Top100ChatAccess() {
     let cancelled = false;
     refreshStoredSession().then((token) => {
       if (cancelled) return;
-      if (token) { setActiveToken(token); launchChat(token); } else setStatus('');
+      if (token) { setActiveToken(token); launchChat(token); } else { setStatus(''); setChecking(false); }
     });
 
     // Signed in in another tab of this browser (a sign-in link, a code, or the Manager Portal):
@@ -349,11 +353,20 @@ export default function Top100ChatAccess() {
     callbackTokenRef.current = '';
     clearStoredShareIntent();
     setBusy(false);
+    setChecking(false);
     setStatus('');
   }
 
   if (!hasSupabaseConfig || !chatAuthClient) {
     return <main className="manager-portal-shell"><section className="warning-card"><strong>Top 100 Chat unavailable.</strong><span>Manager sign-in is not connected.</span></section></main>;
+  }
+
+  if (!activeToken && checking) {
+    return (
+      <main className="manager-portal-shell">
+        <section className="card manager-login-card"><p className="status">Opening Top 100 Chat…</p></section>
+      </main>
+    );
   }
 
   if (!activeToken) {

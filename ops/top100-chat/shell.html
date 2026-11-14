@@ -29,9 +29,20 @@
       <p>Top 100 Chat is a private conversation space for approved Top 100 managers. The front door is public; the conversations, member activity, feeds and archives behind it are not.</p>
       <p class="muted">Sign in using the same secure My Matches account you already use for fixtures and tournament tools.</p>
       {{ERROR}}
+      <p class="muted" id="auto" hidden>Signing you in…</p>
       <a class="button" href="https://manager.smtop100.blog/chat">Sign in with My Matches</a>
       <footer>Top 100 Chat is run as part of <a href="https://smtop100.blog/">Top 100 Soccer Manager Worlds</a>.</footer>
     </section>
   </main>
+<script>
+  // Go straight on to sign-in: a manager already signed in to My Matches comes straight back in.
+  // Stay here after signing out, or when a sign-in link failed, so it doesn't loop.
+  (function () {
+    var q = new URLSearchParams(location.search);
+    if (q.has('error') || q.has('signedout')) return;
+    document.getElementById('auto').hidden = false;
+    location.replace('https://manager.smtop100.blog/chat');
+  })();
+</script>
 </body>
 </html>

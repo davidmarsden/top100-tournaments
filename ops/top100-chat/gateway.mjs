@@ -24,7 +24,9 @@ const maxPushSubscriptionsPerManager = 8;
 const maxPushSubscriptionsTotal = 500;
 const cookieSecret = crypto.createHmac('sha256', ssoSecret).update('top100-chat-cookie-v1').digest();
 const cookieName = 'top100_chat_session';
-const sessionLifetimeSeconds = Number(process.env.TOP100_CHAT_SESSION_SECONDS || 43200);
+// 30 days: managers stay signed in to Chat like any other app. Deactivated managers can no longer
+// get a new ticket; lower this if a removed manager must lose an existing session sooner.
+const sessionLifetimeSeconds = Number(process.env.TOP100_CHAT_SESSION_SECONDS || 2592000);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const shellHtml = fs.readFileSync(path.join(here, 'shell.html'), 'utf8');
 const clientThemeCss = fs.readFileSync(path.join(here, 'client-theme.css'), 'utf8');
@@ -863,7 +865,7 @@ const server = http.createServer(async (request, response) => {
       // clear browser state and the clubhouse cookie.
     }
 
-    send(response, 200, '<!doctype html><meta charset="utf-8"><script>localStorage.removeItem("rssNetworkMemory");location.replace("/login");</script>', {
+    send(response, 200, '<!doctype html><meta charset="utf-8"><script>localStorage.removeItem("rssNetworkMemory");location.replace("/login?signedout=1");</script>', {
       'Content-Type': 'text/html; charset=utf-8',
       'Set-Cookie': `${cookieName}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
     });
