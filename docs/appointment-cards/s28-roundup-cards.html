@@ -1,0 +1,178 @@
+<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b1220;font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#e8eef8;padding:20px}
+.card{width:1200px;height:675px;margin:0 0 30px;border-radius:28px;padding:44px 56px;position:relative;overflow:hidden;display:flex;flex-direction:column;
+ background:radial-gradient(circle at 85% 12%,rgba(250,204,21,.18) 0,transparent 45%),linear-gradient(135deg,#1a1730 0%,#0a1630 100%);border:2px solid #b8932e}
+.top{display:flex;justify-content:space-between;align-items:center;font-size:20px;letter-spacing:.14em;text-transform:uppercase;color:#d9c48a}
+.badge{background:#facc15;color:#1a1730;font-weight:800;padding:8px 18px;border-radius:999px;letter-spacing:.06em}
+h1{font-size:54px;line-height:1.05;margin-top:18px;font-weight:800}
+.sub{font-size:24px;margin-top:8px;color:#c9d6ea}
+.foot{position:absolute;bottom:24px;left:56px;right:56px;display:flex;justify-content:space-between;font-size:17px;color:#9a8f6a;letter-spacing:.06em}
+/* tiles */
+.grid{display:grid;gap:14px;margin:auto 0;padding-bottom:30px}
+.g5{grid-template-columns:repeat(5,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.g2{grid-template-columns:repeat(2,1fr)}
+.tile{background:rgba(255,255,255,.06);border:1px solid rgba(250,204,21,.28);border-radius:18px;padding:18px 18px}
+.tile .d{font-size:16px;letter-spacing:.12em;text-transform:uppercase;color:#d9c48a}
+.tile .c{font-size:27px;font-weight:800;margin-top:10px;line-height:1.1}
+.tile .m{font-size:19px;color:#c9d6ea;margin-top:6px}
+.tile .n{font-size:44px;font-weight:800;color:#facc15;margin-top:16px;line-height:1}
+.tile .l{font-size:16px;color:#c3c9d8;margin-top:6px;line-height:1.3}
+.tile ul{list-style:none;margin-top:10px}
+.tile li{font-size:21px;line-height:1.25;padding:7px 0;border-top:1px solid rgba(255,255,255,.08)}
+.tile li:first-child{border-top:0}
+.tile li small{display:block;font-size:15px;color:#9fb0c8;letter-spacing:.04em}
+.row{display:flex;justify-content:space-between;align-items:baseline;font-size:22px;padding:9px 0;border-top:1px solid rgba(255,255,255,.08)}
+.row:first-of-type{border-top:0}.row b{font-weight:800}.row span{color:#c9d6ea;font-size:19px}
+/* promoted green, relegated red */
+.up{border-color:#22c55e;background:radial-gradient(circle at 85% 12%,rgba(34,197,94,.2) 0,transparent 45%),linear-gradient(135deg,#0f2a22 0%,#0a1630 100%)}
+.up .top{color:#9ee6b8}.up .badge{background:#22c55e;color:#06210f}.up .tile{border-color:rgba(34,197,94,.35)}.up .tile .d{color:#9ee6b8}.up .foot{color:#6f9c80}
+.down{border-color:#ef4444;background:radial-gradient(circle at 85% 12%,rgba(239,68,68,.18) 0,transparent 45%),linear-gradient(135deg,#2a1218 0%,#0a1630 100%)}
+.down .top{color:#f3a9a9}.down .badge{background:#ef4444;color:#2a0707}.down .tile{border-color:rgba(239,68,68,.35)}.down .tile .d{color:#f3a9a9}.down .foot{color:#a07070}
+/* farewell */
+.fw{border-color:#94a3b8;background:radial-gradient(circle at 85% 12%,rgba(148,163,184,.22) 0,transparent 45%),linear-gradient(135deg,#1b2333 0%,#0a1630 100%);padding:48px 60px}
+.fw .top{color:#cbd5e1}.fw .badge{background:#e2e8f0;color:#111827}
+.fw .award{margin-top:26px;font-size:24px;font-weight:700;color:#e2e8f0;letter-spacing:.04em}
+.fw h1{font-size:68px;margin-top:6px}
+.fw .move{font-size:28px;margin-top:10px;color:#c9d6ea}.fw .move b{color:#f1f5f9}
+.fw .stats{display:flex;gap:18px;margin-top:30px}
+.fw .stat{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(203,213,225,.3);border-radius:18px;padding:16px 20px}
+.fw .stat .n{font-size:44px;font-weight:800;color:#f1f5f9;line-height:1}
+.fw .stat .l{font-size:17px;color:#c3c9d8;margin-top:8px;line-height:1.25}
+.fw .cite{margin-top:24px;font-size:23px;line-height:1.4;color:#eef2fa}
+.fw .apt{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.fw .apt span{border:1.5px solid #cbd5e1;color:#e2e8f0;border-radius:999px;padding:7px 16px;font-size:19px;font-weight:700}
+.fw .foot{left:60px;right:60px;bottom:28px;color:#8a94a6}
+</style></head><body>
+
+<div class="card" id="champions">
+ <div class="top"><span>Top 100 · Season 28</span><span class="badge">🏆 Champions</span></div>
+ <h1>Season 28 champions</h1>
+ <div class="grid g5">
+  <div class="tile"><div class="d">Division 1</div><div class="c">FC Porto</div><div class="m">André Guerra</div><div class="n">87</div><div class="l">points, 4 clear of Chelsea</div></div>
+  <div class="tile"><div class="d">Division 2</div><div class="c">SL Benfica</div><div class="m">Carlos Miranda</div><div class="n">70</div><div class="l">points, 4 clear of Udinese</div></div>
+  <div class="tile"><div class="d">Division 3</div><div class="c">Sampdoria</div><div class="m">Sir Stephen Beddows</div><div class="n">67</div><div class="l">points, 1 clear of Ajax</div></div>
+  <div class="tile"><div class="d">Division 4</div><div class="c">SSC Napoli</div><div class="m">Alessio Tonato</div><div class="n">82</div><div class="l">points, 1 clear of Valencia</div></div>
+  <div class="tile"><div class="d">Division 5</div><div class="c">PSV</div><div class="m">Chris East</div><div class="n">86</div><div class="l">points and 94 goals</div></div>
+ </div>
+ <div class="foot"><span>Final tables, Season 28</span><span>smtop100.blog</span></div>
+</div>
+
+<div class="card up" id="promoted">
+ <div class="top"><span>Top 100 · Season 28</span><span class="badge">▲ Promoted</span></div>
+ <h1>Going up</h1>
+ <div class="grid g4">
+  <div class="tile"><div class="d">To Division 1</div><ul><li>SL Benfica<small>Champions</small></li><li>Udinese Calcio<small>2nd</small></li><li>West Bromwich Albion<small>3rd</small></li><li>Genoa CFC<small>Play-off winners</small></li></ul></div>
+  <div class="tile"><div class="d">To Division 2</div><ul><li>Sampdoria<small>Champions</small></li><li>Ajax<small>2nd</small></li><li>Zenit Saint Petersburg<small>3rd</small></li><li>AS Monaco<small>Play-off winners</small></li></ul></div>
+  <div class="tile"><div class="d">To Division 3</div><ul><li>SSC Napoli<small>Champions</small></li><li>Valencia CF<small>2nd</small></li><li>Lokomotiv Moskva<small>3rd</small></li><li>Beşiktaş JK<small>Play-off winners</small></li></ul></div>
+  <div class="tile"><div class="d">To Division 4</div><ul><li>PSV<small>Champions</small></li><li>AZ Alkmaar<small>2nd</small></li><li>Atalanta BC<small>3rd</small></li><li>US Sassuolo<small>Play-off winners</small></li></ul></div>
+ </div>
+ <div class="foot"><span>Top three and play-off winners, Divisions 2 to 5</span><span>smtop100.blog</span></div>
+</div>
+
+<div class="card down" id="relegated">
+ <div class="top"><span>Top 100 · Season 28</span><span class="badge">▼ Relegated</span></div>
+ <h1>Going down</h1>
+ <div class="grid g4">
+  <div class="tile"><div class="d">From Division 1</div><ul><li>Manchester City<small>17th</small></li><li>Hamburger SV<small>18th</small></li><li>SC Internacional<small>19th</small></li><li>Juventus<small>20th</small></li></ul></div>
+  <div class="tile"><div class="d">From Division 2</div><ul><li>Galatasaray SK<small>17th</small></li><li>Atlético Madrid<small>18th</small></li><li>FC Augsburg<small>19th</small></li><li>Manchester United<small>20th</small></li></ul></div>
+  <div class="tile"><div class="d">From Division 3</div><ul><li>Swansea City<small>17th</small></li><li>Standard Liège<small>18th</small></li><li>Borussia Mönchengladbach<small>19th</small></li><li>Dinamo Zagreb<small>20th</small></li></ul></div>
+  <div class="tile"><div class="d">From Division 4</div><ul><li>Rubin Kazan<small>17th</small></li><li>Paris Saint-Germain<small>18th</small></li><li>Chievo Verona<small>19th</small></li><li>Feyenoord<small>20th</small></li></ul></div>
+ </div>
+ <div class="foot"><span>Bottom four, Divisions 1 to 4</span><span>smtop100.blog</span></div>
+</div>
+
+<div class="card" id="cups">
+ <div class="top"><span>Top 100 · Season 28</span><span class="badge">🏆 Cups</span></div>
+ <h1>Season 28 cup winners</h1>
+ <div class="grid g2">
+  <div class="tile">
+   <div class="row"><b>World Club Cup</b><span>FC Porto · André Guerra</span></div>
+   <div class="row"><b>Top 100 Cup</b><span>Hellas Verona · Luís André Libras-Boas</span></div>
+   <div class="row"><b>Top 100 Shield</b><span>Borussia Dortmund · Dario Saviano</span></div>
+   <div class="row"><b>Charity Shield</b><span>Chelsea · James Mckenzie</span></div>
+   <div class="row"><b>Youth Cup</b><span>Espanyol Academy · Glen Mullan</span></div>
+  </div>
+  <div class="tile">
+   <div class="row"><b>SMFA Champions Cup</b><span>Leicester City · Ash L</span></div>
+   <div class="row"><b>SMFA Super Cup</b><span>Leicester City · Ash L</span></div>
+   <div class="row"><b>SMFA Shield</b><span>Stoke City · Andrew Kelly</span></div>
+   <div class="row"><b>Youth Shield</b><span>Sporting · Carl Martin</span></div>
+  </div>
+ </div>
+ <div class="foot"><span>Honours, Season 28</span><span>smtop100.blog</span></div>
+</div>
+
+<div class="card" id="managers">
+ <div class="top"><span>Top 100 · Season 29</span><span class="badge">✍ New managers</span></div>
+ <h1>New managers for Season 29</h1>
+ <div class="grid g2">
+  <div class="tile">
+   <div class="row"><b>Borussia Dortmund</b><span>Scott Mckenzie</span></div>
+   <div class="row"><b>Hellas Verona</b><span>Sir Stephen Beddows</span></div>
+   <div class="row"><b>Juventus</b><span>Mister TRX</span></div>
+   <div class="row"><b>Atlético Madrid</b><span>Simon Thomas</span></div>
+   <div class="row"><b>São Paulo FC</b><span>Neil Frankland</span></div>
+   <div class="row"><b>AC Milan</b><span>Kevin Trapp</span></div>
+   <div class="row"><b>Sampdoria</b><span>Chris East</span></div>
+  </div>
+  <div class="tile">
+   <div class="row"><b>Udinese Calcio</b><span>Giuseppe Trovato</span></div>
+   <div class="row"><b>Paris Saint-Germain</b><span>Jay Jones</span></div>
+   <div class="row"><b>Southampton</b><span>Carlo Ancelotti</span></div>
+   <div class="row"><b>AS Monaco</b><span>Francesco Senesi</span></div>
+   <div class="row"><b>PSV</b><span>Anton I</span></div>
+   <div class="row"><b>FC Basel</b><span>MAX PALACE</span></div>
+   <div class="row"><b>Sevilla FC</b><span>Vituz __</span></div>
+  </div>
+ </div>
+ <div class="foot"><span>Every vacancy filled</span><span>tournaments.smtop100.blog/appointments</span></div>
+</div>
+
+<div class="card fw" id="dario">
+ <div class="top"><span>Top 100 · Farewell · Season 28</span><span class="badge">👋 Farewell</span></div>
+ <p class="award">24 seasons in Top 100</p>
+ <h1>Dario Saviano</h1>
+ <div class="move"><b>Borussia Dortmund</b> · Levante UD</div>
+ <div class="stats">
+  <div class="stat"><div class="n">24</div><div class="l">Seasons, Seasons 5 to 28</div></div>
+  <div class="stat"><div class="n">16</div><div class="l">Seasons in Division 1, never relegated</div></div>
+  <div class="stat"><div class="n">2nd</div><div class="l">Best finish, Division 1, Season 23</div></div>
+  <div class="stat"><div class="n">5</div><div class="l">Trophies, the last in his final season</div></div>
+ </div>
+ <p class="cite">Took Levante from Division 5 to Division 2, then 16 seasons at Dortmund</p>
+ <div class="apt"><span>Division 3 champions S11</span><span>SMFA Shield S18</span><span>Charity Shield S24</span><span>Top 100 Shield S28</span></div>
+ <div class="foot"><span>Thank you, Dario</span><span>smtop100.blog</span></div>
+</div>
+
+<div class="card fw" id="kevin">
+ <div class="top"><span>Top 100 · Farewell · Season 28</span><span class="badge">👋 Farewell</span></div>
+ <p class="award">21 seasons in Top 100</p>
+ <h1>Kevin McGregor</h1>
+ <div class="move"><b>Juventus</b> · West Bromwich Albion · Feyenoord · Newcastle United</div>
+ <div class="stats">
+  <div class="stat"><div class="n">5</div><div class="l">Seasons from Division 5 to Division 1</div></div>
+  <div class="stat"><div class="n">3</div><div class="l">League titles: Divisions 5, 3 and 2</div></div>
+  <div class="stat"><div class="n">9</div><div class="l">Seasons at Juventus, all in Division 1</div></div>
+  <div class="stat"><div class="n">7</div><div class="l">Trophies</div></div>
+ </div>
+ <p class="cite">One of the great climbs in Top 100's history</p>
+ <div class="apt"><span>Top 100 Shield S9 &amp; S24</span><span>Top 100 Cup S26</span><span>Best finish: 3rd in Division 1</span></div>
+ <div class="foot"><span>Thank you, Kevin</span><span>smtop100.blog</span></div>
+</div>
+
+<div class="card fw" id="gav">
+ <div class="top"><span>Top 100 · Farewell · Season 28</span><span class="badge">👋 Farewell</span></div>
+ <p class="award">17 seasons at one club</p>
+ <h1>Gav Harmer</h1>
+ <div class="move"><b>Atlético Madrid</b> · Seasons 12 to 28</div>
+ <div class="stats">
+  <div class="stat"><div class="n">17</div><div class="l">Seasons at Atlético Madrid</div></div>
+  <div class="stat"><div class="n">12</div><div class="l">Seasons in Division 1</div></div>
+  <div class="stat"><div class="n">S18</div><div class="l">Top 100 Shield winners</div></div>
+  <div class="stat"><div class="n">WCC</div><div class="l">Ran the World Club Cup</div></div>
+ </div>
+ <p class="cite">For many seasons one of the most active managers in Top 100</p>
+ <div class="apt"><span>Top 100 Shield S18</span><span>Designed the old blog header</span></div>
+ <div class="foot"><span>Thank you, Gav</span><span>smtop100.blog</span></div>
+</div>
+
+</body></html>
