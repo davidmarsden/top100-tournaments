@@ -19,6 +19,8 @@ export const CARDS = {
     'AS Monaco': { src: '/appointments/s28/card-francesco.webp', manager: 'Francesco Senesi' },
     PSV: { src: '/appointments/s28/card-anton.webp', manager: 'Anton I' },
     'FC Basel': { src: '/appointments/s28/card-max.webp', manager: 'MAX PALACE' },
+    // A club appointed twice in a season gets its own key, with the club named separately.
+    'Sevilla FC (round 3)': { club: 'Sevilla FC', src: '/appointments/s28/card-vituz.webp', manager: 'Vituz __' },
   },
 };
 
@@ -28,8 +30,12 @@ const normalise = (text) => String(text || '').normalize('NFD').replace(/[̀-ͯ]
 export function cardFor(season, vacancy) {
   if (!vacancy?.appointed) return null;
   const club = normalise(vacancy.club);
-  const match = Object.entries(CARDS[season] || {}).find(([name]) => club.includes(normalise(name)) || normalise(name).includes(club));
-  return match && normalise(vacancy.appointed).startsWith(normalise(match[1].manager)) ? match[1] : null;
+  const appointed = normalise(vacancy.appointed);
+  const match = Object.entries(CARDS[season] || {}).find(([name, card]) => {
+    const cardClub = normalise(card.club || name);
+    return (club.includes(cardClub) || cardClub.includes(club)) && appointed.startsWith(normalise(card.manager));
+  });
+  return match ? match[1] : null;
 }
 
 // Club profile cards for open vacancies, by vacancy id (a club can be advertised in more than one
