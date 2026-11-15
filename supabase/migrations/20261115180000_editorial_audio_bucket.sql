@@ -19,7 +19,7 @@ with check (
   bucket_id = 'editorial-audio'
   and (storage.foldername(name))[1] = auth.uid()::text
   and array_length(storage.foldername(name), 1) = 2
-  and lower(storage.extension(name)) in ('mp3', 'm4a')
+  and name ~* '\.(mp3|m4a)$'
   and exists (
     select 1 from public.manager_portal_accounts account
     where account.auth_user_id = auth.uid() and account.active
