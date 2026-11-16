@@ -6,6 +6,7 @@ import FixturesManager from './FixturesManager.jsx';
 import GroupsApproval from './GroupsApproval.jsx';
 import KnockoutManager from './KnockoutManager.jsx';
 import KnockoutOnlyManager from './KnockoutOnlyManager.jsx';
+import LeaguePhaseManager from './LeaguePhaseManager.jsx';
 import ManagerForfeitRegister from './ManagerForfeitRegister.jsx';
 import ProgressBar, { isStepDone } from './ProgressBar.jsx';
 import PublicPageManager from './PublicPageManager.jsx';
@@ -19,18 +20,18 @@ import TournamentCreateForm from './TournamentCreateForm.jsx';
 import TournamentFormatManager from './TournamentFormatManager.jsx';
 import TournamentOrganisersManager from './TournamentOrganisersManager.jsx';
 import { useAdminAuth } from './AdminGate.jsx';
-import { isKnockoutOnly, isPlaceholderArchive, normalStatus, useTournament } from '../context/TournamentProvider.jsx';
+import { isKnockoutOnly, isLeaguePhase, isPlaceholderArchive, normalStatus, useTournament } from '../context/TournamentProvider.jsx';
 import { publicTournamentPath } from '../lib/tournamentSlugs';
 import { deleteTournamentsOnServer } from '../lib/deleteTournaments.js';
 import { supabase } from '../lib/supabaseClient';
 
-const platformModules = ['Overview', 'Organisers', 'Registration', 'Format', 'Entrants', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Season Close', 'Reports & Exports', 'Challonge', 'Public Page'];
-const organiserModules = ['Overview', 'Registration', 'Format', 'Entrants', 'Groups', 'Fixtures', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Season Close', 'Reports & Exports', 'Public Page'];
-const assistantModules = ['Overview', 'Fixtures', 'Results', 'Tables', 'Forfeits', 'Reports & Exports'];
+const platformModules = ['Overview', 'Organisers', 'Registration', 'Format', 'Entrants', 'League Stage', 'Groups', 'Fixtures', 'Result Approvals', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Season Close', 'Reports & Exports', 'Challonge', 'Public Page'];
+const organiserModules = ['Overview', 'Registration', 'Format', 'Entrants', 'League Stage', 'Groups', 'Fixtures', 'Results', 'Tables', 'Forfeits', 'Knockout', 'Season Close', 'Reports & Exports', 'Public Page'];
+const assistantModules = ['Overview', 'League Stage', 'Fixtures', 'Results', 'Tables', 'Forfeits', 'Reports & Exports'];
 // Sidebar sections, in workflow order. Modules a role cannot use are dropped.
 const moduleSections = [
   ['Tournament', 'Setup', ['Overview', 'Organisers', 'Registration', 'Format', 'Entrants']],
-  ['Draw', 'Setup', ['Groups', 'Knockout']],
+  ['Draw', 'Setup', ['League Stage', 'Groups', 'Knockout']],
   ['Matchday', 'Matchday', ['Fixtures', 'Results', 'Result Approvals', 'Tables']],
   ['Discipline', 'Matchday', ['Forfeits']],
   ['Season close & publishing', 'Publish', ['Season Close', 'Reports & Exports', 'Public Page', 'Challonge']],
@@ -41,7 +42,9 @@ const knockoutWorkflowSteps = ['Tournament', 'Registration', 'Format', 'Entrants
 
 function modulesForTournament(tournament, role, isGlobalAdmin) {
   const base = isGlobalAdmin ? platformModules : role === 'organiser' ? organiserModules : assistantModules;
-  return isKnockoutOnly(tournament) ? base.filter((module) => !['Groups', 'Tables'].includes(module)) : base;
+  if (isLeaguePhase(tournament)) return base.filter((module) => !['Registration', 'Format', 'Groups', 'Tables'].includes(module));
+  const withoutLeague = base.filter((module) => module !== 'League Stage');
+  return isKnockoutOnly(tournament) ? withoutLeague.filter((module) => !['Groups', 'Tables'].includes(module)) : withoutLeague;
 }
 
 export default function AdminDashboard() {
@@ -93,14 +96,15 @@ function WorkflowCard({ selectedTournament, preview, progressStats }) {
 }
 
 function moduleHeading(activeModule, knockoutOnly = false) {
-  const headings = { 'Season Close': 'Archive the tournament and run the prize draw', Forfeits: 'Fair Play: manager discipline register', Overview: 'Tournament dashboard', Organisers: 'Tournament organiser access', Registration: 'Registration window and approvals', Format: 'Set tournament shape after registration', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: knockoutOnly ? 'Manage knockout fixtures' : 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: knockoutOnly ? 'Enter and review knockout results' : 'Enter, review and edit results', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: knockoutOnly ? 'Seeded knockout draw' : 'Cup and Shield draw', 'Reports & Exports': 'Download data and generate matchday stories', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
+  const headings = { 'League Stage': 'World Club Cup league stage: clubs, draw, results, table', 'Season Close': 'Archive the tournament and run the prize draw', Forfeits: 'Fair Play: manager discipline register', Overview: 'Tournament dashboard', Organisers: 'Tournament organiser access', Registration: 'Registration window and approvals', Format: 'Set tournament shape after registration', Entrants: 'Select teams and managers', Groups: 'Approve generated groups', Fixtures: knockoutOnly ? 'Manage knockout fixtures' : 'Generate and manage fixtures', 'Result Approvals': 'Approve manager-submitted results', Results: knockoutOnly ? 'Enter and review knockout results' : 'Enter, review and edit results', Tables: 'Live group tables', Forfeits: 'Manager forfeit register and eligibility', Knockout: knockoutOnly ? 'Seeded knockout draw' : 'Cup and Shield draw', 'Reports & Exports': 'Download data and generate matchday stories', Challonge: 'Import legacy Challonge tournaments', 'Public Page': 'Publish and public view' };
   return headings[activeModule] || activeModule;
 }
 
 function ModuleContent({ activeModule, tournaments, selectedTournament, isGlobalAdmin, scopedRole }) {
   const { setSelectedTournamentId, preview, setPreview, buildPreview, refreshTournamentData, bulkSelectedIds, setBulkSelectedIds, setStatus, updateTournamentIds, loading } = useTournament();
   const knockoutOnly = isKnockoutOnly(selectedTournament);
-  const fixtureStage = knockoutOnly ? 'knockout' : 'group';
+  const leaguePhase = isLeaguePhase(selectedTournament);
+  const fixtureStage = knockoutOnly ? 'knockout' : leaguePhase ? 'league' : 'group';
 
   async function deleteSelected(ids, label = 'selected') {
     if (!isGlobalAdmin || !ids.length) return;
@@ -122,10 +126,11 @@ function ModuleContent({ activeModule, tournaments, selectedTournament, isGlobal
   if (activeModule === 'Registration' && scopedRole !== 'assistant') return <RegistrationManager selectedTournament={selectedTournament} onTournamentUpdated={refreshTournamentData} />;
   if (activeModule === 'Format' && scopedRole !== 'assistant') return <TournamentFormatManager selectedTournament={selectedTournament} onTournamentUpdated={refreshTournamentData} />;
   if (activeModule === 'Entrants' && scopedRole !== 'assistant') return <EntrantsManager selectedTournament={selectedTournament} onPreviewGenerated={buildPreview} />;
+  if (activeModule === 'League Stage' && leaguePhase) return <LeaguePhaseManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />;
   if (activeModule === 'Groups' && scopedRole !== 'assistant' && !knockoutOnly) return <GroupsApproval selectedTournament={selectedTournament} preview={preview} setPreview={setPreview} onDataChanged={refreshTournamentData} />;
   if (activeModule === 'Fixtures') return <><ArrangementProblems selectedTournament={selectedTournament} /><FixturesManager selectedTournament={selectedTournament} preview={preview} stage={fixtureStage} onlyOutstanding onDataChanged={refreshTournamentData} /></>;
   if (activeModule === 'Result Approvals' && isGlobalAdmin) return <div className="overview-actions"><p>Manager-submitted scores are reviewed in the dedicated approval queue.</p><div className="button-row"><a className="button" href="/admin/result-submissions">Open result approval queue</a><a className="button secondary" href="/admin/manager-accounts">Manager accounts</a></div></div>;
-  if (activeModule === 'Results') return <>{!knockoutOnly && <ResultsTestControls selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />}<FixturesManager selectedTournament={selectedTournament} preview={preview} stage={fixtureStage} onDataChanged={refreshTournamentData} /></>;
+  if (activeModule === 'Results') return <>{!knockoutOnly && !leaguePhase && <ResultsTestControls selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />}<FixturesManager selectedTournament={selectedTournament} preview={preview} stage={fixtureStage} onDataChanged={refreshTournamentData} /></>;
   if (activeModule === 'Tables' && !knockoutOnly) return <TablesManager selectedTournament={selectedTournament} />;
   if (activeModule === 'Forfeits') return <ManagerForfeitRegister selectedTournament={selectedTournament} admin />;
   if (activeModule === 'Knockout' && scopedRole !== 'assistant') return knockoutOnly ? <KnockoutOnlyManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} /> : <KnockoutManager selectedTournament={selectedTournament} onDataChanged={refreshTournamentData} />;

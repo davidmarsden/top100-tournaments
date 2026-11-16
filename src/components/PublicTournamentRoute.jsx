@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import PublicTournamentPage from './PublicTournamentPage.jsx';
+import PublicLeaguePhasePage from './PublicLeaguePhasePage.jsx';
 import PublicGroupTablesPortal from './PublicGroupTablesPortal.jsx';
 import PublicForfeitRegisterPortal from './PublicForfeitRegisterPortal.jsx';
 import PublicRegistrationsPortal from './PublicRegistrationsPortal.jsx';
@@ -31,6 +32,15 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
   const [resolvedId, setResolvedId] = useState(route.mode === 'home' ? fallbackTournamentId : route.tournamentId || null);
   const [routes, setRoutes] = useState([]);
   const [status, setStatus] = useState(route.mode === 'home' || route.mode === 'id' ? '' : 'Finding tournament...');
+  const [structure, setStructure] = useState({ id: null, value: null });
+
+  useEffect(() => {
+    if (!resolvedId || !hasSupabaseConfig || !supabase) return;
+    let cancelled = false;
+    supabase.from('tournaments').select('tournament_structure').eq('id', resolvedId).maybeSingle()
+      .then(({ data }) => { if (!cancelled) setStructure({ id: resolvedId, value: data?.tournament_structure || null }); });
+    return () => { cancelled = true; };
+  }, [resolvedId]);
 
   useEffect(() => { loadRoutes(); }, []);
   useEffect(() => {
@@ -121,6 +131,11 @@ export default function PublicTournamentRoute({ fallbackTournamentId }) {
     setStatus('');
   }
 
+  if (resolvedId && hasSupabaseConfig && structure.id !== resolvedId) return <main className="app-shell public-archive tournament-hub"><section className="card"><p className="status">Loading tournament...</p></section></main>;
+  if (resolvedId && structure.value === 'league_knockout') return <>
+    <PublicLeaguePhasePage tournamentId={resolvedId} />
+    <EditorialStorylinesPortal tournamentId={resolvedId} />
+  </>;
   if (resolvedId) return <>
     <PublicTournamentPage tournamentId={resolvedId} routeRows={routes} />
     <PublicRegistrationsPortal tournamentId={resolvedId} />

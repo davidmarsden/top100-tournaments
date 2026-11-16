@@ -345,3 +345,119 @@ export function leaguePhaseCalendar(firstWednesday, { matchdays = 6, knockoutRou
   });
   return calendar;
 }
+
+// --- Knockout rounds built from the table ----------------------------------
+
+export const WCC_ROUNDS = {
+  Cup: ['Play-off', 'R16', 'QF', 'SF', 'Final'],
+  Shield: ['R32', 'R16', 'QF', 'SF', 'Final'],
+};
+
+// Standard bracket order: seed 1 and seed 2 can only meet in the final.
+export function bracketOrder(size) {
+  let order = [1];
+  while (order.length < size) {
+    const next = order.length * 2 + 1;
+    order = order.flatMap((seed) => [seed, next - seed]);
+  }
+  return order;
+}
+
+// Wednesday dates per bracket round, from the calendar (6 league matchdays,
+// then two Wednesdays per round). Cup play-off and Shield R32 share weeks 7-8.
+export function knockoutRoundDates(firstWednesday) {
+  const calendar = leaguePhaseCalendar(firstWednesday);
+  const knockout = calendar.filter((item) => item.stage === 'Knockout');
+  const slots = ['Knockout play-off', 'Last 16', 'Quarter-finals', 'Semi-finals', 'Final'];
+  const dates = (slot) => {
+    const legs = knockout.filter((item) => item.round === slots[slot]);
+    return { leg1_date: legs[0].date, leg2_date: legs[1].date };
+  };
+  const rows = [];
+  for (const bracket of ['Cup', 'Shield']) {
+    WCC_ROUNDS[bracket].forEach((round, index) => rows.push({ bracket, round, ...dates(index) }));
+  }
+  return rows;
+}
+
+function twoLegs({ tournamentId, bracket, round, order, higher, lower, dates, names }) {
+  // The higher-placed club plays the second leg at home.
+  const base = { tournament_id: tournamentId, stage: 'knockout', bracket, round, match_order: order, status: 'scheduled' };
+  return [
+    { ...base, leg: 1, home_entry_id: lower, away_entry_id: higher, home_placeholder: names(lower), away_placeholder: names(higher), fixture_date: dates?.leg1_date || null },
+    { ...base, leg: 2, home_entry_id: higher, away_entry_id: lower, home_placeholder: names(higher), away_placeholder: names(lower), fixture_date: dates?.leg2_date || null },
+  ];
+}
+
+// Cup play-off (9-24) and Shield last 32 (25-56) once the league stage is complete.
+export function buildPostLeagueRounds(table, { tournamentId, roundDates = [], split = DEFAULT_SPLIT } = {}) {
+  const incomplete = table.filter((row) => row.played < 6);
+  const names = (id) => table.find((row) => row.entryId === id)?.name || null;
+  const dateOf = (bracket, round) => roundDates.find((row) => row.bracket === bracket && row.round === round);
+  const q = leaguePhaseQualification(table, split);
+  const rows = [];
+  q.playoffTies.forEach((tie) => rows.push(...twoLegs({ tournamentId, bracket: 'Cup', round: 'Play-off', order: tie.tie, higher: tie.higher, lower: tie.lower, dates: dateOf('Cup', 'Play-off'), names })));
+  const order = bracketOrder(q.shieldTies.length);
+  order.forEach((seed, index) => {
+    const tie = q.shieldTies[seed - 1];
+    rows.push(...twoLegs({ tournamentId, bracket: 'Shield', round: 'R32', order: index + 1, higher: tie.higher, lower: tie.lower, dates: dateOf('Shield', 'R32'), names }));
+  });
+  return { rows, incomplete: incomplete.length, cupDirect: q.cupDirect };
+}
+
+// Cup last 16: league 1-8 against the play-off winners. Seed 1 meets the
+// winner of the 16 v 17 tie, seed 8 the winner of 9 v 24.
+// playoffWinners: Map(tie number -> winning entry id).
+export function buildCupRoundOf16(table, playoffWinners, { tournamentId, roundDates = [] } = {}) {
+  const names = (id) => table.find((row) => row.entryId === id)?.name || null;
+  const seeds = table.filter((row) => row.position >= 1 && row.position <= 8).map((row) => row.entryId);
+  const missing = [1, 2, 3, 4, 5, 6, 7, 8].filter((tie) => !playoffWinners.get(tie));
+  if (missing.length) throw new Error(`Play-off ties without a winner yet: ${missing.join(', ')}.`);
+  const dates = roundDates.find((row) => row.bracket === 'Cup' && row.round === 'R16');
+  const rows = [];
+  bracketOrder(8).forEach((seed, index) => {
+    const higher = seeds[seed - 1];
+    const lower = playoffWinners.get(9 - seed);
+    rows.push(...twoLegs({ tournamentId, bracket: 'Cup', round: 'R16', order: index + 1, higher, lower, dates, names }));
+  });
+  return rows;
+}
+
+// --- Weekly talking points -------------------------------------------------
+
+export function matchdayOf(match) {
+  const found = /Matchday\s+(\d+)/i.exec(match?.round || '');
+  return found ? Number(found[1]) : null;
+}
+
+// The latest league matchday with at least one counted result.
+export function latestPlayedMatchday(matches = []) {
+  return matches.filter((m) => m.stage === LEAGUE_STAGE && leagueOutcome(m).counted && m.status === 'played')
+    .reduce((max, m) => Math.max(max, matchdayOf(m) || 0), 0) || null;
+}
+
+// Upset of the week: the biggest Division gap between a winner and the club
+// it beat (lower Division beating higher), then the winning margin.
+// Biggest win: the largest margin. Climbers: positions gained on the matchday.
+export function matchdayHighlights(entries = [], matches = [], matchday) {
+  if (!matchday) return { upset: null, biggestWin: null, climbers: [] };
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const onDay = matches.filter((m) => m.stage === LEAGUE_STAGE && matchdayOf(m) === matchday && m.status === 'played' && m.home_score != null);
+  const decorate = (m) => {
+    const home = byId.get(m.home_entry_id);
+    const away = byId.get(m.away_entry_id);
+    const homeWon = m.home_score > m.away_score;
+    const winner = homeWon ? home : away;
+    const loser = homeWon ? away : home;
+    return { match: m, home, away, winner, loser, margin: Math.abs(m.home_score - m.away_score), gap: (Number(winner?.pot) || 0) - (Number(loser?.pot) || 0) };
+  };
+  const decided = onDay.filter((m) => m.home_score !== m.away_score).map(decorate);
+  const upset = decided.filter((d) => d.gap >= 1).sort((a, b) => b.gap - a.gap || b.margin - a.margin)[0] || null;
+  const biggestWin = [...decided].sort((a, b) => b.margin - a.margin || (b.match.home_score + b.match.away_score) - (a.match.home_score + a.match.away_score))[0] || null;
+  const before = calculateLeagueTable(entries, matches.filter((m) => m.stage !== LEAGUE_STAGE || (matchdayOf(m) || 0) < matchday));
+  const after = calculateLeagueTable(entries, matches.filter((m) => m.stage !== LEAGUE_STAGE || (matchdayOf(m) || 0) <= matchday));
+  const was = new Map(before.map((row) => [row.entryId, row.position]));
+  const climbers = after.map((row) => ({ ...row, gained: (was.get(row.entryId) || row.position) - row.position }))
+    .filter((row) => row.gained > 0).sort((a, b) => b.gained - a.gained || a.position - b.position).slice(0, 3);
+  return { upset, biggestWin, climbers };
+}
