@@ -1,7 +1,7 @@
 import json,glob,html
 d=json.load(open(glob.glob('sheet-Full*')[0]))['values'][1:]
 H=json.load(open('fn-game-honours.json'))['rows']
-S28={'saviano':('Borussia Dortmund',1,6),'mcgregor':('Juventus',1,20),'harmer':('Atlético Madrid',2,18)}
+S28={'saviano':('Borussia Dortmund',1,6),'mcgregor':('Juventus',1,20),'harmer':('Atlético Madrid',2,18),'libras':('Hellas Verona',1,11)}
 PEOPLE=[('dario','saviano','Dario Saviano','Dario Saviano'),('kevin','mcgregor','Kevin McGregor','kevin mcgregor'),
         ('gav','harmer','Gav Harmer','Gav Harmer'),('luis','libras','Luís André Libras-Boas','Luís André Libras-Boas')]
 LEAGUE=lambda c:c.startswith('Division')
