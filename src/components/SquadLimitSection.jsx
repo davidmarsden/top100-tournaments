@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import SquadBreachReportForm from './SquadBreachReportForm.jsx';
+import SquadsAtLimitTable from './SquadsAtLimitTable.jsx';
 
 // Rule 4.1 (50 players, loans both ways). Detection and notifications live in the shared
 // database: see top100-tournaments docs/squad-cap-compliance.md.
@@ -133,17 +134,8 @@ export default function SquadLimitSection({ embedded = false }) {
 
       <section className="card">
         <h2>Squads at or over the limit ({atLimit.length})</h2>
-        <table>
-          <thead><tr><th>Club</th><th>Manager</th><th>Div</th><th>Players</th><th>Synced</th></tr></thead>
-          <tbody>
-            {atLimit.map((squad) => (
-              <tr key={squad.club_name}>
-                <td>{squad.club_name}</td><td>{squad.manager_name}</td><td>{squad.division}</td>
-                <td><strong>{squad.players}</strong>{squad.players > squad.squad_limit ? ' ⚠' : ''}</td><td>{date(squad.captured_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <p className="muted">Every signed-in manager can see this list on Squad &amp; Transfers.</p>
+        <SquadsAtLimitTable squads={atLimit} />
       </section>
 
       <section className="card">

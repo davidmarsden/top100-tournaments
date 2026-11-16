@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import SquadBreachReportForm from './SquadBreachReportForm.jsx';
+import SquadsAtLimitTable from './SquadsAtLimitTable.jsx';
 
 function money(value) {
   if (!hasNumber(value)) return '—';
@@ -65,10 +66,24 @@ export default function ManagerSquadDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Every club at or over the limit, for all signed-in managers (public_squads_at_limit):
+  // null while loading; an error is shown as an error, never as an empty list.
+  const [squadsAtLimit, setSquadsAtLimit] = useState(null);
+  const [squadsError, setSquadsError] = useState('');
+
+  async function loadSquadsAtLimit() {
+    if (!hasSupabaseConfig || !supabase) return;
+    setSquadsAtLimit(null);
+    setSquadsError('');
+    const { data, error: rpcError } = await supabase.rpc('public_squads_at_limit', { p_world_slug: 'top-100' });
+    if (rpcError) setSquadsError(rpcError.message || 'Could not load the squads at or over the limit.');
+    else setSquadsAtLimit(Array.isArray(data) ? data : []);
+  }
 
   async function loadDashboard() {
     setLoading(true);
     setError('');
+    loadSquadsAtLimit();
     try {
       if (!hasSupabaseConfig || !supabase) throw new Error('Supabase is not connected.');
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -289,6 +304,14 @@ export default function ManagerSquadDashboard() {
     <section className="card portal-panel">
       <div className="card-header"><p className="eyebrow">Market</p><h2>Transfers involving {dashboard.teamName}</h2></div>
       {transfers.length ? <div className="squad-list">{transfers.map((transfer) => <div className="squad-list-row transfer-row" key={transfer.id}><div><strong><span className={`transfer-direction ${transfer.direction}`}>{transfer.direction === 'in' ? 'IN' : 'OUT'}</span> {transfer.playerName}</strong><span>{transfer.rating ?? '—'} · {transfer.position || '—'} · {transfer.counterpartyClubName || 'Unknown club'}{transfer.counterpartyIsTop100 ? ' · Top 100' : ' · external club'}</span></div><div className="transfer-money"><b>{money(transfer.amount)}</b><span>{transfer.acceptedDate || 'Date unknown'}{transfer.turn ? ` · turn ${transfer.turn}` : ''}</span></div></div>)}</div> : <p className="muted">No archived transfers involving this club yet.</p>}
+    </section>
+
+    <section className="card portal-panel">
+      <div className="card-header"><p className="eyebrow">Rule 4.1</p><h2>Squads at or over the limit{squadsAtLimit ? ` (${squadsAtLimit.length})` : ''}</h2></div>
+      <p className="muted">Every Top 100 club at 50 players or more, from its latest synced squad. A club over 50 is in breach of the 50-player limit.</p>
+      {squadsError ? <p className="status">Couldn’t load this list: {squadsError}</p>
+        : squadsAtLimit ? <SquadsAtLimitTable squads={squadsAtLimit} />
+          : <p className="muted">Loading…</p>}
     </section>
 
     <section className="card portal-panel">
