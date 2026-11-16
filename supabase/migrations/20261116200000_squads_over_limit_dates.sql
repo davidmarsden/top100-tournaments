@@ -1,7 +1,7 @@
 -- Squads over the limit, dated from the last read.
 --
--- squad_cap_counts(): each count is dated from the last time Sync read the club's squad (its
--- players' squad_applied_at). Sync writes a squad row only when the count changes, so a squad that
+-- squad_cap_counts(): each count is dated from the last time Sync read the club's squad (its current
+-- players' last_seen_at). Sync writes a squad row only when the count changes, so a squad that
 -- has sat at 50 since September was dated September though it was read today.
 -- public_squads_at_limit(): the Manager Portal list shows only clubs over the limit (more than 50);
 -- the admin overview still lists every squad.
@@ -55,9 +55,9 @@ as $$
     latest.n,
     50,
     -- The last time Sync read the squad, not only the last time the count changed (a squad row is
-    -- written only when the count changes).
+    -- written only when the count changes): the latest last_seen_at of the club's current players.
     greatest(latest.captured_at, (
-      select max(player.squad_applied_at) from public.soccer_manager_players player
+      select max(player.last_seen_at) from public.soccer_manager_players player
       where player.game_world_id = world.id and player.current_source_club_id = latest.club
     ))
   from latest
