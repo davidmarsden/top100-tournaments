@@ -66,7 +66,7 @@ export default function ManagerSquadDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  // Every club at or over the limit, for all signed-in managers (public_squads_at_limit):
+  // Every club over the limit, for all signed-in managers (public_squads_at_limit):
   // null while loading; an error is shown as an error, never as an empty list.
   const [squadsAtLimit, setSquadsAtLimit] = useState(null);
   const [squadsError, setSquadsError] = useState('');
@@ -307,10 +307,10 @@ export default function ManagerSquadDashboard() {
     </section>
 
     <section className="card portal-panel">
-      <div className="card-header"><p className="eyebrow">Rule 4.1</p><h2>Squads at or over the limit{squadsAtLimit ? ` (${squadsAtLimit.length})` : ''}</h2></div>
-      <p className="muted">Every Top 100 club at 50 players or more, from its latest synced squad. A club over 50 is in breach of the 50-player limit.</p>
+      <div className="card-header"><p className="eyebrow">Rule 4.1</p><h2>Squads over the limit{squadsAtLimit ? ` (${squadsAtLimit.length})` : ''}</h2></div>
+      <p className="muted">Every Top 100 club with more than 50 players, from its latest synced squad, and the date it was read.</p>
       {squadsError ? <p className="status">Couldn’t load this list: {squadsError}</p>
-        : squadsAtLimit ? <SquadsAtLimitTable squads={squadsAtLimit} />
+        : squadsAtLimit ? <SquadsAtLimitTable squads={squadsAtLimit} emptyText="No squad is over the limit." />
           : <p className="muted">Loading…</p>}
     </section>
 
