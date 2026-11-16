@@ -66,21 +66,24 @@ export default function ManagerSquadDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [squadsAtLimit, setSquadsAtLimit] = useState([]);
+  // Every club at or over the limit, for all signed-in managers (public_squads_at_limit):
+  // null while loading; an error is shown as an error, never as an empty list.
+  const [squadsAtLimit, setSquadsAtLimit] = useState(null);
+  const [squadsError, setSquadsError] = useState('');
 
-  // Every club at or over the limit, for all signed-in managers (public_squads_at_limit).
-  useEffect(() => {
-    if (!hasSupabaseConfig) return undefined;
-    let live = true;
-    supabase.rpc('public_squads_at_limit', { p_world_slug: 'top-100' }).then(({ data }) => {
-      if (live) setSquadsAtLimit(Array.isArray(data) ? data : []);
-    });
-    return () => { live = false; };
-  }, []);
+  async function loadSquadsAtLimit() {
+    if (!hasSupabaseConfig || !supabase) return;
+    setSquadsAtLimit(null);
+    setSquadsError('');
+    const { data, error: rpcError } = await supabase.rpc('public_squads_at_limit', { p_world_slug: 'top-100' });
+    if (rpcError) setSquadsError(rpcError.message || 'Could not load the squads at or over the limit.');
+    else setSquadsAtLimit(Array.isArray(data) ? data : []);
+  }
 
   async function loadDashboard() {
     setLoading(true);
     setError('');
+    loadSquadsAtLimit();
     try {
       if (!hasSupabaseConfig || !supabase) throw new Error('Supabase is not connected.');
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -304,9 +307,11 @@ export default function ManagerSquadDashboard() {
     </section>
 
     <section className="card portal-panel">
-      <div className="card-header"><p className="eyebrow">Rule 4.1</p><h2>Squads at or over the limit ({squadsAtLimit.length})</h2></div>
+      <div className="card-header"><p className="eyebrow">Rule 4.1</p><h2>Squads at or over the limit{squadsAtLimit ? ` (${squadsAtLimit.length})` : ''}</h2></div>
       <p className="muted">Every Top 100 club at 50 players or more, from its latest synced squad. A club over 50 is in breach of the 50-player limit.</p>
-      <SquadsAtLimitTable squads={squadsAtLimit} />
+      {squadsError ? <p className="status">Couldn’t load this list: {squadsError}</p>
+        : squadsAtLimit ? <SquadsAtLimitTable squads={squadsAtLimit} />
+          : <p className="muted">Loading…</p>}
     </section>
 
     <section className="card portal-panel">
