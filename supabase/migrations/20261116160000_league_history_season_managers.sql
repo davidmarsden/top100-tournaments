@@ -120,8 +120,13 @@ as $$
   season_managers as (
     select managers.* from world, public.league_season_managers(world.id) managers
   ),
+  -- Each season's start date, whether or not any manager's spells are known for it.
   season_starts as (
-    select distinct season_managers.season, season_managers.season_start from season_managers
+    select n.season,
+      coalesce(saved.start_date, public.world_season_end(world.id, n.season) - 147) as season_start
+    from world
+    cross join generate_series(1, coalesce(public.world_current_season_num(world.id), 0)) n(season)
+    left join public.soccer_manager_world_seasons saved on saved.game_world_id = world.id and saved.season_num = n.season
   ),
   saved as (
     -- Everyone who managed the club that season (their spells), else the manager in
