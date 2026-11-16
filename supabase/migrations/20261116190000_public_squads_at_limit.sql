@@ -6,6 +6,9 @@
 -- public_squads_at_limit(): the clubs at or over the limit, without breach or review details, for
 -- signed-in managers (the Manager Portal's Squad & Transfers page).
 
+-- The Sync tables come from Manager Lab's migrations, so SQL function bodies are not checked here.
+set check_function_bodies = false;
+
 -- @permissions private public.squad_cap_counts(text): internal, read by squad_cap_overview() and public_squads_at_limit()
 create or replace function public.squad_cap_counts(p_world_slug text default 'top-100')
 returns table (
