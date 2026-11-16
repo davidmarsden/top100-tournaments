@@ -75,7 +75,9 @@ as $$
     join public.soccer_manager_manager_stints spell
       on spell.game_world_id = p_world_id
      and spell.started_at::date < windows.before_date
-     and coalesce(spell.ended_at::date, 'infinity'::date) > windows.starts_on + 2
+     -- More than two days of the spell fall inside the season.
+     and least(coalesce(spell.ended_at::date, windows.before_date), windows.before_date)
+         - greatest(spell.started_at::date, windows.starts_on) > 2
   )
   select spells.season, spells.starts_on, spells.club_name,
          string_agg(spells.manager_name, ' / ' order by spells.started_at)
