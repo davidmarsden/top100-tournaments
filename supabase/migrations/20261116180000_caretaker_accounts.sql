@@ -5,6 +5,7 @@
 -- Add another with:
 --   insert into public.soccer_manager_caretaker_accounts (sm_manager_id, note) values ('<id>', '<name>');
 
+-- @permissions private public.soccer_manager_caretaker_accounts: read only by league_season_managers() (security definer); edited in the SQL editor
 create table if not exists public.soccer_manager_caretaker_accounts (
   sm_manager_id text primary key,
   note text,
