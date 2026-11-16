@@ -215,7 +215,9 @@ export function validateLeagueDraw(entries, fixtures, { potCount = 5 } = {}) {
 export function leagueOutcome(match) {
   const homeId = match.home_entry_id;
   const awayId = match.away_entry_id;
-  const doubleForfeit = match.decided_by === 'double_forfeit';
+  // The app's existing convention for a double forfeit: status forfeit, 0-0, no winner or loser.
+  const doubleForfeit = match.decided_by === 'double_forfeit'
+    || (match.status === 'forfeit' && Number(match.home_score) === 0 && Number(match.away_score) === 0 && !match.winner_entry_id && !match.loser_entry_id);
   if (doubleForfeit) {
     return { counted: true, home: { goalsFor: 0, goalsAgainst: 3, points: 0, result: 'L' }, away: { goalsFor: 0, goalsAgainst: 3, points: 0, result: 'L' }, homeId, awayId };
   }

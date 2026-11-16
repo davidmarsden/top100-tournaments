@@ -101,6 +101,7 @@ begin
     raise exception 'League results have been entered; the draw can no longer be replaced.';
   end if;
 
+  drop table if exists pg_temp.draw_rows;
   create temporary table draw_rows on commit drop as
   select (f->>'matchday')::int matchday, (f->>'home_entry_id')::bigint home_id, (f->>'away_entry_id')::bigint away_id,
          row_number() over () ord
