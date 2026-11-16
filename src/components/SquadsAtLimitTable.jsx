@@ -1,10 +1,10 @@
-// Squads at or over the 50-player limit (rule 4.1), from each club's latest synced count.
-// "From (date)" is the date of that count. Shown to the admin team (Manager Alerts) and to every
-// signed-in manager (Squad & Transfers).
+// Squads against the 50-player limit (rule 4.1), from each club's latest synced count. "From (date)"
+// is when that squad was last read. The admin team (Manager Alerts) sees every squad at or over the
+// limit; every signed-in manager (Squad & Transfers) sees those over it.
 const date = (value) => (value ? new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '–');
 
-export default function SquadsAtLimitTable({ squads = [] }) {
-  if (!squads.length) return <p className="muted">No squad is at or over the limit.</p>;
+export default function SquadsAtLimitTable({ squads = [], emptyText = 'No squad is at or over the limit.' }) {
+  if (!squads.length) return <p className="muted">{emptyText}</p>;
   return (
     <table>
       <thead><tr><th>Club</th><th>Manager</th><th>Div</th><th>Players</th><th>From (date)</th></tr></thead>

@@ -134,7 +134,7 @@ export default function SquadLimitSection({ embedded = false }) {
 
       <section className="card">
         <h2>Squads at or over the limit ({atLimit.length})</h2>
-        <p className="muted">Every signed-in manager can see this list on Squad &amp; Transfers.</p>
+        <p className="muted">Every signed-in manager sees the squads over 50 on Squad &amp; Transfers.</p>
         <SquadsAtLimitTable squads={atLimit} />
       </section>
 
