@@ -501,6 +501,9 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
     if (!latest || !next) return setStatus('No next round is available for ' + bracket + '.');
     const latestName = roundKey(latest);
     const nextName = roundKey(next);
+    if (selectedTournament?.tournament_structure === 'league_knockout' && bracket === 'Cup' && latestName === 'Play-off') {
+      return setStatus('The Cup last 16 mixes league places 1-8 with the play-off winners: build it in League Stage.');
+    }
     if (bracketRound(knockoutMatches, roundTemplates, bracket, nextName).length > 0) return setStatus(`${bracket} ${nextName} already exists.`);
 
     const { outcomes, unresolved } = tieOutcomes(bracketRound(knockoutMatches, roundTemplates, bracket, latestName));

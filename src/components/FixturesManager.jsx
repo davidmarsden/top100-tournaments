@@ -22,6 +22,7 @@ function isDoubleForfeit(fixture) {
 }
 
 function fixtureGroupLabel(fixture) {
+  if (fixture.stage === 'league') return 'League stage';
   return fixture.stage === 'knockout'
     ? fixture.bracket || 'Knockout'
     : fixture.groups?.code || fixture.group_code || 'Ungrouped';
@@ -570,7 +571,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       <div className="fixtures-toolbar">
         <div>
           <p className="eyebrow">{titleText}</p>
-          <h3>{playedCount} / {fixtures.length} {stage === 'knockout' ? 'knockout' : 'group'} fixtures played</h3>
+          <h3>{playedCount} / {fixtures.length} {stage === 'knockout' ? 'knockout' : stage === 'league' ? 'league' : 'group'} fixtures played</h3>
           <p className="muted">{explainer}</p>
         </div>
         <div className="button-row">
@@ -580,7 +581,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
       </div>
 
       <div className="filter-row multi">
-        <label>{stage === 'knockout' ? 'Bracket' : 'Group'}
+        <label>{stage === 'knockout' ? 'Bracket' : stage === 'league' ? 'Stage' : 'Group'}
           <select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
             <option value="all">All</option>
             {groupOptions.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -614,7 +615,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
           {sections.map((section) => (
             <section className="fixture-section" key={section.key}>
               <div className="fixture-section-header">
-                <h3>{stage === 'knockout' ? section.groupCode : `Group ${section.groupCode}`} · {section.round}{sectionDateLabel(section.fixtures) ? ` · ${sectionDateLabel(section.fixtures)}` : ''}</h3>
+                <h3>{stage === 'knockout' || stage === 'league' ? section.groupCode : `Group ${section.groupCode}`} · {section.round}{sectionDateLabel(section.fixtures) ? ` · ${sectionDateLabel(section.fixtures)}` : ''}</h3>
                 <span>{section.fixtures.length} fixtures</span>
               </div>
 
@@ -667,7 +668,7 @@ export default function FixturesManager({ selectedTournament, preview, stage = '
                                 <option value="played">Played normally</option>
                                 <option value="away_forfeited">Away team forfeited — home win</option>
                                 <option value="home_forfeited">Home team forfeited — away win</option>
-                                <option value="double_forfeit">{stage === 'knockout' ? 'Both teams forfeited — both eliminated' : 'Both teams forfeited — 0-0, zero points'}</option>
+                                <option value="double_forfeit">{stage === 'knockout' ? 'Both teams forfeited — both eliminated' : stage === 'league' ? 'Neither club tried — 0-3 defeat for both' : 'Both teams forfeited — 0-0, zero points'}</option>
                               </select>
                             </label>
                             {ruling === 'double_forfeit' && <label>Double-forfeit reason

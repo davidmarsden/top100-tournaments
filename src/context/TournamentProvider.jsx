@@ -28,6 +28,7 @@ export function normalStatus(tournament) { return String(tournament?.status || '
 export function isArchived(tournament) { return normalStatus(tournament) === 'archived'; }
 export function isPlaceholderArchive(tournament) { return tournament?.archive_quality === 'placeholder' || (normalStatus(tournament) === 'archived' && Number(tournament?.actual_entries || 0) === 0 && tournament?.source !== 'challonge'); }
 export function isKnockoutOnly(tournament) { return tournament?.tournament_structure === 'knockout_only'; }
+export function isLeaguePhase(tournament) { return tournament?.tournament_structure === 'league_knockout'; }
 export function completed(match) { return ['played', 'forfeit', 'voided'].includes(match.status); }
 function sortTournaments(items) { const rank = { published: 0, groups_approved: 1, draft: 2, completed: 3, archived: 4 }; return [...items].sort((a, b) => (rank[normalStatus(a)] ?? 2) - (rank[normalStatus(b)] ?? 2) || Number(isPlaceholderArchive(a)) - Number(isPlaceholderArchive(b)) || new Date(b.created_at || 0) - new Date(a.created_at || 0)); }
 function generateGroups(entries, groupCount) {
