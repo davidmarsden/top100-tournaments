@@ -2,6 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 
 const ratings = Array.from({ length: 31 }, (_, index) => 65 + index);
+const YOUTH_CUP_RULES_URL = 'https://smtop100.blog/youth-cup-format-rules/';
+
+// Youth Cup eligibility: players must be 21 or under at the start of the season.
+// Registration opens on the season's first day, so that is the cut-off date shown.
+function eligibilityDate(tournament) {
+  const value = tournament?.registration_opens_at;
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'the start of the season';
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' });
+}
 
 function routeParts() {
   const parts = window.location.pathname.split('/').filter(Boolean);
@@ -33,6 +43,7 @@ export default function PublicRegistrationPage() {
   const [status, setStatus] = useState('Loading registration...');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(null);
+  const [eligibilityConfirmed, setEligibilityConfirmed] = useState(false);
 
   useEffect(() => { loadConfig(); }, []);
 
@@ -77,6 +88,7 @@ export default function PublicRegistrationPage() {
       setSubmitted({ ...payload.registration, linkedToPortal: payload.linkedToPortal });
       setStatus('Registration received.');
       setForm({ managerName: '', clubId: '', rating: '' });
+      setEligibilityConfirmed(false);
       await loadConfig();
     } catch (error) {
       setStatus(error.message);
@@ -87,6 +99,8 @@ export default function PublicRegistrationPage() {
 
   const tournament = config?.tournament;
   const open = Boolean(config?.window?.open);
+  const youthCup = (tournament?.competition_types?.slug || route.competitionSlug) === 'youth-cup';
+  const cutOff = eligibilityDate(tournament);
   const selectedClub = (config?.clubs || []).find((club) => String(club.id) === String(form.clubId));
   const tournamentPath = `/${route.worldSlug}/${route.competitionSlug}/${route.seasonSlug || tournament?.public_slug || ''}`.replace(/\/$/, '');
 
@@ -123,6 +137,11 @@ export default function PublicRegistrationPage() {
       <p className="eyebrow">Your entry</p>
       <h2>Register your club</h2>
       <p className="muted">No account or email address is required. Your registration appears in the live list below as soon as it is submitted.</p>
+      {youthCup && <div className="warning-card registration-eligibility" role="note">
+        <strong>Every player you field must be aged 21 or under on {cutOff} to be eligible.</strong>
+        <span>Players who turn 22 after that date stay eligible for the whole competition. No loans are allowed. Fielding an ineligible player means a 0–3 forfeit.</span>
+        <a href={YOUTH_CUP_RULES_URL} target="_blank" rel="noopener noreferrer">Read the Youth Cup rules</a>
+      </div>}
       <form onSubmit={submit}>
         <div className="mini-grid">
           <label>Manager name<input required value={form.managerName} onChange={(event) => update('managerName', event.target.value)} autoComplete="name" /></label>
@@ -130,7 +149,8 @@ export default function PublicRegistrationPage() {
           <label>Average team rating<select required value={form.rating} onChange={(event) => update('rating', event.target.value)}><option value="">Choose rating (65–95)</option>{ratings.map((rating) => <option key={rating} value={rating}>{rating}</option>)}</select></label>
         </div>
         {selectedClub?.current_manager_name && <p className="muted">Current manager listed for {selectedClub.club_name}: <strong>{selectedClub.current_manager_name}</strong>. Your manager name must match this directory entry.</p>}
-        <button type="submit" disabled={loading || !open}>{loading ? 'Submitting...' : 'Submit registration'}</button>
+        {youthCup && <label className="registration-confirm"><input type="checkbox" required checked={eligibilityConfirmed} onChange={(event) => setEligibilityConfirmed(event.target.checked)} /><span>I have read the <a href={YOUTH_CUP_RULES_URL} target="_blank" rel="noopener noreferrer">Youth Cup rules</a> and will only field players aged 21 or under on {cutOff}.</span></label>}
+        <button type="submit" disabled={loading || !open || (youthCup && !eligibilityConfirmed)}>{loading ? 'Submitting...' : 'Submit registration'}</button>
       </form>
     </section>}
 
