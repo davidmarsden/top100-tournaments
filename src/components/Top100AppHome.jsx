@@ -225,7 +225,6 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
   const table = Array.isArray(home?.divisionTable) ? home.divisionTable : [];
   const worldLink = smWorldUrl(setupId);
   const myClubLink = smMyClubUrl(setupId, club?.sourceClubId);
-  const opponentLink = smClubUrl(next?.opponentClubDataId);
   const observed = observedLabel(club?.observedAt);
 
   return (
@@ -239,7 +238,6 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
         <div className="top100-sm-shortcuts__buttons">
           {worldLink && <a className="button" href={worldLink} {...EXTERNAL}>Open {home?.world?.name || 'game world'} in SM ↗</a>}
           {myClubLink && <a className="button secondary" href={myClubLink} {...EXTERNAL}>My club in SM ↗</a>}
-          {opponentLink && <a className="button secondary" href={opponentLink} {...EXTERNAL}>Next opponent in SM ↗</a>}
         </div>
         <p className="top100-sm-shortcuts__note">Links open soccermanager.com in your browser. Club pages show the game world you last used in SM, so if one looks wrong, open {home?.world?.name || 'the game world'} first.</p>
       </div>
