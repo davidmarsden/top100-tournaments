@@ -266,3 +266,8 @@ th { color: #a9b8d0; font-size: 0.82rem; text-transform: uppercase; letter-spaci
 .voting-card__edit { margin: 1rem 0 1.25rem; }
 .voting-card__edit textarea { min-height: 12rem; line-height: 1.5; }
 .voting-card__edit-button { margin: 0 0 1rem; }
+.registration-eligibility { margin: 12px 0 16px; }
+.registration-eligibility strong { color: #fde68a; font-size: 1.02rem; }
+.registration-eligibility a, .registration-confirm a { color: #7dd3fc; font-weight: 700; }
+.registration-confirm { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; line-height: 1.45; }
+.registration-confirm input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
