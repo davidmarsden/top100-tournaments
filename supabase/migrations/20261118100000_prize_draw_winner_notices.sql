@@ -97,9 +97,15 @@ $$;
 revoke all on function public.publish_prize_draw(bigint, boolean, text) from public, anon;
 grant execute on function public.publish_prize_draw(bigint, boolean, text) to authenticated, service_role;
 
+-- An earlier version of this migration had different columns and arguments for these two;
+-- drop them so the file can be applied over it.
+drop function if exists public.prize_draw_winners_emailed(bigint);
+drop function if exists public.prize_draw_winners_emailed(bigint, text[]);
+drop function if exists public.prize_draw_winner_contacts(bigint);
+
 -- Winners and the email on their Manager Portal account (one row per winner; email is null when
 -- the winner has no active account).
-create or replace function public.prize_draw_winner_contacts(p_draw_id bigint)
+create function public.prize_draw_winner_contacts(p_draw_id bigint)
 returns table (winner_key text, manager_id bigint, name text, club text, email text, already_emailed boolean,
   title text, prize text, how_to_claim text, page_url text, published boolean)
 language plpgsql
@@ -139,7 +145,7 @@ grant execute on function public.prize_draw_winner_contacts(bigint) to authentic
 
 -- Records the winners just emailed; winners_emailed_at is set once every winner with an email
 -- on file has been sent one.
-create or replace function public.prize_draw_winners_emailed(p_draw_id bigint, p_winner_keys text[])
+create function public.prize_draw_winners_emailed(p_draw_id bigint, p_winner_keys text[])
 returns timestamptz
 language plpgsql
 security definer
