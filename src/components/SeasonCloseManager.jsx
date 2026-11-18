@@ -231,12 +231,13 @@ function PrizeDrawPanel({ tournament, canManage }) {
     if (error) { setStatus(`Could not update draw: ${error.message}`); return; }
     setDraws((current) => current.map((row) => row.id === data.id ? data : (published && row.title === data.title ? { ...row, published: false } : row)));
     if (!published) { setStatus('Draw unpublished.'); return; }
-    if (data.winners_emailed_at) { setStatus('Draw published on the public tournament page. The winners were emailed when it was first published.'); return; }
+    if (data.winners_emailed_at) { setStatus('Draw published on the public tournament page. The winners have already been emailed.'); return; }
     setStatus('Draw published. Telling the winners...');
     setStatus(`Draw published on the public tournament page. ${await emailWinners(data)}`);
   }
 
-  // Each winner gets a Manager Portal notice from publish_prize_draw(); this emails them too.
+  // Each winner gets a Manager Portal notice from publish_prize_draw(); this emails them too. A
+  // winner whose email failed is tried again the next time the draw is published.
   async function emailWinners(draw) {
     const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch('/.netlify/functions/prize-draw-winners', {
@@ -246,11 +247,12 @@ function PrizeDrawPanel({ tournament, canManage }) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) return `Winners have a Manager Portal notice, but the emails failed: ${result.error || `HTTP ${response.status}`}.`;
-    if (result.recorded) setDraws((current) => current.map((row) => row.id === draw.id ? { ...row, winners_emailed_at: new Date().toISOString() } : row));
+    if (result.allEmailed) setDraws((current) => current.map((row) => row.id === draw.id ? { ...row, winners_emailed_at: new Date().toISOString() } : row));
     const parts = [];
     if (result.sent?.length) parts.push(`Emailed ${result.sent.join(', ')}.`);
-    if (result.missing?.length) parts.push(`No Manager Portal account, so tell them directly: ${result.missing.join(', ')}.`);
-    if (result.failed?.length) parts.push(`Email failed: ${result.failed.join(', ')}.`);
+    if (result.already?.length) parts.push(`Already emailed: ${result.already.join(', ')}.`);
+    if (result.missing?.length) parts.push(`No email on file (no Manager Portal account, or added by hand), so tell them directly: ${result.missing.join(', ')}.`);
+    if (result.failed?.length) parts.push(`Email failed: ${result.failed.join(', ')}. Unpublish and publish the draw again to retry.`);
     return parts.join(' ') || 'No winners to email.';
   }
 
