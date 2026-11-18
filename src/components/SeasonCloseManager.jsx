@@ -132,6 +132,8 @@ function ArchivePanel({ tournament, onTournamentUpdated, canManage }) {
 // ---------------------------------------------------------------------------
 // Prize draw
 // ---------------------------------------------------------------------------
+const DEFAULT_HOW_TO_CLAIM = 'To claim it, post on the Soccer Manager newsfeed when the new season starts. As a prize winner you can offer more than the usual £1m maximum for your new player.';
+
 function PrizeDrawPanel({ tournament, canManage }) {
   const season = seasonOf(tournament);
   const [pool, setPool] = useState([]);
@@ -139,6 +141,7 @@ function PrizeDrawPanel({ tournament, canManage }) {
   const [extraNames, setExtraNames] = useState('');
   const [title, setTitle] = useState('');
   const [prize, setPrize] = useState('');
+  const [howToClaim, setHowToClaim] = useState('');
   const [winnersCount, setWinnersCount] = useState(3);
   const [draws, setDraws] = useState([]);
   const [status, setStatus] = useState('');
@@ -150,6 +153,7 @@ function PrizeDrawPanel({ tournament, canManage }) {
   useEffect(() => {
     setTitle(`${season ? `S${season} ` : ''}Youth Cup prize draw`);
     setPrize(season ? `New player pick in S${season + 1}` : 'New player pick next season');
+    setHowToClaim(DEFAULT_HOW_TO_CLAIM);
     setExtraNames('');
     setReveal(null);
     load();
@@ -223,10 +227,33 @@ function PrizeDrawPanel({ tournament, canManage }) {
   }, [reveal]);
 
   async function setPublished(draw, published) {
-    const { data, error } = await supabase.rpc('publish_prize_draw', { p_draw_id: draw.id, p_published: published });
+    const { data, error } = await supabase.rpc('publish_prize_draw', { p_draw_id: draw.id, p_published: published, p_how_to_claim: published ? howToClaim.trim() || null : null });
     if (error) { setStatus(`Could not update draw: ${error.message}`); return; }
-    setStatus(published ? 'Draw published on the public tournament page.' : 'Draw unpublished.');
     setDraws((current) => current.map((row) => row.id === data.id ? data : (published && row.title === data.title ? { ...row, published: false } : row)));
+    if (!published) { setStatus('Draw unpublished.'); return; }
+    if (data.winners_emailed_at) { setStatus('Draw published on the public tournament page. The winners have already been emailed.'); return; }
+    setStatus('Draw published. Telling the winners...');
+    setStatus(`Draw published on the public tournament page. ${await emailWinners(data)}`);
+  }
+
+  // Each winner gets a Manager Portal notice from publish_prize_draw(); this emails them too. A
+  // winner whose email failed is tried again the next time the draw is published.
+  async function emailWinners(draw) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/.netlify/functions/prize-draw-winners', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ drawId: draw.id }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) return `Winners have a Manager Portal notice, but the emails failed: ${result.error || `HTTP ${response.status}`}.`;
+    if (result.allEmailed) setDraws((current) => current.map((row) => row.id === draw.id ? { ...row, winners_emailed_at: new Date().toISOString() } : row));
+    const parts = [];
+    if (result.sent?.length) parts.push(`Emailed ${result.sent.join(', ')}.`);
+    if (result.already?.length) parts.push(`Already emailed: ${result.already.join(', ')}.`);
+    if (result.missing?.length) parts.push(`No email on file (no Manager Portal account, or added by hand), so tell them directly: ${result.missing.join(', ')}.`);
+    if (result.failed?.length) parts.push(`Email failed: ${result.failed.join(', ')}. Unpublish and publish the draw again to retry.`);
+    return parts.join(' ') || 'No winners to email.';
   }
 
   async function voidDraw(draw) {
@@ -258,6 +285,9 @@ function PrizeDrawPanel({ tournament, canManage }) {
       <label>Prize<input value={prize} onChange={(event) => setPrize(event.target.value)} /></label>
       <label className="prize-draw-count">Winners<input type="number" min="1" max="50" value={winnersCount} onChange={(event) => setWinnersCount(event.target.value)} /></label>
     </div>
+    <label className="prize-draw-extra">How to claim (sent to each winner when you publish the draw)
+      <textarea rows={2} value={howToClaim} onChange={(event) => setHowToClaim(event.target.value)} />
+    </label>
 
     <div className="prize-draw-pool">
       <div className="prize-draw-pool-head">
@@ -308,7 +338,7 @@ function PrizeDrawPanel({ tournament, canManage }) {
       {draws.map((draw) => <article key={draw.id} className={`prize-draw-log-row${draw.voided ? ' is-voided' : ''}${draw.published ? ' is-published' : ''}`}>
         <div>
           <strong>#{draw.id} · {draw.title}</strong>
-          <small>{formatDrawDate(draw.drawn_at)} · {draw.winners_count} from {(draw.candidates || []).length}{draw.published ? ' · Published' : ''}{draw.voided ? ` · Voided: ${draw.void_reason}` : ''}</small>
+          <small>{formatDrawDate(draw.drawn_at)} · {draw.winners_count} from {(draw.candidates || []).length}{draw.published ? ' · Published' : ''}{draw.winners_emailed_at ? ' · Winners emailed' : ''}{draw.voided ? ` · Voided: ${draw.void_reason}` : ''}</small>
           <p>{(draw.winners || []).map((winner) => winner.name).join(' · ')}</p>
           {verification[draw.id] && <small className={verification[draw.id].ok ? 'verify-ok' : verification[draw.id].ok === false ? 'verify-fail' : ''}>{verification[draw.id].message}</small>}
         </div>
