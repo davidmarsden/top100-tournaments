@@ -115,10 +115,20 @@ export default function ComplianceFollowUp({ reloadKey = 0, onChanged }) {
 
   const open = events.filter((event) => !event.acknowledged_at);
   const activeBans = bans.filter((row) => row.ends_on >= today());
+  // Offer (or withdraw) a shorter ban for passing the rules check in the Manager Portal.
+  const offerReduction = async (row) => {
+    const value = window.prompt(`Shorten ${row.club_name}'s ban to end on (YYYY-MM-DD) once its manager passes the rules check. Leave empty to withdraw the offer.`, row.reduced_ends_on || '');
+    if (value === null) return;
+    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) { setMessage('Use a date like 2027-01-16.'); return; }
+    call('offer_ban_reduction', { p_ban_id: row.id, p_reduced_ends_on: value.trim() || null });
+  };
   const banItem = (row) => (
     <li key={row.id}>
       <strong>{row.club_name}</strong>: {date(row.starts_on)} to {date(row.ends_on)},{' '}
       {row.terms === 'external_cash_sales_only' ? 'cash sales to clubs outside Top 100 only' : 'no deals'}. {row.reason}
+      {row.reduce_condition === 'rules_check' && row.reduced_ends_on && <em> Ends {date(row.reduced_ends_on)} instead once the manager passes the <a href="https://manager.smtop100.blog/rules-check">rules check</a>.</em>}
+      {row.reduced_at && <em> Shortened on {date(row.reduced_at)} after the rules check.</em>}
+      {row.ends_on >= today() && !row.reduced_at && <> <button type="button" className="link-button" onClick={() => offerReduction(row)}>{row.reduced_ends_on ? 'Change rules-check offer' : 'Offer shorter ban for rules check'}</button></>}
     </li>
   );
   const saleRow = (row) => (

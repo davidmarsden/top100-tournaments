@@ -9,6 +9,7 @@ import ManagerAppointments from './components/ManagerAppointments.jsx';
 import PublicAppointments from './components/PublicAppointments.jsx';
 import ManagerEntry from './components/ManagerEntry.jsx';
 import ManagerSquadDashboard from './components/ManagerSquadDashboard.jsx';
+import RulesCheckPage from './components/RulesCheckPage.jsx';
 import ManagerLabPage from './components/ManagerLabPage.jsx';
 import PublicVotingResults from './components/PublicVotingResults.jsx';
 import PublicOpenPolls from './components/PublicOpenPolls.jsx';
@@ -27,6 +28,7 @@ function isManagerSquadPath() { return /^\/manager\/squad\/?$/.test(window.locat
 function isChatPath() { return /^\/chat\/?$/.test(window.location.pathname); }
 function isManagerHostRegistrationPath() { return /^\/(?:manager\/)?registrations?\/?$/.test(window.location.pathname); }
 function isManagerHostChatPath() { return /^\/(?:manager\/)?chat\/?$/.test(window.location.pathname); }
+function isManagerHostRulesCheckPath() { return /^\/(?:manager\/)?rules-check\/?$/.test(window.location.pathname); }
 function isManagerHostSquadPath() { return /^\/(?:manager\/)?squad\/?$/.test(window.location.pathname); }
 function isManagerHostPortalPath() { return /^\/(?:manager\/?)?$/.test(window.location.pathname); }
 function isManagerAccountsPath() { return /^\/admin\/manager-accounts\/?$/.test(window.location.pathname); }
@@ -76,6 +78,7 @@ export default function App() {
     if (isAuthSessionBridgePath()) return <AuthSessionBridge />;
     if (isManagerHostChatPath()) return <ManagerShell><Top100ChatAccess /></ManagerShell>;
     if (isManagerHostSquadPath()) return <ManagerShell product="Squad & Transfers"><ManagerSquadDashboard /></ManagerShell>;
+    if (isManagerHostRulesCheckPath()) return <ManagerShell product="Rules check"><RulesCheckPage /></ManagerShell>;
     if (isManagerHostAppointmentsPath()) return <ManagerShell product="Appointments"><ManagerAppointments /></ManagerShell>;
     if (isManagerHostRegistrationPath()) return <ManagerShell><ManagerEntry registrationMode /></ManagerShell>;
     if (isManagerHostPortalPath()) return <ManagerShell><ManagerEntry /></ManagerShell>;

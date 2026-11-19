@@ -142,3 +142,12 @@
 .compliance-action { margin: 0 0 12px; line-height: 1.5; }
 .compliance-action.is-urgent strong { color: #fca5a5; }
 .compliance-action__form { margin: 6px 0 2px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Rules check (manager.smtop100.blog/rules-check). */
+.rules-check__question { border: 1px solid #24406b; }
+.rules-check__question.is-wrong { border-color: #dc2626; }
+.rules-check__question legend { font-weight: 700; line-height: 1.4; }
+.rules-check__option { display: block; margin: 8px 0; line-height: 1.4; cursor: pointer; }
+.rules-check__result.is-pass { border: 2px solid #16a34a; }
+.rules-check__result.is-fail { border: 2px solid #f59e0b; }
+.rules-check__offer, .rules-check__passed { margin-top: 10px; }
