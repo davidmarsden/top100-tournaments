@@ -216,6 +216,9 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
     </div>
   ) : null;
 
+  // Hooks before the early returns, so every render calls the same hooks.
+  const { bans, error: bansError } = useTransferBans(state === 'ready' && Boolean(home?.world?.slug), home?.world?.slug || 'top-100');
+
   if (state === 'unavailable') return null;
   if (state === 'loading') return <section className="top100-app-home" aria-busy="true">{switcher}<p className="muted">Loading your club…</p></section>;
 
@@ -226,7 +229,6 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
   const table = Array.isArray(home?.divisionTable) ? home.divisionTable : [];
   const worldLink = smWorldUrl(setupId);
   const myClubLink = smMyClubUrl(setupId, club?.sourceClubId);
-  const { bans, error: bansError } = useTransferBans(Boolean(home?.world?.slug), home?.world?.slug);
   const observed = observedLabel(club?.observedAt);
 
   return (
