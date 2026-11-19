@@ -4,10 +4,11 @@
 --
 -- transfer_ban_history: every ban with its offence level, by manager. Seeded with the bans on the
 -- Transfer Bans page from September 2023 (older ones can no longer affect a level) and this
--- autumn's bans; new ones are added when a ban is recorded from Manager Alerts.
+-- autumn's bans. Every ban recorded from now on is added by a trigger, whichever form records it,
+-- at the level the ladder gives on its start date.
 -- transfer_ban_ladder(manager, name, as_of): officials only. The manager's last ban, the level
 -- they're back to by as_of, and the suggested level and length for a new offence.
--- record_transfer_ban_level(ban, manager, level): officials only; adds a recorded ban to the history.
+-- record_transfer_ban_level(ban, manager, level): officials only; sets a recorded ban's level.
 
 create table if not exists public.transfer_ban_history (
   id bigint generated always as identity primary key,
@@ -83,7 +84,8 @@ join public.club_transfer_bans ban on ban.source_club_id = v.source_club_id and 
 left join public.managers manager on manager.id = v.manager_id
 on conflict (manager_name, starts_on) do nothing;
 
-create or replace function public.transfer_ban_ladder(p_manager_id bigint, p_manager_name text, p_as_of date default current_date)
+-- @permissions private public.transfer_ban_level_at(bigint,text,date): internal, used by transfer_ban_ladder() and the ban trigger
+create or replace function public.transfer_ban_level_at(p_manager_id bigint, p_manager_name text, p_as_of date)
 returns jsonb
 language plpgsql
 stable
@@ -96,12 +98,11 @@ declare
   v_back_to integer := 0;
   v_level integer;
 begin
-  if not public.is_top100_official() then raise exception 'Only Top 100 officials can view transfer ban levels.'; end if;
-
+  p_as_of := coalesce(p_as_of, current_date);
   select * into v_last from public.transfer_ban_history h
   where ((p_manager_id is not null and h.manager_id = p_manager_id)
       or lower(trim(h.manager_name)) = lower(trim(coalesce(p_manager_name, ''))))
-    and h.starts_on < coalesce(p_as_of, current_date)
+    and h.starts_on < p_as_of
   order by h.ends_on desc, h.starts_on desc
   limit 1;
 
@@ -122,6 +123,21 @@ begin
     'backToLevel', v_back_to,
     'level', v_level,
     'months', case v_level when 1 then 1 when 2 then 3 when 3 then 4 else 6 end);
+end;
+$$;
+
+revoke all on function public.transfer_ban_level_at(bigint, text, date) from public, anon, authenticated;
+
+create or replace function public.transfer_ban_ladder(p_manager_id bigint, p_manager_name text, p_as_of date default current_date)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_top100_official() then raise exception 'Only Top 100 officials can view transfer ban levels.'; end if;
+  return public.transfer_ban_level_at(p_manager_id, p_manager_name, p_as_of);
 end;
 $$;
 
@@ -152,3 +168,52 @@ $$;
 
 revoke all on function public.record_transfer_ban_level(bigint, bigint, text, integer) from public, anon;
 grant execute on function public.record_transfer_ban_level(bigint, bigint, text, integer) to authenticated;
+
+-- Every new ban goes into the history at the ladder's level, so a ban added with the plain
+-- "Add ban" form counts towards the next offence too. The manager comes from the linked breach,
+-- else from the club's current assignment.
+create or replace function public.record_transfer_ban_history()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_manager_id bigint;
+  v_manager_name text;
+  v_level integer;
+begin
+  if exists (select 1 from public.transfer_ban_history h where h.ban_id = new.id) then return new; end if;
+
+  select breach.manager_id, breach.manager_name into v_manager_id, v_manager_name
+  from public.squad_cap_breaches breach where breach.id = new.breach_id;
+
+  if v_manager_id is null and v_manager_name is null then
+    select assignment.manager_id, coalesce(manager.display_name, manager.name, assignment.source_manager_name)
+      into v_manager_id, v_manager_name
+    from public.game_worlds world
+    join public.soccer_manager_club_crosswalk crosswalk
+      on crosswalk.source_world_id = new.source_world_id and crosswalk.source_club_id = new.source_club_id
+    join public.soccer_manager_world_manager_assignments assignment
+      on assignment.game_world_id = world.id and assignment.team_id = crosswalk.team_id
+    left join public.managers manager on manager.id = assignment.manager_id
+    where world.external_world_id = new.source_world_id
+    limit 1;
+  end if;
+
+  v_manager_name := coalesce(nullif(trim(v_manager_name), ''), 'Unknown manager at ' || new.club_name);
+  v_level := (public.transfer_ban_level_at(v_manager_id, v_manager_name, new.starts_on) ->> 'level')::integer;
+
+  insert into public.transfer_ban_history (manager_id, manager_name, club_name, starts_on, ends_on, offence_level, kind, note, ban_id)
+  values (v_manager_id, v_manager_name, new.club_name, new.starts_on, new.ends_on, v_level, 'squad_limit', new.reason, new.id)
+  on conflict (manager_name, starts_on) do update set ban_id = coalesce(public.transfer_ban_history.ban_id, excluded.ban_id);
+  return new;
+end;
+$$;
+
+revoke all on function public.record_transfer_ban_history() from public, anon, authenticated;
+
+drop trigger if exists record_transfer_ban_history on public.club_transfer_bans;
+create trigger record_transfer_ban_history
+  after insert on public.club_transfer_bans
+  for each row execute function public.record_transfer_ban_history();

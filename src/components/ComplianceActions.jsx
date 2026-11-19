@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 // The admin team's to-do list for rule 4.1, worked out from the records so nothing is forgotten:
-//   - an upheld breach with no transfer ban recorded, with the usual ban ready to record
-//     (one month for a first breach, three for a repeat, cash sales to clubs outside Top 100);
+//   - an upheld breach with no transfer ban recorded, with the ban the ladder gives ready to record
+//     (cash sales to clubs outside Top 100 only);
 //   - a banned or upheld club still over the limit;
 //   - a required sale that can be made now but hasn't been;
 //   - breaches waiting for a decision, and follow-up alerts not yet seen.
@@ -30,7 +30,7 @@ const MONTH_WORDS = { 1: 'one-month', 3: 'three-month', 4: 'four-month', 6: 'six
 
 // The ban the ladder (rule 4.1) gives for this breach: the manager's last ban, less a level for
 // each six months clean since it ended, plus one. Dates stay editable.
-function SuggestedBan({ breach, onRecorded, setMessage }) {
+function SuggestedBan({ breach, generation, onRecorded, setMessage }) {
   const starts = breach.started_on || new Date().toISOString().slice(0, 10);
   const [ladder, setLadder] = useState(null);
   const [from, setFrom] = useState(starts);
@@ -43,11 +43,12 @@ function SuggestedBan({ breach, onRecorded, setMessage }) {
       .then(({ data, error }) => {
         if (!active) return;
         if (error) { setMessage(error.message); return; }
+        // Recomputed on every reload: recording one ban can raise the level for the next.
         setLadder(data);
         setTo(addMonths(starts, data.months));
       });
     return () => { active = false; };
-  }, [breach.id]);
+  }, [breach.id, generation]);
 
   if (!ladder) return <li className="compliance-action is-urgent"><strong>{breach.club_name}: breach upheld, but no transfer ban recorded.</strong> Working out the ban level…</li>;
 
@@ -93,6 +94,7 @@ function SuggestedBan({ breach, onRecorded, setMessage }) {
 export default function ComplianceActions({ reloadKey = 0, onChanged }) {
   const [data, setData] = useState(null);
   const [message, setMessage] = useState('');
+  const [generation, setGeneration] = useState(0);
 
   const load = useCallback(async () => {
     const [breaches, bans, obligations, events] = await Promise.all([
@@ -104,6 +106,7 @@ export default function ComplianceActions({ reloadKey = 0, onChanged }) {
     const error = breaches.error || bans.error || obligations.error || events.error;
     if (error) { setMessage(error.message); return; }
     setData({ breaches: breaches.data || [], bans: bans.data || [], obligations: obligations.data || [], unseen: (events.data || []).length });
+    setGeneration((n) => n + 1);
     setMessage('');
   }, []);
 
@@ -134,7 +137,7 @@ export default function ComplianceActions({ reloadKey = 0, onChanged }) {
       {message && <p role="status">{message}</p>}
       {items === 0 ? <p>Nothing outstanding.</p> : (
         <ul>
-          {unbanned.map((breach) => <SuggestedBan key={breach.id} breach={breach} onRecorded={changed} setMessage={setMessage} />)}
+          {unbanned.map((breach) => <SuggestedBan key={breach.id} breach={breach} generation={generation} onRecorded={changed} setMessage={setMessage} />)}
           {toReview.length > 0 && <li className="compliance-action is-urgent"><strong>{toReview.length} breach{toReview.length === 1 ? '' : 'es'} to review</strong>: {toReview.map((breach) => breach.club_name).join(', ')}. See <a href="#squad-limit-review">To review</a>.</li>}
           {stillOver.map((breach) => {
             const ban = activeBans.find((row) => row.source_club_id === breach.source_club_id);
