@@ -133,7 +133,7 @@ function safeReturnTo() {
 
 // A Manager Portal page to open after signing in (?next=/appointments), so a manager sent here
 // to sign in from one of those pages is taken back to it.
-const NEXT_PATHS = new Set(['/appointments', '/squad']);
+const NEXT_PATHS = new Set(['/appointments', '/squad', '/rules-check']);
 function safeNextPath() {
   const value = new URLSearchParams(window.location.search).get('next');
   return NEXT_PATHS.has(value) ? value : '';
