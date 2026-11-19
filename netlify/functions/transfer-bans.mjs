@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
 // GET /.netlify/functions/transfer-bans: the public register of transfer bans (bans in force or
-// ended since September 2026, with their required sales), read by the blog's daily rebuild of
-// smtop100.blog/transfer-bans/. Same details the Transfer Bans page has always published.
+// ended since September 2026, with their required sales) and the table of managers with the most
+// bans, read by the blog's daily rebuild of smtop100.blog/transfer-bans/. Same details the
+// Transfer Bans page has always published.
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -24,7 +25,11 @@ export default async (request) => {
   const supabase = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  const { data, error } = await supabase.rpc('public_transfer_ban_register', { p_world_slug: 'top-100' });
-  if (error) return json({ error: error.message }, 502);
-  return json({ asOf: new Date().toISOString().slice(0, 10), bans: data || [] });
+  const [register, table] = await Promise.all([
+    supabase.rpc('public_transfer_ban_register', { p_world_slug: 'top-100' }),
+    supabase.rpc('public_transfer_ban_table', { p_limit: 10 }),
+  ]);
+  if (register.error) return json({ error: register.error.message }, 502);
+  // The table is extra: if it fails, the page still gets the bans.
+  return json({ asOf: new Date().toISOString().slice(0, 10), bans: register.data || [], table: table.error ? null : table.data });
 };
