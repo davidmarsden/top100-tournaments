@@ -25,20 +25,53 @@ function banFor(breach, bans) {
       && Math.abs(daysBetween(breach.started_on, ban.starts_on)) <= 14);
 }
 
-function SuggestedBan({ breach, offence, onRecorded, setMessage }) {
+const LEVEL_NAMES = { 1: 'first', 2: 'second', 3: 'third', 4: 'fourth' };
+const MONTH_WORDS = { 1: 'one-month', 3: 'three-month', 4: 'four-month', 6: 'six-month' };
+
+// The ban the ladder (rule 4.1) gives for this breach: the manager's last ban, less a level for
+// each six months clean since it ended, plus one. Dates stay editable.
+function SuggestedBan({ breach, onRecorded, setMessage }) {
   const starts = breach.started_on || new Date().toISOString().slice(0, 10);
+  const [ladder, setLadder] = useState(null);
   const [from, setFrom] = useState(starts);
-  const [to, setTo] = useState(addMonths(starts, offence > 1 ? 3 : 1));
+  const [to, setTo] = useState('');
   const [busy, setBusy] = useState(false);
-  const reason = `${ordinal(offence)} squad-limit breach: ${breach.peak_count} players on ${date(breach.started_on)}.`
-    + `${breach.review_note ? ` Ruling: ${breach.review_note}` : ''} ${offence > 1 ? 'Three-month' : 'One-month'} ban, cash sales to clubs outside Top 100 only.`;
+
+  useEffect(() => {
+    let active = true;
+    supabase.rpc('transfer_ban_ladder', { p_manager_id: breach.manager_id, p_manager_name: breach.manager_name, p_as_of: starts })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) { setMessage(error.message); return; }
+        setLadder(data);
+        setTo(addMonths(starts, data.months));
+      });
+    return () => { active = false; };
+  }, [breach.id]);
+
+  if (!ladder) return <li className="compliance-action is-urgent"><strong>{breach.club_name}: breach upheld, but no transfer ban recorded.</strong> Working out the ban level…</li>;
+
+  const level = ladder.level;
+  const months = MONTH_WORDS[ladder.months] || `${ladder.months}-month`;
+  const last = ladder.lastBan;
+  const history = last
+    ? `Last ban: level ${last.level}, ended ${date(last.endsOn)} (${last.monthsClean} month${last.monthsClean === 1 ? '' : 's'} clean, so back to level ${ladder.backToLevel}).`
+    : 'No previous ban on record.';
+  const reason = `${ordinal(level)} level offence: ${breach.peak_count} players on ${date(breach.started_on)}.`
+    + `${breach.review_note ? ` Ruling: ${breach.review_note}` : ''} ${months.charAt(0).toUpperCase()}${months.slice(1)} ban, cash sales to clubs outside Top 100 only.`;
 
   async function record() {
     setBusy(true);
-    const { error } = await supabase.rpc('set_club_transfer_ban', {
+    const { data: ban, error } = await supabase.rpc('set_club_transfer_ban', {
       p_source_club_id: breach.source_club_id, p_starts_on: from, p_ends_on: to, p_reason: reason,
       p_terms: 'external_cash_sales_only', p_breach_id: breach.id,
     });
+    if (!error && ban?.id) {
+      const { error: levelError } = await supabase.rpc('record_transfer_ban_level', {
+        p_ban_id: ban.id, p_manager_id: breach.manager_id, p_manager_name: breach.manager_name, p_level: level,
+      });
+      if (levelError) setMessage(`Ban recorded, but its level wasn't: ${levelError.message}`);
+    }
     setBusy(false);
     if (error) setMessage(error.message); else onRecorded();
   }
@@ -46,11 +79,11 @@ function SuggestedBan({ breach, offence, onRecorded, setMessage }) {
   return (
     <li className="compliance-action is-urgent">
       <strong>{breach.club_name}: breach upheld, but no transfer ban recorded.</strong>{' '}
-      {ordinal(offence).toLowerCase()} breach ({breach.peak_count} players, {date(breach.started_on)}{breach.manager_name ? `, ${breach.manager_name}` : ''}).
+      {breach.manager_name || 'The manager'}: {LEVEL_NAMES[level]} level offence ({breach.peak_count} players, {date(breach.started_on)}). {history}
       <div className="compliance-action__form">
         <label>From <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>{' '}
         <label>to <input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>{' '}
-        <button type="button" onClick={record} disabled={busy}>{busy ? 'Recording…' : `Record ${offence > 1 ? 'three-month' : 'one-month'} ban`}</button>
+        <button type="button" onClick={record} disabled={busy}>{busy ? 'Recording…' : `Record ${months} ban`}</button>
       </div>
       <small className="muted">Reason recorded: {reason}</small>
     </li>
@@ -81,9 +114,6 @@ export default function ComplianceActions({ reloadKey = 0, onChanged }) {
   const changed = () => { load(); onChanged?.(); };
 
   const upheld = data.breaches.filter((breach) => breach.status === 'upheld');
-  // The club's nth upheld breach, by date.
-  const offenceOf = (breach) => upheld.filter((other) => other.source_club_id === breach.source_club_id
-    && (other.started_on || '') <= (breach.started_on || '')).length;
   const unbanned = upheld.filter((breach) => !banFor(breach, data.bans));
 
   const activeBans = data.bans.filter((ban) => ban.ends_on >= today);
@@ -104,7 +134,7 @@ export default function ComplianceActions({ reloadKey = 0, onChanged }) {
       {message && <p role="status">{message}</p>}
       {items === 0 ? <p>Nothing outstanding.</p> : (
         <ul>
-          {unbanned.map((breach) => <SuggestedBan key={breach.id} breach={breach} offence={offenceOf(breach)} onRecorded={changed} setMessage={setMessage} />)}
+          {unbanned.map((breach) => <SuggestedBan key={breach.id} breach={breach} onRecorded={changed} setMessage={setMessage} />)}
           {toReview.length > 0 && <li className="compliance-action is-urgent"><strong>{toReview.length} breach{toReview.length === 1 ? '' : 'es'} to review</strong>: {toReview.map((breach) => breach.club_name).join(', ')}. See <a href="#squad-limit-review">To review</a>.</li>}
           {stillOver.map((breach) => {
             const ban = activeBans.find((row) => row.source_club_id === breach.source_club_id);
