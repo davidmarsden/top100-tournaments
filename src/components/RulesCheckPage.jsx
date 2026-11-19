@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { signInFromOtherTop100Sites } from './ManagerEntry.jsx';
 
-// The rules check (manager.smtop100.blog/rules-check): eight questions on the squad limit and
-// transfer rules. Marked on the server (submit_rules_check); every answer must be right to pass,
-// with as many tries as the manager likes. Passing applies any shorter ban the administrators
-// offered for it.
+// The rules check (manager.smtop100.blog/rules-check): ten questions drawn from the rules (six on
+// the squad limit and transfers, four on activity, vacancies and how Top 100 is run). Marked on
+// the server (submit_rules_check); every answer must be right to pass, with as many tries as the
+// manager likes. Open to anyone signed in, including waiting-list applicants. Passing applies any
+// shorter ban the administrators offered for it.
 
 const longDate = (value) => (value ? new Date(`${String(value).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 
@@ -70,10 +71,11 @@ export default function RulesCheckPage() {
     <Shell>
       <section className="manager-portal-hero">
         <p className="eyebrow">Top 100 · Rules check</p>
-        <h1>Squad limit and transfer rules</h1>
+        <h1>Top 100 rules check</h1>
         <p className="muted">
-          Eight questions, all from the <a href="https://smtop100.blog/rules/">Top 100 rules</a>. Get every one right to pass;
-          you can try as many times as you like.
+          Ten questions from the <a href="https://smtop100.blog/rules/">Top 100 rules</a>: the squad limit, transfers, and how
+          clubs, vacancies and activity work. Get every one right to pass; you can try as many times as you like, and each
+          try draws a fresh set. For managers, applicants and anyone thinking of joining.
         </p>
         {reduction && !reduction.reducedAt && (
           <p className="rules-check__offer">Passing shortens your club's transfer ban to end on <strong>{longDate(reduction.reducedEndsOn)}</strong> instead of {longDate(reduction.endsOn)}.</p>

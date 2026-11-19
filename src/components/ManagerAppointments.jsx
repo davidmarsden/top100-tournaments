@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { RulesCheckPrompt } from './RulesCheckBadge.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import { signInFromOtherTop100Sites } from './ManagerEntry.jsx';
 import { vacancyCardFor } from '../lib/appointmentCards.mjs';
@@ -124,6 +125,7 @@ function VacanciesCard({ data, onSubmit, onWithdraw, busy }) {
         </div>
       )}
       {notGold && <p className="status">Applying needs Gold membership, which every Top 100 manager must have.</p>}
+      <RulesCheckPrompt context="before you apply" />
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {data.vacancies.map((vacancy) => (
           <li key={vacancy.id} style={{ marginBottom: 8 }}>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { RulesCheckBadge } from './RulesCheckBadge.jsx';
 
 // The admin team's to-do list for rule 4.1, worked out from the records so nothing is forgotten:
 //   - an upheld breach with no transfer ban recorded, with the ban the ladder gives ready to record
@@ -81,6 +82,7 @@ function SuggestedBan({ breach, generation, onRecorded, setMessage }) {
     <li className="compliance-action is-urgent">
       <strong>{breach.club_name}: breach upheld, but no transfer ban recorded.</strong>{' '}
       {breach.manager_name || 'The manager'}: {LEVEL_NAMES[level]} level offence ({breach.peak_count} players, {date(breach.started_on)}). {history}
+      {breach.manager_id && <> <RulesCheckBadge managerId={breach.manager_id} />. Recording the ban sends the manager a notice suggesting the check.</>}
       <div className="compliance-action__form">
         <label>From <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>{' '}
         <label>to <input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>{' '}

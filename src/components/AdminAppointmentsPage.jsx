@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RulesCheckBadge } from './RulesCheckBadge.jsx';
 import AdminWaitingListTab from './AdminWaitingListTab';
 import { supabase } from '../lib/supabaseClient';
 
@@ -617,6 +618,7 @@ function ReviewsTab({ data, inputs, setInputs, call, setMessage, reload }) {
           <section className="card" key={review.id} id={`review-${review.id}`} hidden={!shown(review)} style={{ scrollMarginTop: 16, display: shown(review) ? undefined : 'none' }}>
             <p style={{ margin: 0, textAlign: 'right' }}><a href="#review-summary">Back to the list</a></p>
             <h3>D{review.division} {ordinal(review.position)} · {review.club_name} · {review.manager_name || 'no manager'}</h3>
+            {review.manager_id && <p><RulesCheckBadge managerId={review.manager_id} /></p>}
             <p className="muted">
               {review.points ?? '–'} points
               {review.games_left ? ` · ${review.games_left} game${review.games_left === 1 ? '' : 's'} left · ` : ' · '}
@@ -1058,6 +1060,7 @@ function VacanciesTab({ data, inputs, setInputs, call, setMessage }) {
         {applications.map((application) => (
           <div key={application.id} style={{ marginBottom: 12 }}>
             <strong>{application.managerName}</strong> ({application.club}, D{application.clubDivision} {ordinal(application.clubPosition)}): {application.preferences.map(clubName).join(' → ')}
+            {' · '}<RulesCheckBadge managerId={application.manager_id} />
             {isUnscored(application) && <span className="status" style={{ marginLeft: 8 }}>{isAuto ? 'Automatic score' : 'Not yet scored'}</span>}
             {application.note && <div className="muted">“{application.note}”</div>}
             {data.inputs[String(application.manager_id)]?.gold === false && <div className="status">Not a Gold member.</div>}
