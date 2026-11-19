@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import SquadBreachReportForm from './SquadBreachReportForm.jsx';
 import SquadsAtLimitTable from './SquadsAtLimitTable.jsx';
+import TransferBansCard, { useTransferBans } from './TransferBansCard.jsx';
 
 function money(value) {
   if (!hasNumber(value)) return '—';
@@ -70,6 +71,7 @@ export default function ManagerSquadDashboard() {
   // null while loading; an error is shown as an error, never as an empty list.
   const [squadsAtLimit, setSquadsAtLimit] = useState(null);
   const [squadsError, setSquadsError] = useState('');
+  const { bans, error: bansError } = useTransferBans(hasSupabaseConfig);
 
   async function loadSquadsAtLimit() {
     if (!hasSupabaseConfig || !supabase) return;
@@ -305,6 +307,8 @@ export default function ManagerSquadDashboard() {
       <div className="card-header"><p className="eyebrow">Market</p><h2>Transfers involving {dashboard.teamName}</h2></div>
       {transfers.length ? <div className="squad-list">{transfers.map((transfer) => <div className="squad-list-row transfer-row" key={transfer.id}><div><strong><span className={`transfer-direction ${transfer.direction}`}>{transfer.direction === 'in' ? 'IN' : 'OUT'}</span> {transfer.playerName}</strong><span>{transfer.rating ?? '—'} · {transfer.position || '—'} · {transfer.counterpartyClubName || 'Unknown club'}{transfer.counterpartyIsTop100 ? ' · Top 100' : ' · external club'}</span></div><div className="transfer-money"><b>{money(transfer.amount)}</b><span>{transfer.acceptedDate || 'Date unknown'}{transfer.turn ? ` · turn ${transfer.turn}` : ''}</span></div></div>)}</div> : <p className="muted">No archived transfers involving this club yet.</p>}
     </section>
+
+    <TransferBansCard bans={bans} error={bansError} />
 
     <section className="card portal-panel">
       <div className="card-header"><p className="eyebrow">Rule 4.1</p><h2>Squads over the limit{squadsAtLimit ? ` (${squadsAtLimit.length})` : ''}</h2></div>

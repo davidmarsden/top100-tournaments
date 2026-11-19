@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import SquadLimitSection from './SquadLimitSection.jsx';
+import ComplianceActions from './ComplianceActions.jsx';
 import ComplianceFollowUp from './ComplianceFollowUp.jsx';
 
 // Administrators' alerts: squad limit (rule 4.1), Gold membership and logins.
@@ -78,6 +79,9 @@ export default function ComplianceAlertsPage() {
   const [alerts, setAlerts] = useState([]);
   const [statusRows, setStatusRows] = useState([]);
   const [message, setMessage] = useState('Loading…');
+  // Bumped when any squad-limit section records something, so the others reload.
+  const [tick, setTick] = useState(0);
+  const changed = () => setTick((n) => n + 1);
 
   const load = useCallback(async () => {
     const [log, overview] = await Promise.all([
@@ -115,11 +119,12 @@ export default function ComplianceAlertsPage() {
         </p>
       </section>
       {message && <p role="status">{message}</p>}
+      <ComplianceActions reloadKey={tick} onChanged={changed} />
+      <h2>Squad limit</h2>
+      <ComplianceFollowUp reloadKey={tick} onChanged={changed} />
+      <SquadLimitSection embedded reloadKey={tick} onChanged={changed} />
       <RecentAlerts alerts={alerts} onAcknowledge={(id) => call('acknowledge_admin_alert', { p_alert_id: id })} />
       <ManagerStatus rows={statusRows} />
-      <h2>Squad limit</h2>
-      <ComplianceFollowUp />
-      <SquadLimitSection embedded />
     </main>
   );
 }
