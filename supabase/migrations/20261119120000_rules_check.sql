@@ -159,6 +159,7 @@ declare
   v_wrong jsonb;
   v_passed boolean;
   v_ban public.club_transfer_bans;
+  v_ends_on date;
 begin
   if auth.uid() is null then raise exception 'Sign in first.'; end if;
   if jsonb_typeof(p_answers) <> 'object' then raise exception 'Answers must be an object of question id to option number.'; end if;
@@ -175,14 +176,17 @@ begin
   insert into public.rules_check_attempts (auth_user_id, manager_id, score, total, passed, answers)
   values (auth.uid(), v_me.manager_id, v_score, v_total, v_passed, p_answers);
 
-  -- A pass applies a reduction the administrators offered on the manager's club's ban.
+  -- A pass applies every reduction the administrators offered on the manager's club's bans
+  -- (a club can have more than one ban in force), logging each for the admin team.
   if v_passed and v_me.source_club_id is not null then
-    update public.club_transfer_bans ban
-       set ends_on = least(ban.ends_on, ban.reduced_ends_on), reduced_at = now(), reduce_condition = null
-     where ban.source_world_id = v_me.source_world_id and ban.source_club_id = v_me.source_club_id
-       and ban.reduce_condition = 'rules_check' and ban.reduced_ends_on is not null and ban.ends_on >= current_date
-    returning * into v_ban;
-    if v_ban.id is not null then
+    for v_ban in
+      update public.club_transfer_bans ban
+         set ends_on = least(ban.ends_on, ban.reduced_ends_on), reduced_at = now(), reduce_condition = null
+       where ban.source_world_id = v_me.source_world_id and ban.source_club_id = v_me.source_club_id
+         and ban.reduce_condition = 'rules_check' and ban.reduced_ends_on is not null and ban.ends_on >= current_date
+      returning *
+    loop
+      v_ends_on := greatest(v_ends_on, v_ban.ends_on);
       insert into public.compliance_events (source_club_id, club_name, kind, severity, title, body, related, dedupe_key)
       values (v_ban.source_club_id, v_ban.club_name, 'ban_reduced', 'info',
         'Rules check passed: ' || v_ban.club_name || ' ban shortened',
@@ -191,11 +195,11 @@ begin
         jsonb_build_object('ban_id', v_ban.id, 'ends_on', v_ban.ends_on),
         'ban-reduced:' || v_ban.id)
       on conflict (dedupe_key) do nothing;
-    end if;
+    end loop;
   end if;
 
   return jsonb_build_object('score', v_score, 'total', v_total, 'passed', v_passed, 'wrong', v_wrong,
-    'banEndsOn', v_ban.ends_on);
+    'banEndsOn', v_ends_on);
 end;
 $$;
 
