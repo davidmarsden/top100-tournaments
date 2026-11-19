@@ -35,10 +35,11 @@ function PostSummary({ post }) {
   );
 }
 
-function BoardPost({ post, onClose }) {
+function BoardPost({ post, onClose, banned = false }) {
   return (
     <li className="top100-board__post">
       <span className={`top100-board__kind ${post.kind}`}>{post.kind === 'wanted' ? 'Wanted' : 'Offering'}</span>
+      {banned && <span className="transfer-ban-badge" title="This club is under a transfer ban: it can't deal with Top 100 managers.">Transfer ban</span>}
       <PostSummary post={post} />
       {post.note && <div className="top100-board__note">“{post.note}”</div>}
       <div className="muted top100-board__by">
@@ -155,7 +156,7 @@ function PostForm({ board, onSaved, onCancel }) {
 
 // The transfer board: managers' wanted and offered posts in this game world, matched with each
 // other and with the transfer, loan and concerns lists, plus managers' newsfeed posts about deals.
-export default function MarketBoardCard({ session, worldId }) {
+export default function MarketBoardCard({ session, worldId, bans = [] }) {
   const [board, setBoard] = useState(null);
   const [tab, setTab] = useState('mine');
   const [posting, setPosting] = useState(false);
@@ -172,6 +173,7 @@ export default function MarketBoardCard({ session, worldId }) {
   if (!board) return null;
 
   const mine = board.posts.filter((post) => post.isMine);
+  const bannedClubs = new Set((bans || []).filter((ban) => ban.starts_on <= new Date().toISOString().slice(0, 10)).map((ban) => ban.club_name));
   const others = board.posts.filter((post) => !post.isMine);
   const canPost = Boolean(board.me?.club);
   async function close(id) {
@@ -204,7 +206,7 @@ export default function MarketBoardCard({ session, worldId }) {
           </li>
         ))}</ul>
       ) : <p className="muted">{canPost ? 'No posts yet. Post what you need and matches will show here.' : `You don't run a club in ${board.world}.`}</p>)}
-      {tab === 'board' && (others.length ? <ul>{others.map((post) => <BoardPost key={post.id} post={post} />)}</ul> : <p className="muted">No posts from other managers yet.</p>)}
+      {tab === 'board' && (others.length ? <ul>{others.map((post) => <BoardPost key={post.id} post={post} banned={bannedClubs.has(post.club)} />)}</ul> : <p className="muted">No posts from other managers yet.</p>)}
       {tab === 'newsfeed' && (board.newsfeed.length ? (
         <ul>{board.newsfeed.map((row, index) => (
           <li key={index} className="top100-board__post">

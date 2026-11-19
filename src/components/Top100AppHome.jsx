@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import { smClubUrl, smMyClubUrl, smWorldUrl } from '../lib/soccerManagerLinks';
 import MarketRatesCard from './MarketRatesCard';
 import MarketBoardCard from './MarketBoardCard';
+import TransferBansCard, { OwnClubBanBanner, useTransferBans } from './TransferBansCard';
 
 const EXTERNAL = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -225,6 +226,7 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
   const table = Array.isArray(home?.divisionTable) ? home.divisionTable : [];
   const worldLink = smWorldUrl(setupId);
   const myClubLink = smMyClubUrl(setupId, club?.sourceClubId);
+  const { bans, error: bansError } = useTransferBans(Boolean(home?.world?.slug), home?.world?.slug);
   const observed = observedLabel(club?.observedAt);
 
   return (
@@ -241,6 +243,9 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
         </div>
         <p className="top100-sm-shortcuts__note">Links open soccermanager.com in your browser. Club pages show the game world you last used in SM, so if one looks wrong, open {home?.world?.name || 'the game world'} first.</p>
       </div>
+
+      <OwnClubBanBanner bans={bans} sourceClubId={club?.sourceClubId} />
+      <TransferBansCard bans={bans} error={bansError} hideWhenEmpty />
 
       <div className="top100-app-home__grid">
         <AppointmentsCard session={session} />
@@ -274,7 +279,7 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
       <WaitingListRecommendCard session={session} />
       <WaitingListCard session={session} managedWorlds={worlds.map((world) => world.slug)} />
       <TransfersCard session={session} worldId={shownWorldId} />
-      <MarketBoardCard session={session} worldId={shownWorldId} />
+      <MarketBoardCard session={session} worldId={shownWorldId} bans={bans} />
       <MarketRatesCard session={session} worldId={shownWorldId} />
 
       {table.length > 0 && (
