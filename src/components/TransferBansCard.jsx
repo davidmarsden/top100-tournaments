@@ -41,7 +41,7 @@ export function OwnClubBanBanner({ bans, sourceClubId }) {
   return (
     <div className="transfer-ban-banner" role="alert">
       <strong>{ban.club_name} is under a transfer ban {started(ban) ? 'until' : `from ${longDate(ban.starts_on)} to`} {longDate(ban.ends_on)}.</strong>
-      {' '}{BAN_TERMS[ban.terms] || ban.terms}. Any other deal breaks the ban (rule 7). <a href="https://smtop100.blog/rules/">Read the rules</a>
+      {' '}{BAN_TERMS[ban.terms] || ban.terms}. Any other deal breaks the ban (rule 7). <a href="https://smtop100.blog/rules/">Read the rules</a> · <a href="https://smtop100.blog/transfer-bans/">Transfer Bans page</a>
     </div>
   );
 }
@@ -75,6 +75,10 @@ export default function TransferBansCard({ bans, error = '', hideWhenEmpty = fal
                 </table>
               </div>
             )}
+      <p className="transfer-bans-card__more">
+        <a href="https://smtop100.blog/transfer-bans/">Transfer Bans page</a>: required sales, sanction levels and every past ban.
+        {' '}Test yourself with the <a href="/rules-check">rules check</a>.
+      </p>
     </section>
   );
 }
