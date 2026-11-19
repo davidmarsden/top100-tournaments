@@ -13,7 +13,7 @@ const REQUIREMENT = { sell_external_cash: 'Sell to a club outside Top 100 for ca
 const today = () => new Date().toISOString().slice(0, 10);
 const inAMonth = () => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 10); };
 
-export default function ComplianceFollowUp() {
+export default function ComplianceFollowUp({ reloadKey = 0, onChanged }) {
   const [events, setEvents] = useState([]);
   const [bans, setBans] = useState([]);
   const [obligations, setObligations] = useState([]);
@@ -39,7 +39,7 @@ export default function ComplianceFollowUp() {
     setMessage('');
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, reloadKey]);
 
   // The chosen club's squad from the latest sync, for picking the player(s) a ruling names.
   useEffect(() => {
@@ -57,6 +57,7 @@ export default function ComplianceFollowUp() {
     const { error } = await supabase.rpc(name, args);
     if (error) { setMessage(error.message); return false; }
     await load();
+    onChanged?.();
     return true;
   };
 
@@ -114,33 +115,44 @@ export default function ComplianceFollowUp() {
 
   const open = events.filter((event) => !event.acknowledged_at);
   const activeBans = bans.filter((row) => row.ends_on >= today());
+  const banItem = (row) => (
+    <li key={row.id}>
+      <strong>{row.club_name}</strong>: {date(row.starts_on)} to {date(row.ends_on)},{' '}
+      {row.terms === 'external_cash_sales_only' ? 'cash sales to clubs outside Top 100 only' : 'no deals'}. {row.reason}
+    </li>
+  );
+  const saleRow = (row) => (
+    <tr key={row.id}>
+      <td>{row.club_name}</td>
+      <td>
+        {row.members.map(playerLabel).join(' or ')}
+        {row.members.length > 1 && <small> (any one)</small>}
+      </td>
+      <td>{REQUIREMENT[row.requirement]}{row.no_rebid ? '; no re-bid' : ''}</td>
+      <td>
+        {row.sellable_from ? date(row.sellable_from) : (row.checked ? 'now' : '–')}
+        {row.status === 'open' && row.checked && (!row.sellable_from || new Date(row.sellable_from) <= new Date()) ? <strong> (not yet sold)</strong> : ''}
+      </td>
+      <td>
+        {row.status}
+        {row.resolved_transfer?.to ? ` (${row.members.length > 1 ? `${row.resolved_transfer.player} ` : ''}to ${row.resolved_transfer.to}, ${date(row.resolved_transfer.date)})` : ''}
+      </td>
+      <td>{row.status === 'open' && <button type="button" onClick={() => call('set_compliance_obligation_status', { p_obligation_id: row.id, p_status: 'waived' })}>Waive</button>}</td>
+    </tr>
+  );
+  const openRulings = rulings.filter((row) => row.status === 'open');
+  const settledRulings = rulings.filter((row) => row.status !== 'open');
 
   return (
     <>
       {message && <p role="status">{message}</p>}
-      <section className="card">
-        <h2>Ruling follow-up ({open.length} new)</h2>
-        {events.length === 0 && <p>Nothing yet.</p>}
-        <ul>
-          {events.map((event) => (
-            <li key={event.id} style={{ opacity: event.acknowledged_at ? 0.6 : 1 }}>
-              {SEVERITY[event.severity]} <strong>{event.title}</strong> ({date(event.created_at)}): {event.body}
-              {!event.acknowledged_at && <> <button type="button" onClick={() => call('acknowledge_compliance_event', { p_event_id: event.id })}>Seen</button></>}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="card">
+      <section className="card" id="transfer-bans">
         <h2>Transfer bans ({activeBans.length} active)</h2>
-        <ul>
-          {bans.map((row) => (
-            <li key={row.id}>
-              <strong>{row.club_name}</strong>: {date(row.starts_on)} to {date(row.ends_on)},{' '}
-              {row.terms === 'external_cash_sales_only' ? 'cash sales to clubs outside Top 100 only' : 'no deals'}. {row.reason}
-            </li>
-          ))}
-        </ul>
+        {activeBans.length === 0 && <p>No club is under a transfer ban.</p>}
+        <ul>{activeBans.map(banItem)}</ul>
+        {bans.length > activeBans.length && (
+          <details><summary>Past bans ({bans.length - activeBans.length})</summary><ul>{bans.filter((row) => row.ends_on < today()).map(banItem)}</ul></details>
+        )}
         <form onSubmit={addBan}>
           <h3>Record a ban</h3>
           <p>
@@ -157,32 +169,17 @@ export default function ComplianceFollowUp() {
         </form>
       </section>
 
-      <section className="card">
+      <section className="card" id="required-sales">
         <h2>Required sales ({rulings.filter((row) => row.status === 'open').length} outstanding)</h2>
         <table>
           <thead><tr><th>Club</th><th>Player</th><th>Requirement</th><th>Can be sold from</th><th>Status</th><th></th></tr></thead>
-          <tbody>
-            {rulings.map((row) => (
-              <tr key={row.id}>
-                <td>{row.club_name}</td>
-                <td>
-                  {row.members.map(playerLabel).join(' or ')}
-                  {row.members.length > 1 && <small> (any one)</small>}
-                </td>
-                <td>{REQUIREMENT[row.requirement]}{row.no_rebid ? '; no re-bid' : ''}</td>
-                <td>
-                  {row.sellable_from ? date(row.sellable_from) : (row.checked ? 'now' : '–')}
-                  {row.status === 'open' && row.checked && (!row.sellable_from || new Date(row.sellable_from) <= new Date()) ? <strong> (not yet sold)</strong> : ''}
-                </td>
-                <td>
-                  {row.status}
-                  {row.resolved_transfer?.to ? ` (${row.members.length > 1 ? `${row.resolved_transfer.player} ` : ''}to ${row.resolved_transfer.to}, ${date(row.resolved_transfer.date)})` : ''}
-                </td>
-                <td>{row.status === 'open' && <button type="button" onClick={() => call('set_compliance_obligation_status', { p_obligation_id: row.id, p_status: 'waived' })}>Waive</button>}</td>
-              </tr>
-            ))}
-          </tbody>
+          <tbody>{openRulings.map(saleRow)}</tbody>
         </table>
+        {settledRulings.length > 0 && (
+          <details><summary>Sold or waived ({settledRulings.length})</summary>
+            <table><tbody>{settledRulings.map(saleRow)}</tbody></table>
+          </details>
+        )}
         <form onSubmit={addSale}>
           <h3>Record a required sale</h3>
           <p>
@@ -218,6 +215,19 @@ export default function ComplianceFollowUp() {
           <button type="submit">Record required sale</button>
         </form>
       </section>
+      <section className="card" id="ruling-follow-up">
+        <h2>Ruling follow-up ({open.length} new)</h2>
+        {events.length === 0 && <p>Nothing yet.</p>}
+        <ul>
+          {events.map((event) => (
+            <li key={event.id} style={{ opacity: event.acknowledged_at ? 0.6 : 1 }}>
+              {SEVERITY[event.severity]} <strong>{event.title}</strong> ({date(event.created_at)}): {event.body}
+              {!event.acknowledged_at && <> <button type="button" onClick={() => call('acknowledge_compliance_event', { p_event_id: event.id })}>Seen</button></>}
+            </li>
+          ))}
+        </ul>
+      </section>
+
     </>
   );
 }

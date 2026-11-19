@@ -49,7 +49,7 @@ function Evidence({ breach }) {
   );
 }
 
-export default function SquadLimitSection({ embedded = false }) {
+export default function SquadLimitSection({ embedded = false, reloadKey = 0, onChanged }) {
   const [squads, setSquads] = useState([]);
   const [breaches, setBreaches] = useState([]);
   const [notes, setNotes] = useState({});
@@ -70,7 +70,7 @@ export default function SquadLimitSection({ embedded = false }) {
     setStatus('');
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, reloadKey]);
 
   async function review(breach, nextStatus) {
     const { error } = await supabase.rpc('review_squad_cap_breach', {
@@ -79,12 +79,14 @@ export default function SquadLimitSection({ embedded = false }) {
       p_note: notes[breach.id] || null,
     });
     if (error) setStatus(error.message);
-    else load();
+    else { load(); onChanged?.(); }
   }
 
   const toReview = breaches.filter((breach) => breach.status === 'open' || (breach.status === 'resolved' && !breach.reviewed_at));
   const decided = breaches.filter((breach) => !toReview.includes(breach));
-  const atLimit = squads.filter((squad) => squad.players >= squad.squad_limit);
+  // Over the limit, or with a breach still to decide (it likely went over between syncs).
+  const reviewClubs = new Set(toReview.map((breach) => breach.club_name));
+  const overLimit = squads.filter((squad) => squad.players > squad.squad_limit || reviewClubs.has(squad.club_name));
 
   const Shell = embedded ? 'div' : 'main';
   return (
@@ -101,7 +103,7 @@ export default function SquadLimitSection({ embedded = false }) {
       )}
       {status && <p role="status">{status}</p>}
 
-      <section className="card">
+      <section className="card" id="squad-limit-review">
         <h2>To review ({toReview.length})</h2>
         {toReview.length === 0 && <p>Nothing waiting.</p>}
         {toReview.map((breach) => (
@@ -127,15 +129,15 @@ export default function SquadLimitSection({ embedded = false }) {
       </section>
 
       <section className="card">
-        <h2>Report a breach</h2>
-        <p>For a squad seen over 50 between syncs. Your report counts as confirmed: the club's manager is notified.</p>
-        <SquadBreachReportForm official clubs={squads.map((squad) => squad.club_name)} onReported={load} />
+        <h2>Squads over the limit ({overLimit.length})</h2>
+        <p className="muted">Clubs over 50 at the latest sync, and any with a breach still to decide. Every signed-in manager sees the clubs over 50 on Squad &amp; Transfers.</p>
+        <SquadsAtLimitTable squads={overLimit} emptyText="No squad is over the limit." />
       </section>
 
       <section className="card">
-        <h2>Squads at or over the limit ({atLimit.length})</h2>
-        <p className="muted">Every signed-in manager sees the squads over 50 on Squad &amp; Transfers.</p>
-        <SquadsAtLimitTable squads={atLimit} />
+        <h2>Report a breach</h2>
+        <p>For a squad seen over 50 between syncs. Your report counts as confirmed: the club's manager is notified.</p>
+        <SquadBreachReportForm official clubs={squads.map((squad) => squad.club_name)} onReported={load} />
       </section>
 
       <section className="card">
