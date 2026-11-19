@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RulesCheckBadge } from './RulesCheckBadge.jsx';
 import { supabase } from '../lib/supabaseClient';
 import { WAITING_LIST_PARTS, waitingListScore } from '../lib/waitingList';
 
@@ -45,6 +46,7 @@ function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer }) {
       <div className="muted">
         {entry.email} · joined {shortDate(entry.joinedAt)} · agreed to the rules {shortDate(entry.agreedAt)} · confirmed for season {entry.confirmedSeason ?? '—'}
         {entry.howFound ? ` · found us: ${entry.howFound}` : ''}
+        {' · '}<RulesCheckBadge waitingEntryId={entry.id} />
       </div>
       <div>
         <strong>Top 100 (Stats &amp; History): </strong>

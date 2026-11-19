@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { RulesCheckPrompt } from './RulesCheckBadge.jsx';
 import { supabase } from '../lib/supabaseClient';
 
 // Waiting list (rulebook 3.3): joining and following your place, and recommendations or concerns
@@ -134,6 +135,7 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
             </select>
           </label>
           {form.found === 'Other' && <label>Tell us more<input value={form.foundOther} maxLength={300} onChange={(event) => setForm({ ...form, foundOther: event.target.value })} /></label>}
+          <RulesCheckPrompt context="before you join" />
           <label className="top100-waiting__check top100-waiting__agree">
             <input type="checkbox" checked={form.agree} onChange={(event) => setForm({ ...form, agree: event.target.checked })} required />
             <span>{RULES_AGREEMENT} <a href={RULES_URL} target="_blank" rel="noopener noreferrer">Read the rules</a></span>
