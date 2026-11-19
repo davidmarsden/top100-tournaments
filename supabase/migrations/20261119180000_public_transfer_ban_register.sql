@@ -41,7 +41,8 @@ as $$
         where ban.source_club_id = obligation.source_club_id
           and ((obligation.breach_id is not null and ban.breach_id = obligation.breach_id)
             or ban.starts_on <= obligation.created_at::date + 2)
-        order by (obligation.breach_id is not null and ban.breach_id = obligation.breach_id) desc, ban.starts_on desc
+        -- A ban recorded against the sale's own breach first (coalesce: a NULL would sort first).
+        order by coalesce(ban.breach_id = obligation.breach_id, false) desc, ban.starts_on desc
         limit 1) as ban_id
     from public.compliance_obligations obligation
     join world on world.external_world_id = obligation.source_world_id
