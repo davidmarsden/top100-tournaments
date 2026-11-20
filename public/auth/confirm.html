@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <title>Sign in to Top 100</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #071526; color: #e6edf5; font: 17px/1.55 Inter, "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; }
+    main { width: min(460px, calc(100% - 32px)); padding: 32px 28px; border-radius: 22px; background: #0b1f3b; border: 1px solid rgba(203, 213, 225, .14); }
+    .brand { font-weight: 950; font-size: 2rem; letter-spacing: -.06em; margin: 0 0 18px; }
+    .brand span { color: #10b981; }
+    h1 { margin: 0 0 10px; font-size: 1.5rem; }
+    p { margin: 0 0 14px; color: #cbd5e1; }
+    .button { display: block; margin: 22px 0 14px; padding: 15px 20px; border-radius: 999px; background: #10b981; color: #052b22; font-weight: 900; font-size: 1.1rem; text-align: center; text-decoration: none; }
+    .button:hover { background: #34d399; }
+    small { color: #8fa3b8; }
+    a { color: #34d399; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="brand">Top<span>100</span></p>
+    <div id="content">
+      <h1>Sign in to Top 100</h1>
+      <p>Checking your sign-in link…</p>
+    </div>
+  </main>
+  <script>
+    // The sign-in email links here, with Supabase's one-time link after the #, so the link is only
+    // used when the manager taps the button. Email security scanners (Microsoft's in particular)
+    // open every link in a message as it arrives; when the email linked straight to Supabase, the
+    // scanner used up the one-time sign-in and the manager's own link and code then failed. The
+    // part after # never reaches a server, and the button is only built by this script.
+    (function () {
+      var ALLOWED_ORIGIN = 'https://xxntutejknolhmbssqdf.supabase.co';
+      var content = document.getElementById('content');
+      var raw = window.location.hash.slice(1);
+      var link = null;
+      try {
+        if (/^https%3A/i.test(raw)) raw = decodeURIComponent(raw);
+        raw = raw.replace(/&amp;/g, '&');
+        var url = new URL(raw);
+        if (url.origin === ALLOWED_ORIGIN && url.pathname === '/auth/v1/verify' && url.searchParams.get('token')) link = url.toString();
+      } catch (error) { link = null; }
+
+      if (!link) {
+        content.innerHTML = '<h1>This sign-in link is incomplete</h1>'
+          + '<p>Go to the <a href="https://manager.smtop100.blog/">Manager Portal</a> and ask for a new sign-in email, '
+          + 'or type the six-digit code from the email instead.</p>';
+        return;
+      }
+      // Keep the one-time link out of the address bar and browser history once it has been read.
+      try { history.replaceState(null, '', window.location.pathname); } catch (error) { /* not essential */ }
+
+      content.innerHTML = '<h1>Sign in to Top 100</h1>'
+        + '<p>Tap the button to finish signing in.</p>'
+        + '<a class="button" id="go" href="#">Sign me in</a>'
+        + '<p><small>This extra step stops email security checks from using up your link before you do. '
+        + 'The link works once, for a limited time.</small></p>';
+      document.getElementById('go').addEventListener('click', function (event) {
+        event.preventDefault();
+        window.location.assign(link);
+      });
+    })();
+  </script>
+</body>
+</html>
