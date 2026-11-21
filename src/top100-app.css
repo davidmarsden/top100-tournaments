@@ -18,6 +18,9 @@
 .top100-app-guide ul { display: grid; gap: 4px; padding-left: 1.1rem; }
 .top100-app-guide ul span { font-weight: 800; color: #e8eef8; }
 .top100-app-home { display: grid; gap: 14px; }
+/* The Manager Portal draws the tournament picker, team summary and My Matches here (createPortal). */
+.top100-app-home__matches { display: grid; gap: 14px; min-width: 0; }
+.top100-app-home__matches:empty { display: none; }
 .top100-sm-shortcuts { display: grid; gap: 12px; padding: 20px; border-radius: 24px; background: linear-gradient(135deg, #0b1f3b, #134e4a); color: #fff; }
 .top100-sm-shortcuts h2 { margin: 2px 0 0; color: #fff; font-size: clamp(1.4rem, 3.5vw, 2rem); }
 .top100-sm-shortcuts .eyebrow { color: #6ee7b7; }

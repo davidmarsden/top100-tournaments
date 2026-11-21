@@ -288,6 +288,8 @@ export default function ManagerEntry({ registrationMode = false }) {
     return Number.isInteger(stored) && stored > 0 ? stored : undefined;
   }, [worldKey]);
   const [worldChoice, setWorldChoice] = useState({ key: null, id: undefined });
+  // My Matches is drawn at the top of the app home (under the game-world switcher) once it is there.
+  const [matchesSlot, setMatchesSlot] = useState(null);
   const portalWorldId = worldChoice.key === worldKey && worldChoice.id !== undefined ? worldChoice.id : storedWorldId;
   const chooseWorld = (worldId) => { if (worldKey) writeKey(worldKey, worldId ? String(worldId) : null); setWorldChoice({ key: worldKey, id: worldId }); };
   const reportPortalWorld = useCallback((worldId) => setWorldChoice((current) => (
@@ -362,8 +364,8 @@ export default function ManagerEntry({ registrationMode = false }) {
   if (identity.state === 'linked' && nextPath) { window.location.replace(nextPath); return <main className="manager-portal-shell"><section className="card"><h1>Manager sign-in</h1><p>Signed in ✓ · Opening…</p></section></main>; }
   if (registrationMode) return <ManagerPortal registrationMode returnTo={returnTo} session={session} />;
   return <>
-    <div className="top100-app-top"><Top100InstallPrompt /><Top100AppHome session={session} gameWorldId={portalWorldId} onSelectWorld={chooseWorld} /><Top100AppGuide signedIn /></div>
-    <ManagerPortal returnTo={returnTo} session={session} worldId={portalWorldId} onWorldChange={reportPortalWorld} />
+    <div className="top100-app-top"><Top100InstallPrompt /><Top100AppHome session={session} gameWorldId={portalWorldId} onSelectWorld={chooseWorld} matchesSlotRef={setMatchesSlot} /><Top100AppGuide signedIn /></div>
+    <ManagerPortal returnTo={returnTo} session={session} worldId={portalWorldId} onWorldChange={reportPortalWorld} matchesSlot={matchesSlot} />
     <div className="top100-app-bottom"><Top100Notifications session={session} /></div>
     <ManagerReminderPreferences session={session} authLoading={false} />
     <div className="manager-portal-shell"><ManagerPasswordSettings session={session} /></div>

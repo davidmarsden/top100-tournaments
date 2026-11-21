@@ -177,7 +177,9 @@ export function AppointmentProfileCard({ club, worldSlug }) {
 
 // gameWorldId follows the world the Manager Portal is showing: undefined while it is still loading,
 // null for the account's home world.
-export default function Top100AppHome({ session, gameWorldId, onSelectWorld = null }) {
+// matchesSlotRef: a callback ref for the spot, under the switcher, where the Manager Portal draws
+// the manager's tournament fixtures (My Matches), so arranging matches is the first thing they see.
+export default function Top100AppHome({ session, gameWorldId, onSelectWorld = null, matchesSlotRef = null }) {
   const [home, setHome] = useState(null);
   const [state, setState] = useState('loading');
   // Kept across loads so the switcher stays in place while another world loads.
@@ -234,6 +236,7 @@ export default function Top100AppHome({ session, gameWorldId, onSelectWorld = nu
   return (
     <section className="top100-app-home" aria-labelledby="top100-app-home-heading">
       {switcher}
+      {matchesSlotRef && <div className="top100-app-home__matches" ref={matchesSlotRef} />}
       <div className="top100-sm-shortcuts">
         <div>
           <p className="eyebrow">Soccer Manager</p>
