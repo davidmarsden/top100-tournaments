@@ -14,16 +14,29 @@ const shortDate = (value) => (value ? new Date(value).toLocaleDateString('en-GB'
 
 // Free clubs in one game world, and up to three choices in order (rule 3.3: clubs are still offered
 // in waiting-list order; the administrators use the choices when they make an offer).
+const NO_CHOICES = [];
+
 function ClubChoices({ world, clubs, saved, onSaved }) {
-  const [choices, setChoices] = useState(() => [0, 1, 2].map((i) => (saved[i] ? String(saved[i]) : '')));
+  // Only clubs that are still free can be chosen; a saved choice that has since been taken is
+  // dropped from the menus (and the Save button offered) so it can't block saving.
+  const freeIds = new Set(clubs.map((club) => String(club.id)));
+  const savedKey = saved.join(',');
+  const clubsKey = clubs.map((club) => club.id).join(',');
+  const fromSaved = () => {
+    const kept = saved.map(String).filter((id) => freeIds.has(id));
+    return [0, 1, 2].map((i) => kept[i] || '');
+  };
+  const [choices, setChoices] = useState(fromSaved);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
-  useEffect(() => { setChoices([0, 1, 2].map((i) => (saved[i] ? String(saved[i]) : ''))); }, [saved]);
+  // Reset the draft only when the saved choices or the free clubs actually change.
+  useEffect(() => { setChoices(fromSaved()); }, [savedKey, clubsKey]);
+  const takenSince = saved.some((id) => !freeIds.has(String(id)));
   if (!clubs.length) {
     return <p className="muted top100-waiting__clubs">No clubs are free in this game world right now. We&apos;ll offer you one when a place opens.</p>;
   }
   const label = (club) => `${club.name}${club.division ? ` (Div ${club.division})` : ''}${club.inVacancyRound ? ' · current managers first' : ''}`;
-  const changed = choices.join('|') !== [0, 1, 2].map((i) => (saved[i] ? String(saved[i]) : '')).join('|');
+  const changed = choices.filter(Boolean).join(',') !== saved.map(String).join(',');
   async function save() {
     setBusy(true);
     setNote('');
@@ -37,6 +50,7 @@ function ClubChoices({ world, clubs, saved, onSaved }) {
   return (
     <div className="top100-waiting__clubs">
       <p><strong>{clubs.length} club{clubs.length === 1 ? '' : 's'} free now:</strong> {clubs.map((club) => club.name).join(', ')}.</p>
+      {takenSince && <p className="status">A club you chose has since been taken. Check your choices and save them again.</p>}
       <p className="muted">Choose up to three you&apos;d like, in order. Clubs are offered in waiting-list order (rule 3.3), and your choices are used when you&apos;re offered one.</p>
       <div className="top100-waiting__choice-row">
         {[0, 1, 2].map((i) => (
@@ -161,7 +175,7 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
               </div>
               {entry.needsConfirming && <p className="muted">Please confirm you're still interested this season, or your place lapses.</p>}
               {entry.status === 'waiting' && (
-                <ClubChoices world={entry.world} clubs={openClubs[entry.world] || []} saved={choices[entry.world] || []}
+                <ClubChoices world={entry.world} clubs={openClubs[entry.world] || []} saved={choices[entry.world] || NO_CHOICES}
                   onSaved={(ids) => setChoices((current) => ({ ...current, [entry.world]: ids }))} />
               )}
             </li>
