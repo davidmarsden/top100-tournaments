@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { WaitingListCard } from './WaitingListCards';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
 import ManagerResultCentre from './ManagerResultCentre.jsx';
@@ -49,7 +50,7 @@ function buildStandings(entries, matches) {
   return [...rows.values()].map((row) => ({ ...row, gd: row.gf - row.ga })).sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf || a.team.localeCompare(b.team));
 }
 
-export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '', authStage = '', returnTo = '', worldId = undefined, onWorldChange = null }) {
+export default function ManagerPortal({ registrationMode = false, session = null, authLoading = false, authError = '', authStage = '', returnTo = '', worldId = undefined, onWorldChange = null, matchesSlot = null }) {
   const [email, setEmail] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [loadStage, setLoadStage] = useState('Waiting for sign-in');
@@ -383,11 +384,17 @@ export default function ManagerPortal({ registrationMode = false, session = null
     </main>;
   }
 
-  return <main className="manager-portal-shell"><section className="manager-portal-actions" aria-label="Manager Portal"><div className="button-row">{organiserAssignments.length > 0 && <a className="button" href="/admin">{adminAssignments.length === 1 && organiserAssignments.length === 1 ? `Manage ${organiserAssignments[0].tournaments?.name || 'tournament'}` : 'Manage tournaments'}</a>}{returnTo && <a className="button" href={returnTo}>Continue</a>}<a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
-    {worldEntries.length > 1 && <section className="card portal-selector"><label>Tournament entry<select value={selectedEntry?.id || ''} onChange={(event) => setSelectedEntryId(event.target.value)}>{worldEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.tournaments?.name} — {entry.teams?.name}</option>)}</select></label></section>}
-    {!selectedEntry ? <section className="card"><h2>{entries.length ? 'No tournament entry in this game world' : 'Account linked successfully'}</h2><p>Your fixtures will appear here when you enter a competition.</p><a className="button" href="/manager/registration">Register for a tournament</a></section> : <>
+  // The tournament picker, team summary and My Matches: drawn at the top of the app home when it
+  // offers a spot (matchesSlot), so managers arrange their matches first; otherwise in place here.
+  const matchesBlock = selectedEntry ? <>
+      {worldEntries.length > 1 && <section className="card portal-selector"><label>Tournament entry<select value={selectedEntry?.id || ''} onChange={(event) => setSelectedEntryId(event.target.value)}>{worldEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.tournaments?.name} — {entry.teams?.name}</option>)}</select></label></section>}
       <section className="portal-metrics"><article><span>Team</span><strong>{selectedEntry.teams?.name}</strong></article><article><span>Group</span><strong>{selectedEntry.group_code ? `Group ${selectedEntry.group_code}` : 'TBC'}</strong></article><article><span>Position</span><strong>{ordinal(myPosition)}</strong></article><article><span>Record</span><strong>{results.length} played</strong></article></section>
       <ManagerMatchActions session={session} selectedEntry={selectedEntry} fixtures={upcoming} />
+    </> : null;
+  return <main className="manager-portal-shell"><section className="manager-portal-actions" aria-label="Manager Portal"><div className="button-row">{organiserAssignments.length > 0 && <a className="button" href="/admin">{adminAssignments.length === 1 && organiserAssignments.length === 1 ? `Manage ${organiserAssignments[0].tournaments?.name || 'tournament'}` : 'Manage tournaments'}</a>}{returnTo && <a className="button" href={returnTo}>Continue</a>}<a className="button secondary" href="/manager/registration">Register a team</a><button type="button" className="secondary" onClick={logout}>Sign out</button></div></section>
+    {matchesSlot && selectedEntry && createPortal(matchesBlock, matchesSlot)}
+    {!selectedEntry ? <section className="card"><h2>{entries.length ? 'No tournament entry in this game world' : 'Account linked successfully'}</h2><p>Your fixtures will appear here when you enter a competition.</p><a className="button" href="/manager/registration">Register for a tournament</a></section> : <>
+      {!matchesSlot && matchesBlock}
       <ManagerResultCentre selectedEntry={selectedEntry} fixtures={upcoming} onResultChanged={refreshResultFixtures} />
       <section className="portal-grid"><article className="card portal-panel"><div className="card-header"><p className="eyebrow">Up next</p><h2>Your fixtures</h2></div>{upcoming.length ? <div className="portal-fixtures">{upcoming.map((match) => <div className="portal-fixture" key={match.id}><div><strong>{venue(match)} vs {opponent(match)}</strong><span>{match.round} · {match.bracket || match.stage}</span></div><time>{matchDate(match)}</time></div>)}</div> : <p className="muted">No outstanding fixtures.</p>}</article><article className="card portal-panel"><div className="card-header"><p className="eyebrow">Recent</p><h2>Your results</h2></div>{results.length ? <div className="portal-fixtures">{results.map((match) => { const home = match.home_entry_id === selectedEntry.id, mine = home ? match.home_score : match.away_score, theirs = home ? match.away_score : match.home_score, doubleForfeit = match.status === 'forfeit' && Number(match.home_score) === 0 && Number(match.away_score) === 0, outcome = doubleForfeit ? 'L' : mine > theirs ? 'W' : mine < theirs ? 'L' : 'D'; return <div className="portal-fixture" key={match.id}><div><strong><span className={`portal-outcome ${outcome}`}>{outcome}</span> {venue(match)} vs {opponent(match)}</strong><span>{match.round} · {matchDate(match)}{doubleForfeit ? ' · double forfeit' : ''}</span></div><b>{mine}–{theirs}</b></div>; })}</div> : <p className="muted">No results entered yet.</p>}</article></section>
       {selectedEntry.group_code && <section className="card portal-panel"><div className="card-header"><p className="eyebrow">Live standings</p><h2>Group {selectedEntry.group_code}</h2></div><div className="table-wrap"><table className="portal-table"><thead><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead><tbody>{standings.map((row, index) => <tr key={row.id} className={row.id === selectedEntry.id ? 'my-team' : ''}><td>{index + 1}</td><td><strong>{row.team}</strong></td><td>{row.played}</td><td>{row.won}</td><td>{row.drawn}</td><td>{row.lost}</td><td>{row.gd}</td><td><strong>{row.points}</strong></td></tr>)}</tbody></table></div></section>}
