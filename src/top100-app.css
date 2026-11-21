@@ -186,6 +186,12 @@
 .top100-waiting__entries input { width: 100%; }
 .top100-waiting__form { display: grid; gap: 10px; margin-top: 12px; }
 .top100-waiting__form fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.top100-waiting__clubs { margin-top: 6px; padding: 10px 12px; border-radius: 12px; background: rgba(16, 185, 129, .08); display: grid; gap: 8px; }
+.top100-waiting__clubs p { margin: 0; }
+.top100-waiting__choice-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.top100-waiting__choice-row label { display: grid; gap: 4px; font-size: .9rem; }
+.top100-waiting__clubs button { justify-self: start; }
+@media (max-width: 620px) { .top100-waiting__choice-row { grid-template-columns: 1fr; } }
 .top100-waiting__form legend { font-weight: 700; margin-bottom: 4px; }
 .top100-waiting__check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
 .top100-waiting__check input { width: auto; margin-top: 3px; flex: none; }

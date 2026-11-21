@@ -26,7 +26,7 @@ async function fetchHistory(currentSeason, applicants) {
   return Object.fromEntries((body.applicants || []).map((item) => [item.key, item]));
 }
 
-function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer }) {
+function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer, choices = [] }) {
   const [fields, setFields] = useState({
     gold: entry.goldFrom === 'admin' ? String(entry.gold) : '', gameWorlds: entry.gameWorldsFrom === 'admin' ? String(entry.gameWorlds ?? '') : '',
     smManagerId: entry.smManagerId || '', adminNotes: entry.adminNotes || '', offerClub: entry.offerClub || '',
@@ -47,6 +47,12 @@ function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer }) {
         {entry.email} · joined {shortDate(entry.joinedAt)} · agreed to the rules {shortDate(entry.agreedAt)} · confirmed for season {entry.confirmedSeason ?? '—'}
         {entry.howFound ? ` · found us: ${entry.howFound}` : ''}
         {' · '}<RulesCheckBadge waitingEntryId={entry.id} />
+      </div>
+      <div>
+        <strong>Clubs they'd like: </strong>
+        {choices.length
+          ? choices.map((club, i) => `${i + 1}. ${club.name}${club.division ? ` (Div ${club.division})` : ''}${club.free ? '' : ' (no longer free)'}`).join(' · ')
+          : 'none chosen'}
       </div>
       <div>
         <strong>Top 100 (Stats &amp; History): </strong>
@@ -126,15 +132,20 @@ export default function AdminWaitingListTab({ setMessage }) {
   // Only the latest load (for the selected world) may publish its results.
   const loadId = useRef(0);
   const [openId, setOpenId] = useState(null);
+  const [choices, setChoices] = useState({});
   const [showClosed, setShowClosed] = useState(false);
 
   const load = useCallback(async () => {
     const id = ++loadId.current;
     const current = () => id === loadId.current;
     setHistoryReady(false);
-    const { data: list, error } = await supabase.rpc('waiting_list_admin', { p_world_slug: world });
+    const [{ data: list, error }, picked] = await Promise.all([
+      supabase.rpc('waiting_list_admin', { p_world_slug: world }),
+      supabase.rpc('waiting_list_choices_admin', { p_world_slug: world }),
+    ]);
     if (!current()) return;
     if (error) { setMessage(error.message); return; }
+    setChoices(picked.data || {});
     setData(list);
     setHistoryError('');
     try {
@@ -227,7 +238,7 @@ export default function AdminWaitingListTab({ setMessage }) {
               openId === entry.id && (
                 <tr key={`${entry.id}-details`}>
                   <td colSpan={numbered ? 11 : 10} style={{ textAlign: 'left' }}>
-                    <EntryDetails entry={entry} scored={scored} history={h} onUpdate={update} onEmailOffer={emailOffer} />
+                    <EntryDetails entry={entry} scored={scored} history={h} onUpdate={update} onEmailOffer={emailOffer} choices={choices[String(entry.id)] || []} />
                   </td>
                 </tr>
               ),

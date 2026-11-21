@@ -12,18 +12,84 @@ const FOUND_OPTIONS = ['A current Top 100 or Regen manager', 'Soccer Manager for
 const STATUS = { waiting: 'On the waiting list', offered: 'Offered a club', appointed: 'Appointed', withdrawn: 'Left the list', lapsed: 'Lapsed' };
 const shortDate = (value) => (value ? new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
+// Free clubs in one game world, and up to three choices in order (rule 3.3: clubs are still offered
+// in waiting-list order; the administrators use the choices when they make an offer).
+const NO_CHOICES = [];
+
+function ClubChoices({ world, clubs, saved, onSaved }) {
+  // Only clubs that are still free can be chosen; a saved choice that has since been taken is
+  // dropped from the menus (and the Save button offered) so it can't block saving.
+  const freeIds = new Set(clubs.map((club) => String(club.id)));
+  const savedKey = saved.join(',');
+  const clubsKey = clubs.map((club) => club.id).join(',');
+  const fromSaved = () => {
+    const kept = saved.map(String).filter((id) => freeIds.has(id));
+    return [0, 1, 2].map((i) => kept[i] || '');
+  };
+  const [choices, setChoices] = useState(fromSaved);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  // Reset the draft only when the saved choices or the free clubs actually change.
+  useEffect(() => { setChoices(fromSaved()); }, [savedKey, clubsKey]);
+  const takenSince = saved.some((id) => !freeIds.has(String(id)));
+  if (!clubs.length) {
+    return <p className="muted top100-waiting__clubs">No clubs are free in this game world right now. We&apos;ll offer you one when a place opens.</p>;
+  }
+  const label = (club) => `${club.name}${club.division ? ` (Div ${club.division})` : ''}${club.inVacancyRound ? ' · current managers first' : ''}`;
+  const changed = choices.filter(Boolean).join(',') !== saved.map(String).join(',');
+  async function save() {
+    setBusy(true);
+    setNote('');
+    const ids = choices.filter(Boolean).map(Number);
+    const { data, error } = await supabase.rpc('set_waiting_list_choices', { p_world_slug: world, p_club_ids: ids });
+    setBusy(false);
+    if (error) { setNote(error.message); return; }
+    onSaved(data || []);
+    setNote(ids.length ? 'Your choices are saved.' : 'Choices cleared.');
+  }
+  return (
+    <div className="top100-waiting__clubs">
+      <p><strong>{clubs.length} club{clubs.length === 1 ? '' : 's'} free now:</strong> {clubs.map((club) => club.name).join(', ')}.</p>
+      {takenSince && <p className="status">A club you chose has since been taken. Check your choices and save them again.</p>}
+      <p className="muted">Choose up to three you&apos;d like, in order. Clubs are offered in waiting-list order (rule 3.3), and your choices are used when you&apos;re offered one.</p>
+      <div className="top100-waiting__choice-row">
+        {[0, 1, 2].map((i) => (
+          <label key={i}>{['1st', '2nd', '3rd'][i]} choice
+            <select value={choices[i]} onChange={(event) => setChoices(choices.map((value, j) => (j === i ? event.target.value : value)))}>
+              <option value="">{i === 0 ? 'Choose a club…' : 'No preference'}</option>
+              {clubs.filter((club) => !choices.some((value, j) => j !== i && value === String(club.id))).map((club) => (
+                <option key={club.id} value={club.id}>{label(club)}</option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+      <button type="button" disabled={busy || !changed} onClick={save}>{busy ? 'Saving…' : 'Save my choices'}</button>
+      {note && <p className="status" role="status">{note}</p>}
+    </div>
+  );
+}
+
 // Join the list, or follow your place on it. `standalone` renders a full card (the Manager Portal
 // screen for people without a club); otherwise a collapsible card for the portal home.
 // managedWorlds: slugs of the worlds where the manager already has a club (not offered).
 export function WaitingListCard({ session, standalone = false, defaultName = '', managedWorlds = [] }) {
   const [entries, setEntries] = useState(null);
+  const [openClubs, setOpenClubs] = useState({});
+  const [choices, setChoices] = useState({});
   const [form, setForm] = useState({ worlds: [], name: defaultName, found: '', foundOther: '', agree: false });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.rpc('my_waiting_list');
-    setEntries(error ? [] : data || []);
+    const [list, free, mine] = await Promise.all([
+      supabase.rpc('my_waiting_list'),
+      supabase.rpc('waiting_list_open_clubs'),
+      supabase.rpc('my_waiting_list_choices'),
+    ]);
+    setOpenClubs(Object.fromEntries((free.data || []).map((world) => [world.world, world.clubs || []])));
+    setChoices(mine.data || {});
+    setEntries(list.error ? [] : list.data || []);
   }, []);
   useEffect(() => { if (session?.user?.id && supabase) load(); }, [session?.user?.id, load]);
   useEffect(() => { if (defaultName) setForm((current) => (current.name ? current : { ...current, name: defaultName })); }, [defaultName]);
@@ -50,7 +116,7 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
     if (error) { setMessage(error.message); return; }
     setEntries(data || []);
     setForm((current) => ({ ...current, worlds: [], agree: false }));
-    setMessage("You're on the waiting list. We'll be in touch when a club is available.");
+    setMessage("You're on the waiting list. Choose the clubs you'd like below; we'll be in touch when one is offered to you.");
   }
 
   // Open the usual Manager Account claim for the club they've taken, under their own name. It goes
@@ -108,6 +174,10 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
                 <button type="button" className="secondary" onClick={() => update(entry.world, true)}>Leave the list</button>
               </div>
               {entry.needsConfirming && <p className="muted">Please confirm you're still interested this season, or your place lapses.</p>}
+              {entry.status === 'waiting' && (
+                <ClubChoices world={entry.world} clubs={openClubs[entry.world] || []} saved={choices[entry.world] || NO_CHOICES}
+                  onSaved={(ids) => setChoices((current) => ({ ...current, [entry.world]: ids }))} />
+              )}
             </li>
           ))}
         </ul>
@@ -121,6 +191,7 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
             {open.map(([slug, label]) => (
               <label key={slug} className="top100-waiting__check">
                 <input type="checkbox" checked={form.worlds.includes(slug)} onChange={() => toggleWorld(slug)} /> {label}
+                <span className="muted"> · {(openClubs[slug] || []).length ? `${openClubs[slug].length} club${openClubs[slug].length === 1 ? '' : 's'} free now` : 'no clubs free right now'}</span>
               </label>
             ))}
             {open.some(([slug]) => slug === 'regen') && <p className="muted">New managers are encouraged to start in Top 100 Regen and prove themselves there.</p>}
