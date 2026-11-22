@@ -36,7 +36,10 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
 
   const rows=useMemo(()=>fixtures.map(match=>{
     const home=match.home_entry_id===selectedEntry?.id;
-    return {match,home,opponent:opponentName(match,selectedEntry),report:reports[match.id]||null};
+    // A cleared (undone) update shows as nothing recorded.
+    const raw=reports[match.id]||null;
+    const report=raw&&raw.status!=='cleared'?raw:null;
+    return {match,home,opponent:opponentName(match,selectedEntry),report};
   }),[fixtures,selectedEntry,reports]);
 
   async function record(match,status) {
@@ -52,10 +55,23 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
     setBusy('');
   }
 
+  async function undo(match) {
+    if(uploading){ setMessage('Wait for the evidence upload to finish before changing the fixture status.'); return; }
+    setBusy(match.id+'undo'); setMessage('');
+    const {data,error}=await supabase.rpc('undo_manager_match_arrangement_action',{
+      p_match_id: match.id,
+      p_tournament_entry_id: selectedEntry.id,
+    });
+    if(error){setMessage(error.message);setBusy('');return;}
+    setReports(current=>({...current,[match.id]:Array.isArray(data)?data[0]:data}));
+    setMessage('Update undone. Your opponent has been told it was recorded by mistake.');
+    setBusy('');
+  }
+
   async function uploadEvidence(match,file) {
     if(!file)return;
     const current=reports[match.id];
-    if(!current?.status){
+    if(!current?.status||current.status==='cleared'){
       setMessage('Record what happened first, then attach evidence to that action.');
       return;
     }
@@ -96,7 +112,7 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
   if(!selectedEntry || !rows.length)return null;
   return <section className="card match-action-centre">
     <div className="card-header"><p className="eyebrow">👤 My Matches</p><h2>What do I need to do?</h2></div>
-    <p className="muted">Record what has actually happened. Once a request is sent or received, the advice updates. Add a screenshot when useful — especially if a fixture becomes disputed.</p>
+    <p className="muted">Record what has actually happened. Once a request is sent or received, the advice updates. Add a screenshot when useful — especially if a fixture becomes disputed. Clicked the wrong button? Use ↩ Undo.</p>
     {message&&<p className="status" role="status">{message}</p>}
     <div className="match-action-list">{rows.map(({match,home,opponent,report})=>{
       const done=report?.status==='arranged'||(home&&report?.status==='sent')||(!home&&report?.status==='received');
@@ -109,6 +125,7 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
           {home?<button type="button" onClick={()=>record(match,'sent')} disabled={!!busy||!!uploading}>✓ Request sent</button>:<><button type="button" onClick={()=>record(match,'received')} disabled={!!busy||!!uploading}>✓ Request received</button><button type="button" className="secondary" onClick={()=>record(match,'chased')} disabled={!!busy||!!uploading}>✉️ I chased them</button></>}
           {report?.status!=='problem'&&<button type="button" className="secondary danger-soft" onClick={()=>record(match,'problem')} disabled={!!busy||!!uploading}>⚠️ Problem arranging match</button>}
           <label className="button secondary evidence-button">📎 {uploading===match.id?'Uploading…':report?.evidence_path?'Replace evidence':'Add evidence'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={uploading===match.id} onChange={async e=>{const input=e.currentTarget; const file=input.files?.[0]; try{await uploadEvidence(match,file);}finally{input.value='';}}}/></label>
+          {report&&<button type="button" className="secondary" onClick={()=>undo(match)} disabled={!!busy||!!uploading} title="Clicked the wrong button? Undo this update">↩ Undo</button>}
           {report?.evidence_name&&<small>📷 {report.evidence_name}</small>}
         </div>
       </article>
