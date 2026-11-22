@@ -224,8 +224,9 @@ export function WaitingListCard({ session, standalone = false, defaultName = '',
   if (standalone) {
     return (
       <section className="card top100-waiting">
-        <h2>Join the waiting list</h2>
-        <p className="muted">Not managing a Top 100 or Top 100 Regen club yet, or coming back after a break? Join the waiting list and we'll offer you a club when one is available.</p>
+        <h2>Join Top 100 or Top 100 Regen</h2>
+        <p><strong>Applied for a club in Soccer Manager?</strong> Join here for that game world, agree to the rules, then choose the club you applied for as your 1st choice. Agreeing to the rules is what we need before we accept your application. Once Soccer Manager shows you as the manager, you can link the club to your account here.</p>
+        <p className="muted">Not applied yet, or coming back after a break? Join and choose from the free clubs, and we&apos;ll offer you one when it&apos;s your turn.</p>
         {body}
       </section>
     );
