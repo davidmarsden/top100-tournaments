@@ -95,6 +95,8 @@
 .has-problem .match-action-badge { background: #4a1d24; color: #fca5a5; }
 .match-action-fixture strong,.match-action-fixture span,.match-action-fixture time,.match-action-advice strong,.match-action-advice span { display:block; }
 .match-action-fixture span,.match-action-fixture time,.match-action-advice span { margin-top:3px; color:#a9b8d0; font-size:.86rem; font-weight:700; }
+.match-action-fixture .match-action-sm.ok { color:#5fd38d; }
+.match-action-fixture .match-action-sm.warn { color:#f5c451; }
 .match-action-controls { grid-column: 1 / -1; display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding-top:10px; border-top:1px solid #e5e7eb; }
 .match-action-controls button,.match-action-controls .button { margin:0; }
 .evidence-button { cursor:pointer; }

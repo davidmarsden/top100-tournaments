@@ -128,3 +128,7 @@
   .wcc-fixtures { grid-template-columns: 1fr; }
   .wcc-fixture { grid-template-columns: 1fr 64px 1fr; gap: 6px; padding: 10px 8px; }
 }
+.league-arranging { margin-top: 8px; }
+.league-arranging summary { cursor: pointer; }
+.league-issues li.arranging-arranged { opacity: 0.75; }
+.league-issues li.arranging-check { font-weight: 600; }

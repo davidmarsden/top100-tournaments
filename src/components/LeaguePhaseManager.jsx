@@ -9,6 +9,8 @@ import LeagueTable from './LeagueTable.jsx';
 import './league-phase.css';
 
 const DEFAULT_FIRST_WEDNESDAY = '2026-12-09';
+const SM_LABELS = { arranged: '✓ Arranged in SM', reversed: '⇄ Arranged home and away swapped', other_date: '📅 Arranged on another date' };
+const PORTAL_LABELS = { sent: 'invite sent', received: 'invite received', chased: 'chased', arranged: 'arranged', problem: 'problem' };
 
 function entryView(entry) {
   return {
@@ -31,6 +33,8 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
   const [matches, setMatches] = useState([]);
   const [tournament, setTournament] = useState(selectedTournament);
   const [issues, setIssues] = useState([]);
+  const [smArrangements, setSmArrangements] = useState(new Map());
+  const [portalReports, setPortalReports] = useState([]);
   const [firstWednesday, setFirstWednesday] = useState(selectedTournament?.league_first_matchday || DEFAULT_FIRST_WEDNESDAY);
   const [seed, setSeed] = useState('');
   const [preview, setPreview] = useState(null);
@@ -39,17 +43,21 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
 
   async function load() {
     if (!hasSupabaseConfig || !supabase || !tournamentId) return;
-    const [t, e, m, i] = await Promise.all([
+    const [t, e, m, i, sa, pr] = await Promise.all([
       supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
       supabase.from('tournament_entries').select('id, team_id, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId),
       supabase.from('matches').select('id, stage, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, winner_entry_id, loser_entry_id, status, decided_by, forfeit, walkover, source_id').eq('tournament_id', tournamentId),
       supabase.rpc('league_phase_result_issues', { target_tournament_id: tournamentId }),
+      supabase.rpc('league_phase_sm_arrangements', { target_tournament_id: tournamentId }),
+      supabase.from('manager_match_arrangements').select('match_id, tournament_entry_id, status, updated_at, matches!inner(tournament_id)').eq('matches.tournament_id', tournamentId),
     ]);
     if (t.error || e.error || m.error) return setStatus('Could not load the tournament: ' + (t.error || e.error || m.error).message);
     setTournament(t.data);
     setEntries((e.data || []).map(entryView).sort((a, b) => (a.pot || 9) - (b.pot || 9) || a.name.localeCompare(b.name)));
     setMatches(m.data || []);
     setIssues(i.error ? [] : i.data || []);
+    setSmArrangements(new Map((sa.error ? [] : sa.data || []).filter((row) => row.sm_status).map((row) => [row.match_id, row])));
+    setPortalReports(pr.error ? [] : pr.data || []);
     if (t.data?.league_first_matchday) setFirstWednesday(t.data.league_first_matchday);
   }
 
@@ -145,6 +153,34 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
     }));
   }, [preview, entries]);
 
+  // Arranging: for each league-stage fixture not yet played, what Soccer Manager's Friendlies list
+  // shows (saved by Sync everything) and what each manager has recorded in My Matches.
+  const arranging = useMemo(() => {
+    const names = new Map(entries.map((e) => [e.id, e.name]));
+    const latest = new Map();
+    for (const row of portalReports) {
+      if (row.status === 'cleared') continue;
+      const key = `${row.match_id}:${row.tournament_entry_id}`;
+      if (!latest.has(key) || latest.get(key).updated_at < row.updated_at) latest.set(key, row);
+    }
+    const byDay = new Map();
+    for (const m of leagueMatches) {
+      if (['played', 'forfeit', 'voided', 'cancelled'].includes(m.status)) continue;
+      const sm = smArrangements.get(m.id) || null;
+      const home = latest.get(`${m.id}:${m.home_entry_id}`)?.status || null;
+      const away = latest.get(`${m.id}:${m.away_entry_id}`)?.status || null;
+      const state = sm?.sm_status === 'arranged' ? 'arranged' : sm?.sm_status ? 'check' : home || away ? 'portal' : 'nothing';
+      const day = byDay.get(m.round) || { round: m.round, date: m.fixture_date, rows: [] };
+      day.rows.push({ match: m, homeName: names.get(m.home_entry_id), awayName: names.get(m.away_entry_id), sm, home, away, state });
+      byDay.set(m.round, day);
+    }
+    const order = { check: 0, nothing: 1, portal: 2, arranged: 3 };
+    return [...byDay.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)))
+      .map((day) => ({ ...day, rows: day.rows.sort((a, b) => order[a.state] - order[b.state] || String(a.homeName).localeCompare(String(b.homeName))),
+        count: (state) => day.rows.filter((row) => row.state === state).length }));
+  }, [leagueMatches, smArrangements, portalReports, entries]);
+  const smSeenAt = useMemo(() => [...smArrangements.values()].map((row) => row.sm_seen_at).filter(Boolean).sort().at(-1) || null, [smArrangements]);
+
   if (!tournament) return <p className="muted">Choose a tournament.</p>;
   const noResult = issues.filter((row) => row.issue === 'no_result');
   const reversed = issues.filter((row) => row.issue === 'played_reversed');
@@ -182,7 +218,21 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
     </section>
 
     <section className="league-step">
-      <header><span className="league-step__n">3</span><div><h3>Results</h3><p className="muted">Results come in from SM Sync on their own: when the daily Sync saves a friendly between two drawn clubs, with the right club at home, the fixture fills itself. Enter only forfeits here (Results module) and tied knockout ties (FET).</p></div></header>
+      <header><span className="league-step__n">3</span><div><h3>Arranging</h3><p className="muted">Each fixture as Soccer Manager's Friendlies list shows it (read by Sync everything{smSeenAt ? `, last seen ${new Date(smSeenAt).toLocaleString('en-GB')}` : ''}) and as the managers have recorded it in My Matches.</p></div></header>
+      {!drawn && <p className="muted">Nothing to arrange until the draw is made.</p>}
+      {drawn && !arranging.length && <p className="muted">Every league-stage fixture has a result.</p>}
+      {arranging.map((day, index) => <details key={day.round} className="league-arranging" open={index === 0}>
+        <summary><strong>{day.round}</strong> <span className="muted">{day.date}</span> · {day.count('arranged')} arranged in SM · {day.count('check')} to check · {day.count('portal')} recorded in My Matches only · {day.count('nothing')} nothing yet</summary>
+        <ul className="league-issues">{day.rows.map((row) => <li key={row.match.id} className={`arranging-${row.state}`}>
+          {row.homeName} v {row.awayName}
+          {' · '}{row.sm ? <span title={row.sm.sm_fixture_date}>{SM_LABELS[row.sm.sm_status]}{row.sm.sm_status === 'other_date' ? ` (${row.sm.sm_fixture_date})` : ''}</span> : <span className="muted">not in SM</span>}
+          {(row.home || row.away) && <span className="muted"> · My Matches: home {PORTAL_LABELS[row.home] || '–'}, away {PORTAL_LABELS[row.away] || '–'}</span>}
+        </li>)}</ul>
+      </details>)}
+    </section>
+
+    <section className="league-step">
+      <header><span className="league-step__n">4</span><div><h3>Results</h3><p className="muted">Results come in from SM Sync on their own: when the daily Sync saves a friendly between two drawn clubs, with the right club at home, the fixture fills itself. Enter only forfeits here (Results module) and tied knockout ties (FET).</p></div></header>
       <div className="league-stats"><div><b>{played}</b><span>of {leagueMatches.length} played</span></div><div><b>{fromSync}</b><span>from SM Sync</span></div><div><b>{noResult.length}</b><span>overdue</span></div><div><b>{reversed.length}</b><span>played at the wrong ground</span></div></div>
       <div className="button-row"><button type="button" className="secondary" onClick={checkSync} disabled={busy || !drawn}>Check SM Sync now</button></div>
       {reversed.length > 0 && <div className="warning-card"><strong>Played with home and away swapped</strong><p>These were not applied. Decide in Results whether to accept the score as played.</p><ul>{reversed.map((row) => <li key={row.match_id}>{row.round}{row.leg > 1 ? ` leg ${row.leg}` : ''}: {row.home_name} v {row.away_name} was played as {row.away_name} {row.sm_home_score}–{row.sm_away_score} {row.home_name} ({row.sm_played})</li>)}</ul></div>}
@@ -190,12 +240,12 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
     </section>
 
     <section className="league-step">
-      <header><span className="league-step__n">4</span><div><h3>Table</h3><p className="muted">Points, goal difference, goals, wins, then opponents' points. A forfeit is 3-0 to the club that tried; if neither did, 0-3 for both.</p></div></header>
+      <header><span className="league-step__n">5</span><div><h3>Table</h3><p className="muted">Points, goal difference, goals, wins, then opponents' points. A forfeit is 3-0 to the club that tried; if neither did, 0-3 for both.</p></div></header>
       <LeagueTable rows={table} compact />
     </section>
 
     <section className="league-step">
-      <header><span className="league-step__n">5</span><div><h3>Knockouts</h3><p className="muted">1-8 go to the Cup last 16, 9-24 play off (9 v 24, 10 v 23 …), 25-56 go to the Shield last 32. Every tie is two legs; the higher-placed club is at home in the second leg.</p></div></header>
+      <header><span className="league-step__n">6</span><div><h3>Knockouts</h3><p className="muted">1-8 go to the Cup last 16, 9-24 play off (9 v 24, 10 v 23 …), 25-56 go to the Shield last 32. Every tie is two legs; the higher-placed club is at home in the second leg.</p></div></header>
       <div className="button-row">
         <button type="button" onClick={buildPlayoffs} disabled={busy || !drawn || playoffExists}>Build Cup play-off and Shield last 32</button>
         <button type="button" onClick={buildR16} disabled={busy || !playoffExists || r16Exists || playoffWinners.size < 8}>Build Cup last 16 ({playoffWinners.size}/8 play-offs decided)</button>
