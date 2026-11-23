@@ -24,6 +24,7 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
   const [uploading,setUploading]=useState('');
+  const [inSm,setInSm]=useState({});
   const ALLOWED_EVIDENCE_TYPES = new Set(['image/jpeg','image/png','image/webp','image/gif']);
 
   useEffect(()=>{
@@ -34,13 +35,24 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
     return ()=>{active=false};
   },[session?.user?.id, fixtures.map(f=>f.id).join(',')]);
 
+  // Whether each fixture's friendly is on Soccer Manager's Friendlies list (read by Sync everything).
+  useEffect(()=>{
+    const ids=new Set(fixtures.map(f=>f.id));
+    const tournaments=[...new Set(fixtures.map(f=>f.tournament_id).filter(Boolean))];
+    if(!tournaments.length){ setInSm({}); return; }
+    let active=true;
+    Promise.all(tournaments.map(id=>supabase.rpc('league_phase_sm_arrangements',{target_tournament_id:id})))
+      .then(results=>{ if(!active)return; setInSm(Object.fromEntries(results.flatMap(r=>r.error?[]:r.data||[]).filter(r=>ids.has(r.match_id)&&r.sm_status).map(r=>[r.match_id,r]))); });
+    return ()=>{active=false};
+  },[fixtures.map(f=>f.id).join(',')]);
+
   const rows=useMemo(()=>fixtures.map(match=>{
     const home=match.home_entry_id===selectedEntry?.id;
     // A cleared (undone) update shows as nothing recorded.
     const raw=reports[match.id]||null;
     const report=raw&&raw.status!=='cleared'?raw:null;
-    return {match,home,opponent:opponentName(match,selectedEntry),report};
-  }),[fixtures,selectedEntry,reports]);
+    return {match,home,opponent:opponentName(match,selectedEntry),report,sm:inSm[match.id]||null};
+  }),[fixtures,selectedEntry,reports,inSm]);
 
   async function record(match,status) {
     if(uploading){ setMessage('Wait for the evidence upload to finish before changing the fixture status.'); return; }
@@ -114,13 +126,14 @@ export default function ManagerMatchActions({ session, selectedEntry, fixtures =
     <div className="card-header"><p className="eyebrow">👤 My Matches</p><h2>What do I need to do?</h2></div>
     <p className="muted">Record what has actually happened. Once a request is sent or received, the advice updates. Add a screenshot when useful — especially if a fixture becomes disputed. Clicked the wrong button? Use ↩ Undo.</p>
     {message&&<p className="status" role="status">{message}</p>}
-    <div className="match-action-list">{rows.map(({match,home,opponent,report})=>{
-      const done=report?.status==='arranged'||(home&&report?.status==='sent')||(!home&&report?.status==='received');
+    <div className="match-action-list">{rows.map(({match,home,opponent,report,sm})=>{
+      const inSoccerManager=sm?.sm_status==='arranged';
+      const done=inSoccerManager||report?.status==='arranged'||(home&&report?.status==='sent')||(!home&&report?.status==='received');
       const state=report?STATES[report.status]:null;
       return <article className={`match-action-row ${done?'is-done':''} ${report?.status==='problem'?'has-problem':''}`} key={match.id}>
         <div className="match-action-badge">{state?`${state.icon} ${state.label}`:(home?'🏠 YOU SEND':'📨 THEY SEND')}</div>
-        <div className="match-action-fixture"><strong>{opponent}</strong><span>{match.round} · {match.bracket||match.stage}</span><time>{dateLabel(match.fixture_date)}</time></div>
-        <div className="match-action-advice">{done?<><strong>Nothing else to do.</strong><span>{home?'Friendly request recorded as sent.':'Friendly request recorded as received.'}</span></>:report?.status==='chased'?<><strong>Chase recorded.</strong><span>Waiting for {opponent}. Add evidence or flag a problem if needed.</span></>:report?.status==='problem'?<><strong>Needs organiser help.</strong><span>Your problem report is recorded. Add evidence below if you have it.</span></>:<span>{home?`Send the Soccer Manager friendly request to ${opponent}.`:`Expect a friendly request from ${opponent}. If it has not arrived, chase them — do not wait for the deadline.`}</span>}</div>
+        <div className="match-action-fixture"><strong>{opponent}</strong><span>{match.round} · {match.bracket||match.stage}</span><time>{dateLabel(match.fixture_date)}</time>{inSoccerManager?<span className="match-action-sm ok">✓ Arranged in Soccer Manager</span>:sm?.sm_status==='reversed'?<span className="match-action-sm warn">⇄ Arranged in Soccer Manager with home and away swapped: {home?'you should be at home':`${opponent} should be at home`}</span>:sm?.sm_status==='other_date'?<span className="match-action-sm warn">📅 Arranged in Soccer Manager for {dateLabel(sm.sm_fixture_date)}, not {dateLabel(match.fixture_date)}</span>:null}</div>
+        <div className="match-action-advice">{inSoccerManager?<><strong>Nothing else to do.</strong><span>The friendly is on Soccer Manager's fixture list.</span></>:done?<><strong>Nothing else to do.</strong><span>{home?'Friendly request recorded as sent.':'Friendly request recorded as received.'}</span></>:report?.status==='chased'?<><strong>Chase recorded.</strong><span>Waiting for {opponent}. Add evidence or flag a problem if needed.</span></>:report?.status==='problem'?<><strong>Needs organiser help.</strong><span>Your problem report is recorded. Add evidence below if you have it.</span></>:<span>{home?`Send the Soccer Manager friendly request to ${opponent}.`:`Expect a friendly request from ${opponent}. If it has not arrived, chase them — do not wait for the deadline.`}</span>}</div>
         <div className="match-action-controls">
           {home?<button type="button" onClick={()=>record(match,'sent')} disabled={!!busy||!!uploading}>✓ Request sent</button>:<><button type="button" onClick={()=>record(match,'received')} disabled={!!busy||!!uploading}>✓ Request received</button><button type="button" className="secondary" onClick={()=>record(match,'chased')} disabled={!!busy||!!uploading}>✉️ I chased them</button></>}
           {report?.status!=='problem'&&<button type="button" className="secondary danger-soft" onClick={()=>record(match,'problem')} disabled={!!busy||!!uploading}>⚠️ Problem arranging match</button>}
