@@ -56,7 +56,7 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
     setEntries((e.data || []).map(entryView).sort((a, b) => (a.pot || 9) - (b.pot || 9) || a.name.localeCompare(b.name)));
     setMatches(m.data || []);
     setIssues(i.error ? [] : i.data || []);
-    setSmArrangements(new Map((sa.error ? [] : sa.data || []).map((row) => [row.match_id, row])));
+    setSmArrangements(new Map((sa.error ? [] : sa.data || []).filter((row) => row.sm_status).map((row) => [row.match_id, row])));
     setPortalReports(pr.error ? [] : pr.data || []);
     if (t.data?.league_first_matchday) setFirstWednesday(t.data.league_first_matchday);
   }
