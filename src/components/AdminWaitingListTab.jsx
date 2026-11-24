@@ -102,6 +102,12 @@ function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer, choices 
         </label>
         <button type="button" className="secondary" onClick={() => save()}>Save</button>
       </div>
+      {entry.removedAt ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+          <span className="muted">Removed from the list {shortDate(entry.removedAt)}. Allow them back before offering a club.</span>
+          <button type="button" className="secondary" onClick={() => save({ removed: false })}>Allow back on the list</button>
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
         <label style={{ fontSize: 13 }}>Offer club
           <input value={fields.offerClub} onChange={set('offerClub')} style={{ display: 'block', width: 180 }} />
@@ -116,7 +122,9 @@ function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer, choices 
         {entry.status !== 'appointed' && <button type="button" className="secondary" onClick={() => save({ status: 'appointed' })}>Mark appointed</button>}
         {entry.status !== 'waiting' && <button type="button" className="secondary" onClick={() => save({ status: 'waiting', offerClub: null, offerDeadline: null })}>Back to waiting</button>}
         {!['withdrawn', 'lapsed'].includes(entry.status) && <button type="button" className="secondary" onClick={() => save({ status: 'lapsed' })}>Lapse</button>}
+        <button type="button" className="secondary" onClick={() => { if (window.confirm(`Remove ${entry.managerName} from this waiting list? They won't be able to rejoin it, under this account or the same Soccer Manager name.`)) save({ removed: true }); }}>Remove from the list</button>
       </div>
+      )}
     </div>
   );
 }
@@ -225,7 +233,7 @@ export default function AdminWaitingListTab({ setMessage }) {
               <tr key={entry.id} onClick={() => setOpenId(openId === entry.id ? null : entry.id)} style={{ cursor: 'pointer' }}>
                 {numbered && <td>{index + 1}</td>}
                 <td style={{ textAlign: 'left' }}><strong>{entry.managerName}</strong>{entry.confirmedSeason < data.season && entry.status === 'waiting' ? <span className="muted"> · not confirmed this season</span> : ''}</td>
-                <td>{STATUS[entry.status]}{entry.status === 'offered' && entry.offerClub ? `: ${entry.offerClub}${entry.offerDeadline ? ` by ${shortDate(entry.offerDeadline)}` : ''}` : ''}</td>
+                <td>{entry.removedAt ? `Removed ${shortDate(entry.removedAt)}` : STATUS[entry.status]}{entry.status === 'offered' && entry.offerClub ? `: ${entry.offerClub}${entry.offerDeadline ? ` by ${shortDate(entry.offerDeadline)}` : ''}` : ''}</td>
                 <td>{h?.returning ? `Yes · ${h.seasons} season${h.seasons === 1 ? '' : 's'}` : 'No'}</td>
                 {world === 'top-100' && <td style={NUM}>{entry.regenSeasons || 0}</td>}
                 <td>{yesNo(entry.gold)}{entry.goldFrom === 'admin' ? '*' : ''}</td>
@@ -272,7 +280,7 @@ export default function AdminWaitingListTab({ setMessage }) {
           </div>
           {closed.length > 0 && (
             <>
-              <button type="button" className="link-button" onClick={() => setShowClosed(!showClosed)}>{showClosed ? 'Hide' : 'Show'} appointed, withdrawn and lapsed ({closed.length})</button>
+              <button type="button" className="link-button" onClick={() => setShowClosed(!showClosed)}>{showClosed ? 'Hide' : 'Show'} appointed, withdrawn, lapsed and removed ({closed.length})</button>
               {showClosed && table(closed, false)}
             </>
           )}
