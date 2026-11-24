@@ -102,6 +102,12 @@ function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer, choices 
         </label>
         <button type="button" className="secondary" onClick={() => save()}>Save</button>
       </div>
+      {entry.removedAt ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+          <span className="muted">Removed from the list {shortDate(entry.removedAt)}. Allow them back before offering a club.</span>
+          <button type="button" className="secondary" onClick={() => save({ removed: false })}>Allow back on the list</button>
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
         <label style={{ fontSize: 13 }}>Offer club
           <input value={fields.offerClub} onChange={set('offerClub')} style={{ display: 'block', width: 180 }} />
@@ -116,10 +122,9 @@ function EntryDetails({ entry, scored, history, onUpdate, onEmailOffer, choices 
         {entry.status !== 'appointed' && <button type="button" className="secondary" onClick={() => save({ status: 'appointed' })}>Mark appointed</button>}
         {entry.status !== 'waiting' && <button type="button" className="secondary" onClick={() => save({ status: 'waiting', offerClub: null, offerDeadline: null })}>Back to waiting</button>}
         {!['withdrawn', 'lapsed'].includes(entry.status) && <button type="button" className="secondary" onClick={() => save({ status: 'lapsed' })}>Lapse</button>}
-        {entry.removedAt
-          ? <button type="button" className="secondary" onClick={() => save({ removed: false })}>Allow back on the list</button>
-          : <button type="button" className="secondary" onClick={() => { if (window.confirm(`Remove ${entry.managerName} from this waiting list? They won't be able to rejoin it, under this account or the same Soccer Manager name.`)) save({ removed: true }); }}>Remove from the list</button>}
+        <button type="button" className="secondary" onClick={() => { if (window.confirm(`Remove ${entry.managerName} from this waiting list? They won't be able to rejoin it, under this account or the same Soccer Manager name.`)) save({ removed: true }); }}>Remove from the list</button>
       </div>
+      )}
     </div>
   );
 }
