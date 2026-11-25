@@ -13,6 +13,7 @@ const TABS = [['table', 'Table'], ['fixtures', 'Fixtures & results'], ['knockout
 // Arrangement badges on unplayed fixtures (league_phase_arrangement_status).
 const ARRANGEMENT = {
   arranged: ['✓ Arranged', 'is-arranged'],
+  swapped: ['✓ Arranged · home/away swapped', 'is-arranged'],
   sent: ['Invite sent', 'is-sent'],
   received: ['Invite received', 'is-sent'],
   chased: ['Chased', 'is-chased'],
@@ -20,6 +21,16 @@ const ARRANGEMENT = {
   problem: ['Problem reported', 'is-problem'],
   none: ['Not arranged yet', 'is-none'],
 };
+// Status filter buttons (also the colour key): each groups one or more statuses.
+const STATUS_GROUPS = [
+  ['arranged', 'Arranged', ['arranged', 'swapped'], 'is-arranged'],
+  ['sent', 'Invite sent / received', ['sent', 'received'], 'is-sent'],
+  ['chased', 'Chased / check', ['chased', 'check'], 'is-chased'],
+  ['problem', 'Problem reported', ['problem'], 'is-problem'],
+  ['none', 'Not arranged yet', ['none'], 'is-none'],
+  ['played', 'Played', ['played'], 'is-played'],
+];
+const GROUP_OF = Object.fromEntries(STATUS_GROUPS.flatMap(([key, , statuses]) => statuses.map((status) => [status, key])));
 
 function formatDate(value) {
   if (!value) return 'Date TBC';
@@ -48,6 +59,7 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
   const [matchday, setMatchday] = useState(null);
   const [club, setClub] = useState('');
   const [arrangement, setArrangement] = useState(new Map());
+  const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +97,14 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
   const highlights = useMemo(() => matchdayHighlights(entries, league, latest), [entries, league, latest]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
   const played = league.filter((m) => ['played', 'forfeit'].includes(m.status)).length;
+
+  // Played means a result or forfeit; a rescheduled ('postponed', shown as Moved) fixture keeps its arrangement status.
+  const isPlayed = (m) => ['played', 'forfeit'].includes(m.status);
+  const statusOf = (m) => (isPlayed(m) ? 'played' : arrangement.get(m.id) || 'none');
+  const shownFixtures = (club
+    ? league.filter((m) => m.home_entry_id === Number(club) || m.away_entry_id === Number(club)).sort((a, b) => (matchdayOf(a) || 0) - (matchdayOf(b) || 0))
+    : league.filter((m) => matchdayOf(m) === shownMatchday).sort((a, b) => a.match_order - b.match_order))
+    .filter((m) => !statusFilter || GROUP_OF[statusOf(m)] === statusFilter);
 
   if (!tournament) return <main className="wcc"><div className="wcc-wrap"><p className="wcc-empty">{status}</p></div></main>;
 
@@ -131,13 +151,13 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
               {matchdays.map((md) => <button key={md} type="button" aria-pressed={md === shownMatchday} onClick={() => setMatchday(md)}>MD{md}</button>)}
             </div>}
           </div>
-          {arrangement.size > 0 && <ul className="wcc-arrangement-key" aria-label="Arrangement key">
-            {['arranged', 'sent', 'chased', 'problem', 'none'].map((key) => <li key={key} className={`wcc-arrangement ${ARRANGEMENT[key][1]}`}>{key === 'sent' ? 'Invite sent / received' : key === 'chased' ? 'Chased / check' : ARRANGEMENT[key][0]}</li>)}
-          </ul>}
+          {arrangement.size > 0 && <div className="wcc-arrangement-key" role="group" aria-label="Filter by status">
+            {STATUS_GROUPS.map(([key, label, , tone]) => <button key={key} type="button" className={`wcc-arrangement ${tone}`} aria-pressed={statusFilter === key} onClick={() => setStatusFilter(statusFilter === key ? '' : key)}>{label}</button>)}
+            {statusFilter && <button type="button" className="wcc-arrangement is-clear" onClick={() => setStatusFilter('')}>Show all</button>}
+          </div>}
+          {shownFixtures.length === 0 && <p className="wcc-empty">No fixtures {club ? 'for this club' : 'on this matchday'} with that status.</p>}
           <div className="wcc-fixtures">
-            {(club
-              ? league.filter((m) => m.home_entry_id === Number(club) || m.away_entry_id === Number(club)).sort((a, b) => (matchdayOf(a) || 0) - (matchdayOf(b) || 0))
-              : league.filter((m) => matchdayOf(m) === shownMatchday).sort((a, b) => a.match_order - b.match_order)).map((m) => {
+            {shownFixtures.map((m) => {
               const home = byId.get(m.home_entry_id);
               const away = byId.get(m.away_entry_id);
               const score = scoreText(m);
@@ -150,7 +170,7 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
                 <div className="wcc-fixture__team">{away?.name}<small>Division {away?.pot}</small></div>
                 {upset && <div className="wcc-fixture__tag">Giant-killing</div>}
                 {club && <div className="wcc-fixture__when">MD{matchdayOf(m)} · {formatDate(m.fixture_date)}</div>}
-                {!score && arrangement.has(m.id) && <div className={`wcc-arrangement ${ARRANGEMENT[arrangement.get(m.id)]?.[1] || 'is-none'}`}>{ARRANGEMENT[arrangement.get(m.id)]?.[0] || 'Not arranged yet'}</div>}
+                {!isPlayed(m) && arrangement.has(m.id) && <div className={`wcc-arrangement ${ARRANGEMENT[arrangement.get(m.id)]?.[1] || 'is-none'}`}>{ARRANGEMENT[arrangement.get(m.id)]?.[0] || 'Not arranged yet'}</div>}
               </article>;
             })}
           </div>

@@ -144,3 +144,7 @@
 .league-arranging summary { cursor: pointer; }
 .league-issues li.arranging-arranged { opacity: 0.75; }
 .league-issues li.arranging-check { font-weight: 600; }
+.wcc-arrangement-key .wcc-arrangement { grid-column: auto; cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 800; }
+.wcc-arrangement-key .wcc-arrangement[aria-pressed='true'] { outline: 2px solid currentColor; outline-offset: 1px; }
+.wcc-arrangement.is-played { color: var(--wcc-ink); background: var(--wcc-surface-2); border-color: var(--wcc-line); }
+.wcc-arrangement.is-clear { color: var(--wcc-muted); background: transparent; border-color: transparent; text-decoration: underline; }
