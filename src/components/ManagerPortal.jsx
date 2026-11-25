@@ -298,7 +298,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
       if (tournamentIds.length) {
         if (isCurrent()) setLoadStage('Loading fixtures and group table');
         const [matchResult, peerResult] = await withPortalTimeout(Promise.all([
-          supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))').in('tournament_id', tournamentIds),
+          supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_away_swapped_at, home_away_swapped_by_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))').in('tournament_id', tournamentIds),
           supabase.from('tournament_entries').select('id, tournament_id, group_code, teams(name)').in('tournament_id', tournamentIds),
         ]), 'Tournament fixtures lookup');
         if (matchResult.error) throw new Error('Could not load your fixtures: ' + matchResult.error.message);
@@ -335,7 +335,7 @@ export default function ManagerPortal({ registrationMode = false, session = null
     const tournamentIds = [...new Set(entries.map((entry) => entry.tournament_id))];
     if (!tournamentIds.length) return;
     const { data, error } = await withPortalTimeout(
-      supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))').in('tournament_id', tournamentIds),
+      supabase.from('matches').select('id, tournament_id, group_id, stage, round, leg, match_order, status, fixture_date, played_at, home_entry_id, away_entry_id, home_away_swapped_at, home_away_swapped_by_entry_id, home_placeholder, away_placeholder, home_score, away_score, bracket, home_entry:tournament_entries!matches_home_entry_id_fkey(id, teams(name)), away_entry:tournament_entries!matches_away_entry_id_fkey(id, teams(name))').in('tournament_id', tournamentIds),
       'Result fixtures refresh',
     );
     if (error) throw error;

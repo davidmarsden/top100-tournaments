@@ -9,7 +9,7 @@ import LeagueTable from './LeagueTable.jsx';
 import './league-phase.css';
 
 const DEFAULT_FIRST_WEDNESDAY = '2026-12-09';
-const SM_LABELS = { arranged: '✓ Arranged in SM', reversed: '⇄ Arranged home and away swapped', other_date: '📅 Arranged on another date' };
+const SM_LABELS = { arranged: '✓ Arranged in SM', swapped: '✓ Arranged in SM, home and away swapped by agreement', reversed: '⇄ Arranged home and away swapped (not agreed in My Matches)', other_date: '📅 Arranged on another date' };
 const PORTAL_LABELS = { sent: 'invite sent', received: 'invite received', chased: 'chased', arranged: 'arranged', problem: 'problem' };
 
 function entryView(entry) {
@@ -46,7 +46,7 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
     const [t, e, m, i, sa, pr] = await Promise.all([
       supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
       supabase.from('tournament_entries').select('id, team_id, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId),
-      supabase.from('matches').select('id, stage, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, winner_entry_id, loser_entry_id, status, decided_by, forfeit, walkover, source_id').eq('tournament_id', tournamentId),
+      supabase.from('matches').select('id, stage, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_away_swapped_at, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, winner_entry_id, loser_entry_id, status, decided_by, forfeit, walkover, source_id').eq('tournament_id', tournamentId),
       supabase.rpc('league_phase_result_issues', { target_tournament_id: tournamentId }),
       supabase.rpc('league_phase_sm_arrangements', { target_tournament_id: tournamentId }),
       supabase.from('manager_match_arrangements').select('match_id, tournament_entry_id, status, updated_at, matches!inner(tournament_id)').eq('matches.tournament_id', tournamentId),
@@ -169,7 +169,7 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
       const sm = smArrangements.get(m.id) || null;
       const home = latest.get(`${m.id}:${m.home_entry_id}`)?.status || null;
       const away = latest.get(`${m.id}:${m.away_entry_id}`)?.status || null;
-      const state = sm?.sm_status === 'arranged' ? 'arranged' : sm?.sm_status ? 'check' : home || away ? 'portal' : 'nothing';
+      const state = ['arranged', 'swapped'].includes(sm?.sm_status) ? 'arranged' : sm?.sm_status ? 'check' : home || away ? 'portal' : 'nothing';
       const day = byDay.get(m.round) || { round: m.round, date: m.fixture_date, rows: [] };
       day.rows.push({ match: m, homeName: names.get(m.home_entry_id), awayName: names.get(m.away_entry_id), sm, home, away, state });
       byDay.set(m.round, day);
@@ -226,6 +226,7 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
         <ul className="league-issues">{day.rows.map((row) => <li key={row.match.id} className={`arranging-${row.state}`}>
           {row.homeName} v {row.awayName}
           {' · '}{row.sm ? <span title={row.sm.sm_fixture_date}>{SM_LABELS[row.sm.sm_status]}{row.sm.sm_status === 'other_date' ? ` (${row.sm.sm_fixture_date})` : ''}</span> : <span className="muted">not in SM</span>}
+          {row.match.home_away_swapped_at && row.sm?.sm_status !== 'swapped' && <span className="muted"> · swap agreed in My Matches</span>}
           {(row.home || row.away) && <span className="muted"> · My Matches: home {PORTAL_LABELS[row.home] || '–'}, away {PORTAL_LABELS[row.away] || '–'}</span>}
         </li>)}</ul>
       </details>)}
