@@ -98,7 +98,9 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
   const played = league.filter((m) => ['played', 'forfeit'].includes(m.status)).length;
 
-  const statusOf = (m) => (scoreText(m) ? 'played' : arrangement.get(m.id) || 'none');
+  // Played means a result or forfeit; a rescheduled ('postponed', shown as Moved) fixture keeps its arrangement status.
+  const isPlayed = (m) => ['played', 'forfeit'].includes(m.status);
+  const statusOf = (m) => (isPlayed(m) ? 'played' : arrangement.get(m.id) || 'none');
   const shownFixtures = (club
     ? league.filter((m) => m.home_entry_id === Number(club) || m.away_entry_id === Number(club)).sort((a, b) => (matchdayOf(a) || 0) - (matchdayOf(b) || 0))
     : league.filter((m) => matchdayOf(m) === shownMatchday).sort((a, b) => a.match_order - b.match_order))
@@ -168,7 +170,7 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
                 <div className="wcc-fixture__team">{away?.name}<small>Division {away?.pot}</small></div>
                 {upset && <div className="wcc-fixture__tag">Giant-killing</div>}
                 {club && <div className="wcc-fixture__when">MD{matchdayOf(m)} · {formatDate(m.fixture_date)}</div>}
-                {!score && arrangement.has(m.id) && <div className={`wcc-arrangement ${ARRANGEMENT[arrangement.get(m.id)]?.[1] || 'is-none'}`}>{ARRANGEMENT[arrangement.get(m.id)]?.[0] || 'Not arranged yet'}</div>}
+                {!isPlayed(m) && arrangement.has(m.id) && <div className={`wcc-arrangement ${ARRANGEMENT[arrangement.get(m.id)]?.[1] || 'is-none'}`}>{ARRANGEMENT[arrangement.get(m.id)]?.[0] || 'Not arranged yet'}</div>}
               </article>;
             })}
           </div>
