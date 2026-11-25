@@ -111,6 +111,18 @@
 .wcc-fixture__score.is-pending { color: var(--wcc-muted); font-weight: 600; font-size: 0.85rem; }
 .wcc-fixture--upset { border-color: var(--wcc-shield); }
 .wcc-fixture__tag { grid-column: 1 / -1; text-align: center; font-size: 0.72rem; color: var(--wcc-shield); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+.wcc-fixture__when { grid-column: 1 / -1; text-align: center; font-size: 0.78rem; color: var(--wcc-muted); }
+.wcc-fixture-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 10px; }
+.wcc-fixture-filters .wcc-matchdays { margin-bottom: 0; }
+.wcc-club-filter { display: flex; align-items: center; gap: 8px; color: var(--wcc-muted); font-weight: 700; font-size: 0.9rem; }
+.wcc-club-filter select { max-width: min(320px, 70vw); padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--wcc-line); background: var(--wcc-surface-2); color: var(--wcc-ink); font: inherit; font-weight: 600; }
+.wcc-arrangement-key { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0 0 12px; padding: 0; }
+.wcc-arrangement { justify-self: center; grid-column: 1 / -1; display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 0.74rem; font-weight: 800; border: 1px solid transparent; }
+.wcc-arrangement.is-arranged { color: #6ee7b7; background: rgba(16, 185, 129, 0.14); border-color: rgba(16, 185, 129, 0.45); }
+.wcc-arrangement.is-sent { color: #7dd3fc; background: rgba(125, 211, 252, 0.12); border-color: rgba(125, 211, 252, 0.4); }
+.wcc-arrangement.is-chased { color: #fcd34d; background: rgba(245, 181, 68, 0.14); border-color: rgba(245, 181, 68, 0.45); }
+.wcc-arrangement.is-problem { color: #fca5a5; background: rgba(248, 113, 113, 0.14); border-color: rgba(248, 113, 113, 0.5); }
+.wcc-arrangement.is-none { color: var(--wcc-muted); background: transparent; border-color: var(--wcc-line); }
 .wcc-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 20px; }
 .wcc-highlight { border: 1px solid var(--wcc-line); border-left: 4px solid var(--wcc-shield); border-radius: 12px; padding: 12px 14px; background: var(--wcc-surface); }
 .wcc-highlight h3 { margin: 0 0 6px; font-size: 0.78rem; color: var(--wcc-shield); text-transform: uppercase; letter-spacing: 0.06em; }

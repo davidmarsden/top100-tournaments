@@ -10,6 +10,17 @@ import './league-phase.css';
 const ROUND_NAMES = { 'Play-off': 'Knockout play-off', R32: 'Last 32', R16: 'Last 16', QF: 'Quarter-finals', SF: 'Semi-finals', Final: 'Final' };
 const TABS = [['table', 'Table'], ['fixtures', 'Fixtures & results'], ['knockouts', 'Knockouts'], ['rules', 'How it works']];
 
+// Arrangement badges on unplayed fixtures (league_phase_arrangement_status).
+const ARRANGEMENT = {
+  arranged: ['✓ Arranged', 'is-arranged'],
+  sent: ['Invite sent', 'is-sent'],
+  received: ['Invite received', 'is-sent'],
+  chased: ['Chased', 'is-chased'],
+  check: ['Check arrangement', 'is-chased'],
+  problem: ['Problem reported', 'is-problem'],
+  none: ['Not arranged yet', 'is-none'],
+};
+
 function formatDate(value) {
   if (!value) return 'Date TBC';
   return new Date(`${String(value).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -35,21 +46,25 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
   const [status, setStatus] = useState('Loading the World Club Cup...');
   const [tab, setTab] = useState(initialTab);
   const [matchday, setMatchday] = useState(null);
+  const [club, setClub] = useState('');
+  const [arrangement, setArrangement] = useState(new Map());
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       if (!hasSupabaseConfig || !supabase || !tournamentId) return;
-      const [t, e, m] = await Promise.all([
+      const [t, e, m, a] = await Promise.all([
         supabase.from('tournaments').select('id, name, status, season_number, league_draw_seed, league_draw_at, league_first_matchday, secondary_bracket_name, game_worlds(id, name, slug), competition_types(id, name, slug)').eq('id', tournamentId).maybeSingle(),
         supabase.from('tournament_entries').select('id, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId),
         supabase.from('matches').select('id, stage, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, winner_entry_id, loser_entry_id, status, decided_by, forfeit, walkover').eq('tournament_id', tournamentId),
+        supabase.rpc('league_phase_arrangement_status', { target_tournament_id: tournamentId }),
       ]);
       if (cancelled) return;
       if (t.error || !t.data) { setStatus('This tournament could not be loaded.'); return; }
       setTournament(t.data);
       setEntries((e.data || []).map((row) => ({ id: row.id, name: row.teams?.name || 'TBC', managerName: row.managers?.display_name || row.managers?.name || null, pot: Number(row.pot) || null })));
       setMatches(m.data || []);
+      setArrangement(new Map((a.error ? [] : a.data || []).map((row) => [row.match_id, row.arrangement_status || 'none'])));
       setStatus('');
     }
     load();
@@ -103,13 +118,26 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
       {tab === 'table' && <section className="wcc-section" role="tabpanel"><h2>League stage table</h2><LeagueTable rows={table} /></section>}
 
       {tab === 'fixtures' && <section className="wcc-section" role="tabpanel">
-        <h2>Matchday {shownMatchday} · {formatDate(dateOf(shownMatchday))}</h2>
+        <h2>{club ? `${byId.get(Number(club))?.name || 'Club'}: all fixtures` : `Matchday ${shownMatchday} · ${formatDate(dateOf(shownMatchday))}`}</h2>
         {!matchdays.length ? <p className="wcc-empty">Fixtures appear here as soon as the draw is made.</p> : <>
-          <div className="wcc-matchdays" role="group" aria-label="Matchday">
-            {matchdays.map((md) => <button key={md} type="button" aria-pressed={md === shownMatchday} onClick={() => setMatchday(md)}>MD{md}</button>)}
+          <div className="wcc-fixture-filters">
+            <label className="wcc-club-filter">Club
+              <select value={club} onChange={(e) => setClub(e.target.value)}>
+                <option value="">All clubs, by matchday</option>
+                {[...entries].sort((a, b) => a.name.localeCompare(b.name)).map((e) => <option key={e.id} value={e.id}>{e.name}{e.managerName ? ` (${e.managerName})` : ''}</option>)}
+              </select>
+            </label>
+            {!club && <div className="wcc-matchdays" role="group" aria-label="Matchday">
+              {matchdays.map((md) => <button key={md} type="button" aria-pressed={md === shownMatchday} onClick={() => setMatchday(md)}>MD{md}</button>)}
+            </div>}
           </div>
+          {arrangement.size > 0 && <ul className="wcc-arrangement-key" aria-label="Arrangement key">
+            {['arranged', 'sent', 'chased', 'problem', 'none'].map((key) => <li key={key} className={`wcc-arrangement ${ARRANGEMENT[key][1]}`}>{key === 'sent' ? 'Invite sent / received' : key === 'chased' ? 'Chased / check' : ARRANGEMENT[key][0]}</li>)}
+          </ul>}
           <div className="wcc-fixtures">
-            {league.filter((m) => matchdayOf(m) === shownMatchday).sort((a, b) => a.match_order - b.match_order).map((m) => {
+            {(club
+              ? league.filter((m) => m.home_entry_id === Number(club) || m.away_entry_id === Number(club)).sort((a, b) => (matchdayOf(a) || 0) - (matchdayOf(b) || 0))
+              : league.filter((m) => matchdayOf(m) === shownMatchday).sort((a, b) => a.match_order - b.match_order)).map((m) => {
               const home = byId.get(m.home_entry_id);
               const away = byId.get(m.away_entry_id);
               const score = scoreText(m);
@@ -121,6 +149,8 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
                 <div className={score ? 'wcc-fixture__score' : 'wcc-fixture__score is-pending'}>{score || 'v'}</div>
                 <div className="wcc-fixture__team">{away?.name}<small>Division {away?.pot}</small></div>
                 {upset && <div className="wcc-fixture__tag">Giant-killing</div>}
+                {club && <div className="wcc-fixture__when">MD{matchdayOf(m)} · {formatDate(m.fixture_date)}</div>}
+                {!score && arrangement.has(m.id) && <div className={`wcc-arrangement ${ARRANGEMENT[arrangement.get(m.id)]?.[1] || 'is-none'}`}>{ARRANGEMENT[arrangement.get(m.id)]?.[0] || 'Not arranged yet'}</div>}
               </article>;
             })}
           </div>
