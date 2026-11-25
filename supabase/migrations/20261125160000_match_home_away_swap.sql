@@ -152,7 +152,8 @@ begin
     and (m.fixture_date is null or played between m.fixture_date - 7 and m.fixture_date + 28)
     -- A Soccer Manager match fills one fixture only.
     and not exists (select 1 from public.matches o where o.source_id = 'sm:' || s.source_fixture_id and o.id <> m.id)
-  order by (he.team_id = s.away_team_id), abs(coalesce(played - m.fixture_date, 0)), m.fixture_date, m.id
+  -- Nearest fixture date first (two-legged ties have both orientations a week apart), then the unswapped orientation.
+  order by abs(coalesce(played - m.fixture_date, 0)), (he.team_id = s.away_team_id), m.fixture_date, m.id
   limit 1;
 
   if target.id is null then return 0; end if;
