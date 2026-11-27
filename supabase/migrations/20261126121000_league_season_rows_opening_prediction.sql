@@ -11,6 +11,10 @@
 -- worlds without one) it falls back to the current-strength rank, as before.
 -- squad_strength stays the current strength.
 
+-- The function reads Manager Lab tables (soccer_manager_club_crosswalk), which this repo's
+-- migration replay doesn't create; as in 20261101210000_world_league_history.sql.
+set check_function_bodies = false;
+
 create or replace function public.public_league_season_rows(p_world_slug text default 'top-100'::text)
 returns table(season integer, division integer, "position" integer, team text, played integer, won integer, drawn integer, lost integer, goals_for integer, goals_against integer, goal_difference integer, points integer, manager text, squad_strength numeric, predicted_position integer, observed_at timestamp with time zone, season_complete boolean)
 language sql
@@ -99,6 +103,8 @@ as $function$
   left join public.managers manager on manager.id = assignment.manager_id
   order by standings.division, standings.position;
 $function$;
+
+reset check_function_bodies;
 
 revoke all on function public.public_league_season_rows(text) from public;
 grant execute on function public.public_league_season_rows(text) to anon, authenticated, service_role;
