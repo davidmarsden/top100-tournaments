@@ -5,6 +5,7 @@ import {
 } from '../lib/leaguePhase.js';
 import { resolveTieWithFet } from '../lib/knockoutResolution.js';
 import LeagueTable from './LeagueTable.jsx';
+import { leagueFormat, leagueSplit } from '../lib/leagueFormats.js';
 import './league-phase.css';
 
 const ROUND_NAMES = { 'Play-off': 'Knockout play-off', R32: 'Last 32', R16: 'Last 16', QF: 'Quarter-finals', SF: 'Semi-finals', Final: 'Final' };
@@ -54,28 +55,32 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
   const [tournament, setTournament] = useState(null);
   const [entries, setEntries] = useState([]);
   const [matches, setMatches] = useState([]);
-  const [status, setStatus] = useState('Loading the World Club Cup...');
+  const [status, setStatus] = useState('Loading the tournament...');
   const [tab, setTab] = useState(initialTab);
   const [matchday, setMatchday] = useState(null);
   const [club, setClub] = useState('');
   const [arrangement, setArrangement] = useState(new Map());
   const [statusFilter, setStatusFilter] = useState('');
+  // Before the draw is published the entries are hidden: list the registered clubs instead.
+  const [registered, setRegistered] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       if (!hasSupabaseConfig || !supabase || !tournamentId) return;
-      const [t, e, m, a] = await Promise.all([
-        supabase.from('tournaments').select('id, name, status, season_number, league_draw_seed, league_draw_at, league_first_matchday, secondary_bracket_name, game_worlds(id, name, slug), competition_types(id, name, slug)').eq('id', tournamentId).maybeSingle(),
+      const [t, e, m, a, r] = await Promise.all([
+        supabase.from('tournaments').select('id, name, status, season_number, league_draw_seed, league_draw_at, league_first_matchday, league_matchday_weekday, league_single_leg_rounds, secondary_bracket_name, game_worlds(id, name, slug), competition_types(id, name, slug)').eq('id', tournamentId).maybeSingle(),
         supabase.from('tournament_entries').select('id, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId),
         supabase.from('matches').select('id, stage, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, winner_entry_id, loser_entry_id, status, decided_by, forfeit, walkover').eq('tournament_id', tournamentId),
         supabase.rpc('league_phase_arrangement_status', { target_tournament_id: tournamentId }),
+        supabase.rpc('public_registered_clubs', { target_tournament_id: tournamentId }),
       ]);
       if (cancelled) return;
       if (t.error || !t.data) { setStatus('This tournament could not be loaded.'); return; }
       setTournament(t.data);
       setEntries((e.data || []).map((row) => ({ id: row.id, name: row.teams?.name || 'TBC', managerName: row.managers?.display_name || row.managers?.name || null, pot: Number(row.pot) || null })));
       setMatches(m.data || []);
+      setRegistered(r.error ? [] : r.data || []);
       setArrangement(new Map((a.error ? [] : a.data || []).map((row) => [row.match_id, row.arrangement_status || 'none'])));
       setStatus('');
     }
@@ -87,7 +92,9 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
 
   const league = useMemo(() => matches.filter((m) => m.stage === LEAGUE_STAGE), [matches]);
   const knockouts = useMemo(() => matches.filter((m) => m.stage === 'knockout'), [matches]);
-  const table = useMemo(() => calculateLeagueTable(entries, league), [entries, league]);
+  const format = leagueFormat(tournament);
+  const table = useMemo(() => calculateLeagueTable(entries, league, { split: leagueSplit(leagueFormat(tournament)) }), [entries, league, tournament]);
+  const matchdayTotal = Math.max(6, ...league.map((m) => matchdayOf(m) || 0));
   const latest = useMemo(() => latestPlayedMatchday(league), [league]);
   const matchdays = useMemo(() => [...new Set(league.map(matchdayOf).filter(Boolean))].sort((a, b) => a - b), [league]);
   const dateOf = (md) => league.find((m) => matchdayOf(m) === md)?.fixture_date;
@@ -109,33 +116,37 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
   if (!tournament) return <main className="wcc"><div className="wcc-wrap"><p className="wcc-empty">{status}</p></div></main>;
 
   const leagueDone = league.length > 0 && played === league.length;
-  const stageLabel = !league.length ? 'Draw to come' : leagueDone ? (knockouts.length ? 'Knockouts' : 'League stage complete') : `League stage · Matchday ${latest || 1} of 6`;
+  const stageLabel = !league.length ? 'Draw to come' : leagueDone ? (knockouts.length ? 'Knockouts' : 'League stage complete') : `League stage · Matchday ${latest || 1} of ${matchdayTotal}`;
 
   return <main className="wcc">
     <div className="wcc-wrap">
       <header className="wcc-hero">
         <p className="wcc-eyebrow">{tournament.game_worlds?.name || 'Top 100'} · Season {tournament.season_number}</p>
         <h1>{tournament.name}</h1>
-        <p>All {entries.length || 100} clubs in one table. Six Wednesdays, one club from every Division and two from your own, then the knockouts. The top 8 go straight to the last 16, 9th to 24th play off for the other places, and 25th to 56th go into the Shield.</p>
+        <p>{format.key === 'youth'
+          ? `All ${entries.length || registered.length} academies in one table. Six Saturday matches each, drawn from five pots by rating: one club from every other pot and two from your own${matchdayTotal === 7 ? ', over seven Saturdays with one rest week each' : ''}. Then the knockouts: the top 8 go straight to the last 16, 9th to 24th play off for the other places, and 25th to 56th go into the Shield.`
+          : `All ${entries.length || 100} clubs in one table. Six Wednesdays, one club from every Division and two from your own, then the knockouts. The top 8 go straight to the last 16, 9th to 24th play off for the other places, and 25th to 56th go into the Shield.`}</p>
         <div className="wcc-facts">
           <div className="wcc-fact"><b>{stageLabel}</b><span>Now</span></div>
-          <div className="wcc-fact"><b>{played} / {league.length || 300}</b><span>League matches played</span></div>
+          <div className="wcc-fact"><b>{played} / {league.length || (format.key === 'youth' ? '—' : 300)}</b><span>League matches played</span></div>
           <div className="wcc-fact"><b>{formatDate(tournament.league_first_matchday)}</b><span>Matchday 1</span></div>
-          <div className="wcc-fact"><b>Every Wednesday</b><span>Friendlies, strongest XI, no eligibility rules</span></div>
+          <div className="wcc-fact"><b>Every {format.weekdayName}</b><span>{format.key === 'youth' ? 'Friendlies, players aged 21 or under' : 'Friendlies, strongest XI, no eligibility rules'}</span></div>
         </div>
       </header>
 
       {latest && (highlights.upset || highlights.biggestWin) && <section className="wcc-highlights" aria-label={`Matchday ${latest} talking points`}>
-        {highlights.upset && <article className="wcc-highlight"><h3>Upset of Matchday {latest}</h3><p><b>{highlights.upset.winner?.name}</b> (Division {highlights.upset.winner?.pot}) beat <b>{highlights.upset.loser?.name}</b> (Division {highlights.upset.loser?.pot}) {Math.max(highlights.upset.match.home_score, highlights.upset.match.away_score)}–{Math.min(highlights.upset.match.home_score, highlights.upset.match.away_score)}.</p></article>}
+        {highlights.upset && <article className="wcc-highlight"><h3>Upset of Matchday {latest}</h3><p><b>{highlights.upset.winner?.name}</b> ({format.potTitle(highlights.upset.winner?.pot)}) beat <b>{highlights.upset.loser?.name}</b> ({format.potTitle(highlights.upset.loser?.pot)}) {Math.max(highlights.upset.match.home_score, highlights.upset.match.away_score)}–{Math.min(highlights.upset.match.home_score, highlights.upset.match.away_score)}.</p></article>}
         {highlights.biggestWin && highlights.biggestWin !== highlights.upset && <article className="wcc-highlight"><h3>Biggest win</h3><p><b>{highlights.biggestWin.home?.name}</b> {highlights.biggestWin.match.home_score}–{highlights.biggestWin.match.away_score} <b>{highlights.biggestWin.away?.name}</b></p></article>}
         {highlights.climbers.length > 0 && <article className="wcc-highlight"><h3>On the move</h3><p>{highlights.climbers.map((row, i) => <span key={row.entryId}>{i ? ' · ' : ''}<b>{row.name}</b> up {row.gained} to {row.position}</span>)}</p></article>}
       </section>}
 
-      <nav className="wcc-tabs" role="tablist" aria-label="World Club Cup sections">
+      <nav className="wcc-tabs" role="tablist" aria-label={`${format.cupName} sections`}>
         {TABS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>)}
       </nav>
 
-      {tab === 'table' && <section className="wcc-section" role="tabpanel"><h2>League stage table</h2><LeagueTable rows={table} /></section>}
+      {tab === 'table' && <section className="wcc-section" role="tabpanel">{!entries.length && registered.length
+        ? <><h2>Registered clubs ({registered.length})</h2><p className="wcc-empty">The table starts when the draw is made. Every club entered, highest rated first:</p><div className="lt-scroll"><table className="lt-table"><thead><tr><th scope="col">#</th><th scope="col" className="lt-club">Club</th><th scope="col">Manager</th><th scope="col">Rating</th></tr></thead><tbody>{registered.map((row, index) => <tr key={row.entry_id}><td>{index + 1}</td><td className="lt-club">{row.club_name}</td><td>{row.manager_name || '—'}</td><td>{row.rating ?? '—'}</td></tr>)}</tbody></table></div></>
+        : <><h2>League stage table</h2><LeagueTable rows={table} potLabel={format.potLabel} cupName={format.cupName} /></>}</section>}
 
       {tab === 'fixtures' && <section className="wcc-section" role="tabpanel">
         <h2>{club ? `${byId.get(Number(club))?.name || 'Club'}: all fixtures` : `Matchday ${shownMatchday} · ${formatDate(dateOf(shownMatchday))}`}</h2>
@@ -165,9 +176,9 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
               const loser = winner && (winner.id === home?.id ? away : home);
               const upset = m.status === 'played' && winner && loser && Number(winner.pot) - Number(loser.pot) >= 2;
               return <article key={m.id} className={upset ? 'wcc-fixture wcc-fixture--upset' : 'wcc-fixture'}>
-                <div className="wcc-fixture__team wcc-fixture__home">{home?.name}<small>Division {home?.pot}</small></div>
+                <div className="wcc-fixture__team wcc-fixture__home">{home?.name}<small>{format.potTitle(home?.pot)}</small></div>
                 <div className={score ? 'wcc-fixture__score' : 'wcc-fixture__score is-pending'}>{score || 'v'}</div>
-                <div className="wcc-fixture__team">{away?.name}<small>Division {away?.pot}</small></div>
+                <div className="wcc-fixture__team">{away?.name}<small>{format.potTitle(away?.pot)}</small></div>
                 {upset && <div className="wcc-fixture__tag">Giant-killing</div>}
                 {club && <div className="wcc-fixture__when">MD{matchdayOf(m)} · {formatDate(m.fixture_date)}</div>}
                 {!isPlayed(m) && arrangement.has(m.id) && <div className={`wcc-arrangement ${ARRANGEMENT[arrangement.get(m.id)]?.[1] || 'is-none'}`}>{ARRANGEMENT[arrangement.get(m.id)]?.[0] || 'Not arranged yet'}</div>}
@@ -178,12 +189,12 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
       </section>}
 
       {tab === 'knockouts' && <section className="wcc-section" role="tabpanel">
-        {!knockouts.length ? <p className="wcc-empty">The knockouts are drawn from the final table after Matchday 6. The play-off and Shield last 32 start the following Wednesday.</p>
+        {!knockouts.length ? <p className="wcc-empty">The knockouts are drawn from the final table after Matchday {matchdayTotal}. The play-off and Shield last 32 start the following {format.weekdayName}.</p>
           : ['Cup', 'Shield'].map((bracket) => <div key={bracket}>
             {WCC_ROUNDS[bracket].filter((round) => knockouts.some((m) => m.bracket === bracket && m.round === round)).reverse().map((round) => {
               const ties = [...new Set(knockouts.filter((m) => m.bracket === bracket && m.round === round).map((m) => m.match_order))].sort((a, b) => a - b);
               return <div key={round} className="wcc-section">
-                <h2>{bracket === 'Cup' ? 'World Club Cup' : tournament.secondary_bracket_name || 'Shield'} · {ROUND_NAMES[round] || round}</h2>
+                <h2>{bracket === 'Cup' ? format.cupName : tournament.secondary_bracket_name || 'Shield'} · {ROUND_NAMES[round] || round}</h2>
                 <div className="wcc-ties">{ties.map((order) => {
                   const legs = knockouts.filter((m) => m.bracket === bracket && m.round === round && m.match_order === order).sort((a, b) => a.leg - b.leg);
                   const result = resolveTieWithFet(legs);
@@ -200,6 +211,19 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
       </section>}
 
       {tab === 'rules' && <section className="wcc-section wcc-rules" role="tabpanel">
+        {format.key === 'youth' ? <>
+        <h2>How the Youth Cup works</h2>
+        <p>Every registered academy takes part. Matches are Saturday friendlies in Soccer Manager. Every player must be aged 21 or under on 17 November 2026, and there are no loans: field an ineligible player and the match is a 0–3 forfeit. Report an ineligible opponent to the organiser by 10pm on the Monday after the match.</p>
+        <h3>League stage</h3>
+        <p>Clubs are drawn from five pots by registered rating (pot 1 the highest rated). Each club plays six matches: one club from each of the other four pots and two from its own, three at home and three away.{matchdayTotal === 7 ? ' With an odd number of clubs the league stage runs over seven Saturdays and every club has one rest week; four clubs play a slightly different mix of pots as a result.' : ''} All {entries.length || registered.length} clubs share one table.</p>
+        <p>Order in the table: points (3 for a win, 1 for a draw), goal difference, goals scored, wins, then the total points of the clubs you played.</p>
+        <h3>What your position means</h3>
+        <p><b>1st–8th:</b> straight into the Youth Cup last 16. <b>9th–24th:</b> a play-off (9th v 24th, 10th v 23rd …) for the other eight places. <b>25th–56th:</b> the {tournament.secondary_bracket_name || 'Shield'} last 32 (25th v 56th …). <b>57th and below:</b> out.</p>
+        <h3>Knockouts</h3>
+        <p>The play-off, the {tournament.secondary_bracket_name || 'Shield'} last 32 and both last 16s are single matches at the higher-placed club. From the quarter-finals every tie is two legs, the higher-placed club at home in the second leg. A level tie is settled by Fictional Extra Time.</p>
+        <h3>Arranging and results</h3>
+        <p>The home club sends the friendly invite no later than the Wednesday before the match; the away club chases if it hasn't arrived. Record what you've done in My Matches. Results are read from Soccer Manager by SM Sync, so play the friendly with the right club at home. If a match isn't played, the club that tried to arrange it wins 3–0; if neither tried, both lose 0–3.</p>
+        </> : <>
         <h2>How the World Club Cup works</h2>
         <p>Every Top 100 club takes part. Matches are friendlies played on Wednesdays, so there are no eligibility rules or fitness worries: pick your strongest team.</p>
         <h3>League stage</h3>
@@ -211,6 +235,7 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
         <p>Every tie is two legs, with the higher-placed club at home in the second leg. Level on aggregate: away goals, then Fictional Extra Time.</p>
         <h3>Results and forfeits</h3>
         <p>Results are read from Soccer Manager automatically by SM Sync, so there is nothing to submit. Play the friendly with the right club at home. If a match isn't played, the club that tried to arrange it wins 3–0; if neither club tried, both lose 0–3. The World Club Cup is mandatory and forfeits count towards the season's forfeit record.</p>
+        </>}
         {tournament.league_draw_seed && <>
           <h3>Check the draw</h3>
           <p>The draw was made on {new Date(tournament.league_draw_at).toLocaleString('en-GB')} from the seed <code>{tournament.league_draw_seed}</code>. Running the published draw code with the same seed and pots gives exactly the same fixtures.</p>
