@@ -14,7 +14,7 @@ function Form({ results = [] }) {
 }
 
 // One table of every club. Coloured edges show what each position leads to.
-export default function LeagueTable({ rows = [], compact = false, highlightIds = [], potFilter: initialPot = 'all' }) {
+export default function LeagueTable({ rows = [], compact = false, highlightIds = [], potFilter: initialPot = 'all', potLabel = 'Division', cupName = 'World Club Cup' }) {
   const [pot, setPot] = useState(initialPot);
   const [query, setQuery] = useState('');
   const highlighted = new Set(highlightIds);
@@ -27,13 +27,13 @@ export default function LeagueTable({ rows = [], compact = false, highlightIds =
   return <div className={compact ? 'lt lt--compact' : 'lt'}>
     <div className="lt-toolbar">
       <ul className="lt-legend" aria-label="What each position leads to">
-        {ZONES.map((zone) => <li key={zone.key} className={`lt-zone lt-zone--${zone.key}`}>{zone.title}</li>)}
+        {ZONES.map((zone) => <li key={zone.key} className={`lt-zone lt-zone--${zone.key}`}>{zone.key === 'cup_r16' ? `${cupName} last 16` : zone.title}</li>)}
       </ul>
       <div className="lt-filters">
-        <label><span className="sr-only">Division</span>
+        <label><span className="sr-only">{potLabel}</span>
           <select value={pot} onChange={(event) => setPot(event.target.value)}>
-            <option value="all">All Divisions</option>
-            {[1, 2, 3, 4, 5].map((n) => <option key={n} value={String(n)}>Division {n} clubs</option>)}
+            <option value="all">All {potLabel === 'Pot' ? 'pots' : 'Divisions'}</option>
+            {[1, 2, 3, 4, 5].map((n) => <option key={n} value={String(n)}>{potLabel} {n} clubs</option>)}
           </select>
         </label>
         <label><span className="sr-only">Find a club</span><input type="search" placeholder="Find a club or manager" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
@@ -44,7 +44,7 @@ export default function LeagueTable({ rows = [], compact = false, highlightIds =
         <thead><tr>
           <th scope="col" className="lt-pos">#</th>
           <th scope="col" className="lt-club">Club</th>
-          <th scope="col" title="Division (pot)">Div</th>
+          <th scope="col" title={potLabel === 'Pot' ? 'Pot (by rating)' : 'Division (pot)'}>{potLabel === 'Pot' ? 'Pot' : 'Div'}</th>
           <th scope="col" title="Played">P</th>
           <th scope="col" title="Won" className="lt-wide">W</th>
           <th scope="col" title="Drawn" className="lt-wide">D</th>

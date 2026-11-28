@@ -85,7 +85,9 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
   const tournamentId = selectedTournament?.id;
   const gameWorldId = selectedTournament?.game_world_id || selectedTournament?.game_worlds?.id;
   const knockoutOnly = selectedTournament?.tournament_structure === 'knockout_only';
-  const maxEntries = Number(selectedTournament?.max_entries || 64);
+  // No format saved yet: no cap and no fixed size; the format is built around the clubs registered.
+  const maxEntries = Number(selectedTournament?.max_entries) || Infinity;
+  const maxLabel = Number.isFinite(maxEntries) ? maxEntries : 'TBC';
 
   useEffect(() => {
     if (hasSupabaseConfig && supabase && tournamentId) {
@@ -388,7 +390,7 @@ export default function EntrantsManager({ selectedTournament, onPreviewGenerated
     <div className="entrant-toolbar">
       <div>
         <p className="eyebrow">Selected</p>
-        <h3>{entries.length} / {maxEntries} entrants</h3>
+        <h3>{entries.length} / {maxLabel} entrants</h3>
         <p className="muted">{knockoutOnly ? 'Knockout seeding uses average rating, highest first. The tournament entrant count is synchronized directly from this list.' : 'Group seeding uses average rating, highest first. Use Replace/Edit after fixtures are approved so the entry ID, assigned group, seed, pot and fixtures stay intact.'}</p>
       </div>
       <div className="button-row">

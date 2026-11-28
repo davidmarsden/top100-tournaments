@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import FixturesManager from './FixturesManager.jsx';
 import KnockoutScheduleManager from './KnockoutScheduleManager.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { crossGroupCompare } from '../lib/crossGroupRanking';
+import { LEAGUE_STAGE, calculateLeagueTable } from '../lib/leaguePhase.js';
 
 const FALLBACK_ROUNDS = [
   { bracket: 'Cup', round_name: 'R32', round_order: 1, legs: 1, loser_to_bracket: 'Shield' },
@@ -143,6 +145,8 @@ function qualifiersForRules(tables, rules, bracket, destinationRound, options = 
   const picked = [];
   const seen = new Set(excluded);
 
+  // Across groups (e.g. best third-placed clubs), per game when the groups differ in size.
+  const acrossGroups = crossGroupCompare(tables, compareRows);
   const groupRules = rules
     .filter((rule) => rule.bracket === bracket && rule.destination_round === destinationRound && rule.source_stage === 'group')
     .sort((a, b) => Number(a.rank_order || 0) - Number(b.rank_order || 0));
@@ -154,7 +158,7 @@ function qualifiersForRules(tables, rules, bracket, destinationRound, options = 
     const limit = rule.slots ? Math.min(Number(rule.slots), remaining) : remaining;
     const candidates = tables
       .flatMap((table) => table.rows.filter((row) => row.group_position === Number(rule.group_position)))
-      .sort(compareRows)
+      .sort(acrossGroups)
       .filter((row) => !seen.has(row.entry_id))
       .slice(0, limit)
       .map((row) => ({ ...row, rule_rank: rule.rank_order }));
@@ -509,6 +513,16 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
     const { outcomes, unresolved } = tieOutcomes(bracketRound(knockoutMatches, roundTemplates, bracket, latestName));
     if (unresolved.length) return setStatus(`Cannot generate ${bracket} ${nextName}: unresolved ties remain.`);
 
+    // League-phase tournaments: the higher-placed club in the final league table hosts a single
+    // match, or the second leg of a two-legged tie, whichever source tie it came from.
+    const leaguePosition = new Map();
+    if (selectedTournament?.tournament_structure === 'league_knockout') {
+      const leagueEntries = entries.map((entry) => ({ id: entry.id, name: entry.teams?.name || String(entry.id), pot: entry.pot }));
+      calculateLeagueTable(leagueEntries, matches.filter((match) => match.stage === LEAGUE_STAGE))
+        .forEach((row) => leaguePosition.set(row.entryId, row.position));
+    }
+    const twoLegs = Number(next.legs || 1) === 2;
+
     const rows = [];
     let byeCount = 0;
     let vacantCount = 0;
@@ -569,31 +583,38 @@ export default function KnockoutManager({ selectedTournament, onDataChanged }) {
         continue;
       }
 
+      // Order the pair: [leg-1 home, leg-1 away]. By default the first source tie's winner hosts leg 1.
+      let [homeId, awayId, homeLabel, awayLabel] = [firstId, secondId, 'Winner ' + (index + 1), 'Winner ' + (index + 2)];
+      if (leaguePosition.size) {
+        const firstHigher = (leaguePosition.get(firstId) ?? Infinity) <= (leaguePosition.get(secondId) ?? Infinity);
+        const higherFirst = twoLegs ? !firstHigher : firstHigher; // two legs: the higher-placed club hosts leg 2
+        if (!higherFirst) [homeId, awayId, homeLabel, awayLabel] = [secondId, firstId, awayLabel, homeLabel];
+      }
       rows.push({
         tournament_id: tournamentId,
         stage: 'knockout',
         round: nextName,
         leg: 1,
         match_order: order,
-        home_entry_id: firstId,
-        away_entry_id: secondId,
-        home_placeholder: entryName(entries, firstId, 'Winner ' + (index + 1)),
-        away_placeholder: entryName(entries, secondId, 'Winner ' + (index + 2)),
+        home_entry_id: homeId,
+        away_entry_id: awayId,
+        home_placeholder: entryName(entries, homeId, homeLabel),
+        away_placeholder: entryName(entries, awayId, awayLabel),
         bracket,
         fixture_date: dateFor(presets, bracket, nextName, 1),
         status: 'scheduled',
       });
-      if (Number(next.legs || 1) === 2) {
+      if (twoLegs) {
         rows.push({
           tournament_id: tournamentId,
           stage: 'knockout',
           round: nextName,
           leg: 2,
           match_order: order,
-          home_entry_id: secondId,
-          away_entry_id: firstId,
-          home_placeholder: entryName(entries, secondId, 'Winner ' + (index + 2)),
-          away_placeholder: entryName(entries, firstId, 'Winner ' + (index + 1)),
+          home_entry_id: awayId,
+          away_entry_id: homeId,
+          home_placeholder: entryName(entries, awayId, awayLabel),
+          away_placeholder: entryName(entries, homeId, homeLabel),
           bracket,
           fixture_date: dateFor(presets, bracket, nextName, 2),
           status: 'scheduled',
