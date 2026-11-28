@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import FixturesManager from './FixturesManager.jsx';
 import KnockoutScheduleManager from './KnockoutScheduleManager.jsx';
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient';
+import { crossGroupCompare } from '../lib/crossGroupRanking';
 
 const FALLBACK_ROUNDS = [
   { bracket: 'Cup', round_name: 'R32', round_order: 1, legs: 1, loser_to_bracket: 'Shield' },
@@ -143,6 +144,8 @@ function qualifiersForRules(tables, rules, bracket, destinationRound, options = 
   const picked = [];
   const seen = new Set(excluded);
 
+  // Across groups (e.g. best third-placed clubs), per game when the groups differ in size.
+  const acrossGroups = crossGroupCompare(tables, compareRows);
   const groupRules = rules
     .filter((rule) => rule.bracket === bracket && rule.destination_round === destinationRound && rule.source_stage === 'group')
     .sort((a, b) => Number(a.rank_order || 0) - Number(b.rank_order || 0));
@@ -154,7 +157,7 @@ function qualifiersForRules(tables, rules, bracket, destinationRound, options = 
     const limit = rule.slots ? Math.min(Number(rule.slots), remaining) : remaining;
     const candidates = tables
       .flatMap((table) => table.rows.filter((row) => row.group_position === Number(rule.group_position)))
-      .sort(compareRows)
+      .sort(acrossGroups)
       .filter((row) => !seen.has(row.entry_id))
       .slice(0, limit)
       .map((row) => ({ ...row, rule_rank: rule.rank_order }));
