@@ -59,7 +59,7 @@ function shuffle(items, random) {
 
 // Build pots from entries carrying a `pot` (1..n) or `division`. Within a pot,
 // entries keep the order given (used only for display; the draw shuffles).
-export function buildPots(entries = [], { potCount = 5 } = {}) {
+export function buildPots(entries = [], { potCount = 5, allowShortPot = false } = {}) {
   const pots = Array.from({ length: potCount }, () => []);
   for (const entry of entries) {
     const pot = Number(entry.pot ?? entry.division);
@@ -68,8 +68,10 @@ export function buildPots(entries = [], { potCount = 5 } = {}) {
     }
     pots[pot - 1].push(entry);
   }
-  const size = pots[0].length;
-  if (pots.some((pot) => pot.length !== size)) {
+  const size = Math.max(...pots.map((pot) => pot.length));
+  const short = pots.filter((pot) => pot.length !== size);
+  const oneShort = allowShortPot && short.length === 1 && short[0].length === size - 1;
+  if (short.length && !oneShort) {
     throw new Error(`Every pot needs the same number of clubs (now ${pots.map((pot) => pot.length).join(', ')}).`);
   }
   if (size < 4 || size % 2 !== 0) throw new Error('Each pot needs an even number of clubs, at least 4.');
@@ -172,11 +174,83 @@ export function drawLeaguePhase(entries = [], { seed, potCount = 5 } = {}) {
   return { seed: String(seed), pots: shuffledPots.map((pot) => pot.map((entry) => entry.id)), fixtures };
 }
 
+// --- Any field: equal pots, or one club short --------------------------------
+//
+// Equal pots (e.g. 60 = 5 x 12) use drawLeaguePhase unchanged: 6 matchdays.
+// A field one club short of equal pots (59 = 12+12+12+12+11) is drawn with a
+// placeholder "rest week" club in the short pot. Its six opponents each get a
+// rest week instead (one per matchday), and meet each other in three make-up
+// matches on an extra matchday (7). So every club still plays six matches,
+// three at home and three away, and rests on exactly one matchday: the six on
+// their rest week, everyone else on matchday 7.
+// Make-up pairs: a club that lost a home match hosts one that lost an away
+// match, never a repeat. The two own-pot neighbours of the rest-week club stay
+// together (same pot, never yet met), so pot balance changes only for the
+// clubs from the other pots, who are listed in potExceptions.
+export const REST_WEEK_ID = '__rest_week__';
+
+function permutations(items) {
+  if (items.length <= 1) return [items];
+  return items.flatMap((item, index) => permutations([...items.slice(0, index), ...items.slice(index + 1)]).map((rest) => [item, ...rest]));
+}
+
+export function drawLeagueField(entries = [], { seed, potCount = 5 } = {}) {
+  if (!seed) throw new Error('A draw seed is required, so the draw can be checked later.');
+  const pots = buildPots(entries, { potCount, allowShortPot: true });
+  const size = Math.max(...pots.map((pot) => pot.length));
+  const shortIndex = pots.findIndex((pot) => pot.length < size);
+  if (shortIndex < 0) {
+    const draw = drawLeaguePhase(entries, { seed, potCount });
+    return { ...draw, matchdays: potCount + 1, makeUp: [], restWeeks: [], potExceptions: [] };
+  }
+  const restPot = shortIndex + 1;
+  const ghost = { id: REST_WEEK_ID, name: 'Rest week', pot: restPot };
+  const potOf = new Map(entries.map((entry) => [entry.id, Number(entry.pot ?? entry.division)]));
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const draw = drawLeaguePhase([...entries, ghost], { seed: attempt ? `${seed}#${attempt}` : String(seed), potCount });
+    const isGhost = (f) => f.home.id === REST_WEEK_ID || f.away.id === REST_WEEK_ID;
+    const restWeeks = draw.fixtures.filter(isGhost).map((f) => {
+      const ghostHome = f.home.id === REST_WEEK_ID;
+      return { club: ghostHome ? f.away : f.home, matchday: f.matchday, lost: ghostHome ? 'away' : 'home', kind: f.kind };
+    });
+    const met = new Set(draw.fixtures.filter((f) => !isGhost(f)).map((f) => [f.home.id, f.away.id].sort().join('|')));
+    const hosts = restWeeks.filter((r) => r.lost === 'home');
+    const guests = restWeeks.filter((r) => r.lost === 'away');
+    let best = null;
+    for (const order of permutations(guests)) {
+      const pairs = hosts.map((host, index) => [host, order[index]]);
+      if (pairs.some(([a, b]) => met.has([a.club.id, b.club.id].sort().join('|')))) continue;
+      // Keep the own-pot neighbours together; otherwise pair the closest pots.
+      const cost = pairs.reduce((sum, [a, b]) => sum + Math.abs((potOf.get(a.club.id) || 0) - (potOf.get(b.club.id) || 0)) + (a.kind !== b.kind ? 10 : 0), 0);
+      if (!best || cost < best.cost) best = { pairs, cost };
+    }
+    // Prefer a draw where the own-pot neighbours stay together (fewer pot exceptions);
+    // the next seed variant (seed#1, seed#2 ...) is tried otherwise, deterministically.
+    if (!best || (best.cost >= 10 && attempt < 49)) continue;
+    const makeUpDay = potCount + 2;
+    const makeUp = best.pairs.map(([host, guest]) => ({ matchday: makeUpDay, home: host.club, away: guest.club, kind: 'make-up' }));
+    const potExceptions = best.pairs.flatMap(([a, b]) => (potOf.get(a.club.id) === restPot && potOf.get(b.club.id) === restPot ? [] : [a.club.id, b.club.id]));
+    return {
+      seed: String(seed),
+      attempt,
+      pots: draw.pots.map((pot) => pot.filter((id) => id !== REST_WEEK_ID)),
+      fixtures: [...draw.fixtures.filter((f) => !isGhost(f)), ...makeUp],
+      matchdays: makeUpDay,
+      makeUp,
+      restWeeks: restWeeks.map((r) => ({ clubId: r.club.id, matchday: r.matchday })),
+      potExceptions,
+    };
+  }
+  throw new Error('Could not complete the draw for this seed; try another seed.');
+}
+
 // Checks every rule of the draw; returns a list of problems (empty when valid).
-export function validateLeagueDraw(entries, fixtures, { potCount = 5 } = {}) {
+export function validateLeagueDraw(entries, fixtures, { potCount = 5, potExceptions = [] } = {}) {
   const problems = [];
   const potOf = new Map(entries.map((entry) => [entry.id, Number(entry.pot ?? entry.division)]));
+  // Every club plays potCount + 1 matches (6), whatever the number of matchdays (7 with an odd field).
   const matchdays = potCount + 1;
+  const excepted = new Set(potExceptions);
   const pairs = new Set();
   const stats = new Map(entries.map((entry) => [entry.id, { home: 0, away: 0, days: new Set(), pots: new Map() }]));
   for (const fixture of fixtures) {
@@ -199,7 +273,7 @@ export function validateLeagueDraw(entries, fixtures, { potCount = 5 } = {}) {
   for (const [club, s] of stats) {
     if (s.home + s.away !== matchdays) problems.push(`${club} has ${s.home + s.away} matches, not ${matchdays}.`);
     if (s.home !== matchdays / 2) problems.push(`${club} has ${s.home} home matches.`);
-    for (let pot = 1; pot <= potCount; pot += 1) {
+    for (let pot = 1; pot <= potCount && !excepted.has(club); pot += 1) {
       const expected = pot === potOf.get(club) ? 2 : 1;
       if ((s.pots.get(pot) || 0) !== expected) problems.push(`${club} plays ${s.pots.get(pot) || 0} clubs from pot ${pot}, not ${expected}.`);
     }
@@ -330,18 +404,26 @@ export function leaguePhaseQualification(table, split = DEFAULT_SPLIT) {
   };
 }
 
-// Calendar: one Wednesday per league matchday, then two Wednesdays (two legs)
-// per knockout round. Dates are ISO yyyy-mm-dd strings.
-export function leaguePhaseCalendar(firstWednesday, { matchdays = 6, knockoutRounds = ['Knockout play-off', 'Last 16', 'Quarter-finals', 'Semi-finals', 'Final'] } = {}) {
-  const start = new Date(`${firstWednesday}T12:00:00Z`);
-  if (Number.isNaN(start.getTime())) throw new Error('First Wednesday must be a date (yyyy-mm-dd).');
-  if (start.getUTCDay() !== 3) throw new Error(`${firstWednesday} is not a Wednesday.`);
+// Calendar: one matchday a week (Wednesdays for the World Club Cup, Saturdays
+// for the Youth Cup), then one week per knockout leg: two for a two-legged
+// round, one for a single match. Dates are ISO yyyy-mm-dd strings.
+export const KNOCKOUT_SLOTS = ['Knockout play-off', 'Last 16', 'Quarter-finals', 'Semi-finals', 'Final'];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+export function leaguePhaseCalendar(firstMatchday, { matchdays = 6, weekday = 3, knockoutRounds = KNOCKOUT_SLOTS, singleLegSlots = [] } = {}) {
+  const start = new Date(`${firstMatchday}T12:00:00Z`);
+  if (Number.isNaN(start.getTime())) throw new Error('The first matchday must be a date (yyyy-mm-dd).');
+  if (start.getUTCDay() !== weekday) throw new Error(`${firstMatchday} is not a ${WEEKDAY_NAMES[weekday]}.`);
   const week = (n) => new Date(start.getTime() + n * 7 * 86400000).toISOString().slice(0, 10);
   const calendar = [];
   for (let i = 0; i < matchdays; i += 1) calendar.push({ stage: 'League stage', round: `Matchday ${i + 1}`, date: week(i) });
-  knockoutRounds.forEach((round, index) => {
-    calendar.push({ stage: 'Knockout', round, leg: 1, date: week(matchdays + index * 2) });
-    calendar.push({ stage: 'Knockout', round, leg: 2, date: week(matchdays + index * 2 + 1) });
+  let next = matchdays;
+  knockoutRounds.forEach((round) => {
+    const legs = singleLegSlots.includes(round) ? 1 : 2;
+    for (let leg = 1; leg <= legs; leg += 1) {
+      calendar.push({ stage: 'Knockout', round, leg, date: week(next) });
+      next += 1;
+    }
   });
   return calendar;
 }
@@ -363,21 +445,30 @@ export function bracketOrder(size) {
   return order;
 }
 
-// Wednesday dates per bracket round, from the calendar (6 league matchdays,
-// then two Wednesdays per round). Cup play-off and Shield R32 share weeks 7-8.
-export function knockoutRoundDates(firstWednesday) {
-  const calendar = leaguePhaseCalendar(firstWednesday);
+// Dates per bracket round from the calendar: the league matchdays, then one
+// or two weeks per round. Cup play-off and Shield last 32 share the first
+// slot, Cup and Shield last 16 the second. A single-match round has no leg2_date.
+const SLOT_OF = { 'Play-off': 'Knockout play-off', R32: 'Knockout play-off', R16: 'Last 16', QF: 'Quarter-finals', SF: 'Semi-finals', Final: 'Final' };
+export function knockoutRoundDates(firstMatchday, { matchdays = 6, weekday = 3, singleLegRounds = [] } = {}) {
+  const singleLegSlots = [...new Set(singleLegRounds.map((round) => SLOT_OF[round]).filter(Boolean))];
+  const calendar = leaguePhaseCalendar(firstMatchday, { matchdays, weekday, singleLegSlots });
   const knockout = calendar.filter((item) => item.stage === 'Knockout');
-  const slots = ['Knockout play-off', 'Last 16', 'Quarter-finals', 'Semi-finals', 'Final'];
   const dates = (slot) => {
-    const legs = knockout.filter((item) => item.round === slots[slot]);
-    return { leg1_date: legs[0].date, leg2_date: legs[1].date };
+    const legs = knockout.filter((item) => item.round === slot);
+    return { leg1_date: legs[0].date, leg2_date: legs[1]?.date || null };
   };
   const rows = [];
   for (const bracket of ['Cup', 'Shield']) {
-    WCC_ROUNDS[bracket].forEach((round, index) => rows.push({ bracket, round, ...dates(index) }));
+    WCC_ROUNDS[bracket].forEach((round) => rows.push({ bracket, round, ...dates(SLOT_OF[round]) }));
   }
   return rows;
+}
+
+// One match (higher-placed club at home) or two legs (higher-placed club at home in leg 2).
+function tieRows({ singleLeg, ...args }) {
+  if (!singleLeg) return twoLegs(args);
+  const { tournamentId, bracket, round, order, higher, lower, dates, names } = args;
+  return [{ tournament_id: tournamentId, stage: 'knockout', bracket, round, match_order: order, status: 'scheduled', leg: 1, home_entry_id: higher, away_entry_id: lower, home_placeholder: names(higher), away_placeholder: names(lower), fixture_date: dates?.leg1_date || null }];
 }
 
 function twoLegs({ tournamentId, bracket, round, order, higher, lower, dates, names }) {
@@ -390,17 +481,17 @@ function twoLegs({ tournamentId, bracket, round, order, higher, lower, dates, na
 }
 
 // Cup play-off (9-24) and Shield last 32 (25-56) once the league stage is complete.
-export function buildPostLeagueRounds(table, { tournamentId, roundDates = [], split = DEFAULT_SPLIT } = {}) {
+export function buildPostLeagueRounds(table, { tournamentId, roundDates = [], split = DEFAULT_SPLIT, singleLegRounds = [] } = {}) {
   const incomplete = table.filter((row) => row.played < 6);
   const names = (id) => table.find((row) => row.entryId === id)?.name || null;
   const dateOf = (bracket, round) => roundDates.find((row) => row.bracket === bracket && row.round === round);
   const q = leaguePhaseQualification(table, split);
   const rows = [];
-  q.playoffTies.forEach((tie) => rows.push(...twoLegs({ tournamentId, bracket: 'Cup', round: 'Play-off', order: tie.tie, higher: tie.higher, lower: tie.lower, dates: dateOf('Cup', 'Play-off'), names })));
+  q.playoffTies.forEach((tie) => rows.push(...tieRows({ singleLeg: singleLegRounds.includes('Play-off'), tournamentId, bracket: 'Cup', round: 'Play-off', order: tie.tie, higher: tie.higher, lower: tie.lower, dates: dateOf('Cup', 'Play-off'), names })));
   const order = bracketOrder(q.shieldTies.length);
   order.forEach((seed, index) => {
     const tie = q.shieldTies[seed - 1];
-    rows.push(...twoLegs({ tournamentId, bracket: 'Shield', round: 'R32', order: index + 1, higher: tie.higher, lower: tie.lower, dates: dateOf('Shield', 'R32'), names }));
+    rows.push(...tieRows({ singleLeg: singleLegRounds.includes('R32'), tournamentId, bracket: 'Shield', round: 'R32', order: index + 1, higher: tie.higher, lower: tie.lower, dates: dateOf('Shield', 'R32'), names }));
   });
   return { rows, incomplete: incomplete.length, cupDirect: q.cupDirect };
 }
@@ -408,7 +499,7 @@ export function buildPostLeagueRounds(table, { tournamentId, roundDates = [], sp
 // Cup last 16: league 1-8 against the play-off winners. Seed 1 meets the
 // winner of the 16 v 17 tie, seed 8 the winner of 9 v 24.
 // playoffWinners: Map(tie number -> winning entry id).
-export function buildCupRoundOf16(table, playoffWinners, { tournamentId, roundDates = [] } = {}) {
+export function buildCupRoundOf16(table, playoffWinners, { tournamentId, roundDates = [], singleLegRounds = [] } = {}) {
   const names = (id) => table.find((row) => row.entryId === id)?.name || null;
   const seeds = table.filter((row) => row.position >= 1 && row.position <= 8).map((row) => row.entryId);
   const missing = [1, 2, 3, 4, 5, 6, 7, 8].filter((tie) => !playoffWinners.get(tie));
@@ -418,7 +509,7 @@ export function buildCupRoundOf16(table, playoffWinners, { tournamentId, roundDa
   bracketOrder(8).forEach((seed, index) => {
     const higher = seeds[seed - 1];
     const lower = playoffWinners.get(9 - seed);
-    rows.push(...twoLegs({ tournamentId, bracket: 'Cup', round: 'R16', order: index + 1, higher, lower, dates, names }));
+    rows.push(...tieRows({ singleLeg: singleLegRounds.includes('R16'), tournamentId, bracket: 'Cup', round: 'R16', order: index + 1, higher, lower, dates, names }));
   });
   return rows;
 }

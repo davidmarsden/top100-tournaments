@@ -125,3 +125,62 @@ test('highlights: upset of the week, biggest win, climbers', () => {
   assert.equal(h.biggestWin.winner.name, 'Mid');
   assert.ok(h.climbers.some((row) => row.name === 'Mid'));
 });
+
+// --- Youth Cup fields: 60 clubs (5 pots of 12) and 59 (one pot one short) -----
+import { drawLeagueField, REST_WEEK_ID } from '../src/lib/leaguePhase.js';
+
+const youth = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, name: `Y${i + 1}`, pot: Math.floor(i / 12) + 1 }));
+
+test('60 clubs: 5 pots of 12, six matchdays, every rule kept', () => {
+  for (let s = 0; s < 100; s += 1) {
+    const draw = drawLeagueField(youth(60), { seed: `S29-YC-${s}` });
+    assert.equal(draw.matchdays, 6);
+    assert.equal(draw.fixtures.length, 180);
+    assert.deepEqual(validateLeagueDraw(youth(60), draw.fixtures.map((f) => ({ ...f, home: f.home.id, away: f.away.id }))), [], `seed ${s}`);
+  }
+});
+
+test('59 clubs: seven matchdays, six matches each, one rest week each, no repeats', () => {
+  for (let s = 0; s < 300; s += 1) {
+    const clubs = youth(59);
+    const draw = drawLeagueField(clubs, { seed: `S29-YC-${s}` });
+    assert.equal(draw.matchdays, 7);
+    assert.equal(draw.fixtures.length, 177);
+    assert.equal(draw.makeUp.length, 3);
+    assert.ok(draw.fixtures.every((f) => f.home.id !== REST_WEEK_ID && f.away.id !== REST_WEEK_ID));
+    const problems = validateLeagueDraw(clubs, draw.fixtures.map((f) => ({ ...f, home: f.home.id, away: f.away.id })), { potExceptions: draw.potExceptions });
+    assert.deepEqual(problems, [], `seed ${s}`);
+    // Every club rests exactly once over the seven matchdays.
+    for (const club of clubs) {
+      const days = new Set(draw.fixtures.filter((f) => f.home.id === club.id || f.away.id === club.id).map((f) => f.matchday));
+      assert.equal(days.size, 6, `club ${club.id} seed ${s}`);
+    }
+    assert.ok(draw.potExceptions.length <= 4);
+  }
+});
+
+test('the 59-club draw is reproducible from its seed', () => {
+  const key = (draw) => draw.fixtures.map((f) => `${f.matchday}:${f.home.id}-${f.away.id}`).join(',');
+  assert.equal(key(drawLeagueField(youth(59), { seed: 'yc' })), key(drawLeagueField(youth(59), { seed: 'yc' })));
+});
+
+test('Youth Cup calendar: Saturdays, single matches to the last 16, then two legs', () => {
+  const dates = knockoutRoundDates('2026-12-12', { matchdays: 7, weekday: 6, singleLegRounds: ['Play-off', 'R32', 'R16'] });
+  const at = (bracket, round) => dates.find((row) => row.bracket === bracket && row.round === round);
+  assert.deepEqual(at('Cup', 'Play-off'), { bracket: 'Cup', round: 'Play-off', leg1_date: '2027-01-30', leg2_date: null });
+  assert.deepEqual(at('Shield', 'R32'), { bracket: 'Shield', round: 'R32', leg1_date: '2027-01-30', leg2_date: null });
+  assert.deepEqual(at('Cup', 'R16'), { bracket: 'Cup', round: 'R16', leg1_date: '2027-02-06', leg2_date: null });
+  assert.deepEqual(at('Cup', 'QF'), { bracket: 'Cup', round: 'QF', leg1_date: '2027-02-13', leg2_date: '2027-02-20' });
+  assert.deepEqual(at('Cup', 'Final'), { bracket: 'Cup', round: 'Final', leg1_date: '2027-03-13', leg2_date: '2027-03-20' });
+  assert.throws(() => knockoutRoundDates('2026-12-09', { weekday: 6 }), /not a Saturday/);
+});
+
+test('single-match play-off: one fixture, higher-placed club at home', () => {
+  const table = Array.from({ length: 59 }, (_, i) => ({ entryId: i + 1, name: `Y${i + 1}`, position: i + 1, played: 6 }));
+  const { rows } = buildPostLeagueRounds(table, { tournamentId: 1, singleLegRounds: ['Play-off', 'R32', 'R16'] });
+  const playoff = rows.filter((r) => r.round === 'Play-off');
+  assert.equal(playoff.length, 8);
+  assert.ok(playoff.every((r) => r.leg === 1));
+  assert.deepEqual([playoff[0].home_entry_id, playoff[0].away_entry_id], [9, 24]);
+  assert.equal(rows.filter((r) => r.round === 'R32').length, 16);
+});
