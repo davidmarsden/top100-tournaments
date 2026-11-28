@@ -13,8 +13,13 @@
 --     clubs and 5 pots that is 12, 12, 12, 12, 11.
 
 alter table public.tournaments add column if not exists league_matchday_weekday smallint not null default 3;
-alter table public.tournaments drop constraint if exists tournaments_league_matchday_weekday_check;
-alter table public.tournaments add constraint tournaments_league_matchday_weekday_check check (league_matchday_weekday in (3, 6));
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'tournaments_league_matchday_weekday_check') then
+    alter table public.tournaments add constraint tournaments_league_matchday_weekday_check check (league_matchday_weekday in (3, 6));
+  end if;
+end;
+$$;
 alter table public.tournaments add column if not exists league_single_leg_rounds text[] not null default '{}';
 
 create or replace function public.save_league_phase_draw(target_tournament_id bigint, draw_seed text, first_matchday date, fixtures jsonb)
