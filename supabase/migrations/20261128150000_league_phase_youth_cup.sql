@@ -59,7 +59,9 @@ begin
          row_number() over () ord
   from jsonb_array_elements(fixtures) f;
 
-  select count(*) into entry_count from public.tournament_entries where tournament_id = target_tournament_id;
+  -- Withdrawn and disqualified clubs take no part in the draw.
+  select count(*) into entry_count from public.tournament_entries
+   where tournament_id = target_tournament_id and coalesce(withdrawn, false) = false and coalesce(disqualified, false) = false;
   if entry_count < 2 then raise exception 'Enter the clubs before the draw.'; end if;
   select count(*) into fixture_count from draw_rows;
   -- Every club plays the same number of matches: six with 5 pots, whether over 6 or 7 matchdays.
@@ -73,18 +75,19 @@ begin
   select string_agg(problem, '; ') into bad from (
     select 'unknown entrant ' || x.id problem
       from (select home_id id from draw_rows union select away_id from draw_rows) x
-     where not exists (select 1 from public.tournament_entries e where e.id = x.id and e.tournament_id = target_tournament_id)
+     where not exists (select 1 from public.tournament_entries e where e.id = x.id and e.tournament_id = target_tournament_id
+                         and coalesce(e.withdrawn, false) = false and coalesce(e.disqualified, false) = false)
     union all
     select 'entrant ' || e.id || ' has ' || count(d.*) || ' matches'
       from public.tournament_entries e
       left join draw_rows d on d.home_id = e.id or d.away_id = e.id
-     where e.tournament_id = target_tournament_id
+     where e.tournament_id = target_tournament_id and coalesce(e.withdrawn, false) = false and coalesce(e.disqualified, false) = false
      group by e.id having count(d.*) <> games
     union all
     select 'entrant ' || e.id || ' has ' || count(d.*) || ' home matches'
       from public.tournament_entries e
       left join draw_rows d on d.home_id = e.id
-     where e.tournament_id = target_tournament_id
+     where e.tournament_id = target_tournament_id and coalesce(e.withdrawn, false) = false and coalesce(e.disqualified, false) = false
      group by e.id having count(d.*) * 2 <> games
     union all
     select 'entrant ' || c.id || ' plays twice on matchday ' || c.matchday

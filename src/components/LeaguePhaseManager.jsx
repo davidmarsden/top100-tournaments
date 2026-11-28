@@ -45,7 +45,7 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
     if (!hasSupabaseConfig || !supabase || !tournamentId) return;
     const [t, e, m, i, sa, pr] = await Promise.all([
       supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
-      supabase.from('tournament_entries').select('id, team_id, pot, rating, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId),
+      supabase.from('tournament_entries').select('id, team_id, pot, rating, withdrawn, disqualified, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId),
       supabase.from('matches').select('id, stage, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_away_swapped_at, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, winner_entry_id, loser_entry_id, status, decided_by, forfeit, walkover, source_id').eq('tournament_id', tournamentId),
       supabase.rpc('league_phase_result_issues', { target_tournament_id: tournamentId }),
       supabase.rpc('league_phase_sm_arrangements', { target_tournament_id: tournamentId }),
@@ -53,7 +53,8 @@ export default function LeaguePhaseManager({ selectedTournament, onDataChanged }
     ]);
     if (t.error || e.error || m.error) return setStatus('Could not load the tournament: ' + (t.error || e.error || m.error).message);
     setTournament(t.data);
-    setEntries((e.data || []).map(entryView).sort((a, b) => (a.pot || 9) - (b.pot || 9) || a.name.localeCompare(b.name)));
+    // Withdrawn and disqualified clubs take no part in the pots, the draw or the table.
+    setEntries((e.data || []).filter((row) => !row.withdrawn && !row.disqualified).map(entryView).sort((a, b) => (a.pot || 9) - (b.pot || 9) || a.name.localeCompare(b.name)));
     setMatches(m.data || []);
     setIssues(i.error ? [] : i.data || []);
     setSmArrangements(new Map((sa.error ? [] : sa.data || []).filter((row) => row.sm_status).map((row) => [row.match_id, row])));

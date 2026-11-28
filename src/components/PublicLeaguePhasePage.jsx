@@ -70,7 +70,7 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
       if (!hasSupabaseConfig || !supabase || !tournamentId) return;
       const [t, e, m, a, r] = await Promise.all([
         supabase.from('tournaments').select('id, name, status, season_number, league_draw_seed, league_draw_at, league_first_matchday, league_matchday_weekday, league_single_leg_rounds, secondary_bracket_name, game_worlds(id, name, slug), competition_types(id, name, slug)').eq('id', tournamentId).maybeSingle(),
-        supabase.from('tournament_entries').select('id, pot, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId),
+        supabase.from('tournament_entries').select('id, pot, withdrawn, disqualified, teams(id, name), managers(id, name, display_name)').eq('tournament_id', tournamentId),
         supabase.from('matches').select('id, stage, bracket, round, leg, match_order, fixture_date, home_entry_id, away_entry_id, home_score, away_score, home_normal_time_score, away_normal_time_score, home_extra_time_score, away_extra_time_score, winner_entry_id, loser_entry_id, status, decided_by, forfeit, walkover').eq('tournament_id', tournamentId),
         supabase.rpc('league_phase_arrangement_status', { target_tournament_id: tournamentId }),
         supabase.rpc('public_registered_clubs', { target_tournament_id: tournamentId }),
@@ -78,7 +78,7 @@ export default function PublicLeaguePhasePage({ tournamentId }) {
       if (cancelled) return;
       if (t.error || !t.data) { setStatus('This tournament could not be loaded.'); return; }
       setTournament(t.data);
-      setEntries((e.data || []).map((row) => ({ id: row.id, name: row.teams?.name || 'TBC', managerName: row.managers?.display_name || row.managers?.name || null, pot: Number(row.pot) || null })));
+      setEntries((e.data || []).filter((row) => !row.withdrawn && !row.disqualified).map((row) => ({ id: row.id, name: row.teams?.name || 'TBC', managerName: row.managers?.display_name || row.managers?.name || null, pot: Number(row.pot) || null })));
       setMatches(m.data || []);
       setRegistered(r.error ? [] : r.data || []);
       setArrangement(new Map((a.error ? [] : a.data || []).map((row) => [row.match_id, row.arrangement_status || 'none'])));
